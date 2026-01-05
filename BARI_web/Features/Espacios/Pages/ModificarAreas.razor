@@ -205,6 +205,17 @@ else
                             <label class="ml-2 text-sm">
                                 <input type="checkbox" checked="@_joinAxisYOnly" @onchange="OnToggleJoinY" /> Solo Y
                             </label>
+                            <label class="ml-2 text-sm">
+                                <input type="checkbox" checked="@_snapToGrid" @onchange="(e)=> { _snapToGrid = e.Value is bool b && b; }" />
+                                Snap
+                            </label>
+                            <label class="ml-1 text-sm text-gray-600">
+                                Paso (m)
+                                <input class="border ml-1 p-0.5" style="width:4.5rem"
+                                       value="@S(_gridStep)"
+                                       @oninput="(e)=> { _gridStep = Math.Clamp(ParseFlexible(e.Value), 0.05m, 2.0m); }" />
+                                <span class="ml-1 text-xs">(Shift = libre)</span>
+                            </label>
 
                             @if (!string.IsNullOrEmpty(_joinMsg))
                             {
