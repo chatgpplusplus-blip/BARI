@@ -1,0 +1,228 @@
+﻿@page "/areas"
+@namespace BARI_web.Features.Espacios.Pages
+
+@* Precalcular áreas visibles en esta render *@
+@{ var currentAreas = _byArea.Where(kv => IsAreaInCurrentPlanta(kv.Key)).ToList(); }
+
+<div class="areas-wrap">
+    <div class="toolbar">
+        <h2 class="text-2xl" style="margin:0">Mapa del Laboratorio</h2>
+
+        <!-- SELECTOR DE PLANTA (usa @bind en .NET6+) -->
+        <select class="btn" style="margin-right:.5rem" @bind="_currentPlantaId">
+            @foreach (var plantaKv in _plantasLookup)
+            {
+                <option value="@plantaKv.Key">@plantaKv.Value</option>
+            }
+        </select>
+
+        <button type="button" class="btn" @onclick="@(()=>Nav.NavigateTo("/modificarareas"))">
+            Modificar áreas
+        </button>
+    </div>
+
+    @if (_canvas is null)
+    {
+        <p>Cargando...</p>
+    }
+    else
+    {
+        <div style="border:1px solid #e5e7eb; aspect-ratio:@AspectRatioString(); width:100%;">
+            <svg width="100%" height="100%" viewBox="@ViewBox()" preserveAspectRatio="xMidYMid meet">
+                <defs>
+                    <!-- Fondo -->
+                    <rect id="bg" x="0" y="0" width="@S(Wm)" height="@S(Hm)" />
+
+                    <!-- Grilla con pattern: mucho menos DOM que cientos de <line> -->
+                    <pattern id="grid1m" width="@S(1m)" height="@S(1m)" patternUnits="userSpaceOnUse">
+                        <path d="M 0 0 L 1 0 M 0 0 L 0 1"
+                              stroke="#f1f1f1"
+                              stroke-width="@S(0.02)"
+                              vector-effect="non-scaling-stroke" />
+                    </pattern>
+
+                    <!-- clipPaths por área visible -->
+                    @foreach (var areaKv in currentAreas)
+                    {
+                        var clipAid = areaKv.Key; var info = areaKv.Value;
+                        <clipPath id="@($"clip_{clipAid}")" clipPathUnits="userSpaceOnUse" @key="clipAid">
+                            @foreach (var p in info.Polys)
+                            {
+                                <rect @key="p.poly_id"
+                                      x="@S(p.x_m)" y="@S(p.y_m)"
+                                      width="@S(p.ancho_m)" height="@S(p.alto_m)" />
+                            }
+                        </clipPath>
+                    }
+                </defs>
+
+                <!-- fondo + grilla -->
+                <use href="#bg" fill="white" />
+                <rect x="0" y="0" width="@S(Wm)" height="@S(Hm)" fill="url(#grid1m)" />
+
+                <!-- Áreas visibles -->
+                @foreach (var areaKv in currentAreas)
+                {
+                    var aidMain = areaKv.Key; var aInfo = areaKv.Value;
+                    var areaW = aInfo.MaxX - aInfo.MinX; var areaH = aInfo.MaxY - aInfo.MinY;
+
+                    <g class="softshadow" clip-path="@($"url(#clip_{aidMain})")" @key="aidMain">
+                        <!-- Relleno: un rectángulo grande dentro del clip -->
+                        <rect x="@S(aInfo.MinX)" y="@S(aInfo.MinY)" width="@S(areaW)" height="@S(areaH)" fill="@aInfo.Fill" />
+                    </g>
+
+                    <!-- Contornos fusionados -->
+                    @foreach (var seg in aInfo.Outline)
+                    {
+                        <line x1="@S(seg.x1)" y1="@S(seg.y1)"
+                              x2="@S(seg.x2)" y2="@S(seg.y2)"
+                              stroke="#000" stroke-width="@S(OutlineStroke)"
+                              vector-effect="non-scaling-stroke" />
+                    }
+
+
+                    @if (!string.IsNullOrWhiteSpace(aInfo.Label))
+                    {
+                        var fit = FitLabel(aInfo);
+                        var fs = fit.fs; var pillW = fit.pillW; var pillH = fit.pillH;
+                        var cx = aInfo.Cx; var cy = aInfo.Cy;
+
+                        <!-- pastilla del label -->
+                        <rect x="@S(cx - pillW/2)" y="@S(cy - pillH/2)" rx="@S(0.38m)" ry="@S(0.8m)"
+                              width="@S(pillW)" height="@S(pillH)"
+                              fill="#fff" opacity="0.95" clip-path="@($"url(#clip_{aidMain})")" />
+
+                        <g clip-path="@($"url(#clip_{aidMain})")">
+                            <text>
+                                <tspan class="label-stroked"
+                                       x="@S(cx)" y="@S(cy)"
+                                       style="text-anchor:middle;dominant-baseline:middle"
+                                       font-size="@S(fs)" fill="#222"
+                                       textLength="@S(pillW - 2*TextPad)" lengthAdjust="spacingAndGlyphs">
+                                    @aInfo.Label
+                                </tspan>
+                            </text>
+                        </g>
+                    }
+
+                    <!-- Capa de interacción -->
+                    <rect x="@S(aInfo.MinX)" y="@S(aInfo.MinY)" width="@S(areaW)" height="@S(areaH)"
+                          fill="transparent" style="cursor:@(string.IsNullOrEmpty(aInfo.AreaId) ? "default" : "pointer")"
+                          @onclick="@(()=>GoToArea(aInfo.AreaId))" />
+                }
+
+                <!-- Puertas -->
+                @foreach (var doorItem in _doors.Where(IsDoorVisible))
+                {
+                    <line @key="doorItem.door_id"
+                          x1="@S(doorItem.x_m)" y1="@S(doorItem.y_m)"
+                          x2="@S(DoorEndX(doorItem))" y2="@S(DoorEndY(doorItem))"
+                          stroke="#13A076" stroke-width="@S(0.10m)" stroke-linecap="round" />
+                }
+
+                <!-- Ventanas -->
+                @foreach (var winItem in _windows.Where(IsWinVisible))
+                {
+                    <line @key="winItem.win_id"
+                          x1="@S(winItem.x_m)" y1="@S(winItem.y_m)"
+                          x2="@S(WinEndX(winItem))" y2="@S(WinEndY(winItem))"
+                          stroke="#66CCFF" stroke-width="@S(0.05m)" stroke-linecap="round" />
+                }
+            </svg>
+        </div>
+
+        <!-- === Índice de Áreas (planta actual) con mesones/instalaciones === -->
+        <div style="margin-top:1rem; border:1px solid #e5e7eb; border-radius:.5rem; padding:.75rem; background:#fff">
+            <details open>
+                <summary style="cursor:pointer; font-weight:600">
+                    Áreas de @(_plantasLookup.TryGetValue(_currentPlantaId ?? "", out var _p) ? _p : "Planta")
+                </summary>
+
+                @foreach (var areaKv2 in currentAreas.OrderBy(k => k.Value.Label, StringComparer.OrdinalIgnoreCase))
+                {
+                    var aidList = areaKv2.Key; var aList = areaKv2.Value;
+                    var mes = _mesonesPorArea.TryGetValue(aidList, out var lm) ? lm : new List<MesonSummary>();
+                    var ins = _instalacionesPorArea.TryGetValue(aidList, out var li) ? li : new List<InstalacionView>();
+
+                    <details style="margin:.5rem 0" @key="aidList">
+                        <summary style="cursor:pointer; display:flex; align-items:center; gap:.5rem">
+                            <span style="font-weight:600">@aList.Label</span>
+                            <span style="color:#6b7280; font-size:.9rem">
+                                (@mes.Count mesones · @ins.Count instalaciones)
+                            </span>
+                            <button type="button" class="btn link" style="margin-left:auto"
+                                    @onclick="@(()=>GoToArea(aidList))">
+                                ver
+                            </button>
+                        </summary>
+
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-top:.5rem">
+                            <div>
+                                <h4 style="margin:.25rem 0; font-weight:600">Mesones</h4>
+                                <ul style="list-style:none; padding-left:0; margin:.25rem 0 0">
+                                    @if (mes.Count == 0)
+                                    {
+                                        <li style="color:#6b7280"><em>Sin mesones.</em></li>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var m in mes)
+                                        {
+                                            <li @key="m.meson_id"
+                                                style="display:flex; align-items:center; justify-content:space-between; padding:.25rem 0; border-bottom:1px dashed #eee">
+                                                <span>@m.nombre_meson</span>
+                                                <button type="button" class="btn link"
+                                                        @onclick="@(()=>Nav.NavigateTo($"/detalles-meson/{m.meson_id}"))">
+                                                    ver
+                                                </button>
+                                            </li>
+                                        }
+                                    }
+                                </ul>
+                            </div>
+
+                            <div>
+                                <h4 style="margin:.25rem 0; font-weight:600">Instalaciones</h4>
+                                <ul style="list-style:none; padding-left:0; margin:.25rem 0 0">
+                                    @if (ins.Count == 0)
+                                    {
+                                        <li style="color:#6b7280"><em>Sin instalaciones.</em></li>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var inst in ins)
+                                        {
+                                            <li @key="inst.instalacion_id" style="padding:.25rem 0; border-bottom:1px dashed #eee">
+                                                <div style="display:flex; align-items:center; justify-content:space-between;">
+                                                    <div>
+                                                        <strong>@inst.nombre</strong>
+                                                        @if (!string.IsNullOrWhiteSpace(inst.tipo_nombre))
+                                                        {
+                                                            <span style="margin-left:.5rem; font-size:.8rem; background:#e5f9f1; color:#047857; padding:.05rem .4rem; border-radius:.4rem">
+                                                                @inst.tipo_nombre
+                                                            </span>
+                                                        }
+                                                    </div>
+                                                    <button type="button" class="btn link"
+                                                            @onclick="@(()=>Nav.NavigateTo($"/detalles-instalacion/{inst.instalacion_id}"))">
+                                                        ver
+                                                    </button>
+                                                </div>
+                                                @if (!string.IsNullOrWhiteSpace(inst.tipo_descripcion))
+                                                {
+                                                    <div style="color:#4b5563; font-size:.9rem; margin-top:.15rem">
+                                                        @inst.tipo_descripcion
+                                                    </div>
+                                                }
+                                            </li>
+                                        }
+                                    }
+                                </ul>
+                            </div>
+                        </div>
+                    </details>
+                }
+            </details>
+        </div>
+    }
+</div>

@@ -1,0 +1,153 @@
+﻿@page "/hcodes/{id}"
+@using Npgsql
+@inject NpgsqlDataSource Ds
+
+<PageTitle>@(Id ?? "H-code")</PageTitle>
+
+@if (item is null)
+{
+     <p><em>Cargando…</em></p>
+}
+else
+{
+    <a class="back" href="/hcodes">← Volver a H-codes</a>
+
+    <h1>@item.Id</h1>
+    <p><strong>Grupo:</strong> @item.Grupo</p>
+    <p class="desc">@item.Texto</p>
+    @if (!string.IsNullOrWhiteSpace(item.Nota))
+    {
+        <p class="nota"><strong>Nota:</strong> @item.Nota</p>
+    }
+
+    @if (reactivos.Count == 0)
+    {
+        <div class="empty">En el laboratorio no hay reactivos clasificados con <strong>@item.Id</strong>.</div>
+    }
+    else
+    {
+        <h2>Reactivos</h2>
+        <table class="table">
+            <thead><tr><th>ID</th><th>Reactivo</th><th>CAS</th></tr></thead>
+            <tbody>
+                @foreach (var r in reactivos)
+                {
+                    <tr><td>@r.Id</td><td>@r.Nombre</td><td>@r.Cas</td></tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    <footer class="ref">
+        <hr />
+        <strong>Fuente (APA 7):</strong><br />
+        United Nations Economic Commission for Europe. (s. f.). <em>Globally Harmonized System of Classification and Labelling of Chemicals (GHS)</em>.
+        Recuperado de <a href="https://unece.org/ghs-rev8-2019" target="_blank" rel="noreferrer">https://unece.org/ghs-rev8-2019</a>
+    </footer>
+}
+
+@code {
+    [Parameter] public string? Id { get; set; }
+
+    private HItem? item;
+    private List<RItem> reactivos = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Id)) return;
+
+        const string sql = @"select h_id, descripcion, coalesce(grupo,''), coalesce(nota,'') from h_codes where h_id=@id";
+        await using (var conn = await Ds.OpenConnectionAsync())
+        await using (var cmd = new NpgsqlCommand(sql, conn))
+        {
+            cmd.Parameters.AddWithValue("id", Id!);
+            await using var rdr = await cmd.ExecuteReaderAsync();
+            if (await rdr.ReadAsync())
+            {
+                item = new HItem
+                    {
+                        Id = rdr.GetString(0),
+                        Texto = rdr.GetString(1),
+                        Grupo = rdr.GetString(2),
+                        Nota = rdr.GetString(3)
+                    };
+            }
+        }
+        if (item is null) return;
+
+        const string sqlR = @"
+            select r.reactivo_id,
+                   coalesce(nullif(r.nombre_comercial,''), nullif(r.nombre_quimico,''), r.reactivo_id) as nombre,
+                   coalesce(r.cas,'')
+            from reactivos r
+            join reactivos_h rh on rh.reactivo_id = r.reactivo_id
+            where rh.h_id=@id
+            order by nombre";
+        await using (var conn2 = await Ds.OpenConnectionAsync())
+        await using (var cmd2 = new NpgsqlCommand(sqlR, conn2))
+        {
+            cmd2.Parameters.AddWithValue("id", Id!);
+            await using var rdr2 = await cmd2.ExecuteReaderAsync();
+            reactivos.Clear();
+            while (await rdr2.ReadAsync())
+                reactivos.Add(new RItem { Id = rdr2.GetString(0), Nombre = rdr2.GetString(1), Cas = rdr2.GetString(2) });
+        }
+    }
+
+    private sealed class HItem { public string Id = ""; public string Texto = ""; public string Grupo = ""; public string Nota = ""; }
+    private sealed class RItem { public string Id = ""; public string Nombre = ""; public string Cas = ""; }
+}
+
+<style>
+    .back {
+        display: inline-block;
+        margin: .5rem 0 1rem;
+        color: #0b5ed7;
+        text-decoration: none;
+    }
+
+        .back:hover {
+            text-decoration: underline;
+        }
+
+    .desc {
+        font-size: 1.05rem;
+    }
+
+    .nota {
+        background: #eef7ff;
+        border: 1px solid #cce3ff;
+        padding: .6rem .75rem;
+        border-radius: 8px;
+    }
+
+    .empty {
+        margin: 1rem 0;
+        padding: .9rem 1rem;
+        border-radius: 10px;
+        background: #fff3cd;
+        border: 1px solid #ffe69c;
+        color: #664d03;
+    }
+
+    .table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+        .table th, .table td {
+            border: 1px solid #e3e3e8;
+            padding: .55rem .6rem;
+            text-align: left;
+        }
+
+        .table thead th {
+            background: #f5f6f8;
+        }
+
+    .ref {
+        font-size: .9rem;
+        color: #444;
+        margin-top: .75rem;
+    }
+</style>

@@ -1,0 +1,216 @@
+﻿@page "/pictogramas/{id}"
+@using Npgsql
+@inject NpgsqlDataSource Ds
+
+<PageTitle>@(picto is null ? "Pictograma" : picto.GhsId)</PageTitle>
+
+@if (picto is null)
+{
+    <p><em>Cargando…</em></p>
+}
+else
+{
+    <a class="back" href="/pictogramas">← Volver a pictogramas</a>
+
+    <header class="head">
+        <div class="logo">
+            <img src="@picto.IconUrl" alt="@picto.Descripcion" />
+        </div>
+        <div class="info">
+            <h1>@picto.GhsId</h1>
+            <p class="desc">@picto.Descripcion</p>
+
+            @if (!string.IsNullOrWhiteSpace(picto.Detalle))
+            {
+                <div class="det">@picto.Detalle</div>
+            }
+        </div>
+    </header>
+
+    @if (reactivos.Count == 0)
+    {
+        <div class="empty">
+            En el laboratorio no hay reactivos categorizados como <strong>@picto.GhsId</strong>.
+        </div>
+    }
+    else
+    {
+        <h2 class="mt">Reactivos con @picto.GhsId</h2>
+        <table class="table">
+            <thead>
+                <tr><th>ID</th><th>Reactivo</th><th>CAS</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var r in reactivos)
+                {
+                    <tr><td>@r.Id</td><td>@r.Nombre</td><td>@r.Cas</td></tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    <footer class="ref">
+        <hr />
+        <strong>Fuente (APA 7):</strong><br />
+        United Nations Economic Commission for Europe. (s. f.). <em>Globally Harmonized System of Classification and Labelling of Chemicals (GHS)</em>.
+        Recuperado de
+        <a href="https://unece.org/ghs-rev8-2019" target="_blank" rel="noreferrer">https://unece.org/ghs-rev8-2019</a>
+    </footer>
+}
+
+@code {
+    [Parameter] public string? Id { get; set; }
+
+    private Picto? picto;
+    private List<ReactivoVm> reactivos = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Id)) return;
+
+        const string sqlPicto = @"select ghs_id, descripcion, coalesce(icon_url,''), coalesce(detalle,'')
+                                  from ghs_pictogramas where ghs_id = @id";
+
+        await using (var conn = await Ds.OpenConnectionAsync())
+        await using (var cmd = new NpgsqlCommand(sqlPicto, conn))
+        {
+            cmd.Parameters.AddWithValue("id", Id!);
+            await using var rdr = await cmd.ExecuteReaderAsync();
+            if (await rdr.ReadAsync())
+            {
+                picto = new Picto
+                    {
+                        GhsId = rdr.GetString(0),
+                        Descripcion = rdr.GetString(1),
+                        IconUrl = rdr.GetString(2),
+                        Detalle = rdr.GetString(3)
+                    };
+            }
+        }
+        if (picto is null) return;
+
+        const string sqlReact = @"
+            select r.reactivo_id,
+                   coalesce(nullif(r.nombre_comercial,''), nullif(r.nombre_quimico,''), r.reactivo_id) as nombre,
+                   coalesce(r.cas,'') as cas
+            from reactivos r
+            join reactivos_pictogramas rp on rp.reactivo_id = r.reactivo_id
+            where rp.ghs_id = @id
+            order by nombre";
+
+        await using (var conn2 = await Ds.OpenConnectionAsync())
+        await using (var cmd2 = new NpgsqlCommand(sqlReact, conn2))
+        {
+            cmd2.Parameters.AddWithValue("id", Id!);
+            await using var rdr2 = await cmd2.ExecuteReaderAsync();
+            reactivos.Clear();
+            while (await rdr2.ReadAsync())
+            {
+                reactivos.Add(new ReactivoVm
+                    {
+                        Id = rdr2.GetString(0),
+                        Nombre = rdr2.GetString(1),
+                        Cas = rdr2.GetString(2)
+                    });
+            }
+        }
+    }
+
+    private sealed class Picto
+    {
+        public string GhsId { get; set; } = "";
+        public string Descripcion { get; set; } = "";
+        public string IconUrl { get; set; } = "";
+        public string Detalle { get; set; } = "";
+    }
+    private sealed class ReactivoVm
+    {
+        public string Id { get; set; } = "";
+        public string Nombre { get; set; } = "";
+        public string Cas { get; set; } = "";
+    }
+}
+
+<style>
+    .back {
+        display: inline-block;
+        margin: .5rem 0 1rem;
+        color: #0b5ed7;
+        text-decoration: none;
+    }
+
+        .back:hover {
+            text-decoration: underline;
+        }
+
+    .head {
+        display: grid;
+        grid-template-columns: 140px 1fr;
+        gap: 1rem;
+        align-items: center;
+    }
+
+    .logo {
+        aspect-ratio: 1/1;
+        display: grid;
+        place-items: center;
+        background: #f8f9fb;
+        border-radius: 12px;
+        border: 1px solid #e3e3e8;
+    }
+
+        .logo img {
+            max-width: 80%;
+            max-height: 80%;
+        }
+
+    .info h1 {
+        margin: 0;
+    }
+
+    .info .desc {
+        margin: .25rem 0 0;
+        font-size: 1.05rem;
+        color: #333;
+    }
+
+    .info .det {
+        margin-top: .35rem;
+        font-size: .95rem;
+        color: #222;
+    }
+
+    .empty {
+        margin: 1rem 0;
+        padding: .9rem 1rem;
+        border-radius: 10px;
+        background: #fff3cd;
+        border: 1px solid #ffe69c;
+        color: #664d03;
+    }
+
+    .mt {
+        margin-top: 1.25rem;
+    }
+
+    .table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: .5rem 0 1.25rem;
+    }
+
+        .table th, .table td {
+            border: 1px solid #e3e3e8;
+            padding: .55rem .6rem;
+            text-align: left;
+        }
+
+        .table thead th {
+            background: #f5f6f8;
+        }
+
+    .ref {
+        font-size: .9rem;
+        color: #444;
+    }
+</style>

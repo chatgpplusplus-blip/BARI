@@ -1,0 +1,111 @@
+﻿@inherits LayoutComponentBase
+@using Microsoft.AspNetCore.Components.Routing
+
+<div class="layout-root">
+    <header class="topbar">
+        <h1>BARI - ASISTENTE DE LABORATORIO</h1>
+    </header>
+
+    <div class="content">
+        <aside class="sidebar">
+            <NavLink class="menu-btn" href="/" Match="NavLinkMatch.All" title="Volver a la página principal">
+                INICIO
+            </NavLink>
+            <small class="hint">te lleva a la página raíz</small>
+
+            <div class="search-box" title="Escribe para buscar (pendiente implementar)">
+                <input @bind="searchText" class="search-input" placeholder="Buscar… (próximamente)" />
+                <button class="search-btn" @onclick="OnSearchClick">🔎</button>
+            </div>
+
+            <nav class="menu-list">
+                <NavLink class="menu-item" href="/cas" title="Consulta la librería de sustancias por número CAS">
+                    📘 Librería de CAS
+                </NavLink>
+
+                <NavLink class="menu-item" href="/pictogramas" title="Pictogramas GHS con nombre y descripción">
+                    ⚠️ Librería de Pictogramas
+                </NavLink>
+
+                <NavLink class="menu-item" href="/hcodes" title="Frases de peligro (H-codes) normalizadas">
+                    🔥 Librería de H-Codes
+                </NavLink>
+
+                <NavLink class="menu-item" href="/pcodes" title="Consejos de prudencia (P-codes) normalizados">
+                    🛡️ Librería de P-Codes
+                </NavLink>
+
+                <NavLink class="menu-item" href="/areas" title="Gestión de áreas del laboratorio y su ubicación">
+                    🏷️ Áreas del laboratorio
+                </NavLink>
+
+                <NavLink class="menu-item" href="/equipos" title="Listado y estado de equipos del laboratorio">
+                    🧰 Listado de Equipos
+                </NavLink>
+
+                <NavLink class="menu-item" href="/reactivos" title="Listado de reactivos, stock y seguridad">
+                    🧪 Listado de Reactivos
+                </NavLink>
+
+                <NavLink class="menu-item" href="/laboratorios" title="Información de laboratorios y experiencias">
+                    🏫 Información de Laboratorios
+                </NavLink>
+
+                <NavLink class="menu-item" href="/bari-bot" title="Asistente BARI para consultas rápidas">
+                    🤖 Consulta a BARI - bot
+                </NavLink>
+            </nav>
+        </aside>
+
+        <main class="main">
+            @Body
+        </main>
+    </div>
+</div>
+
+@code {
+    [Inject] NavigationManager Nav { get; set; } = default!;
+
+    private string? searchText;
+
+    private void OnSearchClick()
+    {
+        
+    }
+}
+
+<style>
+    .layout-root { display:flex; flex-direction:column; height:100vh; }
+    .topbar { background:#0b2a68; color:#fff; padding:0.75rem 1rem; }
+    .content { display:flex; flex:1; min-height:0; }
+    .sidebar {
+        width: 260px; padding: 0.75rem; gap: 0.5rem; display:flex; flex-direction:column;
+        background: linear-gradient(180deg, #052767 0%, #68E3C8 70%);
+    }
+    .main { flex:1; padding: 1rem 1.5rem; background:#fff; overflow:auto; }
+
+    .menu-btn, .menu-item {
+        display:block; width:100%; text-align:center;
+        background:rgba(255,255,255,.08); color:#fff; border:none;
+        padding:0.6rem 0.75rem; border-radius:0.5rem; text-decoration:none; cursor:pointer;
+        transition: background .15s ease, transform .05s ease;
+    }
+    .menu-btn:hover, .menu-item:hover { background:rgba(255,255,255,.16); }
+    .menu-item.active, .menu-btn.active { background:rgba(255,255,255,.22); }
+
+    .hint { color:#d7d7d7; margin:0.25rem 0 0.5rem 0.15rem; display:block; font-size:.8rem; }
+
+    .search-box { display:flex; gap:.4rem; align-items:center; margin:.4rem 0 .8rem; }
+    .search-input {
+        flex:1; border-radius:0.5rem; border:1px solid rgba(255,255,255,.25);
+        padding:.5rem .6rem; outline:none; color:#fff; background:rgba(255,255,255,.08);
+    }
+    .search-input::placeholder { color:#cfcfe6; }
+    .search-btn {
+        border:none; border-radius:0.5rem; padding:.45rem .6rem; cursor:pointer;
+        background:rgba(255,255,255,.18); color:#fff;
+    }
+    .search-btn:hover { background:rgba(255,255,255,.28); }
+
+    .menu-list { display:flex; flex-direction:column; gap:.35rem; }
+</style>

@@ -1,0 +1,104 @@
+﻿@page "/pictogramas"
+@using Npgsql
+@inject NpgsqlDataSource Ds
+@inject NavigationManager Nav
+
+<PageTitle>Pictogramas GHS</PageTitle>
+
+<h1 class="mb-2">Pictogramas GHS</h1>
+<p class="lead">Consulta visual de los pictogramas de peligro (GHS) y acceso a los reactivos etiquetados con cada categoría.</p>
+
+@if (items is null)
+{
+    <p><em>Cargando…</em></p>
+}
+else
+{
+    <div class="grid">
+        @foreach (var p in items)
+        {
+            <a class="card" href="@($"/pictogramas/{p.GhsId}")" title="Ver reactivos con @p.GhsId">
+                <div class="img-wrap">
+                    <img src="@p.IconUrl" alt="@p.Descripcion" loading="lazy" />
+                </div>
+                <div class="body">
+                    <div class="code">@p.GhsId</div>
+                    <div class="desc">@p.Descripcion</div>
+                    <div class="meta">@p.TotalReactivos @((p.TotalReactivos == 1) ? "reactivo" : "reactivos")</div>
+                </div>
+            </a>
+        }
+    </div>
+}
+
+<footer class="ref">
+    <hr />
+    <strong>Fuente (APA 7):</strong><br />
+    United Nations Economic Commission for Europe. (s. f.). <em>GHS hazard pictograms</em>.
+    Recuperado de
+    <a href="https://unece.org/" target="_blank" rel="noreferrer">https://unece.org/</a>
+    (sección GHS – pictograms).
+</footer>
+
+@code {
+    private List<PictogramaVm>? items;
+
+    protected override async Task OnInitializedAsync()
+    {
+        const string sql = @"
+            select g.ghs_id, g.descripcion, coalesce(g.icon_url,'') as icon_url,
+                   (select count(*) from reactivos_pictogramas rp where rp.ghs_id = g.ghs_id) as total
+            from ghs_pictogramas g
+            order by g.ghs_id";
+
+        await using var conn = await Ds.OpenConnectionAsync();
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        await using var rdr = await cmd.ExecuteReaderAsync();
+
+        items = new();
+        while (await rdr.ReadAsync())
+        {
+            items.Add(new PictogramaVm
+                {
+                    GhsId = rdr.GetString(0),
+                    Descripcion = rdr.GetString(1),
+                    IconUrl = rdr.GetString(2),
+                    TotalReactivos = rdr.GetInt32(3)
+                });
+        }
+    }
+
+    private sealed class PictogramaVm
+    {
+        public string GhsId { get; set; } = "";
+        public string Descripcion { get; set; } = "";
+        public string IconUrl { get; set; } = "";
+        public int TotalReactivos { get; set; }
+    }
+}
+
+<style>
+    .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 1rem;
+        margin: 1rem 0 1.5rem;
+    }
+    .card {
+        display: flex; flex-direction: column;
+        text-decoration: none; color: inherit;
+        border: 1px solid #e3e3e8; border-radius: 12px;
+        background: #fff; overflow: hidden;
+        transition: transform .06s ease, box-shadow .15s ease;
+    }
+    .card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,.08); }
+    .img-wrap {
+        background: #f8f9fb; display: grid; place-items: center; aspect-ratio: 1 / 1;
+    }
+    .img-wrap img { max-width: 72%; max-height: 72%; }
+    .body { padding: .75rem .9rem 1rem; display: grid; gap: .25rem; }
+    .code { font-weight: 700; letter-spacing: .5px; }
+    .desc { font-size: .95rem; color: #222; }
+    .meta { font-size: .85rem; color: #667; margin-top: .25rem; }
+    .ref { font-size: .9rem; color: #444; margin-top: .75rem; }
+</style>

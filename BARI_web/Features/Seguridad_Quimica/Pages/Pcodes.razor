@@ -1,0 +1,140 @@
+﻿@page "/pcodes"
+@using Npgsql
+@inject NpgsqlDataSource Ds
+
+<PageTitle>P-codes</PageTitle>
+
+<h1>Consejos de prudencia (P-codes)</h1>
+
+<div class="tools">
+    <input class="q" @bind="q" placeholder="Buscar P-code o texto…" />
+    <select class="grp" @bind="grupoSel">
+        <option value="">Todos</option>
+        <option>General</option>
+        <option>Prevención</option>
+        <option>Respuesta</option>
+        <option>Almacenamiento</option>
+        <option>Eliminación</option>
+        <option>Otro</option>
+    </select>
+</div>
+
+@if (items is null)
+{
+     <p><em>Cargando…</em></p>
+}
+else
+{
+    <table class="table">
+        <thead><tr><th>Código</th><th>Descripción</th><th>Grupo</th><th>Reactivos</th></tr></thead>
+        <tbody>
+            @foreach (var p in Filtered())
+            {
+                <tr>
+                    <td><a href="@($"/pcodes/{p.Id}")">@p.Id</a></td>
+                    <td>@p.Texto</td>
+                    <td>@p.Grupo</td>
+                    <td>@p.TotalReactivos</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<footer class="ref">
+    <hr />
+    <strong>Fuente (APA 7):</strong><br />
+    United Nations Economic Commission for Europe. (s. f.). <em>Globally Harmonized System of Classification and Labelling of Chemicals (GHS)</em>.
+    Recuperado de <a href="https://unece.org/ghs-rev8-2019" target="_blank" rel="noreferrer">https://unece.org/ghs-rev8-2019</a>
+</footer>
+
+@code {
+    private List<Item>? items;
+    private string? q;
+    private string? grupoSel;
+
+    protected override async Task OnInitializedAsync()
+    {
+        const string sql = @"
+            select p.p_id, p.descripcion, coalesce(p.grupo,'') as grupo,
+                   (select count(*) from reactivos_p rp where rp.p_id = p.p_id) as total
+            from p_codes p
+            order by p.p_id";
+
+        await using var conn = await Ds.OpenConnectionAsync();
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        await using var rdr = await cmd.ExecuteReaderAsync();
+
+        items = new();
+        while (await rdr.ReadAsync())
+        {
+            items.Add(new Item
+                {
+                    Id = rdr.GetString(0),
+                    Texto = rdr.GetString(1),
+                    Grupo = rdr.GetString(2),
+                    TotalReactivos = rdr.GetInt32(3)
+                });
+        }
+    }
+
+    private IEnumerable<Item> Filtered()
+    {
+        IEnumerable<Item> qy = items ?? Enumerable.Empty<Item>();
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            var s = q!.Trim();
+            qy = qy.Where(i => i.Id.Contains(s, StringComparison.OrdinalIgnoreCase)
+                            || i.Texto.Contains(s, StringComparison.OrdinalIgnoreCase));
+        }
+        if (!string.IsNullOrWhiteSpace(grupoSel))
+            qy = qy.Where(i => string.Equals(i.Grupo, grupoSel, StringComparison.OrdinalIgnoreCase));
+        return qy;
+    }
+
+    private sealed class Item
+    {
+        public string Id { get; set; } = "";
+        public string Texto { get; set; } = "";
+        public string Grupo { get; set; } = "";
+        public int TotalReactivos { get; set; }
+    }
+}
+
+<style>
+    .tools {
+        display: flex;
+        gap: .5rem;
+        margin: .5rem 0 1rem;
+    }
+
+    .q {
+        flex: 1;
+        padding: .45rem .6rem;
+    }
+
+    .grp {
+        padding: .45rem .6rem;
+    }
+
+    .table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+        .table th, .table td {
+            border: 1px solid #e3e3e8;
+            padding: .55rem .6rem;
+            text-align: left;
+        }
+
+        .table thead th {
+            background: #f5f6f8;
+        }
+
+    .ref {
+        font-size: .9rem;
+        color: #444;
+        margin-top: .75rem;
+    }
+</style>

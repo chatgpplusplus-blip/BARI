@@ -1,0 +1,70 @@
+.layout-root {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+.topbar {
+    background: #0d2b6b;
+    color: #fff;
+    padding: 14px 20px;
+    box-shadow: 0 2px 6px rgba(0,0,0,.1);
+}
+
+    .topbar h1 {
+        margin: 0;
+        font-size: 1.4rem;
+        letter-spacing: .5px;
+    }
+
+.content {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+}
+
+/* === Sidebar bonito === */
+.sidebar {
+    width: 220px;
+    background: linear-gradient(to bottom, #002f6c, #340068);
+    border-right: 1px solid #e3e7ee;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* Botones del menú */
+.menu-btn {
+    padding: 10px 12px;
+    border: 1px solid rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+    cursor: pointer;
+    border-radius: 8px;
+    text-align: left;
+    font-weight: 600;
+    transition: all 0.2s ease-in-out;
+}
+
+    .menu-btn:hover {
+        background: rgba(255,255,255,0.2);
+    }
+
+    /* Botón peligro */
+    .menu-btn.danger {
+        border-color: rgba(255,0,0,0.4);
+        color: #ffb3b3;
+    }
+
+        .menu-btn.danger:hover {
+            background: rgba(255,0,0,0.2);
+        }
+
+/* Área principal */
+.main {
+    flex: 1;
+    padding: 20px;
+    overflow: auto;
+    background: #fff;
+}

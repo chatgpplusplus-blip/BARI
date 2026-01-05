@@ -1,0 +1,215 @@
+﻿@page "/detalles/{AreaSlug}"
+@namespace BARI_web.Features.Espacios.Pages
+
+<div class="areas-wrap">
+    <div class="toolbar">
+
+        <h2 class="text-2xl" style="margin:0">Detalles del Area: @AreaSlug</h2>
+        <button type="button" class="btn" @onclick="@(()=>Nav.NavigateTo("/areas"))">
+            Volver al mapa
+        </button>
+        <button type="button" class="btn" style="margin-left:.5rem"
+                @onclick="@(()=>Nav.NavigateTo($"/modificar-detalles/{AreaSlug}"))">
+            Editar instalaciones / mesones
+        </button>
+
+    </div>
+
+    @if (_canvas is null)
+    {
+        <p>Cargando...</p>
+    }
+    else
+    {
+        <div style="border:1px solid #e5e7eb; aspect-ratio:@AspectRatioString(); width:100%;">
+            <svg width="100%" height="100%" viewBox="@ViewBox()" preserveAspectRatio="xMidYMid meet" style="background:#fafafa">
+                <!-- fondo -->
+                <rect x="@S(VX)" y="@S(VY)" width="@S(VW)" height="@S(VH)" fill="white" stroke="#ddd" stroke-width="@S(0.03m)" />
+
+                <!-- grilla -->
+                @for (var gx = GridStartX; gx <= GridEndX; gx += 1m)
+                {
+                    <line x1="@S(gx)" y1="@S(VY)" x2="@S(gx)" y2="@S(VY + VH)" stroke="#f1f1f1" stroke-width="@S(0.02m)" />
+                }
+                @for (var gy = GridStartY; gy <= GridEndY; gy += 1m)
+                {
+                    <line x1="@S(VX)" y1="@S(gy)" x2="@S(VX + VW)" y2="@S(gy)" stroke="#f1f1f1" stroke-width="@S(0.02m)" />
+                }
+
+                @if (_area is not null)
+                {
+                    <!-- clip del área + clips por cada inner -->
+                    <defs>
+                        <clipPath id="clip_target" clipPathUnits="userSpaceOnUse">
+                            @foreach (var p in _area.Polys)
+                            {
+                                <rect x="@S(p.x_m)" y="@S(p.y_m)" width="@S(p.ancho_m)" height="@S(p.alto_m)" />
+                            }
+                        </clipPath>
+
+                        @foreach (var inn in _inners)
+                        {
+                            <clipPath id="@($"clip_in_{inn.poly_in_id}")" clipPathUnits="userSpaceOnUse">
+                                <rect x="@S(inn.abs_x)" y="@S(inn.abs_y)" width="@S(inn.ancho_m)" height="@S(inn.alto_m)" />
+                            </clipPath>
+                        }
+                    </defs>
+
+                    <!-- relleno -->
+                    <g class="softshadow" clip-path="url(#clip_target)">
+                        <rect x="@S(_area.MinX)" y="@S(_area.MinY)"
+                              width="@S(_area.MaxX - _area.MinX)"
+                              height="@S(_area.MaxY - _area.MinY)"
+                              fill="@_area.Fill" />
+                    </g>
+
+                    <!-- contorno -->
+                    @foreach (var seg in _area.Outline)
+                    {
+                        <line x1="@S(seg.x1)" y1="@S(seg.y1)" x2="@S(seg.x2)" y2="@S(seg.y2)"
+                              stroke="#000" stroke-width="@S(OutlineStroke)"
+                              vector-effect="non-scaling-stroke" />
+                    }
+
+                    <!-- elementos interiores (rect + texto centrado y escalado) -->
+                    @foreach (var it in _inners)
+                    {
+                        <rect x="@S(it.abs_x)" y="@S(it.abs_y)"
+                              width="@S(it.ancho_m)" height="@S(it.alto_m)"
+                              fill="@it.fill" opacity="@S(it.opacidad)" />
+
+                        @if (!string.IsNullOrWhiteSpace(it.label))
+                        {
+                            var anchoTexto = it.ancho_m - 0.25m;
+                            if (anchoTexto < 0.15m) anchoTexto = 0.15m;
+
+                            <g clip-path="url(#clip_in_@it.poly_in_id)">
+                                <text>
+                                    <tspan x="@S(it.abs_x + it.ancho_m / 2m)"
+                                           y="@S(it.abs_y + it.alto_m / 2m)"
+                                           style="text-anchor:middle;dominant-baseline:middle"
+                                           font-size="@S(FitInnerText(it))"
+                                           textLength="@S(anchoTexto)"
+                                           lengthAdjust="spacingAndGlyphs"
+                                           fill="#111">
+                                        @it.label.ToUpperInvariant()
+                                    </tspan>
+                                </text>
+                            </g>
+                        }
+                    }
+
+
+
+                    <!-- puertas (SIN vector-effect para que escalen con el viewBox) -->
+                    @foreach (var d in _doors)
+                    {
+                        <line x1="@S(d.x_m)" y1="@S(d.y_m)"
+                              x2="@S(DoorEndX(d))" y2="@S(DoorEndY(d))"
+                              stroke="#13A076" stroke-width="@S(0.10m)" stroke-linecap="round" />
+                    }
+
+                    <!-- ventanas -->
+                    @foreach (var w in _windows)
+                    {
+                        <line x1="@S(w.x_m)" y1="@S(w.y_m)"
+                              x2="@S(WinEndX(w))" y2="@S(WinEndY(w))"
+                              stroke="#66CCFF" stroke-width="@S(0.06m)" stroke-linecap="round" />
+                    }
+
+                    <!-- (se elimina el rótulo gigante del área) -->
+                }
+                else
+                {
+                    <text>
+                        <tspan x="@S(VX + VW/2m)" y="@S(VY + VH/2m)"
+                               style="text-anchor:middle;dominant-baseline:middle"
+                               font-size="@S(0.6m)">
+                            Area no encontrada: @AreaSlug
+                        </tspan>
+                    </text>
+                }
+            </svg>
+</div>
+
+<!-- === Panel de listas: Mesones e Instalaciones === -->
+<div style="margin-top:1rem; border:1px solid #e5e7eb; border-radius:.5rem; padding:.75rem; background:#fff">
+    <details open>
+        <summary style="cursor:pointer; font-weight:600">
+            Mesones (@_mesones.Count)
+        </summary>
+        <ul style="list-style:none; padding-left:0; margin:.5rem 0 0">
+            @if (_mesones.Count == 0)
+            {
+                <li style="color:#6b7280"><em>Sin mesones.</em></li>
+            }
+            else
+            {
+                @foreach (var m in _mesones)
+                {
+                    <li style="display:flex; align-items:center; justify-content:space-between; padding:.25rem 0; border-bottom:1px dashed #eee">
+                        <div>
+                                    <strong>@MesonNameForDisplay(m)</strong>
+                                    <div style="font-size:.85rem; color:#6b7280">
+                                Reactivos: @m.reactivos_count · Equipos: @m.equipos_count
+                            </div>
+                        </div>
+                        <button type="button" class="btn link"
+                                        @onclick='@(() => Nav.NavigateTo($"/detalles-meson/{m.meson_id}"))'>
+                                    ver
+                        </button>
+                    </li>
+                }
+            }
+        </ul>
+    </details>
+
+    <details open style="margin-top:.75rem">
+        <summary style="cursor:pointer; font-weight:600">
+            Instalaciones (@_instalaciones.Count)
+        </summary>
+        <ul style="list-style:none; padding-left:0; margin:.5rem 0 0">
+            @if (_instalaciones.Count == 0)
+            {
+                <li style="color:#6b7280"><em>Sin instalaciones.</em></li>
+            }
+            else
+            {
+                @foreach (var ins in _instalaciones)
+                {
+                    <li style="padding:.5rem 0; border-bottom:1px dashed #eee">
+                        <div style="display:flex; align-items:center; justify-content:space-between;">
+                            <div>
+                                <strong>@ins.nombre</strong>
+                                @if (!string.IsNullOrWhiteSpace(ins.tipo_nombre))
+                                {
+                                    <span style="margin-left:.5rem; font-size:.8rem; background:#e5f9f1; color:#047857; padding:.05rem .4rem; border-radius:.4rem">
+                                        @ins.tipo_nombre
+                                    </span>
+                                }
+                            </div>
+                            <button type="button" class="btn link"
+        @onclick='@(() => Nav.NavigateTo($"/detalles-instalacion/{ins.instalacion_id}"))'>
+                                ver
+                            </button>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(ins.tipo_descripcion))
+                        {
+                            <div style="color:#4b5563; font-size:.9rem; margin-top:.25rem">
+                                @ins.tipo_descripcion
+                            </div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(ins.notas))
+                        {
+                            <div style="color:#6b7280; font-size:.85rem; margin-top:.15rem"><em>@ins.notas</em></div>
+                        }
+                    </li>
+                }
+            }
+        </ul>
+    </details>
+</div>
+
+    }
+</div>

@@ -1,0 +1,374 @@
+﻿@page "/modificar-detalles/{AreaSlug}"
+@namespace BARI_web.Features.Espacios.Pages
+
+<div class="areas-wrap">
+    <div class="toolbar">
+        <h2 class="text-2xl" style="margin:0">Editar instalaciones y mesones — @(_area?.Label ?? AreaSlug)</h2>
+
+        <button type="button" class="btn" @onclick="@(()=>Nav.NavigateTo($"/detalles/{AreaSlug}"))">
+            Volver a detalles
+        </button>
+
+        <button type="button" class="btn" style="margin-left:.5rem" @onclick="Guardar" disabled="@_saving">
+            @(_saving ? "Guardando..." : "Guardar todo")
+        </button>
+
+        <span class="text-sm text-gray-500 ml-2">@_saveMsg</span>
+    </div>
+
+    @if (_canvas is null || _area is null)
+    {
+        <p>Cargando…</p>
+    }
+    else
+    {
+        <div class="editor-layout">
+            <!-- Canvas -->
+            <div class="canvas-host">
+                <div class="canvas-box" style="--ar:@AspectRatioString();width:1150px; position:relative;">
+                    <!-- Zoom -->
+                    <div style="position:absolute; right:10px; top:10px; display:flex; gap:.4rem;" @onclick:stopPropagation="true">
+                        <button class="zoom-btn" title="Zoom in" @onclick="ZoomIn">+</button>
+                        <button class="zoom-btn" title="Zoom out" @onclick="ZoomOut">−</button>
+                        <button class="zoom-btn" title="Centrar" @onclick="CenterView">·</button>
+                    </div>
+
+                    <svg @ref="_svgRef" width="100%" height="100%"
+                         viewBox="@ViewBox()" preserveAspectRatio="xMidYMid meet"
+                         @onpointermove="OnPointerMove"
+                         @onpointerup="OnPointerUp" @onpointerleave="OnPointerUp"
+                         @onwheel="OnWheel" @onwheel:preventDefault="true"
+                         @onpointerdown="OnPointerDownBackground">
+
+                        <!-- fondo área -->
+                        <rect x="@S(VX)" y="@S(VY)" width="@S(VW)" height="@S(VH)"
+                              fill="white" stroke="#ddd" stroke-width="@S(0.03m)"
+                              style="cursor:grab"
+                              @onpointerdown:preventDefault="true"
+                              @onpointerdown="(e)=>BeginPan(e)" />
+
+                        <!-- grilla -->
+                        @for (var gx = GridStartX; gx <= GridEndX; gx += 1m)
+                        {
+                            <line x1="@S(gx)" y1="@S(VY)" x2="@S(gx)" y2="@S(VY + VH)" stroke="#f1f1f1" stroke-width="@S(0.02m)" />
+                        }
+                        @for (var gy = GridStartY; gy <= GridEndY; gy += 1m)
+                        {
+                            <line x1="@S(VX)" y1="@S(gy)" x2="@S(VX + VW)" y2="@S(gy)" stroke="#f1f1f1" stroke-width="@S(0.02m)" />
+                        }
+
+                        <!-- clip del área -->
+                        <defs>
+                            <clipPath id="clip_target" clipPathUnits="userSpaceOnUse">
+                                @foreach (var p in _area.Polys)
+                                {
+                                    <rect x="@S(p.x_m)" y="@S(p.y_m)" width="@S(p.ancho_m)" height="@S(p.alto_m)" />
+                                }
+                            </clipPath>
+                        </defs>
+
+                        <!-- relleno + contorno del área (NO editable) -->
+                        <g class="softshadow" clip-path="url(#clip_target)">
+                            <rect x="@S(_area.MinX)" y="@S(_area.MinY)"
+                                  width="@S(_area.MaxX - _area.MinX)" height="@S(_area.MaxY - _area.MinY)"
+                                  fill="@_area.Fill" />
+                        </g>
+                        @foreach (var seg in _area.Outline)
+                        {
+                            <line x1="@S(seg.x1)" y1="@S(seg.y1)" x2="@S(seg.x2)" y2="@S(seg.y2)"
+                                  stroke="#000" stroke-width="@S(OutlineStroke)"
+                                  vector-effect="non-scaling-stroke" />
+                        }
+
+                        <!-- ELEMENTOS INTERIORES (EDITABLES) -->
+                        @foreach (var it in _inners.OrderBy(i => i.z_order))
+                        {
+                            var isSel = _selIn == it.poly_in_id;
+                            var stroke = isSel ? "#0a7" : "#777";
+                            <g transform="translate(@S(it.abs_x),@S(it.abs_y))"
+                               @onmouseover="() => _hoverIn = it.poly_in_id"
+                               @onmouseout="() => _hoverIn = null">
+                                <rect x="0" y="0" width="@S(it.ancho_m)" height="@S(it.alto_m)"
+                                      fill="@it.fill" opacity="@S(it.opacidad)"
+                                      stroke="@stroke" stroke-width="@S(isSel?0.05m:0.03m)"
+                                      style="cursor:@(isSel? "move" : "pointer")"
+                                      @onpointerdown:preventDefault="true"
+                                      @onpointerdown:stopPropagation="true"
+                                      @onpointerdown="(e)=>OnPointerDownMoveInner(e, it.poly_in_id)" />
+                                @if (!string.IsNullOrWhiteSpace(it.label))
+                                {
+                                    var targetW = Math.Max(0.15m, it.ancho_m - 0.25m);
+                                    <svg:text class="area-label"
+                                              x="@S(it.ancho_m/2m)" y="@S(it.alto_m/2m)"
+                                              text-anchor="middle" dominant-baseline="middle"
+                                              font-size="@S(FitInnerText(it))" fill="#111"
+                                              textLength="@S(targetW)" lengthAdjust="spacingAndGlyphs">
+                                        @it.label.ToUpperInvariant()
+                                    </svg:text>
+                                }
+
+                                @if (isSel)
+                                {
+                                    @CornerHandle(it, 0m, 0m, Handle.NW)
+                                    @CornerHandle(it, it.ancho_m, 0m, Handle.NE)
+                                    @CornerHandle(it, 0m, it.alto_m, Handle.SW)
+                                    @CornerHandle(it, it.ancho_m, it.alto_m, Handle.SE)
+                                }
+                            </g>
+                        }
+
+                        <!-- Puertas / Ventanas solo display -->
+                        @foreach (var d in _doors)
+                        {
+                            <line x1="@S(d.x_m)" y1="@S(d.y_m)" x2="@S(DoorEndX(d))" y2="@S(DoorEndY(d))"
+                                  stroke="#13A076" stroke-width="@S(0.10m)" stroke-linecap="round" />
+                        }
+                        @foreach (var w in _windows)
+                        {
+                            <line x1="@S(w.x_m)" y1="@S(w.y_m)" x2="@S(WinEndX(w))" y2="@S(WinEndY(w))"
+                                  stroke="#66CCFF" stroke-width="@S(0.06m)" stroke-linecap="round" />
+                        }
+                    </svg>
+                </div>
+
+                <!-- ACCIONES DEBAJO DEL LIENZO -->
+                <div class="under-canvas-actions">
+                    <div class="btn-row">
+                        <button class="px-3 py-2 border rounded" @onclick="AgregarMeson">+ Agregar mesón</button>
+                        <button class="px-3 py-2 border rounded" @onclick="AgregarInstalacion">+ Agregar instalación</button>
+                        <button class="px-3 py-2 border rounded" @onclick="AbrirNuevoTipoInstalacion">+ Tipo de instalación</button>
+                        <button class="px-3 py-2 border rounded text-red-600 border-red-300" @onclick="EliminarInner" disabled="@(_selIn is null)">Eliminar seleccionado</button>
+
+                    </div>
+
+                    <!-- Panel NUEVO TIPO DE INSTALACIÓN -->
+                    @if (_showTipoInstalacionPanel)
+                    {
+                        <div class="panel-box" @onclick:stopPropagation="true">
+                            <div class="panel-header">
+                                <div class="panel-title">Nuevo tipo de instalación</div>
+                                <button class="panel-close" title="Cerrar" @onclick="()=>_showTipoInstalacionPanel=false">✕</button>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-3 text-sm">
+                                <div class="col-span-2">
+                                    <label class="block text-xs text-gray-600 mb-1">Nombre del tipo</label>
+                                    <input class="border p-2 w-full" @bind="_nuevoTipo_Nombre" @bind:event="oninput" placeholder="p. ej. Heladera, Ducha, Surtidor..." />
+                                </div>
+                                <div class="col-span-2">
+                                    <label class="block text-xs text-gray-600 mb-1">Descripción</label>
+                                    <textarea class="border p-2 w-full" rows="2" @bind="_nuevoTipo_Descripcion"></textarea>
+                                </div>
+
+                                <div class="col-span-2 flex gap-2">
+                                    <button class="px-3 py-2 border rounded bg-black text-white" @onclick="ConfirmarCrearTipoInstalacion" disabled="@string.IsNullOrWhiteSpace(_nuevoTipo_Nombre)">Guardar tipo</button>
+                                    <button class="px-3 py-2 border rounded" @onclick="()=>_showTipoInstalacionPanel=false">Cancelar</button>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Panel lateral -->
+            <aside class="prop-panel" @onclick:stopPropagation="true">
+                @if (_selIn is not null && _mapIn.TryGetValue(_selIn, out var sel))
+                {
+                    <h4 class="font-semibold mb-2">Elemento interior</h4>
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Etiqueta</label>
+                            <input class="border p-1 w-full" value="@(sel.label ?? "")"
+                                   @oninput="(e)=>{ sel.label = e.Value?.ToString() ?? string.Empty; StateHasChanged(); }" />
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">X (rel)</label>
+                            <input class="border p-1 w-full" value="@S(sel.eje_x_rel_m)"
+                                   @oninput="(e)=>{ sel.eje_x_rel_m = ParseFlexible(e.Value); NormalizeInner(sel); }" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Y (rel)</label>
+                            <input class="border p-1 w-full" value="@S(sel.eje_y_rel_m)"
+                                   @oninput="(e)=>{ sel.eje_y_rel_m = ParseFlexible(e.Value); NormalizeInner(sel); }" />
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Ancho (m)</label>
+                            <input class="border p-1 w-full" value="@S(sel.ancho_m)"
+                                   @oninput="(e)=>{ sel.ancho_m = ParseFlexible(e.Value); NormalizeInner(sel); }" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Alto (m)</label>
+                            <input class="border p-1 w-full" value="@S(sel.alto_m)"
+                                   @oninput="(e)=>{ sel.alto_m = ParseFlexible(e.Value); NormalizeInner(sel); }" />
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Opacidad (0–1)</label>
+                            <input class="border p-1 w-full" value="@S(sel.opacidad)" @oninput="(e)=>{ sel.opacidad = ParseFlexible(e.Value); StateHasChanged(); }" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Z-order</label>
+                            <input class="border p-1 w-full" value="@sel.z_order" @oninput="(e)=>{ sel.z_order = int.TryParse(e.Value?.ToString(), out var n)? n : 0; StateHasChanged(); }" />
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Color</label>
+                            <input class="border p-1 w-full"
+                                   @bind-value="sel.fill"
+                                   @bind-value:event="oninput" />
+                        </div>
+                    </div>
+
+                    <!-- MESÓN VINCULADO -->
+                    @if (!string.IsNullOrWhiteSpace(sel.meson_id) && _mesones.TryGetValue(sel.meson_id, out var m))
+                    {
+                        <hr class="my-3" />
+                        <h4 class="font-semibold mb-2">Mesón vinculado</h4>
+                        <div class="grid grid-cols-2 gap-2 text-sm">
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Ancho (cm)</label>
+                                <input class="border p-1 w-full" value="@m.ancho_cm" @oninput="(e)=>{ m.ancho_cm = Int(e.Value); StateHasChanged(); }" />
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Largo (cm)</label>
+                                <input class="border p-1 w-full" value="@m.largo_cm" @oninput="(e)=>{ m.largo_cm = Int(e.Value); StateHasChanged(); }" />
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Profundidad (cm)</label>
+                                <input class="border p-1 w-full" value="@m.profundidad_cm" @oninput="(e)=>{ m.profundidad_cm = Int(e.Value); StateHasChanged(); }" />
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Niveles</label>
+                                <input class="border p-1 w-full" value="@m.niveles_totales" @oninput="(e)=>{ m.niveles_totales = Int(e.Value); StateHasChanged(); }" />
+                            </div>
+                        </div>
+                    }
+
+                    <!-- INSTALACIÓN VINCULADA -->
+                    @if (!string.IsNullOrWhiteSpace(sel.instalacion_id) && _instalaciones.TryGetValue(sel.instalacion_id, out var ins))
+                    {
+                        <hr class="my-3" />
+                        <h4 class="font-semibold mb-2">Instalación vinculada</h4>
+                        <div class="grid grid-cols-2 gap-2 text-sm">
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Nombre</label>
+                                <input class="border p-1 w-full"
+                                       @bind-value="ins.nombre"
+                                       @bind-value:event="oninput" />
+                            </div>
+
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Tipo</label>
+                                <select class="border p-1 w-full" @bind="ins.tipo_id">
+                                    <option value="">— Sin tipo —</option>
+                                    @if (_tiposInstalacion is not null)
+                                    {
+                                        @foreach (var kv in _tiposInstalacion)
+                                        {
+                                            <option value="@kv.Key">@kv.Value</option>
+                                        }
+                                    }
+                                </select>
+                            </div>
+
+
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Requiere mant.</label>
+                                <select class="border p-1 w-full" @bind="ins.requiere_mantenimiento">
+                                    <option value="false">No</option>
+                                    <option value="true">Sí</option>
+                                </select>
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Notas</label>
+                                <textarea class="border p-1 w-full" rows="2" @bind="ins.notas"></textarea>
+                            </div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="text-sm text-gray-600">Selecciona un elemento interior para editarlo.</div>
+                }
+            </aside>
+        </div>
+    }
+</div>
+
+<style>
+    .editor-layout {
+        display: grid;
+        grid-template-columns: minmax(0,1150px) 420px;
+        gap: 16px;
+        align-items: start;
+    }
+
+    .canvas-host {
+        overflow: auto;
+    }
+
+    .prop-panel {
+        position: sticky;
+        top: 80px;
+        max-height: calc(100vh - 100px);
+        overflow: auto;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 12px;
+    }
+
+    .zoom-btn {
+        width: 32px;
+        height: 32px;
+        line-height: 32px;
+        text-align: center;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        background: #fff;
+    }
+
+    .under-canvas-actions {
+        margin-top: 12px;
+    }
+
+    .btn-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+
+    .panel-box {
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 12px;
+        background: #fff;
+        box-shadow: 0 1px 2px rgba(0,0,0,.04);
+        margin-bottom: 10px;
+    }
+
+    .panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+    }
+
+    .panel-title {
+        font-weight: 600;
+    }
+
+    .panel-close {
+        border: 1px solid #e5e7eb;
+        background: #fff;
+        width: 28px;
+        height: 28px;
+        border-radius: 6px;
+        line-height: 26px;
+        text-align: center;
+    }
+</style>

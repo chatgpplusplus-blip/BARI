@@ -1,0 +1,98 @@
+﻿/* Root layout */
+.areas-wrap {
+    display: block;
+    gap: 12px;
+}
+
+/* Toolbar */
+.toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.btn {
+    padding: 6px 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #fff;
+    transition: transform .06s ease, box-shadow .06s ease;
+}
+
+    .btn:active {
+        transform: translateY(1px);
+    }
+
+/* 2-col editor */
+.editor-layout {
+    display: grid;
+    grid-template-columns: minmax(0,1150px) 420px;
+    gap: 16px;
+    align-items: start;
+}
+
+/* Canvas area */
+.canvas-host {
+    overflow: auto;
+    user-select: none; /* 👈 evita seleccionar texto mientras arrastras */
+    -webkit-user-drag: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.canvas-box {
+    position: relative;
+    width: 1150px;
+    aspect-ratio: var(--ar, 2 / 1); /* 👈 del .razor */
+    background: #fafafa;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    box-shadow: 0 1px 0 rgba(0,0,0,.03) inset;
+}
+
+/* Zoom buttons */
+.zoom-btn {
+    width: 32px;
+    height: 32px;
+    line-height: 32px;
+    text-align: center;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: #fff;
+    cursor: pointer;
+}
+
+/* Floating tool */
+.floating-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 8px;
+    box-shadow: 0 6px 20px rgba(0,0,0,.08);
+}
+
+/* Side panel */
+.prop-panel {
+    position: sticky;
+    top: 80px;
+    max-height: calc(100vh - 100px);
+    overflow: auto;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 12px;
+}
+
+/* SVG interaction hints */
+svg {
+    touch-action: none;
+}
+/* 👈 evita scroll del browser al hacer pinch/drag */
+.softshadow {
+    filter: drop-shadow(0 1px 0 rgba(0,0,0,.06));
+}
+
+.area-label {
+    pointer-events: none;
+}
+/* el texto no captura el puntero */

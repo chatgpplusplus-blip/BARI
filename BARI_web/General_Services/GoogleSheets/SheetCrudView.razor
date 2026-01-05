@@ -1,0 +1,316 @@
+﻿@using System
+@using System.Collections.Generic
+@using System.Linq
+@using BARI_web.General_Services.DataBaseConnection
+@using BARI_web.General_Services
+@using Microsoft.AspNetCore.Components
+@namespace BARI_web.Components
+
+@inject PgCrud Crud
+
+<div class="mt-3">
+    <div class="text-muted small">[Dbg] Sheet/Table: <b>@SheetName</b></div>
+
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="alert alert-danger">@error</div>
+        <pre class="small text-muted">@error</pre>
+    }
+    else if (headers is null)
+    {
+        <p>Cargando...</p>
+    }
+    else
+    {
+        <div class="d-flex align-items-center gap-2 mb-3">
+            <label class="fw-semibold me-2">Columna ID:</label>
+            <select class="form-select form-select-sm w-auto"
+                    value="@idColumn"
+                    @onchange="OnIdColumnChanged">
+                @foreach (var h in headers)
+                {
+                    <option value="@h">@h</option>
+                }
+            </select>
+            <span class="badge bg-warning text-dark">Usada como llave</span>
+        </div>
+
+        <!-- TABLA -->
+        <div class="table-responsive table-container">
+            <table class="table table-sm table-bordered table-fit align-middle">
+                <thead class="table-light table-header sticky-top">
+                    <tr>
+                        @foreach (var h in headers)
+                        {
+                            <th class="@(IsId(h) ? "is-id" : "")">@h</th>
+                        }
+                        <th class="actions-col">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (rows is null || rows.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="@((headers.Count)+1)" class="text-muted">Sin registros.</td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var r in rows)
+                        {
+                            <tr>
+                                @foreach (var h in headers)
+                                {
+                                    <td class="@(IsId(h) ? "is-id" : "")">
+                                        @if (object.ReferenceEquals(editingRow, r))
+                                        {
+                                            @if (lookups.ContainsKey(h))
+                                            {
+                                                <!-- Combo para FK -->
+                                                <select class="form-select form-select-sm"
+                                                        value="@GetCell(r,h)"
+                                                        @onchange="(e => SetCell(r,h, e?.Value?.ToString() ?? string.Empty))">
+                                                    <option value="">--</option>
+                                                    @foreach (var kv in lookups[h])
+                                                    {
+                                                        <option value="@kv.Key">@kv.Value</option>
+                                                    }
+                                                </select>
+                                            }
+                                            else
+                                            {
+                                                <input class="form-control form-control-sm"
+                                                       value="@GetCell(r, h)"
+                                                       @onchange="(e => SetCell(r, h, e?.Value?.ToString() ?? string.Empty))" />
+                                            }
+                                        }
+                                        else
+                                        {
+                                            @(lookups.TryGetValue(h, out var map) && map.TryGetValue(GetCell(r, h), out var pretty)
+                                                ? pretty
+                                                : GetCell(r, h))
+                                        }
+                                    </td>
+                                }
+                                <td>
+                                    @if (object.ReferenceEquals(editingRow, r))
+                                    {
+                                        <div class="d-flex gap-2">
+                                            <button class="btn btn-sm btn-success" @onclick="@(() => SaveAsync(r))">Guardar</button>
+                                            <button class="btn btn-sm btn-secondary" @onclick="@CancelEdit">Cancelar</button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="d-flex gap-2">
+                                            <button class="btn btn-sm btn-primary" @onclick="@(() => Edit(r))">Editar</button>
+                                            <button class="btn btn-sm btn-danger" @onclick="@(() => DeleteAsync(r))">Borrar</button>
+                                        </div>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <!-- FORMULARIO: AÑADIR NUEVO -->
+        <div class="card mt-4">
+            <div class="card-header fw-semibold">Añadir nuevo</div>
+            <div class="card-body">
+                <div class="row g-3">
+                    @foreach (var h in headers)
+                    {
+                        <div class="col-12 col-md-6 col-lg-4">
+                            <label class="form-label">@h</label>
+                            @if (lookups.ContainsKey(h))
+                            {
+                                <select class="form-select form-select-sm"
+                                        value="@(newRow.TryGetValue(h, out var v) ? v?.ToString() ?? string.Empty : string.Empty)"
+                                        @onchange="(e => newRow[h] = e?.Value?.ToString() ?? string.Empty)">
+                                    <option value="">--</option>
+                                    @foreach (var kv in lookups[h])
+                                    {
+                                        <option value="@kv.Key">@kv.Value</option>
+                                    }
+                                </select>
+                            }
+                            else
+                            {
+                                <input class="form-control form-control-sm"
+                                       value="@(newRow.TryGetValue(h, out var v) ? v?.ToString() ?? string.Empty : string.Empty)"
+                                       @onchange="(e => newRow[h] = e?.Value?.ToString() ?? string.Empty)" />
+                            }
+                        </div>
+                    }
+                </div>
+                <div class="mt-3">
+                    <button class="btn btn-success" @onclick="AddAsync">Agregar</button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string SheetName { get; set; } = default!;
+
+    private IReadOnlyList<string>? headers;
+    private List<Dictionary<string, string>>? rows;
+    private Dictionary<string, string>? editingRow;
+    private string? idColumn;
+    private string? lastSheetName;
+    private Dictionary<string, object> newRow = new();
+    private string? error;
+
+    // Diccionario de columnas FK -> (tabla_pg, idCol, nombreCol)
+    private readonly Dictionary<string, (string sheet, string key, string value)> fkDefs =
+        new(StringComparer.OrdinalIgnoreCase)
+            {
+                ["area_id"] = ("areas", "area_id", "nombre_areas"),
+                ["meson_id"] = ("mesones", "meson_id", "nombre_meson"),
+                ["marca_id"] = ("marcas", "marca_id", "nombre"),
+                ["condicion_id"] = ("condiciones", "condicion_id", "nombre"),
+                ["unidad_id"] = ("unidades", "unidad_id", "nombre")
+            };
+
+    private Dictionary<string, Dictionary<string, string>> lookups = new(StringComparer.OrdinalIgnoreCase);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        try
+        {
+            error = null;
+
+            // Si cambió de hoja/tabla, resetea la ID para recálculo
+            if (!string.Equals(lastSheetName, SheetName, StringComparison.OrdinalIgnoreCase))
+            {
+                lastSheetName = SheetName;
+                idColumn = null;
+            }
+
+            Crud.UseSheet(SheetName);
+
+            headers = await Crud.GetHeadersAsync();
+            if (headers.Count == 0)
+                throw new InvalidOperationException($"La hoja/tabla '{SheetName}' no tiene encabezados o no existe.");
+
+            // Si idColumn no existe en los headers, recalcular
+            if (string.IsNullOrWhiteSpace(idColumn) || !headers.Contains(idColumn, StringComparer.OrdinalIgnoreCase))
+            {
+                idColumn = headers.FirstOrDefault(h => h.EndsWith("_id", StringComparison.OrdinalIgnoreCase))
+                           ?? headers.First();
+            }
+
+            // cargar lookups de FKs presentes
+            lookups.Clear();
+            foreach (var h in headers)
+            {
+                if (fkDefs.TryGetValue(h, out var def))
+                    lookups[h] = await Crud.GetLookupAsync(def.sheet, def.key, def.value);
+            }
+
+            await LoadRowsAsync();
+            newRow = headers.ToDictionary(h => h, h => (object)string.Empty);
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private async Task LoadRowsAsync()
+    {
+        rows = (await Crud.ReadAllAsync()).ToList();
+        StateHasChanged();
+    }
+
+    private void Edit(Dictionary<string, string> r) => editingRow = r;
+    private void CancelEdit() => editingRow = null;
+
+    private async Task SaveAsync(Dictionary<string, string> r)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(idColumn)) return;
+            var idVal = r.GetValueOrDefault(idColumn) ?? string.Empty;
+
+            var updates = r.ToDictionary(k => k.Key, v => (object)(v.Value ?? string.Empty));
+
+            var ok = await Crud.UpdateByIdAsync(idColumn, idVal, updates);
+            if (ok) editingRow = null;
+            else error = "No se encontró la fila a actualizar (ID no coincide o no hubo cambios válidos).";
+
+            await LoadRowsAsync();
+        }
+        catch (Exception ex)
+        {
+            error = $"Error al guardar: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeleteAsync(Dictionary<string, string> r)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(idColumn)) return;
+            var idVal = r.GetValueOrDefault(idColumn) ?? string.Empty;
+
+            var ok = await Crud.DeleteByIdAsync(idColumn, idVal);
+            if (!ok) error = "No se pudo borrar: no se encontró la fila (ID).";
+
+            await LoadRowsAsync();
+        }
+        catch (Exception ex)
+        {
+            error = $"Error al borrar: @ex.Message";
+            StateHasChanged();
+        }
+    }
+
+    private async Task AddAsync()
+    {
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(idColumn))
+            {
+                if (string.IsNullOrWhiteSpace(newRow.GetValueOrDefault(idColumn)?.ToString()))
+                    newRow[idColumn] = Guid.NewGuid().ToString("N");
+            }
+
+            bool allEmpty = headers!.All(h => string.IsNullOrWhiteSpace(newRow.GetValueOrDefault(h)?.ToString()));
+            if (allEmpty)
+            {
+                error = "No puedes guardar una fila vacía. Completa al menos un campo.";
+                StateHasChanged();
+                return;
+            }
+
+            await Crud.CreateAsync(new Dictionary<string, object>(newRow));
+            newRow = headers!.ToDictionary(h => h, h => (object)string.Empty);
+            await LoadRowsAsync();
+        }
+        catch (Exception ex)
+        {
+            error = $"Error al agregar: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    private void OnIdColumnChanged(ChangeEventArgs e)
+    {
+        idColumn = e?.Value?.ToString();
+        StateHasChanged();
+    }
+
+    // helpers UI
+    private static string GetCell(Dictionary<string, string> row, string header)
+        => row.TryGetValue(header, out var v) ? (v ?? string.Empty) : string.Empty;
+
+    private static void SetCell(Dictionary<string, string> row, string header, string value)
+        => row[header] = value ?? string.Empty;
+
+    private bool IsId(string h) => h.Equals(idColumn, StringComparison.OrdinalIgnoreCase);
+}

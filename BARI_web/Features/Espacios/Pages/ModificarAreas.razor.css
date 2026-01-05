@@ -1,0 +1,25 @@
+﻿html, body {
+    overscroll-behavior: contain;
+}
+
+.canvas-host {
+    display: flex;
+    justify-content: flex-start;
+}
+
+.canvas-box {
+    position: relative;
+    border: 1px solid #ccc;
+    width: 100%;
+    max-width: none;
+    aspect-ratio: var(--ar);
+    touch-action: none;
+}
+
+.floating-card {
+    background: rgba(255,255,255,.95);
+    border: 1px solid #e5e7eb;
+    border-radius: .5rem;
+    box-shadow: 0 10px 20px rgba(0,0,0,.08);
+    padding: .5rem;
+}

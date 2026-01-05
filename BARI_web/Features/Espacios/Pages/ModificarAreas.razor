@@ -1,0 +1,520 @@
+﻿@page "/modificarareas"
+@namespace BARI_web.Features.Espacios.Pages
+
+<h4 class="text-2xl mb-2">Modificar áreas</h4>
+
+<!-- Barra superior: selector de PLANTA fuera del lienzo -->
+<div class="flex items-center gap-2 mb-3">
+    <label class="text-sm text-gray-700">Planta:</label>
+    <select class="border p-1 text-sm"
+            value="@(_currentPlantaId ?? "")"
+            @onchange="(e)=>OnChangePlanta(e.Value?.ToString())">
+        @foreach (var kv in _plantasLookup)
+        {
+            <option value="@kv.Key">@kv.Value</option>
+        }
+    </select>
+</div>
+
+@if (_canvas is null)
+{
+    <p>Cargando…</p>
+}
+else
+{
+    <div>
+
+        <!-- ===== Layout principal: Lienzo (izq) + Panel (der) ===== -->
+        <div class="editor-layout">
+            <!-- Columna izquierda: lienzo -->
+            <div class="canvas-host">
+                <div class="canvas-box" style="--ar:@AspectRatioString();width:1150px;">
+
+                    <!-- Controles de Zoom -->
+                    <div style="position:absolute; right:10px; top:10px; display:flex; gap:.4rem;" @onclick:stopPropagation="true">
+                        <button class="zoom-btn" title="Zoom in" @onclick="ZoomIn">+</button>
+                        <button class="zoom-btn" title="Zoom out" @onclick="ZoomOut">−</button>
+                    </div>
+
+
+                    <svg @ref="_svgRef" width="100%" height="100%"
+                         viewBox="@ViewBox()" preserveAspectRatio="xMidYMid meet"
+                         @onpointermove="OnPointerMove"
+                         @onpointerup="OnPointerUp" @onpointerleave="OnPointerUp"
+                         @onwheel="OnWheel" @onwheel:preventDefault="true"
+                         @onpointerdown="OnPointerDownBackground">
+
+                        <!-- fondo -->
+                        <rect x="0" y="0" width="@S(Wm)" height="@S(Hm)"
+                              fill="white" stroke="#bbb" stroke-width="@S(0.03)"
+                              style="cursor:grab"
+                              @onpointerdown:preventDefault="true"
+                              @onpointerdown="(e)=>BeginPan(e)" />
+
+                        <!-- grilla -->
+                        @for (var x = 0m; x <= Wm; x += 1m)
+                        {
+                            <line x1="@S(x)" y1="0" x2="@S(x)" y2="@S(Hm)" stroke="#eee" stroke-width="@S(0.02)" />
+                        }
+                        @for (var y = 0m; y <= Hm; y += 1m)
+                        {
+                            <line x1="0" y1="@S(y)" x2="@S(Wm)" y2="@S(y)" stroke="#eee" stroke-width="@S(0.02)" />
+                        }
+
+                        <!-- clipPaths -->
+                        <defs>
+                            @foreach (var p in _polys.Where(IsVisible))
+                            {
+                                <clipPath id="@($"clip_{p.poly_id}")" clipPathUnits="userSpaceOnUse">
+                                    <rect x="0" y="0" width="@S(p.ancho_m)" height="@S(p.alto_m)" />
+                                </clipPath>
+                            }
+                        </defs>
+
+
+                        <!-- Áreas -->
+                        @foreach (var p in _polys.Where(IsVisible).OrderBy(pp => pp.z_order))
+                        {
+                            var isSel = _sel?.poly_id == p.poly_id;
+                            var isHover = _hoverId == p.poly_id;
+                            var stroke = isSel ? "#0a7" : isHover ? "#08a" : "#777";
+
+                            <g transform="translate(@S(p.x_m),@S(p.y_m))"
+                               @onmouseover="() => _hoverId = p.poly_id"
+                               @onmouseout="() => _hoverId = null">
+
+                                <rect x="0" y="0"
+                                      width="@S(p.ancho_m)" height="@S(p.alto_m)"
+                                      fill="@AreaColor(p)"
+                                      opacity="@(isHover && !isSel ? "0.92" : "1")"
+                                      stroke="@stroke" stroke-width="@S(isSel ? 0.06 : isHover ? 0.045 : 0.03)"
+                                      style="cursor:@(isSel ? "move" : "pointer")"
+                                      @onpointerdown:preventDefault="true"
+                                      @onpointerdown:stopPropagation="true"
+                                      @onpointerdown="(e)=>OnPointerDownMoveArea(e, p.poly_id)" />
+
+                                <!-- ejes locales -->
+                                <line x1="0" y1="0" x2="@S(Math.Min(0.8m, p.ancho_m))" y2="0" stroke="#c00" stroke-width="@S(0.03)" />
+                                <line x1="0" y1="0" x2="0" y2="@S(Math.Min(0.8m, p.alto_m))" stroke="#06c" stroke-width="@S(0.03)" />
+
+                                <!-- etiqueta -->
+                                @{
+                                    var label = AreaLabel(p);
+                                    var (fs, show) = LabelFontSizeAndVisibility(p, label);
+                                    var pad = 0.18m;
+                                    var targetWidth = Math.Max(0m, p.ancho_m - 2 * pad);
+                                    var cx = p.ancho_m / 2;
+                                    var cy = p.alto_m / 2;
+                                }
+                                @if (show)
+                                {
+                                    <g clip-path="@($"url(#clip_{p.poly_id})")">
+                                        <text class="area-label"
+                                              x="@S(cx)" y="@S(cy)"
+                                              text-anchor="middle" dominant-baseline="middle"
+                                              font-size="@S(fs)" fill="#444"
+                                              textLength="@S(targetWidth)" lengthAdjust="spacingAndGlyphs">
+                                            @label
+                                        </text>
+                                    </g>
+                                }
+
+                                <!-- Manijas -->
+                                @if (isSel && !_joinMode)
+                                {
+                                    @VertexHandle(p, 0m, 0m, Handle.NW)
+                                    @VertexHandle(p, p.ancho_m, 0m, Handle.NE)
+                                    @VertexHandle(p, 0m, p.alto_m, Handle.SW)
+                                    @VertexHandle(p, p.ancho_m, p.alto_m, Handle.SE)
+                                }
+
+                                <!-- Pickers juntar -->
+                                @if (_joinMode)
+                                {
+                                    @VertexPicker(p, 0m, 0m, Handle.NW)
+                                    @VertexPicker(p, p.ancho_m, 0m, Handle.NE)
+                                    @VertexPicker(p, 0m, p.alto_m, Handle.SW)
+                                    @VertexPicker(p, p.ancho_m, p.alto_m, Handle.SE)
+                                }
+                            </g>
+                        }
+
+                        <!-- Puertas (VERDE) -->
+                        @foreach (var d in _doors.Where(IsDoorVisible))
+                        {
+                            var col = "#13A076"; var thick = 0.10m;
+                            <g @onclick="() => { _selDoorId = d.door_id; _selWinId = null; _sel = null; _showDoorWinPanels = true; StateHasChanged(); }">
+                                <line x1="@S(d.x_m)" y1="@S(d.y_m)"
+                                      x2="@S(DoorEndX(d))" y2="@S(DoorEndY(d))"
+                                      stroke="@col" stroke-width="@S(thick)" stroke-linecap="round"
+                                      style="cursor:grab"
+                                      @onpointerdown:preventDefault="true"
+                                      @onpointerdown:stopPropagation="true"
+                                      @onpointerdown="(e)=>OnPointerDownMoveDoor(e, d.door_id)" />
+                                <rect x="@S(DoorEndX(d)-0.15m)" y="@S(DoorEndY(d)-0.15m)" width="@S(0.3m)" height="@S(0.3m)"
+                                      fill="#13A076" stroke="#0b6b50" stroke-width="@S(0.03m)"
+                                      style="cursor:ns-resize"
+                                      @onpointerdown:preventDefault="true"
+                                      @onpointerdown:stopPropagation="true"
+                                      @onpointerdown="(e)=>OnPointerDownResizeDoor(e, d.door_id)" />
+                            </g>
+                        }
+
+                        <!-- Ventanas (CELESTE) -->
+                        @foreach (var w in _windows.Where(IsWinVisible))
+                        {
+                            var col = "#66CCFF"; var thick = 0.05m;
+                            <g @onclick="() => { _selWinId = w.win_id; _selDoorId = null; _sel = null; _showDoorWinPanels = true; StateHasChanged(); }">
+                                <line x1="@S(w.x_m)" y1="@S(w.y_m)"
+                                      x2="@S(WinEndX(w))" y2="@S(WinEndY(w))"
+                                      stroke="@col" stroke-width="@S(thick)" stroke-linecap="round"
+                                      style="cursor:grab"
+                                      @onpointerdown:preventDefault="true"
+                                      @onpointerdown:stopPropagation="true"
+                                      @onpointerdown="(e)=>OnPointerDownMoveWin(e, w.win_id)" />
+                                <rect x="@S(WinEndX(w)-0.12m)" y="@S(WinEndY(w)-0.12m)" width="@S(0.24m)" height="@S(0.24m)"
+                                      fill="#66CCFF" stroke="#2e7aa3" stroke-width="@S(0.03m)"
+                                      style="cursor:ns-resize"
+                                      @onpointerdown:preventDefault="true"
+                                      @onpointerdown:stopPropagation="true"
+                                      @onpointerdown="(e)=>OnPointerDownResizeWin(e, w.win_id)" />
+                            </g>
+                        }
+
+                        @if (_polys.Count == 0)
+                        {
+                            @((MarkupString)$"<text x=\"{S(1m)}\" y=\"{S(1.5m)}\" font-size=\"{S(0.8)}\" fill=\"#999\">No hay polígonos cargados.</text>")
+                        }
+                    </svg>
+
+                    <!-- Botonera fija (abajo-derecha del lienzo) -->
+                    <div class="floating-card" style="position:absolute; right:10px; bottom:10px;" @onclick:stopPropagation="true">
+                        <div>
+                            <button class="px-2 py-1 border rounded" @onclick="NuevaPuerta">+ Puerta</button>
+                            <button class="px-2 py-1 border rounded ml-1" @onclick="NuevaVentana">+ Ventana</button>
+
+                            <button class="px-2 py-1 border rounded ml-1"
+                                    title="Orden: 1) click en A (se mueve) 2) click en B (objetivo)"
+                                    style="@(_joinMode ? "background:#fef3c7;border-color:#f59e0b" : null)"
+                                    @onclick="ToggleJoinMode">
+                                Juntar vértices (A → B)
+                            </button>
+                            <label class="ml-2 text-sm">
+                                <input type="checkbox" checked="@_joinAxisXOnly" @onchange="OnToggleJoinX" /> Solo X
+                            </label>
+                            <label class="ml-2 text-sm">
+                                <input type="checkbox" checked="@_joinAxisYOnly" @onchange="OnToggleJoinY" /> Solo Y
+                            </label>
+
+                            @if (!string.IsNullOrEmpty(_joinMsg))
+                            {
+                                <span class="ml-2 text-sm text-gray-600">@_joinMsg</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Columna derecha: panel lateral (en la franja blanca) -->
+            <aside class="prop-panel" @onclick:stopPropagation="true">
+                @if (_sel is not null)
+                {
+                    <h4 class="font-semibold mb-2">Propiedades del área</h4>
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Área</label>
+                            <select class="border p-1 w-full" value="@(_sel.area_id ?? "")"
+                                    @onchange="(e)=> { _sel.area_id = e.Value?.ToString(); NormalizeSelected(noOverlap:true); StateHasChanged(); }">
+                                @foreach (var kv in _areasLookup)
+                                {
+                                    <option value="@kv.Key">@kv.Value</option>
+                                }
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">X</label>
+                            <input style="width:100%" class="border p-1" value="@S(_sel.x_m)"
+                                   @oninput="(e)=>{ _sel.x_m = ParseFlexible(e.Value); NormalizeSelected(noOverlap:true, primaryAxis:'x'); }">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Y</label>
+                            <input style="width:100%" class="border p-1" value="@S(_sel.y_m)"
+                                   @oninput="(e)=>{ _sel.y_m = ParseFlexible(e.Value); NormalizeSelected(noOverlap:true, primaryAxis:'y'); }">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Ancho</label>
+                            <input style="width:100%" class="border p-1" value="@S(_sel.ancho_m)"
+                                   @oninput="(e)=>{ _sel.ancho_m = ParseFlexible(e.Value); NormalizeSelected(noOverlap:true, primaryAxis:'x'); }">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Alto</label>
+                            <input style="width:100%" class="border p-1" value="@S(_sel.alto_m)"
+                                   @oninput="(e)=>{ _sel.alto_m = ParseFlexible(e.Value); NormalizeSelected(noOverlap:true, primaryAxis:'y'); }">
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Color</label>
+                            <input style="width:100%" class="border p-1" value="@(_sel.color_hex ?? "#E6E6E6")"
+                                   @oninput="(e)=>{ _sel.color_hex = e.Value?.ToString(); }">
+                        </div>
+                    </div>
+                }
+                else if (SelDoor is not null)
+                {
+                    <h4 class="font-semibold mb-2">Propiedades de la puerta</h4>
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Área A (borde donde está)</label>
+                            <select class="border p-1 w-full" value="@(SelDoor.area_id_a ?? "")"
+                                    @onchange="(e)=>{ SelDoor.area_id_a = e.Value?.ToString(); StateHasChanged(); }">
+                                @foreach (var kv in _areasLookup)
+                                {
+                                    <option value="@kv.Key">@kv.Value</option>
+                                }
+                            </select>
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Área B (vecina)</label>
+                            <input class="border p-1 w-full" value="@(_areasLookup.TryGetValue(SelDoor.area_id_b ?? "", out var nb) ? nb : "(auto)")" disabled />
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Orientación</label>
+                            <select class="border p-1 w-full" value="@SelDoor.orientacion"
+                                    @onchange='(e)=>{ SelDoor.orientacion = e.Value?.ToString() ?? "E"; StateHasChanged(); }'>
+                                <option>N</option>
+                                <option>S</option>
+                                <option>E</option>
+                                <option>W</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Largo (m)</label>
+                            <input class="border p-1 w-full" value="@S(SelDoor.largo_m)"
+                                   @oninput="(e)=>{ SelDoor.largo_m = Math.Max(0.4m, ParseFlexible(e.Value)); StateHasChanged(); }" />
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">X</label>
+                            <input class="border p-1 w-full" value="@S(SelDoor.x_m)"
+                                   @oninput="(e)=>{ SelDoor.x_m = ParseFlexible(e.Value); StateHasChanged(); }" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Y</label>
+                            <input class="border p-1 w-full" value="@S(SelDoor.y_m)"
+                                   @oninput="(e)=>{ SelDoor.y_m = ParseFlexible(e.Value); StateHasChanged(); }" />
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Z order (no se guarda)</label>
+                            <input class="border p-1 w-full" value="@SelDoor.z_order"
+                                   @oninput="(e)=>{ SelDoor.z_order = int.TryParse(e.Value?.ToString(), out var n) ? n : 0; StateHasChanged(); }" />
+                        </div>
+
+                        <div class="col-span-2 mt-1">
+                            <button type="button"
+                                    class="px-2 py-1 border rounded text-red-700 border-red-400"
+                                    @onclick:preventDefault="true"
+                                    @onclick="EliminarPuerta">
+                                Eliminar puerta
+                            </button>
+                        </div>
+                    </div>
+                }
+                else if (SelWin is not null)
+                {
+                    <h4 class="font-semibold mb-2">Propiedades de la ventana</h4>
+
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        <!-- Área A = área del borde donde está apoyada la ventana -->
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Área A (borde donde está)</label>
+                            <select class="border p-1 w-full" value="@(SelWin.area_id_a ?? "")"
+                                    @onchange="(e)=>{ var v = e.Value?.ToString(); SelWin.area_id_a = string.IsNullOrWhiteSpace(v) ? null : v; StateHasChanged(); }">
+                                @foreach (var kv in _areasLookup)
+                                {
+                                    <option value="@kv.Key">@kv.Value</option>
+                                }
+                            </select>
+                        </div>
+
+                        <!-- Área B = área vecina al otro lado del muro; vacío = exterior -->
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Área B (vecina / exterior)</label>
+                            <select class="border p-1 w-full" value="@(SelWin.area_id_b ?? "")"
+                                    @onchange="(e)=>{ var v = e.Value?.ToString(); SelWin.area_id_b = string.IsNullOrWhiteSpace(v) ? null : v; StateHasChanged(); }">
+                                <option value="">— Exterior —</option>
+                                @foreach (var kv in _areasLookup)
+                                {
+                                    <option value="@kv.Key">@kv.Value</option>
+                                }
+                            </select>
+                            <small class="text-xs text-gray-500">
+                                @(SelWin.area_id_b is null ? "Esta ventana da al exterior." : "Esta ventana comunica dos áreas.")
+                            </small>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Orientación</label>
+                            <select class="border p-1 w-full" value="@SelWin.orientacion"
+                                    @onchange='(e)=>{ SelWin.orientacion = e.Value?.ToString() ?? "E"; StateHasChanged(); }'>
+                                <option>N</option>
+                                <option>S</option>
+                                <option>E</option>
+                                <option>W</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Largo (m)</label>
+                            <input class="border p-1 w-full" value="@S(SelWin.largo_m)"
+                                   @oninput="(e)=>{ SelWin.largo_m = Math.Max(0.4m, ParseFlexible(e.Value)); StateHasChanged(); }" />
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">X</label>
+                            <input class="border p-1 w-full" value="@S(SelWin.x_m)"
+                                   @oninput="(e)=>{ SelWin.x_m = ParseFlexible(e.Value); StateHasChanged(); }" />
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Y</label>
+                            <input class="border p-1 w-full" value="@S(SelWin.y_m)"
+                                   @oninput="(e)=>{ SelWin.y_m = ParseFlexible(e.Value); StateHasChanged(); }" />
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Z order (no se guarda)</label>
+                            <input class="border p-1 w-full" value="@SelWin.z_order"
+                                   @oninput="(e)=>{ SelWin.z_order = int.TryParse(e.Value?.ToString(), out var n) ? n : 0; StateHasChanged(); }" />
+                        </div>
+
+                        <div class="col-span-2 mt-1">
+                            <button type="button"
+                                    class="px-2 py-1 border rounded text-red-700 border-red-400"
+                                    @onclick:preventDefault="true"
+                                    @onclick="EliminarVentana">
+                                Eliminar ventana
+                            </button>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="text-sm text-gray-600">Selecciona un elemento</div>
+                    <div class="text-sm text-gray-600">para ver sus propiedades</div>
+                }
+
+                @* === META DEL ÁREA (planta, altura, área total, anotaciones) === *@
+                @if (_sel?.area_id is not null && _areasMeta.TryGetValue(_sel.area_id!, out var meta))
+                {
+                    <hr class="my-3" />
+                    <h4 class="font-semibold mb-2">Datos del área seleccionada</h4>
+
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Planta</label>
+                            <select class="border p-1 w-full" value="@(meta.planta_id ?? "")"
+                                    @onchange="(e)=>{ meta.planta_id = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? null : e.Value!.ToString(); StateHasChanged(); }">
+                                <option value="">— (sin planta) —</option>
+                                @foreach (var kv in _plantasLookup)
+                                {
+                                    <option value="@kv.Key">@kv.Value</option>
+                                }
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Altura (m)</label>
+                            <input class="border p-1 w-full" value="@S(meta.altura_m ?? 0m)"
+                                   @oninput="(e)=>{ meta.altura_m = ParseFlexible(e.Value); StateHasChanged(); }" />
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Área total (m²)</label>
+                            <input class="border p-1 w-full" value="@S(CalcAreaTotalM2(_sel.area_id!))" disabled />
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Anotaciones</label>
+
+        <textarea class="border p-1 w-full" rows="3"
+                  @oninput='(e)=>{ meta.anotaciones = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? " SIN MODIFICACIONES" : e.Value!.ToString()!; }'>@meta.anotaciones</textarea>
+
+                        </div>
+                    </div>
+                }
+
+
+            </aside>
+        </div>
+        <!-- /Layout principal -->
+        <!-- ===== Acciones (debajo del canvas) ===== -->
+        <div class="mt-3 p-3 border rounded-md bg-white">
+            <h4 class="font-semibold mb-2">Acciones de áreas</h4>
+            <div class="flex items-center gap-2">
+
+                <button class="px-3 py-1 border rounded" @onclick="Guardar" disabled="@_saving">
+                    @(_saving ? "Guardando..." : "Guardar")
+                </button>
+                <button class="px-3 py-1 border rounded" @onclick="Nuevo" disabled="@_saving">Nuevo</button>
+                <button class="px-3 py-1 border rounded" @onclick="Eliminar" disabled="@(_sel is null || _saving)">Eliminar</button>
+                <span class="text-sm text-gray-500">@_saveMsg</span>
+            </div>
+            <div class="text-sm mt-2">
+                <b>Juntar vértices (A → B):</b> activa el modo, haz click en <b>A</b> (se mueve) y luego en <b>B</b> (objetivo).
+                Si mover A chocara, se intentará encoger A para encajar, sin salirse ni superponerse.
+                @if (_joinMode)
+                {
+                    <button class="px-2 py-1 border rounded ml-2" @onclick="CancelJoin">Cancelar juntar</button>
+                }
+            </div>
+            <div class="flex items-center gap-2">
+
+                <button class="px-3 py-1 border rounded" @onclick="Guardar" disabled="@_saving">
+                    @(_saving ? "Guardando..." : "Guardar")
+                </button>
+                <button class="px-3 py-1 border rounded" @onclick="Nuevo" disabled="@_saving">Nuevo</button>
+                <button class="px-3 py-1 border rounded" @onclick="Eliminar" disabled="@(_sel is null || _saving)">Eliminar</button>
+
+                <!-- NUEVO -->
+                <button class="px-3 py-1 border rounded" @onclick="AlinearTodo" disabled="@_saving">Alinear todo</button>
+
+                <span class="text-sm text-gray-500">@_saveMsg</span>
+            </div>
+
+        </div>
+    </div>
+}
+
+<style>
+    /* ===== Layout de dos columnas: lienzo a la izquierda, panel a la derecha ===== */
+    .editor-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1150px) 420px; /* 1150px = ancho canvas; 420px = panel */
+        gap: 16px;
+        align-items: start;
+    }
+
+    /* El host del canvas puede scrollear si es más alto que la ventana */
+    .canvas-host {
+        overflow: auto;
+    }
+
+    /* Panel lateral fijo en la franja blanca */
+    .prop-panel {
+        position: sticky;
+        top: 80px; /* ajusta según tu header/navbar */
+        max-height: calc(100vh - 100px);
+        overflow: auto;
+        background: #fff;
+        border: 1px solid #e5e7eb; /* gris claro */
+        border-radius: 8px;
+        padding: 12px;
+    }
+
+   
+</style>
