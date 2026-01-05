@@ -1192,10 +1192,11 @@ namespace BARI_web.Features.Espacios.Pages
 
         private async Task EliminarPuerta()
         {
-            if (SelDoor is null) return;
+            var doorId = SelDoor?.door_id;
+            if (string.IsNullOrWhiteSpace(doorId)) return;
             Pg.UseSheet("puertas");
-            await Pg.DeleteByIdAsync("puerta_id", SelDoor.door_id);
-            _doors.RemoveAll(x => x.door_id == SelDoor.door_id);
+            await Pg.DeleteByIdAsync("puerta_id", doorId);
+            _doors.RemoveAll(x => x.door_id == doorId);
             _selDoorId = null;
             _saveMsg = "Puerta eliminada";
             StateHasChanged();
