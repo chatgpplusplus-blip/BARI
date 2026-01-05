@@ -54,6 +54,13 @@ public class SheetsMirrorService : BackgroundService
                     await MirrorOneAsync(pg, sheets, table, sheet, stoppingToken);
                 }
             }
+            catch (TokenResponseException ex) when (
+                string.Equals(ex.Error?.Error, "invalid_grant", StringComparison.OrdinalIgnoreCase))
+            {
+                var description = ex.Error?.ErrorDescription ?? "invalid_grant";
+                _log.LogError("Error en espejo Google Sheets. Credenciales inválidas ({Description}). Se detiene el servicio.", description);
+                return;
+            }
             catch (Exception ex)
             {
                 if (ex is TokenResponseException tokenEx &&
