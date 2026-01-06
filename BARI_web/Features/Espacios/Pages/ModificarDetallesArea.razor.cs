@@ -753,8 +753,11 @@ namespace BARI_web.Features.Espacios.Pages
             // 2) Solo elegimos el mejor padre para “pintar” el frame, SIN clampear
             var (best, _, _) = SoftClampToAreaUnion(_area!, desiredX, desiredY, propW, propH, _dragParent!);
 
-            // 3) Actualiza la pose, pero sin clamps (continua y sin saltos)
-            CommitToUnion(_dragIn!, _area!, best, desiredX, desiredY, propW, propH, allowRehome: false);
+            // 2.5) Clamp duro al polígono elegido para respetar paredes durante el drag
+            var (clampedX, clampedY) = ClampRectIn(best, desiredX, desiredY, propW, propH);
+
+            // 3) Actualiza la pose dentro del área
+            CommitToUnion(_dragIn!, _area!, best, clampedX, clampedY, propW, propH, allowRehome: false);
 
             // 4) Que el “padre de drag” siga al cursor (así ves cruzar el seam)
             _dragParent = best;
