@@ -753,8 +753,14 @@ namespace BARI_web.Features.Espacios.Pages
             // 2) Solo elegimos el mejor padre para “pintar” el frame, SIN clampear
             var (best, _, _) = SoftClampToAreaUnion(_area!, desiredX, desiredY, propW, propH, _dragParent!);
 
-            // 3) Actualiza la pose, pero sin clamps (continua y sin saltos)
-            CommitToUnion(_dragIn!, _area!, best, desiredX, desiredY, propW, propH, allowRehome: false);
+            // 2.5) Clamp duro SOLO si está fuera de todos los polígonos (para permitir cruzar entre ellos)
+            var insideAny = _area!.Polys.Any(p => RectFitsIn(p, desiredX, desiredY, propW, propH));
+            var (clampedX, clampedY) = insideAny
+                ? (desiredX, desiredY)
+                : ClampRectIn(best, desiredX, desiredY, propW, propH);
+
+            // 3) Actualiza la pose dentro del área
+            CommitToUnion(_dragIn!, _area!, best, clampedX, clampedY, propW, propH, allowRehome: false);
 
             // 4) Que el “padre de drag” siga al cursor (así ves cruzar el seam)
             _dragParent = best;
@@ -799,19 +805,20 @@ namespace BARI_web.Features.Espacios.Pages
 
             if (finishing is not null && _area is not null && parent is not null)
             {
-                // Queremos mantener EXACTO abs_x/abs_y
-                // 1) clamplea SUAVE solo para obtener un "relHard" válido en el padre
-                var (cx, cy) = ClampRectInSoft(parent, finishing.abs_x, finishing.abs_y,
-                                               finishing.ancho_m, finishing.alto_m, EPS_JOIN);
+                // Clamp duro para que nunca quede fuera del área al soltar.
+                var (cx, cy) = ClampRectIn(parent, finishing.abs_x, finishing.abs_y,
+                                          finishing.ancho_m, finishing.alto_m);
 
                 var relHardX = Math.Round(cx - parent.x_m, 3, MidpointRounding.AwayFromZero);
                 var relHardY = Math.Round(cy - parent.y_m, 3, MidpointRounding.AwayFromZero);
 
-                // 2) offset = abs - (parent + relHard)  --> preserva la posición absoluta exacta
-                finishing.offset_x_m = Math.Round(finishing.abs_x - (parent.x_m + relHardX), 3, MidpointRounding.AwayFromZero);
-                finishing.offset_y_m = Math.Round(finishing.abs_y - (parent.y_m + relHardY), 3, MidpointRounding.AwayFromZero);
+                // Actualiza ABS y elimina offset (queda dentro del área)
+                finishing.abs_x = cx;
+                finishing.abs_y = cy;
+                finishing.offset_x_m = 0m;
+                finishing.offset_y_m = 0m;
 
-                // 3) guarda el padre y las relativas "válidas"
+                // Guarda el padre y las relativas "válidas"
                 finishing.area_poly_id = parent.poly_id;
                 finishing.eje_x_rel_m = relHardX;
                 finishing.eje_y_rel_m = relHardY;
