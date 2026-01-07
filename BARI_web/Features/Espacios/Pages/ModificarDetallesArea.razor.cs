@@ -754,8 +754,8 @@ namespace BARI_web.Features.Espacios.Pages
             var (best, _, _) = SoftClampToAreaUnion(_area!, desiredX, desiredY, propW, propH, _dragParent!);
 
             // 2.5) Clamp duro SOLO si está fuera de todos los polígonos (para permitir cruzar entre ellos)
-            var insideAny = _area!.Polys.Any(p => RectFitsIn(p, desiredX, desiredY, propW, propH));
-            var (clampedX, clampedY) = insideAny
+            var overlapsAny = _area!.Polys.Any(p => OverlapWithPoly(p, desiredX, desiredY, propW, propH) > 0m);
+            var (clampedX, clampedY) = overlapsAny
                 ? (desiredX, desiredY)
                 : ClampRectIn(best, desiredX, desiredY, propW, propH);
 
