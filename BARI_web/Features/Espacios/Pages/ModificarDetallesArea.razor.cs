@@ -753,11 +753,8 @@ namespace BARI_web.Features.Espacios.Pages
             // 2) Solo elegimos el mejor padre para “pintar” el frame, SIN clampear
             var (best, _, _) = SoftClampToAreaUnion(_area!, desiredX, desiredY, propW, propH, _dragParent!);
 
-            // 2.5) Clamp duro SOLO si está fuera de todos los polígonos (para permitir cruzar entre ellos)
-            var insideAny = _area!.Polys.Any(p => RectFitsIn(p, desiredX, desiredY, propW, propH));
-            var (clampedX, clampedY) = insideAny
-                ? (desiredX, desiredY)
-                : ClampRectIn(best, desiredX, desiredY, propW, propH);
+            // 2.5) Clamp duro al polígono elegido para respetar paredes durante el drag
+            var (clampedX, clampedY) = ClampRectIn(best, desiredX, desiredY, propW, propH);
 
             // 3) Actualiza la pose dentro del área
             CommitToUnion(_dragIn!, _area!, best, clampedX, clampedY, propW, propH, allowRehome: false);
