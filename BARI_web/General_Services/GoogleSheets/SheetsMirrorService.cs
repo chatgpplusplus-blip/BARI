@@ -63,6 +63,13 @@ public class SheetsMirrorService : BackgroundService
             }
             catch (Exception ex)
             {
+                if (ex is TokenResponseException tokenEx &&
+                    string.Equals(tokenEx.Error?.Error, "invalid_grant", StringComparison.OrdinalIgnoreCase))
+                {
+                    _log.LogError(ex, "Error en espejo Google Sheets. Credenciales inválidas, se detiene el servicio.");
+                    return;
+                }
+
                 _log.LogError(ex, "Error en espejo Google Sheets");
                 await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken); // backoff si falla
             }
