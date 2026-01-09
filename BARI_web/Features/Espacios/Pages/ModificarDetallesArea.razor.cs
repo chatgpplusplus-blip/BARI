@@ -750,14 +750,17 @@ namespace BARI_web.Features.Espacios.Pages
             var desiredX = propAbsX;
             var desiredY = propAbsY;
 
-            // 2) Solo elegimos el mejor padre para “pintar” el frame, SIN clampear
-            var (best, _, _) = SoftClampToAreaUnion(_area!, desiredX, desiredY, propW, propH, _dragParent!);
+            // 2) Clamp suave solo al bounding box global para evitar salir muy lejos,
+            // pero permite cruzar entre polígonos del mismo área sin "pared" intermedia.
+            var minX = _area!.MinX - EPS_JOIN;
+            var minY = _area.MinY - EPS_JOIN;
+            var maxX = _area.MaxX + EPS_JOIN - propW;
+            var maxY = _area.MaxY + EPS_JOIN - propH;
+            var clampedX = Clamp(minX, maxX, desiredX);
+            var clampedY = Clamp(minY, maxY, desiredY);
 
-            // 3) Actualiza la pose, pero sin clamps (continua y sin saltos)
-            CommitToUnion(_dragIn!, _area!, best, desiredX, desiredY, propW, propH, allowRehome: false);
-
-            // 4) Que el “padre de drag” siga al cursor (así ves cruzar el seam)
-            _dragParent = best;
+            // 3) Actualiza la pose (sin re-home durante el drag)
+            CommitToUnion(_dragIn!, _area!, _dragParent!, clampedX, clampedY, propW, propH, allowRehome: false);
 
             StateHasChanged();
         }
@@ -799,20 +802,23 @@ namespace BARI_web.Features.Espacios.Pages
 
             if (finishing is not null && _area is not null && parent is not null)
             {
-                // Queremos mantener EXACTO abs_x/abs_y
-                // 1) clamplea SUAVE solo para obtener un "relHard" válido en el padre
-                var (cx, cy) = ClampRectInSoft(parent, finishing.abs_x, finishing.abs_y,
-                                               finishing.ancho_m, finishing.alto_m, EPS_JOIN);
+                // Elige el mejor padre final por solape y clampa al polígono definitivo.
+                var (best, _, _) = BestPolyByOverlap(_area, parent, finishing.abs_x, finishing.abs_y,
+                                                     finishing.ancho_m, finishing.alto_m);
+                var (cx, cy) = ClampRectIn(best, finishing.abs_x, finishing.abs_y,
+                                          finishing.ancho_m, finishing.alto_m);
 
-                var relHardX = Math.Round(cx - parent.x_m, 3, MidpointRounding.AwayFromZero);
-                var relHardY = Math.Round(cy - parent.y_m, 3, MidpointRounding.AwayFromZero);
+                var relHardX = Math.Round(cx - best.x_m, 3, MidpointRounding.AwayFromZero);
+                var relHardY = Math.Round(cy - best.y_m, 3, MidpointRounding.AwayFromZero);
 
-                // 2) offset = abs - (parent + relHard)  --> preserva la posición absoluta exacta
-                finishing.offset_x_m = Math.Round(finishing.abs_x - (parent.x_m + relHardX), 3, MidpointRounding.AwayFromZero);
-                finishing.offset_y_m = Math.Round(finishing.abs_y - (parent.y_m + relHardY), 3, MidpointRounding.AwayFromZero);
+                // Actualiza ABS y elimina offset (queda dentro del área)
+                finishing.abs_x = cx;
+                finishing.abs_y = cy;
+                finishing.offset_x_m = 0m;
+                finishing.offset_y_m = 0m;
 
-                // 3) guarda el padre y las relativas "válidas"
-                finishing.area_poly_id = parent.poly_id;
+                // Guarda el padre y las relativas "válidas"
+                finishing.area_poly_id = best.poly_id;
                 finishing.eje_x_rel_m = relHardX;
                 finishing.eje_y_rel_m = relHardY;
 

@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using BARI_web.General_Services.DataBaseConnection;
+using Google.Apis.Auth.OAuth2.Responses;
 
 namespace BARI_web.General_Services.GoogleSheets;
 
@@ -52,6 +53,13 @@ public class SheetsMirrorService : BackgroundService
                 {
                     await MirrorOneAsync(pg, sheets, table, sheet, stoppingToken);
                 }
+            }
+            catch (TokenResponseException ex) when (
+                string.Equals(ex.Error?.Error, "invalid_grant", StringComparison.OrdinalIgnoreCase))
+            {
+                var description = ex.Error?.ErrorDescription ?? "invalid_grant";
+                _log.LogError("Error en espejo Google Sheets. Credenciales inválidas ({Description}). Se detiene el servicio.", description);
+                return;
             }
             catch (Exception ex)
             {

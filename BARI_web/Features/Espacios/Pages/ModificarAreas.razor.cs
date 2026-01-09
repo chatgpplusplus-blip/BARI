@@ -108,6 +108,10 @@ namespace BARI_web.Features.Espacios.Pages
 
         private bool _showDoorWinPanels = true;
 
+        // Snap/grid controls
+        private bool _snapToGrid = true;
+        private decimal _gridStep = 0.25m;
+
         // drag área
         private (decimal x, decimal y)? _dragStart;
         private Poly? _beforeDragPoly;
@@ -356,6 +360,49 @@ namespace BARI_web.Features.Espacios.Pages
             if (_sel.z_order < 0) _sel.z_order = 0; if (_sel.z_order > 1_000_000) _sel.z_order = 1_000_000;
         }
 
+        private decimal SnapValue(decimal value)
+        {
+            if (_gridStep <= 0) return value;
+            return Math.Round(value / _gridStep, MidpointRounding.AwayFromZero) * _gridStep;
+        }
+
+        private void ApplySnap(Poly target, Poly basePoly, Handle handle, bool snapEnabled)
+        {
+            if (!snapEnabled) return;
+
+            switch (handle)
+            {
+                case Handle.None:
+                    target.x_m = SnapValue(target.x_m);
+                    target.y_m = SnapValue(target.y_m);
+                    break;
+                case Handle.NE:
+                    target.ancho_m = SnapValue(target.ancho_m);
+                    target.alto_m = SnapValue(target.alto_m);
+                    target.x_m = basePoly.x_m;
+                    target.y_m = basePoly.y_m + basePoly.alto_m - target.alto_m;
+                    break;
+                case Handle.SE:
+                    target.ancho_m = SnapValue(target.ancho_m);
+                    target.alto_m = SnapValue(target.alto_m);
+                    target.x_m = basePoly.x_m;
+                    target.y_m = basePoly.y_m;
+                    break;
+                case Handle.NW:
+                    target.ancho_m = SnapValue(target.ancho_m);
+                    target.alto_m = SnapValue(target.alto_m);
+                    target.x_m = basePoly.x_m + basePoly.ancho_m - target.ancho_m;
+                    target.y_m = basePoly.y_m + basePoly.alto_m - target.alto_m;
+                    break;
+                case Handle.SW:
+                    target.ancho_m = SnapValue(target.ancho_m);
+                    target.alto_m = SnapValue(target.alto_m);
+                    target.x_m = basePoly.x_m + basePoly.ancho_m - target.ancho_m;
+                    target.y_m = basePoly.y_m;
+                    break;
+            }
+        }
+
         private void ResolveCollisions(Poly p, char primaryAxis)
         {
             const decimal eps = 0.001m; int safety = 16;
@@ -547,10 +594,13 @@ namespace BARI_web.Features.Espacios.Pages
             if (_dragStart is not null && _sel is not null && _beforeDragPoly is not null)
             {
                 var (wx, wy) = ScreenToWorld(e.OffsetX, e.OffsetY); var dx = wx - _dragStart.Value.x; var dy = wy - _dragStart.Value.y;
+                var snapEnabled = _snapToGrid && !e.ShiftKey;
                 if (_activeHandle == Handle.None)
                 {
                     var moved = MoveWithCollisions(_sel, _beforeDragPoly.x_m, _beforeDragPoly.y_m, dx, dy);
-                    _sel.x_m = moved.x; _sel.y_m = moved.y; NormalizeSelected();
+                    _sel.x_m = moved.x; _sel.y_m = moved.y;
+                    ApplySnap(_sel, _beforeDragPoly, Handle.None, snapEnabled);
+                    NormalizeSelected();
                 }
                 else
                 {
@@ -584,6 +634,7 @@ namespace BARI_web.Features.Espacios.Pages
                                 _sel.x_m = baseRight - newW; _sel.y_m = b.y_m; _sel.ancho_m = newW; _sel.alto_m = newH; break;
                             }
                     }
+                    ApplySnap(_sel, _beforeDragPoly, _activeHandle, snapEnabled);
                     NormalizeSelected();
                 }
                 StateHasChanged();
@@ -1170,8 +1221,8 @@ namespace BARI_web.Features.Espacios.Pages
                 poly_id = id,
                 canvas_id = _canvas!.canvas_id,
                 area_id = aid,
-                x_m = 0.5m,
-                y_m = 0.5m,
+                x_m = _snapToGrid ? SnapValue(0.5m) : 0.5m,
+                y_m = _snapToGrid ? SnapValue(0.5m) : 0.5m,
                 ancho_m = 2.0m,
                 alto_m = 2.0m,
                 z_order = (_polys.Count == 0) ? 0 : _polys.Max(pp => pp.z_order) + 1,
@@ -1192,10 +1243,11 @@ namespace BARI_web.Features.Espacios.Pages
 
         private async Task EliminarPuerta()
         {
-            if (SelDoor is null) return;
+            var doorId = SelDoor?.door_id;
+            if (string.IsNullOrWhiteSpace(doorId)) return;
             Pg.UseSheet("puertas");
-            await Pg.DeleteByIdAsync("puerta_id", SelDoor.door_id);
-            _doors.RemoveAll(x => x.door_id == SelDoor.door_id);
+            await Pg.DeleteByIdAsync("puerta_id", doorId);
+            _doors.RemoveAll(x => x.door_id == doorId);
             _selDoorId = null;
             _saveMsg = "Puerta eliminada";
             StateHasChanged();
