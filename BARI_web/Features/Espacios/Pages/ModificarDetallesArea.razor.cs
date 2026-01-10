@@ -750,17 +750,17 @@ namespace BARI_web.Features.Espacios.Pages
             var desiredX = propAbsX;
             var desiredY = propAbsY;
 
-            // 2) Clamp suave solo al bounding box global para evitar salir muy lejos,
-            // pero permite cruzar entre polígonos del mismo área sin "pared" intermedia.
-            var minX = _area!.MinX - EPS_JOIN;
-            var minY = _area.MinY - EPS_JOIN;
-            var maxX = _area.MaxX + EPS_JOIN - propW;
-            var maxY = _area.MaxY + EPS_JOIN - propH;
-            var clampedX = Clamp(minX, maxX, desiredX);
-            var clampedY = Clamp(minY, maxY, desiredY);
+            // 2) Solo elegimos el mejor padre para “pintar” el frame, SIN clampear
+            var (best, _, _) = SoftClampToAreaUnion(_area!, desiredX, desiredY, propW, propH, _dragParent!);
 
-            // 3) Actualiza la pose (sin re-home durante el drag)
-            CommitToUnion(_dragIn!, _area!, _dragParent!, clampedX, clampedY, propW, propH, allowRehome: false);
+            // 2.5) Clamp duro al polígono elegido para respetar paredes durante el drag
+            var (clampedX, clampedY) = ClampRectIn(best, desiredX, desiredY, propW, propH);
+
+            // 3) Actualiza la pose dentro del área
+            CommitToUnion(_dragIn!, _area!, best, clampedX, clampedY, propW, propH, allowRehome: false);
+
+            // 4) Que el “padre de drag” siga al cursor (así ves cruzar el seam)
+            _dragParent = best;
 
             StateHasChanged();
         }
@@ -802,14 +802,12 @@ namespace BARI_web.Features.Espacios.Pages
 
             if (finishing is not null && _area is not null && parent is not null)
             {
-                // Elige el mejor padre final por solape y clampa al polígono definitivo.
-                var (best, _, _) = BestPolyByOverlap(_area, parent, finishing.abs_x, finishing.abs_y,
-                                                     finishing.ancho_m, finishing.alto_m);
-                var (cx, cy) = ClampRectIn(best, finishing.abs_x, finishing.abs_y,
+                // Clamp duro para que nunca quede fuera del área al soltar.
+                var (cx, cy) = ClampRectIn(parent, finishing.abs_x, finishing.abs_y,
                                           finishing.ancho_m, finishing.alto_m);
 
-                var relHardX = Math.Round(cx - best.x_m, 3, MidpointRounding.AwayFromZero);
-                var relHardY = Math.Round(cy - best.y_m, 3, MidpointRounding.AwayFromZero);
+                var relHardX = Math.Round(cx - parent.x_m, 3, MidpointRounding.AwayFromZero);
+                var relHardY = Math.Round(cy - parent.y_m, 3, MidpointRounding.AwayFromZero);
 
                 // Actualiza ABS y elimina offset (queda dentro del área)
                 finishing.abs_x = cx;
@@ -818,7 +816,7 @@ namespace BARI_web.Features.Espacios.Pages
                 finishing.offset_y_m = 0m;
 
                 // Guarda el padre y las relativas "válidas"
-                finishing.area_poly_id = best.poly_id;
+                finishing.area_poly_id = parent.poly_id;
                 finishing.eje_x_rel_m = relHardX;
                 finishing.eje_y_rel_m = relHardY;
 
