@@ -1,0 +1,27 @@
+﻿@page "/inventario-materiales"
+
+<PageTitle>Inventario de Materiales</PageTitle>
+
+<section class="page-card">
+    <h2>Inventario de Materiales</h2>
+    <p>
+        Aquí se organizarán los materiales del laboratorio por categoría y subcategoría,
+        siguiendo la guía del maestro. Servirá para registrar material de vidrio,
+        consumibles, montaje/soporte y papelería.
+    </p>
+    <LaboratorioSelector />
+</section>
+
+<section class="page-card" style="margin-top:1.5rem;">
+    <h3>Guía de categorías (base para materiales)</h3>
+    <ul class="guide-list">
+        <li><strong>Material de Vidrio</strong> → Volumétrico, De Contención, De Calentamiento, De Separación, De Manipulación</li>
+        <li><strong>Material de Montaje/Soporte</strong> → Estructuras de Soporte, Elementos de Sujeción, Accesorios de montaje térmico, Soportes para Contenedores</li>
+        <li><strong>Material Consumible</strong> → De Protección/Bioseguridad, De un solo uso, Reutilizable, Papelería de Laboratorio, Utensilios Auxiliares</li>
+    </ul>
+</section>
+
+<style>
+    .guide-list { margin:0; padding-left:1.2rem; color:#374151; }
+    .guide-list li { margin:0.5rem 0; }
+</style>
