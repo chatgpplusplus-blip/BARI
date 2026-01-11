@@ -1,0 +1,24 @@
+﻿@page "/inventario-equipo"
+
+<PageTitle>Inventario de Equipo</PageTitle>
+
+<section class="page-card">
+    <h2>Inventario de Equipo</h2>
+    <p>
+        Esta sección contendrá equipos e instrumentos del laboratorio, con estados,
+        ubicación, mantenimiento y calibraciones cuando aplique.
+    </p>
+    <LaboratorioSelector />
+</section>
+
+<section class="page-card" style="margin-top:1.5rem;">
+    <h3>Guía base (equipo e instrumento)</h3>
+    <ul class="guide-list">
+        <li><strong>Equipo/Instrumento</strong> → De Medición, De Análisis, De Calentamiento/Enfriamiento, De Separación, De Control</li>
+    </ul>
+</section>
+
+<style>
+    .guide-list { margin:0; padding-left:1.2rem; color:#374151; }
+    .guide-list li { margin:0.5rem 0; }
+</style>

@@ -1,0 +1,57 @@
+﻿@page "/documentaciones"
+
+<PageTitle>Documentaciones</PageTitle>
+
+<section class="page-card">
+    <h2>Documentaciones</h2>
+    <p>
+        En esta página se concentrará la documentación oficial del laboratorio:
+        fichas de reactivos, manuales, protocolos y formularios.
+    </p>
+    <LaboratorioSelector />
+</section>
+
+<section class="page-card" style="margin-top:1.5rem;">
+    <h3>División de documentación</h3>
+    <div class="doc-grid">
+        <article class="doc-item">
+            <h4>Documentación académica (laboratorio como asignatura)</h4>
+            <p>
+                Programas, planificaciones, guías de práctica, rúbricas y material de apoyo
+                para la materia de laboratorio.
+            </p>
+        </article>
+
+        <article class="doc-item">
+            <h4>Documentación de organizaciones científicas</h4>
+            <p>
+                Normativas y referencias externas: IUPAC, GHS, consejos de prudencia,
+                fichas de seguridad y documentación técnica de reactivos.
+            </p>
+        </article>
+
+        <article class="doc-item">
+            <h4>Documentación institucional UPSA y del laboratorio</h4>
+            <p>
+                Manuales internos, reglas de laboratorio, procedimientos, protocolos
+                institucionales y reglamentos de la universidad.
+            </p>
+        </article>
+    </div>
+</section>
+
+<style>
+    .doc-grid {
+        display:grid;
+        gap:1rem;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+    .doc-item {
+        border:1px solid #e5e7eb;
+        border-radius:0.8rem;
+        padding:0.9rem 1rem;
+        background:#f9fafb;
+    }
+    .doc-item h4 { margin:0 0 0.4rem; color:#0b2a68; }
+    .doc-item p { margin:0; color:#4b5563; }
+</style>
