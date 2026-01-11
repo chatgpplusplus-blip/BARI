@@ -1,0 +1,16 @@
+﻿@page "/documentacion/{Asignatura}/laboratorios"
+
+<PageTitle>Documentación de laboratorio</PageTitle>
+
+<section class="page-card">
+    <h2>Documentación de laboratorio</h2>
+    <p>
+        Asignatura: <strong>@Asignatura</strong>. Aquí se mostrará la documentación
+        académica asociada al laboratorio como asignatura.
+    </p>
+    <LaboratorioSelector />
+</section>
+
+@code {
+    [Parameter] public string Asignatura { get; set; } = "";
+}

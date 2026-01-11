@@ -1,0 +1,17 @@
+﻿@page "/documentacion/{Asignatura}/oficial/{Tema}"
+
+<PageTitle>Documentación oficial</PageTitle>
+
+<section class="page-card">
+    <h2>Documentación oficial</h2>
+    <p>
+        Asignatura: <strong>@Asignatura</strong> · Tema: <strong>@Tema</strong>.
+        Aquí se mostrará la referencia oficial seleccionada.
+    </p>
+    <LaboratorioSelector />
+</section>
+
+@code {
+    [Parameter] public string Asignatura { get; set; } = "";
+    [Parameter] public string Tema { get; set; } = "";
+}
