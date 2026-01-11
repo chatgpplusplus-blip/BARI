@@ -1,0 +1,24 @@
+﻿@page "/inventario-sustancias"
+
+<PageTitle>Inventario de Sustancias</PageTitle>
+
+<section class="page-card">
+    <h2>Inventario de Sustancias</h2>
+    <p>
+        Aquí se gestionarán las sustancias y reactivos del laboratorio, incluyendo
+        datos químicos, seguridad, pictogramas y stock disponible.
+    </p>
+    <LaboratorioSelector />
+</section>
+
+<section class="page-card" style="margin-top:1.5rem;">
+    <h3>Guía base (reactivos químicos)</h3>
+    <ul class="guide-list">
+        <li><strong>Reactivo Químico</strong> → Ácido, Base, Sal, Solvente, Reactivos Preparados</li>
+    </ul>
+</section>
+
+<style>
+    .guide-list { margin:0; padding-left:1.2rem; color:#374151; }
+    .guide-list li { margin:0.5rem 0; }
+</style>
