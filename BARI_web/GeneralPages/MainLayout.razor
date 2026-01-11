@@ -3,7 +3,18 @@
 
 <div class="layout-root">
     <header class="topbar">
-        <h1>BARI - ASISTENTE DE LABORATORIO</h1>
+        <div class="topbar-brand">
+            <img class="topbar-logo"
+                 src="https://www.upsa.edu.bo/wp-content/uploads/2020/02/logo-upsa.png"
+                 alt="Logo UPSA - Universidad Privada de Santa Cruz de la Sierra" />
+            <div class="topbar-text">
+                <span class="topbar-title">BARI</span>
+                <span class="topbar-subtitle">Inventario de Laboratorios · UPSA</span>
+            </div>
+        </div>
+        <div class="topbar-meta">
+            <span class="badge">Laboratorio base: Química</span>
+        </div>
     </header>
 
     <div class="content">
@@ -11,48 +22,32 @@
             <NavLink class="menu-btn" href="/" Match="NavLinkMatch.All" title="Volver a la página principal">
                 INICIO
             </NavLink>
-            <small class="hint">te lleva a la página raíz</small>
+            <small class="hint">Panel principal del inventario</small>
 
             <div class="search-box" title="Escribe para buscar (pendiente implementar)">
-                <input @bind="searchText" class="search-input" placeholder="Buscar… (próximamente)" />
-                <button class="search-btn" @onclick="OnSearchClick">🔎</button>
+                <label class="search-label">BUSCAR</label>
+                <input @bind="searchText" class="search-input" placeholder="Escribe aquí (próximamente)" />
             </div>
 
             <nav class="menu-list">
-                <NavLink class="menu-item" href="/cas" title="Consulta la librería de sustancias por número CAS">
-                    📘 Librería de CAS
+                <NavLink class="menu-item" href="/areas" title="Mapa de áreas y zonas del laboratorio">
+                    ÁREAS
                 </NavLink>
 
-                <NavLink class="menu-item" href="/pictogramas" title="Pictogramas GHS con nombre y descripción">
-                    ⚠️ Librería de Pictogramas
+                <NavLink class="menu-item" href="/inventario-materiales" title="Materiales y consumibles del laboratorio">
+                    INVENTARIO MATERIALES
                 </NavLink>
 
-                <NavLink class="menu-item" href="/hcodes" title="Frases de peligro (H-codes) normalizadas">
-                    🔥 Librería de H-Codes
+                <NavLink class="menu-item" href="/inventario-equipo" title="Equipos e instrumentos del laboratorio">
+                    INVENTARIO EQUIPO
                 </NavLink>
 
-                <NavLink class="menu-item" href="/pcodes" title="Consejos de prudencia (P-codes) normalizados">
-                    🛡️ Librería de P-Codes
+                <NavLink class="menu-item" href="/inventario-sustancias" title="Sustancias, reactivos y stock químico">
+                    INVENTARIO SUSTANCIAS
                 </NavLink>
 
-                <NavLink class="menu-item" href="/areas" title="Gestión de áreas del laboratorio y su ubicación">
-                    🏷️ Áreas del laboratorio
-                </NavLink>
-
-                <NavLink class="menu-item" href="/equipos" title="Listado y estado de equipos del laboratorio">
-                    🧰 Listado de Equipos
-                </NavLink>
-
-                <NavLink class="menu-item" href="/reactivos" title="Listado de reactivos, stock y seguridad">
-                    🧪 Listado de Reactivos
-                </NavLink>
-
-                <NavLink class="menu-item" href="/laboratorios" title="Información de laboratorios y experiencias">
-                    🏫 Información de Laboratorios
-                </NavLink>
-
-                <NavLink class="menu-item" href="/bari-bot" title="Asistente BARI para consultas rápidas">
-                    🤖 Consulta a BARI - bot
+                <NavLink class="menu-item" href="/documentaciones" title="Documentaciones, protocolos y manuales">
+                    DOCUMENTACIONES
                 </NavLink>
             </nav>
         </aside>
@@ -64,48 +59,70 @@
 </div>
 
 @code {
-    [Inject] NavigationManager Nav { get; set; } = default!;
-
     private string? searchText;
-
-    private void OnSearchClick()
-    {
-        
-    }
 }
 
 <style>
-    .layout-root { display:flex; flex-direction:column; height:100vh; }
-    .topbar { background:#0b2a68; color:#fff; padding:0.75rem 1rem; }
+    .layout-root { display:flex; flex-direction:column; height:100vh; font-family:"Segoe UI", system-ui, -apple-system, sans-serif; }
+    .topbar {
+        display:flex; align-items:center; justify-content:space-between;
+        background:#0b2a68; color:#fff; padding:0.75rem 1.25rem; gap:1rem;
+        box-shadow:0 8px 20px rgba(10, 26, 56, 0.25);
+    }
+    .topbar-brand { display:flex; align-items:center; gap:0.85rem; }
+    .topbar-logo { width:56px; height:56px; object-fit:contain; background:#fff; padding:6px; border-radius:12px; }
+    .topbar-title { font-size:1.25rem; font-weight:700; letter-spacing:0.04em; }
+    .topbar-subtitle { font-size:0.95rem; color:#d8e5ff; }
+    .topbar-text { display:flex; flex-direction:column; }
+    .topbar-meta { display:flex; align-items:center; }
+    .badge {
+        background:rgba(255,255,255,0.18); padding:0.35rem 0.75rem; border-radius:999px;
+        font-size:0.85rem; border:1px solid rgba(255,255,255,0.2);
+    }
     .content { display:flex; flex:1; min-height:0; }
     .sidebar {
-        width: 260px; padding: 0.75rem; gap: 0.5rem; display:flex; flex-direction:column;
-        background: linear-gradient(180deg, #052767 0%, #68E3C8 70%);
+        width: 280px; padding: 1rem; gap: 0.6rem; display:flex; flex-direction:column;
+        background: linear-gradient(180deg, #052767 0%, #2c8cb6 55%, #68E3C8 100%);
     }
-    .main { flex:1; padding: 1rem 1.5rem; background:#fff; overflow:auto; }
+    .main { flex:1; padding: 1.5rem 2rem; background:#f7f8fb; overflow:auto; }
 
     .menu-btn, .menu-item {
-        display:block; width:100%; text-align:center;
+        display:block; width:100%; text-align:left; font-weight:600;
         background:rgba(255,255,255,.08); color:#fff; border:none;
-        padding:0.6rem 0.75rem; border-radius:0.5rem; text-decoration:none; cursor:pointer;
+        padding:0.7rem 0.9rem; border-radius:0.65rem; text-decoration:none; cursor:pointer;
         transition: background .15s ease, transform .05s ease;
     }
-    .menu-btn:hover, .menu-item:hover { background:rgba(255,255,255,.16); }
-    .menu-item.active, .menu-btn.active { background:rgba(255,255,255,.22); }
+    .menu-btn:hover, .menu-item:hover { background:rgba(255,255,255,.2); }
+    .menu-item.active, .menu-btn.active { background:rgba(255,255,255,.28); }
 
-    .hint { color:#d7d7d7; margin:0.25rem 0 0.5rem 0.15rem; display:block; font-size:.8rem; }
+    .hint { color:#e8f0ff; margin:0.2rem 0 0.6rem 0.15rem; display:block; font-size:.8rem; }
 
-    .search-box { display:flex; gap:.4rem; align-items:center; margin:.4rem 0 .8rem; }
+    .search-box { display:flex; flex-direction:column; gap:.4rem; margin:.4rem 0 .8rem; }
+    .search-label { color:#e9f3ff; font-size:0.8rem; letter-spacing:0.08em; }
     .search-input {
-        flex:1; border-radius:0.5rem; border:1px solid rgba(255,255,255,.25);
-        padding:.5rem .6rem; outline:none; color:#fff; background:rgba(255,255,255,.08);
+        border-radius:0.6rem; border:1px solid rgba(255,255,255,.25);
+        padding:.6rem .7rem; outline:none; color:#fff; background:rgba(255,255,255,.12);
     }
-    .search-input::placeholder { color:#cfcfe6; }
-    .search-btn {
-        border:none; border-radius:0.5rem; padding:.45rem .6rem; cursor:pointer;
-        background:rgba(255,255,255,.18); color:#fff;
-    }
-    .search-btn:hover { background:rgba(255,255,255,.28); }
+    .search-input::placeholder { color:#e1e4f5; }
 
-    .menu-list { display:flex; flex-direction:column; gap:.35rem; }
+    .menu-list { display:flex; flex-direction:column; gap:.45rem; }
+
+    .page-card {
+        background:#fff; border-radius:1rem; padding:1.25rem;
+        box-shadow:0 12px 30px rgba(16, 24, 40, 0.08);
+    }
+
+    .page-card h2 { margin:0 0 0.5rem; }
+    .page-card p { color:#4b5563; }
+
+    .lab-selector {
+        display:flex; flex-direction:column; gap:0.35rem; padding:0.75rem 1rem;
+        background:#fff; border-radius:0.9rem; box-shadow:0 8px 20px rgba(16, 24, 40, 0.08);
+    }
+    .lab-selector label { font-weight:600; color:#0b2a68; }
+    .lab-selector select {
+        border-radius:0.6rem; border:1px solid #cbd5f5; padding:0.5rem 0.7rem;
+        background:#f8fafc; color:#111827;
+    }
+    .lab-selector small { color:#6b7280; }
 </style>
