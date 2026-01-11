@@ -1,0 +1,16 @@
+﻿@page "/documentacion/{Asignatura}/oficial"
+
+<PageTitle>Documentación institucional</PageTitle>
+
+<section class="page-card">
+    <h2>Documentación de instituciones</h2>
+    <p>
+        Asignatura: <strong>@Asignatura</strong>. Aquí se listarán normativas oficiales,
+        pictogramas, consejos de prudencia, peligros y referencias CAS.
+    </p>
+    <LaboratorioSelector />
+</section>
+
+@code {
+    [Parameter] public string Asignatura { get; set; } = "";
+}

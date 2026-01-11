@@ -1,0 +1,17 @@
+﻿@page "/documentacion/{Asignatura}/upsa/{Tema}"
+
+<PageTitle>Documentación UPSA</PageTitle>
+
+<section class="page-card">
+    <h2>Documentación UPSA y del laboratorio</h2>
+    <p>
+        Asignatura: <strong>@Asignatura</strong> · Tema: <strong>@Tema</strong>.
+        Aquí se mostrará el manual o procedimiento interno seleccionado.
+    </p>
+    <LaboratorioSelector />
+</section>
+
+@code {
+    [Parameter] public string Asignatura { get; set; } = "";
+    [Parameter] public string Tema { get; set; } = "";
+}
