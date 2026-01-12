@@ -11,8 +11,92 @@
     <LaboratorioSelector />
 </section>
 
+<section class="page-card" style="margin-top:1.5rem;">
+    <h3>Menú de documentación por asignatura</h3>
+    <p class="section-intro">
+        Usa los desplegables para navegar a la documentación académica por asignatura.
+    </p>
+    @if (!string.IsNullOrWhiteSpace(loadError))
+    {
+        <p class="error-note">No se pudo cargar asignaturas desde la base de datos: @loadError</p>
+    }
+    <div class="menu-grid">
+        @foreach (var asignatura in asignaturas)
+        {
+            <details class="menu-item" @key="asignatura.Id" open>
+                <summary>
+                    <strong>@asignatura.Nombre</strong>
+                    <span class="muted">@asignatura.Codigo</span>
+                </summary>
+                <div class="menu-links">
+                    <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/laboratorios")">
+                        Documentación para asignaturas
+                    </NavLink>
+                </div>
+            </details>
+        }
+    </div>
+</section>
 
+<section id="instituciones-general" class="page-card" style="margin-top:1.5rem;">
+    <h3>Documentación institucional (general)</h3>
+    <p class="section-intro">
+        Documentación externa y normativa general: pictogramas, H-codes, P-codes y catálogos CAS.
+    </p>
+    <div class="menu-grid">
+        <div class="menu-item">
+            <strong>Instituciones y normativas</strong>
+            <div class="menu-links">
+                <NavLink class="btn-link" href="/documentacion/instituciones/pictogramas">Pictogramas (GHS)</NavLink>
+                <NavLink class="btn-link" href="/documentacion/instituciones/h-codes">H-Codes</NavLink>
+                <NavLink class="btn-link" href="/documentacion/instituciones/p-codes">P-Codes</NavLink>
+                <NavLink class="btn-link" href="/documentacion/instituciones/cas">CAS</NavLink>
+                <NavLink class="btn-link" href="/documentacion/instituciones/documentos">Documentos institucionales</NavLink>
+            </div>
+        </div>
+    </div>
+</section>
 
+<section id="upsa-general" class="page-card" style="margin-top:1.5rem;">
+    <h3>Documentación del laboratorio (UPSA)</h3>
+    <p class="section-intro">
+        Manuales, procedimientos y protocolos internos del laboratorio.
+    </p>
+    <div class="menu-grid">
+        <div class="menu-item">
+            <strong>Documentación UPSA</strong>
+            <div class="menu-links">
+                <NavLink class="btn-link" href="/documentacion/upsa/manuales">Manuales</NavLink>
+                <NavLink class="btn-link" href="/documentacion/upsa/procedimientos">Procedimientos</NavLink>
+                <NavLink class="btn-link" href="/documentacion/upsa/protocolos">Protocolos internos</NavLink>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="page-card" style="margin-top:1.5rem;">
+    <h3>Selecciona el tipo de documentación (Laboratorio de Química)</h3>
+    <p class="section-intro">
+        Elige una de las tres categorías principales para la asignatura de química.
+    </p>
+    <div class="type-grid">
+        <article class="type-item">
+            <h4>Documentación para asignaturas</h4>
+            <p>Guías de práctica, planificaciones y material académico.</p>
+            <NavLink class="btn-link" href="/documentaciones#asignaturas">Ver asignaturas</NavLink>
+        </article>
+        <article class="type-item">
+            <h4>Documentación de instituciones</h4>
+            <p>Normativas externas: IUPAC, GHS, consejos de prudencia y peligros.</p>
+            <NavLink class="btn-link" href="/documentaciones#instituciones-general">Ver instituciones</NavLink>
+        </article>
+        <article class="type-item">
+            <h4>Documentación del laboratorio (UPSA)</h4>
+            <p>Manuales internos, procedimientos y reglamentos del laboratorio.</p>
+            <NavLink class="btn-link" href="/documentaciones#upsa-general">Ver UPSA</NavLink>
+        </article>
+    </div>
+</section>
 
 <section id="asignaturas" class="page-card" style="margin-top:1.5rem;">
     <h3>Documentación para asignaturas</h3>
@@ -44,133 +128,6 @@
     </details>
 </section>
 
-<section id="instituciones" class="page-card" style="margin-top:1.5rem;">
-    <h3>Documentación de instituciones</h3>
-    <p class="section-intro">
-        Normativas y referencias externas para cada asignatura: pictogramas, consejos de prudencia,
-        peligros, CAS y otras guías oficiales.
-    </p>
-    <details open class="guide-block">
-        <summary>Subcategorías oficiales</summary>
-        <ul class="guide-list">
-            <li>Pictogramas (GHS)</li>
-            <li>Consejos de prudencia (P-codes)</li>
-            <li>Peligros (H-codes)</li>
-            <li>CAS y catálogos externos</li>
-        </ul>
-    </details>
-    <div class="assign-grid">
-        @foreach (var asignatura in asignaturas)
-        {
-            <article class="assign-item" @key="asignatura.Id">
-                <div>
-                    <h4>@asignatura.Nombre</h4>
-                    <span class="muted">@asignatura.Codigo</span>
-                </div>
-                <div class="link-stack">
-                    <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/oficial")">Ver resumen</NavLink>
-                    <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/oficial/pictogramas")">Pictogramas</NavLink>
-                    <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/oficial/consejos")">Consejos de prudencia</NavLink>
-                    <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/oficial/peligros")">Peligros</NavLink>
-                    <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/oficial/cas")">CAS</NavLink>
-                </div>
-            </article>
-        }
-    </div>
-
-    <div class="table-wrap" style="margin-top:1rem;">
-        <table>
-            <thead>
-                <tr>
-                    <th>Normativa</th>
-                    <th>Descripción</th>
-                    <th>Items asociados</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>GHS</td>
-                    <td>Pictogramas de seguridad</td>
-                    <td>9 pictogramas</td>
-                </tr>
-                <tr>
-                    <td>P-Codes</td>
-                    <td>Consejos de prudencia</td>
-                    <td>Catálogo oficial</td>
-                </tr>
-                <tr>
-                    <td>H-Codes</td>
-                    <td>Frases de peligro</td>
-                    <td>Catálogo oficial</td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
-</section>
-
-<section id="upsa" class="page-card" style="margin-top:1.5rem;">
-    <h3>Documentación del laboratorio (UPSA)</h3>
-    <p class="section-intro">
-        Manuales, procedimientos y reglamentos internos por asignatura.
-    </p>
-    <details open class="guide-block">
-        <summary>Subcategorías internas</summary>
-        <ul class="guide-list">
-            <li>Manuales</li>
-            <li>Procedimientos</li>
-            <li>Protocolos internos</li>
-        </ul>
-    </details>
-    <div class="assign-grid">
-        @foreach (var asignatura in asignaturas)
-        {
-            <article class="assign-item" @key="asignatura.Id">
-                <div>
-                    <h4>@asignatura.Nombre</h4>
-                    <span class="muted">@asignatura.Codigo</span>
-                </div>
-                <div class="link-stack">
-                    <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/upsa")">Ver resumen</NavLink>
-                    <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/upsa/manuales")">Manuales</NavLink>
-                    <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/upsa/procedimientos")">Procedimientos</NavLink>
-                </div>
-            </article>
-        }
-    </div>
-
-    <div class="table-wrap" style="margin-top:1rem;">
-        <table>
-            <thead>
-                <tr>
-                    <th>Documento</th>
-                    <th>Tipo</th>
-                    <th>Asignatura</th>
-                    <th>Estado</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>Manual de seguridad UPSA</td>
-                    <td>Manual</td>
-                    <td>Química General</td>
-                    <td>Vigente</td>
-                </tr>
-                <tr>
-                    <td>Procedimiento de residuos</td>
-                    <td>Procedimiento</td>
-                    <td>Química Analítica</td>
-                    <td>Revisión anual</td>
-                </tr>
-                <tr>
-                    <td>Reglamento interno laboratorio</td>
-                    <td>Protocolo</td>
-                    <td>Química Inorgánica</td>
-                    <td>Vigente</td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
-</section>
 
 @code {
     [Inject] private PgCrud Crud { get; set; } = default!;

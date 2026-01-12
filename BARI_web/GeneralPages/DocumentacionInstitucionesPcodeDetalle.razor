@@ -1,0 +1,72 @@
+﻿@page "/documentacion/instituciones/p-codes/{Code}"
+
+<PageTitle>Detalle P-Code</PageTitle>
+
+<section class="page-card">
+    <h2>P-Code: @Code</h2>
+    <p>Detalle del P-code y su uso en sustancias.</p>
+    <LaboratorioSelector />
+</section>
+
+<section class="page-card" style="margin-top:1.5rem;">
+    @if (detalle is not null)
+    {
+        <div class="detail-card">
+            <div>
+                <h3>@detalle.Descripcion</h3>
+                <p>Uso en sustancias: <strong>@detalle.UsoCount</strong></p>
+            </div>
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(loadError))
+    {
+        <p class="error-note">No se pudo cargar el P-code: @loadError</p>
+    }
+</section>
+
+@code {
+    [Parameter] public string Code { get; set; } = "";
+    [Inject] private NpgsqlDataSource DataSource { get; set; } = default!;
+
+    private CodeDetalle? detalle;
+    private string? loadError;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = """
+                SELECT p.p_id, p.descripcion,
+                       COALESCE(COUNT(sp.sustancia_id), 0) AS uso_count
+                FROM p_codes p
+                LEFT JOIN sustancias_p sp ON sp.p_id = p.p_id
+                WHERE p.p_id = @id
+                GROUP BY p.p_id, p.descripcion
+                """;
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("id", Code);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
+            {
+                detalle = new CodeDetalle(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.GetInt64(2)
+                );
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+    }
+
+    private sealed record CodeDetalle(string Code, string Descripcion, long UsoCount);
+}
+
+<style>
+    .detail-card { display:flex; gap:1rem; align-items:center; }
+    .error-note { color:#b91c1c; margin-top:0.75rem; }
+</style>
