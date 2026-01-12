@@ -53,14 +53,14 @@
         try
         {
             await using var conn = await DataSource.OpenConnectionAsync();
-            const string sql = """
+            const string sql = @"
                 SELECT d.titulo, COALESCE(d.autor, ''), COALESCE(d.url, '')
                 FROM documentos d
                 LEFT JOIN documento_tipos dt ON dt.tipo_id = d.tipo_id
                 LEFT JOIN documento_fuentes df ON df.fuente_id = d.fuente_id
                 WHERE df.nombre = 'UPSA' AND dt.nombre = 'Manual'
                 ORDER BY d.titulo
-                """;
+                ";
             await using var cmd = new NpgsqlCommand(sql, conn);
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
