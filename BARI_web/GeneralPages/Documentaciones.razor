@@ -11,62 +11,8 @@
     <LaboratorioSelector />
 </section>
 
-<section class="page-card" style="margin-top:1.5rem;">
-    <h3>Menú de documentación por asignatura</h3>
-    <p class="section-intro">
-        Usa los desplegables para navegar a las páginas de documentación por asignatura.
-    </p>
-    @if (!string.IsNullOrWhiteSpace(loadError))
-    {
-        <p class="error-note">No se pudo cargar asignaturas desde la base de datos: @loadError</p>
-    }
-    <div class="menu-grid">
-        @foreach (var asignatura in asignaturas)
-        {
-            <details class="menu-item" @key="asignatura.Id" open>
-                <summary>
-                    <strong>@asignatura.Nombre</strong>
-                    <span class="muted">@asignatura.Codigo</span>
-                </summary>
-                <div class="menu-links">
-                    <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/laboratorios")">
-                        Documentación para asignaturas
-                    </NavLink>
-                    <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/oficial")">
-                        Documentación de instituciones
-                    </NavLink>
-                    <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/upsa")">
-                        Documentación UPSA
-                    </NavLink>
-                </div>
-            </details>
-        }
-    </div>
-</section>
 
-<section class="page-card" style="margin-top:1.5rem;">
-    <h3>Selecciona el tipo de documentación (Laboratorio de Química)</h3>
-    <p class="section-intro">
-        Elige una de las tres categorías principales para la asignatura de química.
-    </p>
-    <div class="type-grid">
-        <article class="type-item">
-            <h4>Documentación para asignaturas</h4>
-            <p>Guías de práctica, planificaciones y material académico.</p>
-            <NavLink class="btn-link" href="/documentaciones#asignaturas">Ver asignaturas</NavLink>
-        </article>
-        <article class="type-item">
-            <h4>Documentación de instituciones</h4>
-            <p>Normativas externas: IUPAC, GHS, consejos de prudencia y peligros.</p>
-            <NavLink class="btn-link" href="/documentaciones#instituciones">Ver instituciones</NavLink>
-        </article>
-        <article class="type-item">
-            <h4>Documentación del laboratorio (UPSA)</h4>
-            <p>Manuales internos, procedimientos y reglamentos del laboratorio.</p>
-            <NavLink class="btn-link" href="/documentaciones#upsa">Ver UPSA</NavLink>
-        </article>
-    </div>
-</section>
+
 
 <section id="asignaturas" class="page-card" style="margin-top:1.5rem;">
     <h3>Documentación para asignaturas</h3>
