@@ -37,14 +37,14 @@
         try
         {
             await using var conn = await DataSource.OpenConnectionAsync();
-            const string sql = """
+            const string sql = @"
                 SELECT p.p_id, p.descripcion,
                        COALESCE(COUNT(sp.sustancia_id), 0) AS uso_count
                 FROM p_codes p
                 LEFT JOIN sustancias_p sp ON sp.p_id = p.p_id
                 WHERE p.p_id = @id
                 GROUP BY p.p_id, p.descripcion
-                """;
+                ";
             await using var cmd = new NpgsqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("id", Code);
             await using var reader = await cmd.ExecuteReaderAsync();
