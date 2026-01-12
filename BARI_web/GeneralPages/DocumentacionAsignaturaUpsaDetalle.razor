@@ -1,0 +1,56 @@
+﻿@page "/documentacion/{Asignatura}/upsa/{Tema}"
+
+<PageTitle>Documentación UPSA</PageTitle>
+
+<section class="page-card">
+    <h2>Documentación UPSA y del laboratorio</h2>
+    <p>
+        Asignatura: <strong>@Asignatura</strong> · Tema: <strong>@Tema</strong>.
+        Aquí se mostrará el manual o procedimiento interno seleccionado.
+    </p>
+    <LaboratorioSelector />
+</section>
+
+<section class="page-card" style="margin-top:1.5rem;">
+    <h3>Listado (ejemplo)</h3>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Documento</th>
+                    <th>Tipo</th>
+                    <th>Estado</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Manual interno 01</td>
+                    <td>Manual</td>
+                    <td>Vigente</td>
+                </tr>
+                <tr>
+                    <td>Procedimiento interno 02</td>
+                    <td>Procedimiento</td>
+                    <td>En revisión</td>
+                </tr>
+                <tr>
+                    <td>Protocolo interno 03</td>
+                    <td>Protocolo</td>
+                    <td>Vigente</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@code {
+    [Parameter] public string Asignatura { get; set; } = "";
+    [Parameter] public string Tema { get; set; } = "";
+}
+
+<style>
+    .table-wrap { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; background:#fff; }
+    th, td { padding:0.6rem; border-bottom:1px solid #e5e7eb; text-align:left; }
+    th { background:#f3f4f6; font-weight:600; }
+</style>

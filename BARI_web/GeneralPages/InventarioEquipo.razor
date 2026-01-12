@@ -1,0 +1,81 @@
+﻿@page "/inventario-equipo"
+
+<PageTitle>Inventario de Equipo</PageTitle>
+
+<section class="page-card">
+    <h2>Inventario de Equipo</h2>
+    <p>
+        Esta sección contendrá equipos e instrumentos del laboratorio, con estados,
+        ubicación, mantenimiento y calibraciones cuando aplique.
+    </p>
+    <LaboratorioSelector />
+</section>
+
+<section class="page-card" style="margin-top:1.5rem;">
+    <h3>Guía base (equipo e instrumento)</h3>
+    <details open class="guide-block">
+        <summary>Equipo/Instrumento</summary>
+        <ul class="guide-list">
+            <li>De Medición</li>
+            <li>De Análisis</li>
+            <li>De Calentamiento/Enfriamiento</li>
+            <li>De Separación</li>
+            <li>De Control</li>
+        </ul>
+    </details>
+</section>
+
+<section class="page-card" style="margin-top:1.5rem;">
+    <h3>Tabla de equipos (ejemplo)</h3>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Equipo</th>
+                    <th>Modelo</th>
+                    <th>Estado</th>
+                    <th>Ubicación</th>
+                    <th>Calibración</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>EQ-001</td>
+                    <td>Balanza Analítica</td>
+                    <td>Modelo X</td>
+                    <td>Operativo</td>
+                    <td>Área Q1 · Mesón Principal</td>
+                    <td>Requiere calibración</td>
+                </tr>
+                <tr>
+                    <td>EQ-002</td>
+                    <td>pH-metro</td>
+                    <td>Modelo Y</td>
+                    <td>Operativo</td>
+                    <td>Área Q2 · Mesón Secundario</td>
+                    <td>OK</td>
+                </tr>
+                <tr>
+                    <td>EQ-003</td>
+                    <td>Agitador magnético</td>
+                    <td>Modelo Z</td>
+                    <td>En mantenimiento</td>
+                    <td>Área Q3 · Mesón Analítico</td>
+                    <td>No aplica</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<style>
+    .guide-block { margin:0.5rem 0; }
+    .guide-block summary { cursor:pointer; font-weight:600; color:#0b2a68; }
+    .guide-list { margin:0.4rem 0 0; padding-left:1.2rem; color:#374151; }
+    .guide-list li { margin:0.35rem 0; }
+    .table-wrap { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; background:#fff; }
+    th, td { padding:0.6rem; border-bottom:1px solid #e5e7eb; text-align:left; }
+    th { background:#f3f4f6; font-weight:600; }
+</style>
