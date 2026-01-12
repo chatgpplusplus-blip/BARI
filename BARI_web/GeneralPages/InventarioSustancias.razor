@@ -13,12 +13,69 @@
 
 <section class="page-card" style="margin-top:1.5rem;">
     <h3>Guía base (reactivos químicos)</h3>
-    <ul class="guide-list">
-        <li><strong>Reactivo Químico</strong> → Ácido, Base, Sal, Solvente, Reactivos Preparados</li>
-    </ul>
+    <details open class="guide-block">
+        <summary>Reactivo Químico</summary>
+        <ul class="guide-list">
+            <li>Ácido</li>
+            <li>Base</li>
+            <li>Sal</li>
+            <li>Solvente</li>
+            <li>Reactivos Preparados</li>
+        </ul>
+    </details>
+</section>
+
+<section class="page-card" style="margin-top:1.5rem;">
+    <h3>Tabla de sustancias (ejemplo)</h3>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Sustancia</th>
+                    <th>CAS</th>
+                    <th>Clasificación</th>
+                    <th>Pictograma</th>
+                    <th>Ubicación</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>SUS-001</td>
+                    <td>[NombreReactivo] Corrosivo</td>
+                    <td>64-19-7</td>
+                    <td>Corrosivo</td>
+                    <td>GHS05</td>
+                    <td>Área Q1 · Estante A</td>
+                </tr>
+                <tr>
+                    <td>SUS-002</td>
+                    <td>[NombreReactivo2] Tóxico</td>
+                    <td>7664-93-9</td>
+                    <td>Tóxico</td>
+                    <td>GHS06</td>
+                    <td>Área Q2 · Estante B</td>
+                </tr>
+                <tr>
+                    <td>SUS-003</td>
+                    <td>[NombreReactivo3] Irritante</td>
+                    <td>56-81-5</td>
+                    <td>Irritante</td>
+                    <td>GHS07</td>
+                    <td>Área Q3 · Estante C</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
 </section>
 
 <style>
-    .guide-list { margin:0; padding-left:1.2rem; color:#374151; }
-    .guide-list li { margin:0.5rem 0; }
+    .guide-block { margin:0.5rem 0; }
+    .guide-block summary { cursor:pointer; font-weight:600; color:#0b2a68; }
+    .guide-list { margin:0.4rem 0 0; padding-left:1.2rem; color:#374151; }
+    .guide-list li { margin:0.35rem 0; }
+    .table-wrap { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; background:#fff; }
+    th, td { padding:0.6rem; border-bottom:1px solid #e5e7eb; text-align:left; }
+    th { background:#f3f4f6; font-weight:600; }
 </style>
