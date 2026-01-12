@@ -4,6 +4,16 @@
 @* Precalcular áreas visibles en esta render *@
 @{ var currentAreas = _byArea.Where(kv => IsAreaInCurrentPlanta(kv.Key)).ToList(); }
 
+<section class="page-card" style="margin-bottom:1.5rem;">
+    <h2>Áreas del Laboratorio</h2>
+    <p>
+        Aquí se mostrará el plano del laboratorio, con sus áreas agrupadas por polígonos
+        y el detalle de cada zona. Este módulo servirá para ubicar inventarios y
+        documentación en el mapa.
+    </p>
+    <LaboratorioSelector />
+</section>
+
 <div class="areas-wrap">
     <div class="toolbar">
         <h2 class="text-2xl" style="margin:0">Mapa del Laboratorio</h2>
