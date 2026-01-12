@@ -1,0 +1,91 @@
+﻿@page "/documentacion/instituciones/pictogramas"
+
+<PageTitle>Pictogramas institucionales</PageTitle>
+
+<section class="page-card">
+    <h2>Pictogramas (GHS)</h2>
+    <p>Listado general de pictogramas institucionales y cuántas sustancias los utilizan.</p>
+    <LaboratorioSelector />
+</section>
+
+<section class="page-card" style="margin-top:1.5rem;">
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Pictograma</th>
+                    <th>Descripción</th>
+                    <th>Uso en sustancias</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in pictogramas)
+                {
+                    <tr>
+                        <td>
+                            <NavLink href="@($"/documentacion/instituciones/pictogramas/{item.GhsId}")">
+                                <img class="pictogram-icon" src="@item.IconUrl" alt="@item.Descripcion" />
+                            </NavLink>
+                        </td>
+                        <td>@item.Descripcion</td>
+                        <td>@item.UsoCount</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(loadError))
+    {
+        <p class="error-note">No se pudo cargar pictogramas: @loadError</p>
+    }
+</section>
+
+@code {
+    [Inject] private NpgsqlDataSource DataSource { get; set; } = default!;
+
+    private readonly List<PictogramaRow> pictogramas = new();
+    private string? loadError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+                SELECT g.ghs_id, g.descripcion, g.icon_url,
+                       COALESCE(COUNT(sp.sustancia_id), 0) AS uso_count
+                FROM ghs_pictogramas g
+                LEFT JOIN sustancias_pictogramas sp ON sp.ghs_id = g.ghs_id
+                GROUP BY g.ghs_id, g.descripcion, g.icon_url
+                ORDER BY g.ghs_id
+                ";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                pictogramas.Add(new PictogramaRow(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.IsDBNull(2) ? "" : reader.GetString(2),
+                    reader.GetInt64(3)
+                ));
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+    }
+
+    private sealed record PictogramaRow(string GhsId, string Descripcion, string IconUrl, long UsoCount);
+}
+
+<style>
+    .table-wrap { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; background:#fff; }
+    th, td { padding:0.6rem; border-bottom:1px solid #e5e7eb; text-align:left; }
+    th { background:#f3f4f6; font-weight:600; }
+    .pictogram-icon { width:36px; height:36px; object-fit:contain; }
+    .error-note { color:#b91c1c; margin-top:0.75rem; }
+</style>
