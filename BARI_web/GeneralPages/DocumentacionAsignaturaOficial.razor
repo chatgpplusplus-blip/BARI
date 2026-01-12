@@ -11,58 +11,6 @@
     <LaboratorioSelector />
 </section>
 
-<section class="page-card" style="margin-top:1.5rem;">
-    <h3>Subcategorías oficiales</h3>
-    <details open class="guide-block">
-        <summary>Normativas disponibles</summary>
-        <ul class="guide-list">
-            <li>Pictogramas (GHS)</li>
-            <li>Consejos de prudencia (P-codes)</li>
-            <li>Frases de peligro (H-codes)</li>
-            <li>Catálogo CAS</li>
-        </ul>
-    </details>
-    <div class="table-wrap">
-        <table>
-            <thead>
-                <tr>
-                    <th>Normativa</th>
-                    <th>Descripción</th>
-                    <th>Ítems asociados</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>GHS</td>
-                    <td>Pictogramas de seguridad</td>
-                    <td>9 pictogramas</td>
-                </tr>
-                <tr>
-                    <td>P-Codes</td>
-                    <td>Consejos de prudencia</td>
-                    <td>Catálogo oficial</td>
-                </tr>
-                <tr>
-                    <td>H-Codes</td>
-                    <td>Frases de peligro</td>
-                    <td>Catálogo oficial</td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
-</section>
-
 @code {
     [Parameter] public string Asignatura { get; set; } = "";
 }
-
-<style>
-    .guide-block { margin:0.75rem 0; }
-    .guide-block summary { cursor:pointer; font-weight:600; color:#0b2a68; }
-    .guide-list { margin:0.4rem 0 0; padding-left:1.2rem; color:#374151; }
-    .guide-list li { margin:0.35rem 0; }
-    .table-wrap { overflow-x:auto; }
-    table { width:100%; border-collapse:collapse; background:#fff; }
-    th, td { padding:0.6rem; border-bottom:1px solid #e5e7eb; text-align:left; }
-    th { background:#f3f4f6; font-weight:600; }
-</style>

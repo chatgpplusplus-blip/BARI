@@ -11,57 +11,6 @@
     <LaboratorioSelector />
 </section>
 
-<section class="page-card" style="margin-top:1.5rem;">
-    <h3>Subcategorías internas</h3>
-    <details open class="guide-block">
-        <summary>Documentos internos</summary>
-        <ul class="guide-list">
-            <li>Manuales</li>
-            <li>Procedimientos</li>
-            <li>Protocolos internos</li>
-        </ul>
-    </details>
-    <div class="table-wrap">
-        <table>
-            <thead>
-                <tr>
-                    <th>Documento</th>
-                    <th>Tipo</th>
-                    <th>Estado</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>Manual de seguridad UPSA</td>
-                    <td>Manual</td>
-                    <td>Vigente</td>
-                </tr>
-                <tr>
-                    <td>Procedimiento de residuos</td>
-                    <td>Procedimiento</td>
-                    <td>Revisión anual</td>
-                </tr>
-                <tr>
-                    <td>Reglamento interno</td>
-                    <td>Protocolo</td>
-                    <td>Vigente</td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
-</section>
-
 @code {
     [Parameter] public string Asignatura { get; set; } = "";
 }
-
-<style>
-    .guide-block { margin:0.75rem 0; }
-    .guide-block summary { cursor:pointer; font-weight:600; color:#0b2a68; }
-    .guide-list { margin:0.4rem 0 0; padding-left:1.2rem; color:#374151; }
-    .guide-list li { margin:0.35rem 0; }
-    .table-wrap { overflow-x:auto; }
-    table { width:100%; border-collapse:collapse; background:#fff; }
-    th, td { padding:0.6rem; border-bottom:1px solid #e5e7eb; text-align:left; }
-    th { background:#f3f4f6; font-weight:600; }
-</style>
