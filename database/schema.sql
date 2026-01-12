@@ -1,0 +1,364 @@
+-- Reset completo del esquema
+DROP SCHEMA public CASCADE;
+CREATE SCHEMA public;
+
+GRANT ALL ON SCHEMA public TO postgres;
+GRANT ALL ON SCHEMA public TO public;
+
+-- ==============================
+-- CATÁLOGOS BÁSICOS
+-- ==============================
+CREATE TABLE categorias (
+  categoria_id varchar PRIMARY KEY,
+  nombre text NOT NULL UNIQUE
+);
+
+CREATE TABLE subcategorias (
+  subcategoria_id varchar PRIMARY KEY,
+  categoria_id varchar NOT NULL REFERENCES categorias(categoria_id),
+  nombre text NOT NULL,
+  UNIQUE (categoria_id, nombre)
+);
+
+CREATE TABLE marcas (
+  marca_id varchar PRIMARY KEY,
+  nombre text NOT NULL UNIQUE
+);
+
+CREATE TABLE unidades (
+  unidad_id varchar PRIMARY KEY,
+  nombre text NOT NULL,
+  simbolo text NOT NULL,
+  UNIQUE (nombre, simbolo)
+);
+
+CREATE TABLE condiciones (
+  condicion_id varchar PRIMARY KEY,
+  nombre text NOT NULL UNIQUE
+);
+
+CREATE TABLE estados_activo (
+  estado_id varchar PRIMARY KEY,
+  nombre text NOT NULL
+);
+
+CREATE TABLE usos (
+  uso_id varchar PRIMARY KEY,
+  nombre text NOT NULL,
+  nota_seguridad text
+);
+
+-- ==============================
+-- ASIGNATURAS Y EXPERIENCIAS
+-- ==============================
+CREATE TABLE asignaturas (
+  asignatura_id varchar PRIMARY KEY,
+  nombre text NOT NULL,
+  codigo_clase text NOT NULL UNIQUE,
+  descripcion text
+);
+
+CREATE TABLE experiencias_clases (
+  experiencia_id varchar PRIMARY KEY,
+  asignatura_id varchar NOT NULL REFERENCES asignaturas(asignatura_id),
+  nombre text NOT NULL,
+  materiales_usados text,
+  equipos_usados text,
+  procedimientos text,
+  tiempo_estimado_min integer,
+  observaciones text,
+  precauciones text
+);
+
+INSERT INTO asignaturas (asignatura_id, nombre, codigo_clase, descripcion)
+VALUES ('quimica-general', 'Química General', 'QUI-101', 'Asignatura base de laboratorio de química.');
+
+-- ==============================
+-- SEGURIDAD QUÍMICA
+-- ==============================
+CREATE TABLE h_codes (
+  h_id varchar PRIMARY KEY,
+  descripcion text NOT NULL UNIQUE,
+  grupo text,
+  nota text
+);
+
+CREATE TABLE p_codes (
+  p_id varchar PRIMARY KEY,
+  descripcion text NOT NULL UNIQUE,
+  grupo text,
+  nota text
+);
+
+CREATE TABLE ghs_pictogramas (
+  ghs_id varchar PRIMARY KEY,
+  descripcion text NOT NULL,
+  icon_url text,
+  detalle text
+);
+
+CREATE TABLE cas_catalogo (
+  cas_id varchar PRIMARY KEY,
+  nombre text NOT NULL,
+  categoria text,
+  notas text
+);
+
+-- ==============================
+-- ESPACIO FÍSICO
+-- ==============================
+CREATE TABLE plantas (
+  planta_id text PRIMARY KEY,
+  nombre text NOT NULL
+);
+
+CREATE TABLE canvas_lab (
+  canvas_id varchar PRIMARY KEY,
+  nombre text NOT NULL,
+  ancho_m numeric NOT NULL,
+  alto_m numeric NOT NULL,
+  margen_m numeric NOT NULL,
+  anotaciones text
+);
+
+CREATE TABLE areas (
+  area_id varchar PRIMARY KEY,
+  nombre_areas text NOT NULL UNIQUE,
+  altura_m numeric,
+  area_total_m2 numeric,
+  anotaciones_del_area text,
+  planta_id text REFERENCES plantas(planta_id),
+  canvas_id varchar REFERENCES canvas_lab(canvas_id)
+);
+
+CREATE TABLE poligonos (
+  poly_id varchar PRIMARY KEY,
+  canvas_id varchar NOT NULL REFERENCES canvas_lab(canvas_id),
+  area_id varchar REFERENCES areas(area_id),
+  etiqueta text,
+  color_hex text,
+  z_order integer NOT NULL DEFAULT 0
+);
+
+CREATE TABLE poligonos_puntos (
+  punto_id bigserial PRIMARY KEY,
+  poly_id varchar NOT NULL REFERENCES poligonos(poly_id) ON DELETE CASCADE,
+  orden integer NOT NULL,
+  x_m numeric NOT NULL,
+  y_m numeric NOT NULL,
+  UNIQUE (poly_id, orden)
+);
+
+CREATE TABLE puertas (
+  puerta_id varchar PRIMARY KEY,
+  canvas_id varchar NOT NULL REFERENCES canvas_lab(canvas_id),
+  area_a varchar REFERENCES areas(area_id),
+  area_b varchar REFERENCES areas(area_id),
+  x1_m numeric NOT NULL,
+  y1_m numeric NOT NULL,
+  x2_m numeric NOT NULL,
+  y2_m numeric NOT NULL,
+  grosor_m numeric NOT NULL,
+  color_hex text NOT NULL,
+  nota text
+);
+
+CREATE TABLE ventanas (
+  ventana_id varchar PRIMARY KEY,
+  canvas_id varchar NOT NULL REFERENCES canvas_lab(canvas_id),
+  area_a varchar REFERENCES areas(area_id),
+  area_b varchar REFERENCES areas(area_id),
+  x1_m numeric NOT NULL,
+  y1_m numeric NOT NULL,
+  x2_m numeric NOT NULL,
+  y2_m numeric NOT NULL,
+  grosor_m numeric NOT NULL,
+  color_hex text NOT NULL,
+  nota text
+);
+
+CREATE TABLE mesones (
+  meson_id varchar PRIMARY KEY,
+  area_id varchar NOT NULL REFERENCES areas(area_id),
+  nombre_meson text NOT NULL,
+  niveles_totales integer,
+  ancho_cm numeric,
+  profundidad_cm numeric,
+  largo_cm numeric,
+  UNIQUE (area_id, nombre_meson)
+);
+
+-- ==============================
+-- INSTALACIONES Y EQUIPOS
+-- ==============================
+CREATE TABLE instalaciones_tipo (
+  tipo_id varchar PRIMARY KEY,
+  nombre text NOT NULL,
+  notas text
+);
+
+CREATE TABLE instalaciones (
+  instalacion_id varchar PRIMARY KEY,
+  tipo_id varchar REFERENCES instalaciones_tipo(tipo_id),
+  nombre text NOT NULL,
+  estado_id varchar REFERENCES estados_activo(estado_id),
+  area_id varchar REFERENCES areas(area_id),
+  meson_id varchar REFERENCES mesones(meson_id),
+  nivel integer,
+  posicion text,
+  canvas_id varchar REFERENCES canvas_lab(canvas_id),
+  poly_id varchar REFERENCES poligonos(poly_id),
+  requiere_mantenimiento boolean NOT NULL,
+  notas text
+);
+
+CREATE TABLE modelos_equipo (
+  modelo_id varchar PRIMARY KEY,
+  marca_id varchar REFERENCES marcas(marca_id),
+  subcategoria_id varchar REFERENCES subcategorias(subcategoria_id),
+  nombre_modelo text NOT NULL,
+  es_calibrable boolean NOT NULL,
+  manual_url text,
+  notas text
+);
+
+CREATE TABLE equipos (
+  equipo_id varchar PRIMARY KEY,
+  modelo_id varchar REFERENCES modelos_equipo(modelo_id),
+  serie text,
+  estado_id varchar REFERENCES estados_activo(estado_id),
+  area_id varchar REFERENCES areas(area_id),
+  meson_id varchar REFERENCES mesones(meson_id),
+  nivel integer,
+  posicion text,
+  canvas_id varchar REFERENCES canvas_lab(canvas_id),
+  poly_id varchar REFERENCES poligonos(poly_id),
+  fecha_compra date,
+  garantia_hasta date,
+  requiere_calibracion boolean NOT NULL,
+  observaciones text
+);
+
+CREATE TABLE mant_eventos (
+  mant_id varchar PRIMARY KEY,
+  equipo_id varchar NOT NULL REFERENCES equipos(equipo_id),
+  tipo text NOT NULL,
+  fecha date NOT NULL,
+  descripcion text,
+  proveedor text,
+  costo numeric,
+  adjunto_url text
+);
+
+CREATE TABLE calibraciones (
+  cal_id varchar PRIMARY KEY,
+  equipo_id varchar NOT NULL REFERENCES equipos(equipo_id),
+  fecha date NOT NULL,
+  resultado text,
+  proxima_fecha date,
+  certificado_url text,
+  proveedor text,
+  costo numeric,
+  notas text
+);
+
+-- ==============================
+-- INSTRUMENTOS EN STOCK
+-- ==============================
+CREATE TABLE instrumentos_modelo (
+  modelo_id varchar PRIMARY KEY,
+  nombre_generico text NOT NULL,
+  capacidad_num numeric,
+  unidad_id varchar REFERENCES unidades(unidad_id),
+  material text,
+  subcategoria_id varchar REFERENCES subcategorias(subcategoria_id),
+  notas text
+);
+
+CREATE TABLE instrumentos_stock (
+  stock_id varchar PRIMARY KEY,
+  modelo_id varchar NOT NULL REFERENCES instrumentos_modelo(modelo_id),
+  marca_id varchar REFERENCES marcas(marca_id),
+  estado_id varchar REFERENCES estados_activo(estado_id),
+  cantidad integer NOT NULL,
+  area_id varchar REFERENCES areas(area_id),
+  meson_id varchar REFERENCES mesones(meson_id),
+  nivel integer,
+  posicion text,
+  canvas_id varchar REFERENCES canvas_lab(canvas_id),
+  poly_id varchar REFERENCES poligonos(poly_id),
+  observaciones text
+);
+
+-- ==============================
+-- SUSTANCIAS
+-- ==============================
+CREATE TABLE sustancias (
+  sustancia_id varchar PRIMARY KEY,
+  nombre_comercial text,
+  nombre_quimico text,
+  cas varchar,
+  forma_fisica text,
+  sustancia_controlada boolean,
+  metodo_cuantificacion_preferido text,
+  subcategoria_id varchar REFERENCES subcategorias(subcategoria_id),
+  observaciones text
+);
+
+CREATE TABLE sustancias_h (
+  sustancia_id varchar NOT NULL REFERENCES sustancias(sustancia_id),
+  h_id varchar NOT NULL REFERENCES h_codes(h_id),
+  PRIMARY KEY (sustancia_id, h_id)
+);
+
+CREATE TABLE sustancias_p (
+  sustancia_id varchar NOT NULL REFERENCES sustancias(sustancia_id),
+  p_id varchar NOT NULL REFERENCES p_codes(p_id),
+  PRIMARY KEY (sustancia_id, p_id)
+);
+
+CREATE TABLE sustancias_pictogramas (
+  sustancia_id varchar NOT NULL REFERENCES sustancias(sustancia_id),
+  ghs_id varchar NOT NULL REFERENCES ghs_pictogramas(ghs_id),
+  PRIMARY KEY (sustancia_id, ghs_id)
+);
+
+CREATE TABLE sustancias_usos (
+  sustancia_id varchar NOT NULL REFERENCES sustancias(sustancia_id),
+  uso_id varchar NOT NULL REFERENCES usos(uso_id),
+  PRIMARY KEY (sustancia_id, uso_id)
+);
+
+CREATE TABLE contenedores (
+  cont_id varchar PRIMARY KEY,
+  sustancia_id varchar NOT NULL REFERENCES sustancias(sustancia_id),
+  marca_id varchar REFERENCES marcas(marca_id),
+  densidad_g_ml numeric,
+  fecha_compra date,
+  proveedor text,
+  fecha_recepcion date,
+  fecha_vencimiento date,
+  masa_envase_vacio_g numeric,
+  masa_tapa_g numeric,
+  color_envase text,
+  unidad_id varchar REFERENCES unidades(unidad_id),
+  cantidad_reactivo_nominal numeric,
+  cantidad_reactivo_actual numeric,
+  fecha_apertura date,
+  condicion_id varchar REFERENCES condiciones(condicion_id),
+  observaciones text,
+  area_id varchar REFERENCES areas(area_id),
+  meson_id varchar REFERENCES mesones(meson_id),
+  nivel integer,
+  posicion text,
+  qr text
+);
+
+-- ==============================
+-- META
+-- ==============================
+CREATE TABLE bari_meta (
+  key text PRIMARY KEY,
+  val text NOT NULL,
+  at timestamp
+);

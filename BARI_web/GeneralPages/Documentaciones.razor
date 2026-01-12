@@ -1,0 +1,206 @@
+﻿@page "/documentaciones"
+
+<PageTitle>Documentaciones</PageTitle>
+
+<section class="page-card">
+    <h2>Documentaciones</h2>
+    <p>
+        En esta página se concentrará la documentación oficial del laboratorio:
+        fichas de reactivos, manuales, protocolos y formularios.
+    </p>
+    <LaboratorioSelector />
+</section>
+
+<section class="page-card" style="margin-top:1.5rem;">
+    <h3>Selecciona el tipo de documentación (Laboratorio de Química)</h3>
+    <p class="section-intro">
+        Elige una de las tres categorías principales para la asignatura de química.
+    </p>
+    <div class="type-grid">
+        <article class="type-item">
+            <h4>Documentación para asignaturas</h4>
+            <p>Guías de práctica, planificaciones y material académico.</p>
+            <NavLink class="btn-link" href="/documentaciones#asignaturas">Ver asignaturas</NavLink>
+        </article>
+        <article class="type-item">
+            <h4>Documentación de instituciones</h4>
+            <p>Normativas externas: IUPAC, GHS, consejos de prudencia y peligros.</p>
+            <NavLink class="btn-link" href="/documentaciones#instituciones">Ver instituciones</NavLink>
+        </article>
+        <article class="type-item">
+            <h4>Documentación del laboratorio (UPSA)</h4>
+            <p>Manuales internos, procedimientos y reglamentos del laboratorio.</p>
+            <NavLink class="btn-link" href="/documentaciones#upsa">Ver UPSA</NavLink>
+        </article>
+    </div>
+</section>
+
+<section id="asignaturas" class="page-card" style="margin-top:1.5rem;">
+    <h3>Documentación para asignaturas</h3>
+    <p class="section-intro">
+        Se listan las asignaturas disponibles. Cada una enlaza a su documentación de laboratorio.
+    </p>
+    @if (!string.IsNullOrWhiteSpace(loadError))
+    {
+        <p class="error-note">No se pudo cargar asignaturas desde la base de datos: @loadError</p>
+    }
+    <div class="assign-grid">
+        @foreach (var asignatura in asignaturas)
+        {
+            <article class="assign-item" @key="asignatura.Id">
+                <div>
+                    <h4>@asignatura.Nombre</h4>
+                    <span class="muted">@asignatura.Codigo</span>
+                </div>
+                <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/laboratorios")">
+                    Ver documentación
+                </NavLink>
+            </article>
+        }
+    </div>
+</section>
+
+<section id="instituciones" class="page-card" style="margin-top:1.5rem;">
+    <h3>Documentación de instituciones</h3>
+    <p class="section-intro">
+        Normativas y referencias externas para cada asignatura: pictogramas, consejos de prudencia,
+        peligros, CAS y otras guías oficiales.
+    </p>
+    <div class="assign-grid">
+        @foreach (var asignatura in asignaturas)
+        {
+            <article class="assign-item" @key="asignatura.Id">
+                <div>
+                    <h4>@asignatura.Nombre</h4>
+                    <span class="muted">@asignatura.Codigo</span>
+                </div>
+                <div class="link-stack">
+                    <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/oficial")">Ver resumen</NavLink>
+                    <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/oficial/pictogramas")">Pictogramas</NavLink>
+                    <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/oficial/consejos")">Consejos de prudencia</NavLink>
+                    <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/oficial/peligros")">Peligros</NavLink>
+                    <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/oficial/cas")">CAS</NavLink>
+                </div>
+            </article>
+        }
+    </div>
+</section>
+
+<section id="upsa" class="page-card" style="margin-top:1.5rem;">
+    <h3>Documentación del laboratorio (UPSA)</h3>
+    <p class="section-intro">
+        Manuales, procedimientos y reglamentos internos por asignatura.
+    </p>
+    <div class="assign-grid">
+        @foreach (var asignatura in asignaturas)
+        {
+            <article class="assign-item" @key="asignatura.Id">
+                <div>
+                    <h4>@asignatura.Nombre</h4>
+                    <span class="muted">@asignatura.Codigo</span>
+                </div>
+                <div class="link-stack">
+                    <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/upsa")">Ver resumen</NavLink>
+                    <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/upsa/manuales")">Manuales</NavLink>
+                    <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/upsa/procedimientos")">Procedimientos</NavLink>
+                </div>
+            </article>
+        }
+    </div>
+</section>
+
+@code {
+    [Inject] private PgCrud Crud { get; set; } = default!;
+
+    private readonly List<AsignaturaView> asignaturas = new();
+    private string? loadError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            Crud.UseSheet("asignaturas");
+            var rows = await Crud.ReadAllAsync();
+            asignaturas.Clear();
+
+            foreach (var row in rows)
+            {
+                var id = row.GetValueOrDefault("asignatura_id") ?? "";
+                var nombre = row.GetValueOrDefault("nombre") ?? "";
+                var codigo = row.GetValueOrDefault("codigo_clase") ?? "";
+                var slug = Slugify(!string.IsNullOrWhiteSpace(codigo) ? codigo : nombre);
+
+                if (!string.IsNullOrWhiteSpace(id) && !string.IsNullOrWhiteSpace(nombre))
+                {
+                    asignaturas.Add(new AsignaturaView(id, nombre, codigo, slug));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+
+        if (asignaturas.Count == 0)
+        {
+            asignaturas.Add(new AsignaturaView("quimica-general", "Química General", "QUI-101", "quimica-general"));
+        }
+    }
+
+    private static string Slugify(string value)
+    {
+        var lower = value.ToLowerInvariant();
+        var normalized = System.Text.RegularExpressions.Regex.Replace(lower, @"[^a-z0-9]+", "-");
+        return normalized.Trim('-');
+    }
+
+    private sealed record AsignaturaView(string Id, string Nombre, string Codigo, string Slug);
+}
+
+<style>
+    .section-intro { color:#4b5563; margin-bottom:0.75rem; }
+    .type-grid {
+        display:grid;
+        gap:1rem;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    }
+    .type-item {
+        border:1px solid #e5e7eb;
+        border-radius:0.8rem;
+        padding:0.9rem 1rem;
+        background:#fff;
+        display:flex;
+        flex-direction:column;
+        gap:0.6rem;
+    }
+    .type-item h4 { margin:0 0 0.2rem; color:#0b2a68; }
+    .error-note { color:#b91c1c; font-size:0.9rem; margin:0 0 0.75rem; }
+    .assign-grid {
+        display:grid;
+        gap:1rem;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    }
+    .assign-item {
+        border:1px solid #e5e7eb;
+        border-radius:0.8rem;
+        padding:0.9rem 1rem;
+        background:#f9fafb;
+        display:flex;
+        flex-direction:column;
+        gap:0.6rem;
+    }
+    .assign-item h4 { margin:0 0 0.2rem; color:#0b2a68; }
+    .muted { color:#6b7280; font-size:0.85rem; }
+    .btn-link {
+        display:inline-flex;
+        width:max-content;
+        padding:0.35rem 0.6rem;
+        border-radius:0.5rem;
+        background:#0b2a68;
+        color:#fff;
+        text-decoration:none;
+        font-size:0.85rem;
+    }
+    .btn-link:hover { background:#143a84; }
+    .link-stack { display:flex; flex-direction:column; gap:0.35rem; }
+</style>
