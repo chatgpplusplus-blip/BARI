@@ -14,14 +14,88 @@
 
 <section class="page-card" style="margin-top:1.5rem;">
     <h3>Guía de categorías (base para materiales)</h3>
-    <ul class="guide-list">
-        <li><strong>Material de Vidrio</strong> → Volumétrico, De Contención, De Calentamiento, De Separación, De Manipulación</li>
-        <li><strong>Material de Montaje/Soporte</strong> → Estructuras de Soporte, Elementos de Sujeción, Accesorios de montaje térmico, Soportes para Contenedores</li>
-        <li><strong>Material Consumible</strong> → De Protección/Bioseguridad, De un solo uso, Reutilizable, Papelería de Laboratorio, Utensilios Auxiliares</li>
-    </ul>
+    <details open class="guide-block">
+        <summary>Material de Vidrio</summary>
+        <ul class="guide-list">
+            <li>Volumétrico</li>
+            <li>De Contención</li>
+            <li>De Calentamiento</li>
+            <li>De Separación</li>
+            <li>De Manipulación</li>
+        </ul>
+    </details>
+    <details class="guide-block">
+        <summary>Material de Montaje/Soporte</summary>
+        <ul class="guide-list">
+            <li>Estructuras de Soporte</li>
+            <li>Elementos de Sujeción</li>
+            <li>Accesorios de montaje térmico</li>
+            <li>Soportes para Contenedores</li>
+        </ul>
+    </details>
+    <details class="guide-block">
+        <summary>Material Consumible</summary>
+        <ul class="guide-list">
+            <li>De Protección/Bioseguridad</li>
+            <li>De un solo uso</li>
+            <li>Reutilizable</li>
+            <li>Papelería de Laboratorio</li>
+            <li>Utensilios Auxiliares</li>
+        </ul>
+    </details>
+</section>
+
+<section class="page-card" style="margin-top:1.5rem;">
+    <h3>Tabla de materiales (ejemplo)</h3>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Nombre</th>
+                    <th>Categoría</th>
+                    <th>Subcategoría</th>
+                    <th>Estado</th>
+                    <th>Ubicación</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>MAT-001</td>
+                    <td>Probeta 100 mL</td>
+                    <td>Material de Vidrio</td>
+                    <td>Volumétrico</td>
+                    <td>Disponible</td>
+                    <td>Área Q1 · Mesón Principal</td>
+                </tr>
+                <tr>
+                    <td>MAT-002</td>
+                    <td>Soporte universal</td>
+                    <td>Montaje/Soporte</td>
+                    <td>Estructuras de Soporte</td>
+                    <td>Disponible</td>
+                    <td>Área Q2 · Mesón Secundario</td>
+                </tr>
+                <tr>
+                    <td>MAT-003</td>
+                    <td>Guantes de nitrilo</td>
+                    <td>Material Consumible</td>
+                    <td>Protección/Bioseguridad</td>
+                    <td>Stock bajo</td>
+                    <td>Área Q3 · Almacén</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
 </section>
 
 <style>
-    .guide-list { margin:0; padding-left:1.2rem; color:#374151; }
-    .guide-list li { margin:0.5rem 0; }
+    .guide-block { margin:0.5rem 0; }
+    .guide-block summary { cursor:pointer; font-weight:600; color:#0b2a68; }
+    .guide-list { margin:0.4rem 0 0; padding-left:1.2rem; color:#374151; }
+    .guide-list li { margin:0.35rem 0; }
+    .table-wrap { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; background:#fff; }
+    th, td { padding:0.6rem; border-bottom:1px solid #e5e7eb; text-align:left; }
+    th { background:#f3f4f6; font-weight:600; }
 </style>
