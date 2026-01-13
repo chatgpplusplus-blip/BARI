@@ -58,7 +58,7 @@ else
 @code {
     [Parameter] public string? Id { get; set; }
 
-    private ReactivoDetalle? reactivo;
+    private ReactivoInfo? reactivo;
     private string? loadError;
 
     protected override async Task OnParametersSetAsync()
@@ -92,7 +92,7 @@ else
             await using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync())
             {
-                reactivo = new ReactivoDetalle
+                reactivo = new ReactivoInfo
                 {
                     Id = reader.GetString(0),
                     Nombre = reader.GetString(1),
@@ -115,7 +115,7 @@ else
         }
     }
 
-    private sealed class ReactivoDetalle
+    private sealed class ReactivoInfo
     {
         public string Id { get; set; } = "";
         public string Nombre { get; set; } = "";
