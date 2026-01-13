@@ -1,4 +1,7 @@
 ﻿@page "/inventario-sustancias"
+@page "/inventario-sustancias/categoria/{SubcategoriaId}"
+@using Npgsql
+@inject NpgsqlDataSource DataSource
 
 <PageTitle>Inventario de Sustancias</PageTitle>
 
@@ -12,70 +15,354 @@
 </section>
 
 <section class="page-card" style="margin-top:1.5rem;">
-    <h3>Guía base (reactivos químicos)</h3>
-    <details open class="guide-block">
-        <summary>Reactivo Químico</summary>
-        <ul class="guide-list">
-            <li>Ácido</li>
-            <li>Base</li>
-            <li>Sal</li>
-            <li>Solvente</li>
-            <li>Reactivos Preparados</li>
-        </ul>
-    </details>
+    <div class="category-header">
+        <div>
+            <h3>Guía base (reactivos químicos)</h3>
+            <p class="helper">Selecciona una subcategoría para ver los reactivos disponibles.</p>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(SubcategoriaId))
+        {
+            <NavLink class="btn-link" href="/inventario-sustancias">Ver todas las categorías</NavLink>
+        }
+    </div>
+
+    @if (categorias.Count == 0)
+    {
+        <p><em>Cargando categorías…</em></p>
+    }
+    else
+    {
+        <div class="category-grid">
+            @foreach (var categoria in categorias)
+            {
+                <div class="category-card">
+                    <div class="category-title">@categoria.Nombre</div>
+                    <ul class="category-list">
+                        @foreach (var subcategoria in categoria.Subcategorias)
+                        {
+                            <li>
+                                <NavLink href="@($"/inventario-sustancias/categoria/{subcategoria.Id}")" class="category-link">
+                                    @subcategoria.Nombre
+                                </NavLink>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            }
+        </div>
+    }
 </section>
 
 <section class="page-card" style="margin-top:1.5rem;">
-    <h3>Tabla de sustancias (ejemplo)</h3>
-    <div class="table-wrap">
-        <table>
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Sustancia</th>
-                    <th>CAS</th>
-                    <th>Clasificación</th>
-                    <th>Pictograma</th>
-                    <th>Ubicación</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>SUS-001</td>
-                    <td>[NombreReactivo] Corrosivo</td>
-                    <td>64-19-7</td>
-                    <td>Corrosivo</td>
-                    <td>GHS05</td>
-                    <td>Área Q1 · Estante A</td>
-                </tr>
-                <tr>
-                    <td>SUS-002</td>
-                    <td>[NombreReactivo2] Tóxico</td>
-                    <td>7664-93-9</td>
-                    <td>Tóxico</td>
-                    <td>GHS06</td>
-                    <td>Área Q2 · Estante B</td>
-                </tr>
-                <tr>
-                    <td>SUS-003</td>
-                    <td>[NombreReactivo3] Irritante</td>
-                    <td>56-81-5</td>
-                    <td>Irritante</td>
-                    <td>GHS07</td>
-                    <td>Área Q3 · Estante C</td>
-                </tr>
-            </tbody>
-        </table>
+    <div class="materials-header">
+        <h3>@(string.IsNullOrWhiteSpace(SubcategoriaId) ? "Reactivos disponibles" : $"Reactivos · {subcategoriaNombre ?? SubcategoriaId}")</h3>
+        @if (!string.IsNullOrWhiteSpace(SubcategoriaId))
+        {
+            <span class="badge">@sustancias.Count reactivos</span>
+        }
     </div>
+
+    @if (!string.IsNullOrWhiteSpace(loadError))
+    {
+        <p class="error-note">No se pudieron cargar reactivos: @loadError</p>
+    }
+    else if (string.IsNullOrWhiteSpace(SubcategoriaId))
+    {
+        <p class="helper">Elige una subcategoría para ver los reactivos asociados.</p>
+    }
+    else if (sustancias.Count == 0)
+    {
+        <div class="empty">
+            No hay reactivos registrados para esta subcategoría.
+        </div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Reactivo</th>
+                        <th>CAS</th>
+                        <th>Categoría</th>
+                        <th>Subcategoría</th>
+                        <th>Ubicación</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var sustancia in sustancias)
+                    {
+                        <tr>
+                            <td>@sustancia.Id</td>
+                            <td>
+                                <NavLink href="@($"/inventario-sustancias/{sustancia.Id}")">
+                                    @sustancia.Nombre
+                                </NavLink>
+                            </td>
+                            <td>@sustancia.Cas</td>
+                            <td>@sustancia.Categoria</td>
+                            <td>@sustancia.Subcategoria</td>
+                            <td>@sustancia.Ubicacion</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
 </section>
 
+@code {
+    [Parameter] public string? SubcategoriaId { get; set; }
+
+    private readonly List<CategoriaRow> categorias = new();
+    private readonly List<SustanciaRow> sustancias = new();
+    private string? subcategoriaNombre;
+    private string? loadError;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        loadError = null;
+        await LoadCategoriasAsync();
+        await LoadSustanciasAsync();
+    }
+
+    private async Task LoadCategoriasAsync()
+    {
+        if (categorias.Count > 0) return;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+                SELECT c.categoria_id, c.nombre,
+                       s.subcategoria_id, s.nombre
+                FROM categorias c
+                LEFT JOIN subcategorias s ON s.categoria_id = c.categoria_id
+                ORDER BY c.nombre, s.nombre
+                ";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            var map = new Dictionary<string, CategoriaRow>();
+            while (await reader.ReadAsync())
+            {
+                var categoriaId = reader.GetString(0);
+                if (!map.TryGetValue(categoriaId, out var categoria))
+                {
+                    categoria = new CategoriaRow(categoriaId, reader.GetString(1));
+                    map.Add(categoriaId, categoria);
+                    categorias.Add(categoria);
+                }
+
+                if (!reader.IsDBNull(2))
+                {
+                    categoria.Subcategorias.Add(new SubcategoriaRow(
+                        reader.GetString(2),
+                        reader.GetString(3)
+                    ));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+    }
+
+    private async Task LoadSustanciasAsync()
+    {
+        sustancias.Clear();
+        subcategoriaNombre = null;
+
+        if (string.IsNullOrWhiteSpace(SubcategoriaId))
+        {
+            return;
+        }
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sqlSubcategoria = @"
+                SELECT nombre
+                FROM subcategorias
+                WHERE subcategoria_id = @subcategoria
+                ";
+            await using (var cmdName = new NpgsqlCommand(sqlSubcategoria, conn))
+            {
+                cmdName.Parameters.AddWithValue("subcategoria", SubcategoriaId);
+                var nombre = await cmdName.ExecuteScalarAsync();
+                subcategoriaNombre = nombre?.ToString();
+            }
+
+            const string sql = @"
+                SELECT s.sustancia_id,
+                       COALESCE(NULLIF(s.nombre_comercial, ''),
+                                NULLIF(s.nombre_quimico, ''),
+                                s.sustancia_id) AS nombre,
+                       COALESCE(s.cas, '') AS cas,
+                       COALESCE(c.nombre, '') AS categoria,
+                       COALESCE(sc.nombre, '') AS subcategoria,
+                       COALESCE(a.nombre_areas, '') AS area,
+                       COALESCE(m.nombre_meson, '') AS meson,
+                       COALESCE(cn.posicion, '') AS posicion
+                FROM sustancias s
+                LEFT JOIN subcategorias sc ON sc.subcategoria_id = s.subcategoria_id
+                LEFT JOIN categorias c ON c.categoria_id = sc.categoria_id
+                LEFT JOIN contenedores cn ON cn.sustancia_id = s.sustancia_id
+                LEFT JOIN areas a ON a.area_id = cn.area_id
+                LEFT JOIN mesones m ON m.meson_id = cn.meson_id
+                WHERE s.subcategoria_id = @subcategoria
+                ORDER BY nombre, s.sustancia_id
+                ";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("subcategoria", SubcategoriaId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                sustancias.Add(new SustanciaRow(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetString(3),
+                    reader.GetString(4),
+                    BuildUbicacion(reader.GetString(5), reader.GetString(6), reader.GetString(7))
+                ));
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+    }
+
+    private static string BuildUbicacion(string area, string meson, string posicion)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(area)) parts.Add(area);
+        if (!string.IsNullOrWhiteSpace(meson)) parts.Add(meson);
+        if (!string.IsNullOrWhiteSpace(posicion)) parts.Add(posicion);
+        return parts.Count == 0 ? "Sin ubicación" : string.Join(" · ", parts);
+    }
+
+    private sealed class CategoriaRow
+    {
+        public CategoriaRow(string id, string nombre)
+        {
+            Id = id;
+            Nombre = nombre;
+        }
+
+        public string Id { get; }
+        public string Nombre { get; }
+        public List<SubcategoriaRow> Subcategorias { get; } = new();
+    }
+
+    private sealed record SubcategoriaRow(string Id, string Nombre);
+
+    private sealed record SustanciaRow(
+        string Id,
+        string Nombre,
+        string Cas,
+        string Categoria,
+        string Subcategoria,
+        string Ubicacion);
+}
+
 <style>
-    .guide-block { margin:0.5rem 0; }
-    .guide-block summary { cursor:pointer; font-weight:600; color:#0b2a68; }
-    .guide-list { margin:0.4rem 0 0; padding-left:1.2rem; color:#374151; }
-    .guide-list li { margin:0.35rem 0; }
+    .category-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+    }
+
+    .helper {
+        margin: .3rem 0 0;
+        color: #475569;
+        font-size: .95rem;
+    }
+
+    .btn-link {
+        color: #1d4ed8;
+        text-decoration: none;
+        font-weight: 600;
+    }
+
+    .btn-link:hover {
+        text-decoration: underline;
+    }
+
+    .category-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 1rem;
+        margin-top: 1rem;
+    }
+
+    .category-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+        padding: 1rem;
+        box-shadow: 0 6px 14px rgba(15, 23, 42, 0.04);
+    }
+
+    .category-title {
+        font-weight: 700;
+        color: #0f172a;
+        margin-bottom: .5rem;
+    }
+
+    .category-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        gap: .35rem;
+    }
+
+    .category-link {
+        display: inline-flex;
+        padding: .35rem .6rem;
+        border-radius: 999px;
+        background: #f1f5f9;
+        color: #0f172a;
+        text-decoration: none;
+        font-size: .9rem;
+    }
+
+    .category-link.active,
+    .category-link:hover {
+        background: #dbeafe;
+        color: #1d4ed8;
+    }
+
+    .materials-header {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+    }
+
+    .badge {
+        background: #e2e8f0;
+        color: #0f172a;
+        padding: .2rem .55rem;
+        border-radius: 999px;
+        font-size: .85rem;
+        font-weight: 600;
+    }
+
+    .empty {
+        padding: .85rem 1rem;
+        border-radius: 10px;
+        background: #fef9c3;
+        border: 1px solid #fde68a;
+        color: #854d0e;
+    }
+
     .table-wrap { overflow-x:auto; }
     table { width:100%; border-collapse:collapse; background:#fff; }
     th, td { padding:0.6rem; border-bottom:1px solid #e5e7eb; text-align:left; }
     th { background:#f3f4f6; font-weight:600; }
+    .error-note { color:#b91c1c; margin-top:0.75rem; }
 </style>
