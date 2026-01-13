@@ -750,8 +750,8 @@ namespace BARI_web.Features.Espacios.Pages
             var desiredX = propAbsX;
             var desiredY = propAbsY;
 
-            // 2) Solo elegimos el mejor padre para “pintar” el frame, SIN clampear
-            var (best, _, _) = SoftClampToAreaUnion(_area!, desiredX, desiredY, propW, propH, _dragParent!);
+            // 2) Elegimos el mejor padre por solape (sin clampear)
+            var (best, _, _) = BestPolyByOverlap(_area!, _dragParent!, desiredX, desiredY, propW, propH);
 
             // 2.5) Clamp duro al polígono elegido para respetar paredes durante el drag
             var (clampedX, clampedY) = ClampRectIn(best, desiredX, desiredY, propW, propH);
