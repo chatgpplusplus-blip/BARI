@@ -1,38 +1,67 @@
 ﻿@page "/"
 
-<PageTitle>BARI</PageTitle>
+<PageTitle>BARI · UPSA</PageTitle>
 
-<section class="space-y-2">
-    <h1 class="mb-2">BARI - Administrador de Inventarios</h1>
-    <p class="text-muted">Seleccione una sección para comenzar.</p>
-
-    <ul class="list-group">
-        <li class="list-group-item">
-            <NavLink href="/cas">📘 Librería de CAS (Chemical Abstract Service)</NavLink>
-        </li>
-        <li class="list-group-item">
-            <NavLink href="/pictogramas">⚠️ Librería de Pictogramas</NavLink>
-        </li>
-        <li class="list-group-item">
-            <NavLink href="/hcodes">🔥 Librería de H-Codes (Frases de Peligro)</NavLink>
-        </li>
-        <li class="list-group-item">
-            <NavLink href="/pcodes">🛡️ Librería de P-Codes (Consejos de Prudencia)</NavLink>
-        </li>
-        <li class="list-group-item">
-            <NavLink href="/areas">🏷️ Áreas del Laboratorio de Química</NavLink>
-        </li>
-        <li class="list-group-item">
-            <NavLink href="/equipos">🧰 Listado de Equipos</NavLink>
-        </li>
-        <li class="list-group-item">
-            <NavLink href="/reactivos">🧪 Listado de Reactivos</NavLink>
-        </li>
-        <li class="list-group-item">
-            <NavLink href="/laboratorios">🏫 Información de Laboratorios y Experiencias</NavLink>
-        </li>
-        <li class="list-group-item">
-            <NavLink href="/bari-bot">🤖 Consulta a BARI - bot</NavLink>
-        </li>
-    </ul>
+<section class="page-card">
+    <h1>BARI - Bot de consulta e inventario</h1>
+    <p>
+        Este panel centraliza el inventario del laboratorio universitario de la UPSA,
+        comenzando por el laboratorio de química. Desde aquí podrás acceder a cada módulo
+        de áreas, materiales, equipos, sustancias y documentación.
+    </p>
 </section>
+
+<section class="page-grid">
+    <article class="page-card">
+        <h2>Áreas</h2>
+        <p>Mapa y dibujo de áreas del laboratorio con polígonos por zona.</p>
+        <NavLink class="btn-primary" href="/areas">Ir a Áreas</NavLink>
+    </article>
+
+    <article class="page-card">
+        <h2>Inventario Materiales</h2>
+        <p>Materiales de vidrio, consumibles, montaje/soporte y papelería.</p>
+        <NavLink class="btn-primary" href="/inventario-materiales">Ver Materiales</NavLink>
+    </article>
+
+    <article class="page-card">
+        <h2>Inventario Equipo</h2>
+        <p>Equipos e instrumentos con estados, ubicación y trazabilidad.</p>
+        <NavLink class="btn-primary" href="/inventario-equipo">Ver Equipo</NavLink>
+    </article>
+
+    <article class="page-card">
+        <h2>Inventario Sustancias</h2>
+        <p>Sustancias y reactivos del laboratorio con seguridad y stock.</p>
+        <NavLink class="btn-primary" href="/inventario-sustancias">Ver Sustancias</NavLink>
+    </article>
+
+    <article class="page-card">
+        <h2>Documentaciones</h2>
+        <p>Manuales, protocolos y formularios del laboratorio.</p>
+        <NavLink class="btn-primary" href="/documentaciones">Ver Documentación</NavLink>
+    </article>
+</section>
+
+<section class="page-card">
+    <h2>Laboratorio base</h2>
+    <p>Por ahora todos los módulos trabajan en el laboratorio de química.</p>
+    <LaboratorioSelector />
+</section>
+
+<style>
+    .page-grid {
+        margin-top:1.5rem;
+        display:grid;
+        gap:1.2rem;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    }
+
+    .btn-primary {
+        display:inline-flex; align-items:center; justify-content:center;
+        margin-top:0.75rem; padding:0.55rem 0.9rem; border-radius:0.6rem;
+        background:#0b2a68; color:#fff; text-decoration:none; font-weight:600;
+        box-shadow:0 8px 18px rgba(11, 42, 104, 0.2);
+    }
+    .btn-primary:hover { background:#143a84; }
+</style>

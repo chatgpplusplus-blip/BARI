@@ -18,7 +18,6 @@
 
   <ItemGroup>
     <PackageReference Include="Dapper" Version="2.1.66" />
-    <PackageReference Include="Google.Apis.Sheets.v4" Version="1.70.0.3819" />
     <PackageReference Include="Npgsql" Version="9.0.3" />
   </ItemGroup>
 

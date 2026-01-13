@@ -4,8 +4,6 @@ using System.Net.Http;
 using Microsoft.AspNetCore.Components;
 using BARI_web.Features.Seguridad_Quimica.Models; // SeedRunner, PlanRepo DTOs
 using BARI_web.General_Services.DataBaseConnection; // PgCrud
-using BARI_web.General_Services.GoogleSheets; // SheetsContext, SheetCrud
-using BARI_web.Features.Seguridad_Quimica.Models; // SheetsMirrorService
 using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -25,14 +23,6 @@ builder.Services.AddRazorPages(options =>
 });
 builder.Services.AddServerSideBlazor();
 
-// Google Sheets
-builder.Services.AddScoped(sp =>
-    SheetsContext.Create(
-        credentialsPath: builder.Configuration["GoogleSheets:CredentialsPath"]!,
-        spreadsheetId: builder.Configuration["GoogleSheets:SpreadsheetId"]!,
-        appName: builder.Configuration["GoogleSheets:ApplicationName"] ?? "BARI")
-);
-builder.Services.AddScoped<SheetCrud>();
 
 // Postgres (Supabase)
 var pgConnStr = builder.Configuration["Database:PostgresConnectionString"]!;
@@ -40,7 +30,6 @@ builder.Services.AddSingleton(sp => new NpgsqlDataSourceBuilder(pgConnStr).Build
 
 // CRUD and services
 builder.Services.AddScoped<PgCrud>();
-builder.Services.AddHostedService<SheetsMirrorService>();
 
 // Seeds
 builder.Services.AddScoped<SeedCatalogs>();

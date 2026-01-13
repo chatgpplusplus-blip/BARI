@@ -1,0 +1,87 @@
+﻿@page "/documentacion/instituciones/p-codes"
+
+<PageTitle>P-Codes</PageTitle>
+
+<section class="page-card">
+    <h2>P-Codes (Consejos de prudencia)</h2>
+    <p>Listado general de P-codes y cuántas sustancias los utilizan.</p>
+    <LaboratorioSelector />
+</section>
+
+<section class="page-card" style="margin-top:1.5rem;">
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>P-Code</th>
+                    <th>Descripción</th>
+                    <th>Uso en sustancias</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in pcodes)
+                {
+                    <tr>
+                        <td>
+                            <NavLink href="@($"/documentacion/instituciones/p-codes/{item.Code}")">@item.Code</NavLink>
+                        </td>
+                        <td>@item.Descripcion</td>
+                        <td>@item.UsoCount</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(loadError))
+    {
+        <p class="error-note">No se pudo cargar P-codes: @loadError</p>
+    }
+</section>
+
+@code {
+    [Inject] private NpgsqlDataSource DataSource { get; set; } = default!;
+
+    private readonly List<CodeRow> pcodes = new();
+    private string? loadError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+                SELECT p.p_id, p.descripcion,
+                       COALESCE(COUNT(sp.sustancia_id), 0) AS uso_count
+                FROM p_codes p
+                LEFT JOIN sustancias_p sp ON sp.p_id = p.p_id
+                GROUP BY p.p_id, p.descripcion
+                ORDER BY p.p_id
+                ";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                pcodes.Add(new CodeRow(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.GetInt64(2)
+                ));
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+    }
+
+    private sealed record CodeRow(string Code, string Descripcion, long UsoCount);
+}
+
+<style>
+    .table-wrap { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; background:#fff; }
+    th, td { padding:0.6rem; border-bottom:1px solid #e5e7eb; text-align:left; }
+    th { background:#f3f4f6; font-weight:600; }
+    .error-note { color:#b91c1c; margin-top:0.75rem; }
+</style>
