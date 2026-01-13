@@ -1,0 +1,197 @@
+﻿@page "/inventario-sustancias/{Id}"
+@using Npgsql
+@inject NpgsqlDataSource DataSource
+
+<PageTitle>@(reactivo is null ? "Reactivo" : reactivo.Nombre)</PageTitle>
+
+@if (!string.IsNullOrWhiteSpace(loadError))
+{
+    <p class="error-note">No se pudo cargar el reactivo: @loadError</p>
+}
+else if (reactivo is null)
+{
+    <p><em>Cargando…</em></p>
+}
+else
+{
+    <a class="back" href="/inventario-sustancias">← Volver al inventario</a>
+
+    <section class="reactivo-card">
+        <header>
+            <h1>@reactivo.Nombre</h1>
+            <p class="code">@reactivo.Id</p>
+        </header>
+
+        <dl class="info">
+            <div>
+                <dt>Nombre comercial</dt>
+                <dd>@(string.IsNullOrWhiteSpace(reactivo.NombreComercial) ? "—" : reactivo.NombreComercial)</dd>
+            </div>
+            <div>
+                <dt>Nombre químico</dt>
+                <dd>@(string.IsNullOrWhiteSpace(reactivo.NombreQuimico) ? "—" : reactivo.NombreQuimico)</dd>
+            </div>
+            <div>
+                <dt>CAS</dt>
+                <dd>@(string.IsNullOrWhiteSpace(reactivo.Cas) ? "—" : reactivo.Cas)</dd>
+            </div>
+            <div>
+                <dt>Forma física</dt>
+                <dd>@(string.IsNullOrWhiteSpace(reactivo.FormaFisica) ? "—" : reactivo.FormaFisica)</dd>
+            </div>
+            <div>
+                <dt>Sustancia controlada</dt>
+                <dd>@(reactivo.SustanciaControlada ? "Sí" : "No")</dd>
+            </div>
+        </dl>
+
+        @if (!string.IsNullOrWhiteSpace(reactivo.Observaciones))
+        {
+            <div class="notes">
+                <strong>Observaciones</strong>
+                <p>@reactivo.Observaciones</p>
+            </div>
+        }
+    </section>
+}
+
+@code {
+    [Parameter] public string? Id { get; set; }
+
+    private ReactivoInfo? reactivo;
+    private string? loadError;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Id))
+        {
+            loadError = "No se especificó el ID del reactivo.";
+            return;
+        }
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+                SELECT sustancia_id,
+                       COALESCE(NULLIF(nombre_comercial, ''),
+                                NULLIF(nombre_quimico, ''),
+                                sustancia_id) AS nombre,
+                       COALESCE(nombre_comercial, '') AS nombre_comercial,
+                       COALESCE(nombre_quimico, '') AS nombre_quimico,
+                       COALESCE(cas, '') AS cas,
+                       COALESCE(forma_fisica, '') AS forma_fisica,
+                       COALESCE(sustancia_controlada, false) AS sustancia_controlada,
+                       COALESCE(observaciones, '') AS observaciones
+                FROM sustancias
+                WHERE sustancia_id = @id
+                ";
+
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("id", Id);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
+            {
+                reactivo = new ReactivoInfo
+                {
+                    Id = reader.GetString(0),
+                    Nombre = reader.GetString(1),
+                    NombreComercial = reader.GetString(2),
+                    NombreQuimico = reader.GetString(3),
+                    Cas = reader.GetString(4),
+                    FormaFisica = reader.GetString(5),
+                    SustanciaControlada = reader.GetBoolean(6),
+                    Observaciones = reader.GetString(7)
+                };
+            }
+            else
+            {
+                loadError = "No se encontró el reactivo solicitado.";
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+    }
+
+    private sealed class ReactivoInfo
+    {
+        public string Id { get; set; } = "";
+        public string Nombre { get; set; } = "";
+        public string NombreComercial { get; set; } = "";
+        public string NombreQuimico { get; set; } = "";
+        public string Cas { get; set; } = "";
+        public string FormaFisica { get; set; } = "";
+        public bool SustanciaControlada { get; set; }
+        public string Observaciones { get; set; } = "";
+    }
+}
+
+<style>
+    .back {
+        display: inline-block;
+        margin: .5rem 0 1rem;
+        color: #0b5ed7;
+        text-decoration: none;
+    }
+
+    .back:hover {
+        text-decoration: underline;
+    }
+
+    .reactivo-card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 16px;
+        padding: 1.25rem 1.5rem;
+        box-shadow: 0 10px 22px rgba(15, 23, 42, 0.05);
+    }
+
+    .reactivo-card header h1 {
+        margin: 0;
+    }
+
+    .reactivo-card .code {
+        margin: .2rem 0 0;
+        color: #64748b;
+        font-weight: 600;
+    }
+
+    .info {
+        margin: 1rem 0 0;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: .75rem 1.5rem;
+    }
+
+    .info div {
+        background: #f8fafc;
+        border-radius: 12px;
+        padding: .7rem .85rem;
+    }
+
+    .info dt {
+        font-weight: 600;
+        color: #0f172a;
+    }
+
+    .info dd {
+        margin: .25rem 0 0;
+        color: #475569;
+    }
+
+    .notes {
+        margin-top: 1rem;
+        background: #f1f5f9;
+        border-radius: 12px;
+        padding: .85rem 1rem;
+        color: #334155;
+    }
+
+    .notes p {
+        margin: .4rem 0 0;
+    }
+
+    .error-note { color: #b91c1c; margin-top: 0.75rem; }
+</style>
