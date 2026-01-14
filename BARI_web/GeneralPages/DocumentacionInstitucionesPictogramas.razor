@@ -1,5 +1,8 @@
 ﻿@page "/documentacion/instituciones/pictogramas"
 @using Npgsql
+@using BARI_web.General_Services
+@inject LaboratorioState LaboratorioState
+@implements IDisposable
 
 <PageTitle>Pictogramas institucionales</PageTitle>
 
@@ -65,10 +68,28 @@
     private readonly List<PictogramaRow> pictogramas = new();
     private string? loadError;
 
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
+
     protected override async Task OnInitializedAsync()
+    {
+        await LoadPictogramasAsync();
+    }
+
+    private async void HandleLaboratorioChanged()
+    {
+        await LoadPictogramasAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadPictogramasAsync()
     {
         try
         {
+            loadError = null;
+            pictogramas.Clear();
             await using var conn = await DataSource.OpenConnectionAsync();
             const string sql = @"
                 SELECT g.ghs_id,
@@ -81,9 +102,11 @@
                 FROM ghs_pictogramas g
                 LEFT JOIN sustancias_pictogramas sp ON sp.ghs_id = g.ghs_id
                 LEFT JOIN sustancias s ON s.sustancia_id = sp.sustancia_id
+                WHERE s.laboratorio_id = @laboratorio OR s.sustancia_id IS NULL
                 ORDER BY g.ghs_id, nombre
                 ";
             await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
             await using var reader = await cmd.ExecuteReaderAsync();
             var map = new Dictionary<string, PictogramaRow>();
             while (await reader.ReadAsync())
@@ -141,6 +164,11 @@
     }
 
     private sealed record ReactivoLink(string Id, string Nombre);
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
 }
 
 <style>

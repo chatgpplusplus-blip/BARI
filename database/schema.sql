@@ -121,12 +121,18 @@ CREATE TABLE canvas_lab (
   anotaciones text
 );
 
+CREATE TABLE laboratorios (
+  laboratorio_id integer PRIMARY KEY,
+  nombre text NOT NULL UNIQUE
+);
+
 CREATE TABLE areas (
   area_id varchar PRIMARY KEY,
   nombre_areas text NOT NULL UNIQUE,
   altura_m numeric,
   area_total_m2 numeric,
   anotaciones_del_area text,
+  laboratorio_id integer NOT NULL DEFAULT 1 REFERENCES laboratorios(laboratorio_id),
   planta_id text REFERENCES plantas(planta_id),
   canvas_id varchar REFERENCES canvas_lab(canvas_id)
 );
@@ -185,6 +191,7 @@ CREATE TABLE mesones (
   ancho_cm numeric,
   profundidad_cm numeric,
   largo_cm numeric,
+  laboratorio_id integer NOT NULL DEFAULT 1 REFERENCES laboratorios(laboratorio_id),
   UNIQUE (area_id, nombre_meson)
 );
 
@@ -208,6 +215,7 @@ CREATE TABLE instalaciones (
   posicion text,
   canvas_id varchar REFERENCES canvas_lab(canvas_id),
   poly_id varchar REFERENCES poligonos(poly_id),
+  laboratorio_id integer NOT NULL DEFAULT 1 REFERENCES laboratorios(laboratorio_id),
   requiere_mantenimiento boolean NOT NULL,
   notas text
 );
@@ -235,6 +243,7 @@ CREATE TABLE equipos (
   poly_id varchar REFERENCES poligonos(poly_id),
   fecha_compra date,
   garantia_hasta date,
+  laboratorio_id integer NOT NULL DEFAULT 1 REFERENCES laboratorios(laboratorio_id),
   requiere_calibracion boolean NOT NULL,
   observaciones text
 );
@@ -287,6 +296,7 @@ CREATE TABLE instrumentos_stock (
   posicion text,
   canvas_id varchar REFERENCES canvas_lab(canvas_id),
   poly_id varchar REFERENCES poligonos(poly_id),
+  laboratorio_id integer NOT NULL DEFAULT 1 REFERENCES laboratorios(laboratorio_id),
   observaciones text
 );
 
@@ -302,6 +312,7 @@ CREATE TABLE sustancias (
   sustancia_controlada boolean,
   metodo_cuantificacion_preferido text,
   subcategoria_id varchar REFERENCES subcategorias(subcategoria_id),
+  laboratorio_id integer NOT NULL DEFAULT 1 REFERENCES laboratorios(laboratorio_id),
   observaciones text
 );
 
@@ -351,6 +362,7 @@ CREATE TABLE contenedores (
   meson_id varchar REFERENCES mesones(meson_id),
   nivel integer,
   posicion text,
+  laboratorio_id integer NOT NULL DEFAULT 1 REFERENCES laboratorios(laboratorio_id),
   qr text
 );
 

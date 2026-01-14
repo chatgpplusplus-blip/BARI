@@ -1,7 +1,11 @@
 ﻿@page "/inventario-equipo"
 @page "/inventario-equipo/{SubcategoriaId}"
 @using Npgsql
+@using BARI_web.General_Services
 @inject NpgsqlDataSource DataSource
+@inject LaboratorioState LaboratorioState
+@inject NavigationManager Nav
+@implements IDisposable
 
 <PageTitle>Inventario de Equipo</PageTitle>
 
@@ -19,6 +23,20 @@
         <div>
             <h3>Guía de categorías (equipo e instrumento)</h3>
             <p class="helper">Selecciona una subcategoría para ver los equipos disponibles.</p>
+        </div>
+        <div class="category-controls">
+            <select class="category-select" @onchange="OnSubcategoriaChanged" value="@SubcategoriaId">
+                <option value="">Todas las categorías</option>
+                @foreach (var categoria in categorias)
+                {
+                    <optgroup label="@categoria.Nombre">
+                        @foreach (var subcategoria in categoria.Subcategorias)
+                        {
+                            <option value="@subcategoria.Id">@subcategoria.Nombre</option>
+                        }
+                    </optgroup>
+                }
+            </select>
         </div>
         @if (!string.IsNullOrWhiteSpace(SubcategoriaId))
         {
@@ -97,7 +115,11 @@
                     {
                         <tr>
                             <td>@equipo.EquipoId</td>
-                            <td>@equipo.EquipoNombre</td>
+                            <td>
+                                <NavLink href="@($"/inventario-equipo/item/{equipo.EquipoId}")">
+                                    @equipo.EquipoNombre
+                                </NavLink>
+                            </td>
                             <td>@equipo.Modelo</td>
                             <td>@equipo.Categoria</td>
                             <td>@equipo.Subcategoria</td>
@@ -120,11 +142,22 @@
     private string? subcategoriaNombre;
     private string? loadError;
 
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
+
     protected override async Task OnParametersSetAsync()
     {
         loadError = null;
         await LoadCategoriasAsync();
         await LoadEquiposAsync();
+    }
+
+    private async void HandleLaboratorioChanged()
+    {
+        await LoadEquiposAsync();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task LoadCategoriasAsync()
@@ -220,10 +253,12 @@
                     GROUP BY equipo_id
                 ) cal ON cal.equipo_id = e.equipo_id
                 WHERE me.subcategoria_id = @subcategoria
+                  AND e.laboratorio_id = @laboratorio
                 ORDER BY me.nombre_modelo, e.equipo_id
                 ";
             await using var cmd = new NpgsqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("subcategoria", SubcategoriaId);
+            cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
@@ -290,6 +325,23 @@
         string Estado,
         string Ubicacion,
         string Calibracion);
+
+    private void OnSubcategoriaChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            Nav.NavigateTo("/inventario-equipo");
+            return;
+        }
+
+        Nav.NavigateTo($"/inventario-equipo/{value}");
+    }
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
 }
 
 <style>
@@ -298,6 +350,21 @@
         align-items: flex-start;
         justify-content: space-between;
         gap: 1rem;
+    }
+
+    .category-controls {
+        display: flex;
+        gap: .75rem;
+        align-items: center;
+    }
+
+    .category-select {
+        min-width: 220px;
+        padding: .35rem .6rem;
+        border-radius: 8px;
+        border: 1px solid #cbd5f5;
+        background: #fff;
+        color: #0f172a;
     }
 
     .helper {

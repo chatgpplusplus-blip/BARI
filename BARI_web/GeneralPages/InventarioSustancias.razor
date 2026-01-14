@@ -1,7 +1,11 @@
 ﻿@page "/inventario-sustancias"
 @page "/inventario-sustancias/categoria/{SubcategoriaId}"
 @using Npgsql
+@using BARI_web.General_Services
 @inject NpgsqlDataSource DataSource
+@inject LaboratorioState LaboratorioState
+@inject NavigationManager Nav
+@implements IDisposable
 
 <PageTitle>Inventario de Sustancias</PageTitle>
 
@@ -19,6 +23,20 @@
         <div>
             <h3>Guía base (reactivos químicos)</h3>
             <p class="helper">Selecciona una subcategoría para ver los reactivos disponibles.</p>
+        </div>
+        <div class="category-controls">
+            <select class="category-select" @onchange="OnSubcategoriaChanged" value="@SubcategoriaId">
+                <option value="">Todas las categorías</option>
+                @foreach (var categoria in categorias)
+                {
+                    <optgroup label="@categoria.Nombre">
+                        @foreach (var subcategoria in categoria.Subcategorias)
+                        {
+                            <option value="@subcategoria.Id">@subcategoria.Nombre</option>
+                        }
+                    </optgroup>
+                }
+            </select>
         </div>
         @if (!string.IsNullOrWhiteSpace(SubcategoriaId))
         {
@@ -120,11 +138,22 @@
     private string? subcategoriaNombre;
     private string? loadError;
 
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
+
     protected override async Task OnParametersSetAsync()
     {
         loadError = null;
         await LoadCategoriasAsync();
         await LoadSustanciasAsync();
+    }
+
+    private async void HandleLaboratorioChanged()
+    {
+        await LoadSustanciasAsync();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task LoadCategoriasAsync()
@@ -212,10 +241,12 @@
                 LEFT JOIN areas a ON a.area_id = cn.area_id
                 LEFT JOIN mesones m ON m.meson_id = cn.meson_id
                 WHERE s.subcategoria_id = @subcategoria
+                  AND s.laboratorio_id = @laboratorio
                 ORDER BY nombre, s.sustancia_id
                 ";
             await using var cmd = new NpgsqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("subcategoria", SubcategoriaId);
+            cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
@@ -266,6 +297,23 @@
         string Categoria,
         string Subcategoria,
         string Ubicacion);
+
+    private void OnSubcategoriaChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            Nav.NavigateTo("/inventario-sustancias");
+            return;
+        }
+
+        Nav.NavigateTo($"/inventario-sustancias/categoria/{value}");
+    }
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
 }
 
 <style>
@@ -274,6 +322,21 @@
         align-items: flex-start;
         justify-content: space-between;
         gap: 1rem;
+    }
+
+    .category-controls {
+        display: flex;
+        gap: .75rem;
+        align-items: center;
+    }
+
+    .category-select {
+        min-width: 220px;
+        padding: .35rem .6rem;
+        border-radius: 8px;
+        border: 1px solid #cbd5f5;
+        background: #fff;
+        color: #0f172a;
     }
 
     .helper {
