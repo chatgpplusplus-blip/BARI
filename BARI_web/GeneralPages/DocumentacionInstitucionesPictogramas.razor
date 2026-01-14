@@ -101,8 +101,9 @@
                                 s.sustancia_id) AS nombre
                 FROM ghs_pictogramas g
                 LEFT JOIN sustancias_pictogramas sp ON sp.ghs_id = g.ghs_id
-                LEFT JOIN sustancias s ON s.sustancia_id = sp.sustancia_id
-                WHERE s.laboratorio_id = @laboratorio OR s.sustancia_id IS NULL
+                LEFT JOIN sustancias s
+                       ON s.sustancia_id = sp.sustancia_id
+                      AND s.laboratorio_id = @laboratorio
                 ORDER BY g.ghs_id, nombre
                 ";
             await using var cmd = new NpgsqlCommand(sql, conn);
