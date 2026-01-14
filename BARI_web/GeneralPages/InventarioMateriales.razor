@@ -1,4 +1,11 @@
 ﻿@page "/inventario-materiales"
+@page "/inventario-materiales/{SubcategoriaId}"
+@using Npgsql
+@using BARI_web.General_Services
+@inject NpgsqlDataSource DataSource
+@inject LaboratorioState LaboratorioState
+@inject NavigationManager Nav
+@implements IDisposable
 
 <PageTitle>Inventario de Materiales</PageTitle>
 
@@ -13,89 +20,421 @@
 </section>
 
 <section class="page-card" style="margin-top:1.5rem;">
-    <h3>Guía de categorías (base para materiales)</h3>
-    <details open class="guide-block">
-        <summary>Material de Vidrio</summary>
-        <ul class="guide-list">
-            <li>Volumétrico</li>
-            <li>De Contención</li>
-            <li>De Calentamiento</li>
-            <li>De Separación</li>
-            <li>De Manipulación</li>
-        </ul>
-    </details>
-    <details class="guide-block">
-        <summary>Material de Montaje/Soporte</summary>
-        <ul class="guide-list">
-            <li>Estructuras de Soporte</li>
-            <li>Elementos de Sujeción</li>
-            <li>Accesorios de montaje térmico</li>
-            <li>Soportes para Contenedores</li>
-        </ul>
-    </details>
-    <details class="guide-block">
-        <summary>Material Consumible</summary>
-        <ul class="guide-list">
-            <li>De Protección/Bioseguridad</li>
-            <li>De un solo uso</li>
-            <li>Reutilizable</li>
-            <li>Papelería de Laboratorio</li>
-            <li>Utensilios Auxiliares</li>
-        </ul>
-    </details>
+    <div class="category-header">
+        <div>
+            <h3>Guía de categorías (base para materiales)</h3>
+            <p class="helper">Selecciona una subcategoría para ver los materiales de ese tipo.</p>
+        </div>
+        <div class="category-controls">
+            <select class="category-select" @onchange="OnSubcategoriaChanged" value="@SubcategoriaId">
+                <option value="">Todas las categorías</option>
+                @foreach (var categoria in categorias)
+                {
+                    <optgroup label="@categoria.Nombre">
+                        @foreach (var subcategoria in categoria.Subcategorias)
+                        {
+                            <option value="@subcategoria.Id">@subcategoria.Nombre</option>
+                        }
+                    </optgroup>
+                }
+            </select>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(SubcategoriaId))
+        {
+            <NavLink class="btn-link" href="/inventario-materiales">Ver todas las categorías</NavLink>
+        }
+    </div>
+
+    @if (categorias.Count == 0)
+    {
+        <p><em>Cargando categorías…</em></p>
+    }
+    else
+    {
+        <div class="category-grid">
+            @foreach (var categoria in categorias)
+            {
+                <div class="category-card">
+                    <div class="category-title">@categoria.Nombre</div>
+                    <ul class="category-list">
+                        @foreach (var subcategoria in categoria.Subcategorias)
+                        {
+                            <li>
+                                <NavLink href="@($"/inventario-materiales/{subcategoria.Id}")" class="category-link">
+                                    @subcategoria.Nombre
+                                </NavLink>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            }
+        </div>
+    }
 </section>
 
 <section class="page-card" style="margin-top:1.5rem;">
-    <h3>Tabla de materiales (ejemplo)</h3>
-    <div class="table-wrap">
-        <table>
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Nombre</th>
-                    <th>Categoría</th>
-                    <th>Subcategoría</th>
-                    <th>Estado</th>
-                    <th>Ubicación</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>MAT-001</td>
-                    <td>Probeta 100 mL</td>
-                    <td>Material de Vidrio</td>
-                    <td>Volumétrico</td>
-                    <td>Disponible</td>
-                    <td>Área Q1 · Mesón Principal</td>
-                </tr>
-                <tr>
-                    <td>MAT-002</td>
-                    <td>Soporte universal</td>
-                    <td>Montaje/Soporte</td>
-                    <td>Estructuras de Soporte</td>
-                    <td>Disponible</td>
-                    <td>Área Q2 · Mesón Secundario</td>
-                </tr>
-                <tr>
-                    <td>MAT-003</td>
-                    <td>Guantes de nitrilo</td>
-                    <td>Material Consumible</td>
-                    <td>Protección/Bioseguridad</td>
-                    <td>Stock bajo</td>
-                    <td>Área Q3 · Almacén</td>
-                </tr>
-            </tbody>
-        </table>
+    <div class="materials-header">
+        <h3>@(string.IsNullOrWhiteSpace(SubcategoriaId) ? "Materiales disponibles" : $"Materiales · {subcategoriaNombre ?? SubcategoriaId}")</h3>
+        @if (!string.IsNullOrWhiteSpace(SubcategoriaId))
+        {
+            <span class="badge">@materiales.Count materiales</span>
+        }
     </div>
+
+    @if (!string.IsNullOrWhiteSpace(loadError))
+    {
+        <p class="error-note">No se pudieron cargar materiales: @loadError</p>
+    }
+    else if (string.IsNullOrWhiteSpace(SubcategoriaId))
+    {
+        <p class="helper">Elige una subcategoría para ver los materiales asociados.</p>
+    }
+    else if (materiales.Count == 0)
+    {
+        <div class="empty">
+            No hay materiales registrados para esta subcategoría.
+        </div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID modelo</th>
+                        <th>Nombre</th>
+                        <th>Categoría</th>
+                        <th>Subcategoría</th>
+                        <th>Estado</th>
+                        <th>Cantidad</th>
+                        <th>Ubicación</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var material in materiales)
+                    {
+                        <tr>
+                            <td>@material.ModeloId</td>
+                            <td>
+                                <NavLink href="@($"/inventario-materiales/item/{material.StockId}")">
+                                    @material.Nombre
+                                </NavLink>
+                            </td>
+                            <td>@material.Categoria</td>
+                            <td>@material.Subcategoria</td>
+                            <td>@material.Estado</td>
+                            <td>@material.Cantidad</td>
+                            <td>@material.Ubicacion</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
 </section>
 
+@code {
+    [Parameter] public string? SubcategoriaId { get; set; }
+
+    private readonly List<CategoriaRow> categorias = new();
+    private readonly List<MaterialRow> materiales = new();
+    private string? subcategoriaNombre;
+    private string? loadError;
+
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        loadError = null;
+        await LoadCategoriasAsync();
+        await LoadMaterialesAsync();
+    }
+
+    private async void HandleLaboratorioChanged()
+    {
+        await LoadMaterialesAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadCategoriasAsync()
+    {
+        if (categorias.Count > 0) return;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+                SELECT c.categoria_id, c.nombre,
+                       s.subcategoria_id, s.nombre
+                FROM categorias c
+                LEFT JOIN subcategorias s ON s.categoria_id = c.categoria_id
+                ORDER BY c.nombre, s.nombre
+                ";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            var map = new Dictionary<string, CategoriaRow>();
+            while (await reader.ReadAsync())
+            {
+                var categoriaId = reader.GetString(0);
+                if (!map.TryGetValue(categoriaId, out var categoria))
+                {
+                    categoria = new CategoriaRow(categoriaId, reader.GetString(1));
+                    map.Add(categoriaId, categoria);
+                    categorias.Add(categoria);
+                }
+
+                if (!reader.IsDBNull(2))
+                {
+                    categoria.Subcategorias.Add(new SubcategoriaRow(
+                        reader.GetString(2),
+                        reader.GetString(3)
+                    ));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+    }
+
+    private async Task LoadMaterialesAsync()
+    {
+        materiales.Clear();
+        subcategoriaNombre = null;
+
+        if (string.IsNullOrWhiteSpace(SubcategoriaId))
+        {
+            return;
+        }
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sqlSubcategoria = @"
+                SELECT nombre
+                FROM subcategorias
+                WHERE subcategoria_id = @subcategoria
+                ";
+            await using (var cmdName = new NpgsqlCommand(sqlSubcategoria, conn))
+            {
+                cmdName.Parameters.AddWithValue("subcategoria", SubcategoriaId);
+                var nombre = await cmdName.ExecuteScalarAsync();
+                subcategoriaNombre = nombre?.ToString();
+            }
+
+            const string sql = @"
+                SELECT im.modelo_id,
+                       im.nombre_generico,
+                       COALESCE(c.nombre, '') AS categoria,
+                       COALESCE(sc.nombre, '') AS subcategoria,
+                       COALESCE(ea.nombre, 'Sin estado') AS estado,
+                       COALESCE(isx.cantidad, 0) AS cantidad,
+                       COALESCE(a.nombre_areas, '') AS area,
+                       COALESCE(m.nombre_meson, '') AS meson,
+                       COALESCE(isx.posicion, '') AS posicion,
+                       isx.stock_id
+                FROM instrumentos_stock isx
+                JOIN instrumentos_modelo im ON im.modelo_id = isx.modelo_id
+                LEFT JOIN subcategorias sc ON sc.subcategoria_id = im.subcategoria_id
+                LEFT JOIN categorias c ON c.categoria_id = sc.categoria_id
+                LEFT JOIN estados_activo ea ON ea.estado_id = isx.estado_id
+                LEFT JOIN areas a ON a.area_id = isx.area_id
+                LEFT JOIN mesones m ON m.meson_id = isx.meson_id
+                WHERE im.subcategoria_id = @subcategoria
+                  AND isx.laboratorio_id = @laboratorio
+                ORDER BY im.nombre_generico, isx.modelo_id
+                ";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("subcategoria", SubcategoriaId);
+            cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var material = new MaterialRow(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetString(3),
+                    reader.GetString(4),
+                    reader.GetInt32(5),
+                    BuildUbicacion(reader.GetString(6), reader.GetString(7), reader.GetString(8)),
+                    reader.GetString(9)
+                );
+                materiales.Add(material);
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+    }
+
+    private static string BuildUbicacion(string area, string meson, string posicion)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(area)) parts.Add(area);
+        if (!string.IsNullOrWhiteSpace(meson)) parts.Add(meson);
+        if (!string.IsNullOrWhiteSpace(posicion)) parts.Add(posicion);
+        return parts.Count == 0 ? "Sin ubicación" : string.Join(" · ", parts);
+    }
+
+    private sealed class CategoriaRow
+    {
+        public CategoriaRow(string id, string nombre)
+        {
+            Id = id;
+            Nombre = nombre;
+        }
+
+        public string Id { get; }
+        public string Nombre { get; }
+        public List<SubcategoriaRow> Subcategorias { get; } = new();
+    }
+
+    private sealed record SubcategoriaRow(string Id, string Nombre);
+
+    private sealed record MaterialRow(
+        string ModeloId,
+        string Nombre,
+        string Categoria,
+        string Subcategoria,
+        string Estado,
+        int Cantidad,
+        string Ubicacion,
+        string StockId);
+
+    private void OnSubcategoriaChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            Nav.NavigateTo("/inventario-materiales");
+            return;
+        }
+
+        Nav.NavigateTo($"/inventario-materiales/{value}");
+    }
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
+}
+
 <style>
-    .guide-block { margin:0.5rem 0; }
-    .guide-block summary { cursor:pointer; font-weight:600; color:#0b2a68; }
-    .guide-list { margin:0.4rem 0 0; padding-left:1.2rem; color:#374151; }
-    .guide-list li { margin:0.35rem 0; }
+    .category-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+    }
+
+    .category-controls {
+        display: flex;
+        gap: .75rem;
+        align-items: center;
+    }
+
+    .category-select {
+        min-width: 220px;
+        padding: .35rem .6rem;
+        border-radius: 8px;
+        border: 1px solid #cbd5f5;
+        background: #fff;
+        color: #0f172a;
+    }
+
+    .helper {
+        margin: .3rem 0 0;
+        color: #475569;
+        font-size: .95rem;
+    }
+
+    .btn-link {
+        color: #1d4ed8;
+        text-decoration: none;
+        font-weight: 600;
+    }
+
+    .btn-link:hover {
+        text-decoration: underline;
+    }
+
+    .category-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 1rem;
+        margin-top: 1rem;
+    }
+
+    .category-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+        padding: 1rem;
+        box-shadow: 0 6px 14px rgba(15, 23, 42, 0.04);
+    }
+
+    .category-title {
+        font-weight: 700;
+        color: #0f172a;
+        margin-bottom: .5rem;
+    }
+
+    .category-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        gap: .35rem;
+    }
+
+    .category-link {
+        display: inline-flex;
+        padding: .35rem .6rem;
+        border-radius: 999px;
+        background: #f1f5f9;
+        color: #0f172a;
+        text-decoration: none;
+        font-size: .9rem;
+    }
+
+    .category-link.active,
+    .category-link:hover {
+        background: #dbeafe;
+        color: #1d4ed8;
+    }
+
+    .materials-header {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+    }
+
+    .badge {
+        background: #e2e8f0;
+        color: #0f172a;
+        padding: .2rem .55rem;
+        border-radius: 999px;
+        font-size: .85rem;
+        font-weight: 600;
+    }
+
+    .empty {
+        padding: .85rem 1rem;
+        border-radius: 10px;
+        background: #fef9c3;
+        border: 1px solid #fde68a;
+        color: #854d0e;
+    }
+
     .table-wrap { overflow-x:auto; }
     table { width:100%; border-collapse:collapse; background:#fff; }
     th, td { padding:0.6rem; border-bottom:1px solid #e5e7eb; text-align:left; }
     th { background:#f3f4f6; font-weight:600; }
+    .error-note { color:#b91c1c; margin-top:0.75rem; }
 </style>

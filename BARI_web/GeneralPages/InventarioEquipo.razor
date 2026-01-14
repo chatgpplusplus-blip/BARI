@@ -1,4 +1,11 @@
 ﻿@page "/inventario-equipo"
+@page "/inventario-equipo/{SubcategoriaId}"
+@using Npgsql
+@using BARI_web.General_Services
+@inject NpgsqlDataSource DataSource
+@inject LaboratorioState LaboratorioState
+@inject NavigationManager Nav
+@implements IDisposable
 
 <PageTitle>Inventario de Equipo</PageTitle>
 
@@ -12,70 +19,441 @@
 </section>
 
 <section class="page-card" style="margin-top:1.5rem;">
-    <h3>Guía base (equipo e instrumento)</h3>
-    <details open class="guide-block">
-        <summary>Equipo/Instrumento</summary>
-        <ul class="guide-list">
-            <li>De Medición</li>
-            <li>De Análisis</li>
-            <li>De Calentamiento/Enfriamiento</li>
-            <li>De Separación</li>
-            <li>De Control</li>
-        </ul>
-    </details>
+    <div class="category-header">
+        <div>
+            <h3>Guía de categorías (equipo e instrumento)</h3>
+            <p class="helper">Selecciona una subcategoría para ver los equipos disponibles.</p>
+        </div>
+        <div class="category-controls">
+            <select class="category-select" @onchange="OnSubcategoriaChanged" value="@SubcategoriaId">
+                <option value="">Todas las categorías</option>
+                @foreach (var categoria in categorias)
+                {
+                    <optgroup label="@categoria.Nombre">
+                        @foreach (var subcategoria in categoria.Subcategorias)
+                        {
+                            <option value="@subcategoria.Id">@subcategoria.Nombre</option>
+                        }
+                    </optgroup>
+                }
+            </select>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(SubcategoriaId))
+        {
+            <NavLink class="btn-link" href="/inventario-equipo">Ver todas las categorías</NavLink>
+        }
+    </div>
+
+    @if (categorias.Count == 0)
+    {
+        <p><em>Cargando categorías…</em></p>
+    }
+    else
+    {
+        <div class="category-grid">
+            @foreach (var categoria in categorias)
+            {
+                <div class="category-card">
+                    <div class="category-title">@categoria.Nombre</div>
+                    <ul class="category-list">
+                        @foreach (var subcategoria in categoria.Subcategorias)
+                        {
+                            <li>
+                                <NavLink href="@($"/inventario-equipo/{subcategoria.Id}")" class="category-link">
+                                    @subcategoria.Nombre
+                                </NavLink>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            }
+        </div>
+    }
 </section>
 
 <section class="page-card" style="margin-top:1.5rem;">
-    <h3>Tabla de equipos (ejemplo)</h3>
-    <div class="table-wrap">
-        <table>
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Equipo</th>
-                    <th>Modelo</th>
-                    <th>Estado</th>
-                    <th>Ubicación</th>
-                    <th>Calibración</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>EQ-001</td>
-                    <td>Balanza Analítica</td>
-                    <td>Modelo X</td>
-                    <td>Operativo</td>
-                    <td>Área Q1 · Mesón Principal</td>
-                    <td>Requiere calibración</td>
-                </tr>
-                <tr>
-                    <td>EQ-002</td>
-                    <td>pH-metro</td>
-                    <td>Modelo Y</td>
-                    <td>Operativo</td>
-                    <td>Área Q2 · Mesón Secundario</td>
-                    <td>OK</td>
-                </tr>
-                <tr>
-                    <td>EQ-003</td>
-                    <td>Agitador magnético</td>
-                    <td>Modelo Z</td>
-                    <td>En mantenimiento</td>
-                    <td>Área Q3 · Mesón Analítico</td>
-                    <td>No aplica</td>
-                </tr>
-            </tbody>
-        </table>
+    <div class="materials-header">
+        <h3>@(string.IsNullOrWhiteSpace(SubcategoriaId) ? "Equipos disponibles" : $"Equipos · {subcategoriaNombre ?? SubcategoriaId}")</h3>
+        @if (!string.IsNullOrWhiteSpace(SubcategoriaId))
+        {
+            <span class="badge">@equipos.Count equipos</span>
+        }
     </div>
+
+    @if (!string.IsNullOrWhiteSpace(loadError))
+    {
+        <p class="error-note">No se pudieron cargar equipos: @loadError</p>
+    }
+    else if (string.IsNullOrWhiteSpace(SubcategoriaId))
+    {
+        <p class="helper">Elige una subcategoría para ver los equipos asociados.</p>
+    }
+    else if (equipos.Count == 0)
+    {
+        <div class="empty">
+            No hay equipos registrados para esta subcategoría.
+        </div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Equipo</th>
+                        <th>Modelo</th>
+                        <th>Categoría</th>
+                        <th>Subcategoría</th>
+                        <th>Estado</th>
+                        <th>Ubicación</th>
+                        <th>Calibración</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var equipo in equipos)
+                    {
+                        <tr>
+                            <td>@equipo.EquipoId</td>
+                            <td>
+                                <NavLink href="@($"/inventario-equipo/item/{equipo.EquipoId}")">
+                                    @equipo.EquipoNombre
+                                </NavLink>
+                            </td>
+                            <td>@equipo.Modelo</td>
+                            <td>@equipo.Categoria</td>
+                            <td>@equipo.Subcategoria</td>
+                            <td>@equipo.Estado</td>
+                            <td>@equipo.Ubicacion</td>
+                            <td>@equipo.Calibracion</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
 </section>
 
+@code {
+    [Parameter] public string? SubcategoriaId { get; set; }
+
+    private readonly List<CategoriaRow> categorias = new();
+    private readonly List<EquipoRow> equipos = new();
+    private string? subcategoriaNombre;
+    private string? loadError;
+
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        loadError = null;
+        await LoadCategoriasAsync();
+        await LoadEquiposAsync();
+    }
+
+    private async void HandleLaboratorioChanged()
+    {
+        await LoadEquiposAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadCategoriasAsync()
+    {
+        if (categorias.Count > 0) return;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+                SELECT c.categoria_id, c.nombre,
+                       s.subcategoria_id, s.nombre
+                FROM categorias c
+                LEFT JOIN subcategorias s ON s.categoria_id = c.categoria_id
+                ORDER BY c.nombre, s.nombre
+                ";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            var map = new Dictionary<string, CategoriaRow>();
+            while (await reader.ReadAsync())
+            {
+                var categoriaId = reader.GetString(0);
+                if (!map.TryGetValue(categoriaId, out var categoria))
+                {
+                    categoria = new CategoriaRow(categoriaId, reader.GetString(1));
+                    map.Add(categoriaId, categoria);
+                    categorias.Add(categoria);
+                }
+
+                if (!reader.IsDBNull(2))
+                {
+                    categoria.Subcategorias.Add(new SubcategoriaRow(
+                        reader.GetString(2),
+                        reader.GetString(3)
+                    ));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+    }
+
+    private async Task LoadEquiposAsync()
+    {
+        equipos.Clear();
+        subcategoriaNombre = null;
+
+        if (string.IsNullOrWhiteSpace(SubcategoriaId))
+        {
+            return;
+        }
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sqlSubcategoria = @"
+                SELECT nombre
+                FROM subcategorias
+                WHERE subcategoria_id = @subcategoria
+                ";
+            await using (var cmdName = new NpgsqlCommand(sqlSubcategoria, conn))
+            {
+                cmdName.Parameters.AddWithValue("subcategoria", SubcategoriaId);
+                var nombre = await cmdName.ExecuteScalarAsync();
+                subcategoriaNombre = nombre?.ToString();
+            }
+
+            const string sql = @"
+                SELECT e.equipo_id,
+                       COALESCE(me.nombre_modelo, '') AS modelo,
+                       COALESCE(me.nombre_modelo, '') AS equipo_nombre,
+                       COALESCE(c.nombre, '') AS categoria,
+                       COALESCE(sc.nombre, '') AS subcategoria,
+                       COALESCE(ea.nombre, 'Sin estado') AS estado,
+                       COALESCE(a.nombre_areas, '') AS area,
+                       COALESCE(m.nombre_meson, '') AS meson,
+                       COALESCE(e.posicion, '') AS posicion,
+                       e.requiere_calibracion,
+                       cal.proxima_fecha
+                FROM equipos e
+                JOIN modelos_equipo me ON me.modelo_id = e.modelo_id
+                LEFT JOIN subcategorias sc ON sc.subcategoria_id = me.subcategoria_id
+                LEFT JOIN categorias c ON c.categoria_id = sc.categoria_id
+                LEFT JOIN estados_activo ea ON ea.estado_id = e.estado_id
+                LEFT JOIN areas a ON a.area_id = e.area_id
+                LEFT JOIN mesones m ON m.meson_id = e.meson_id
+                LEFT JOIN (
+                    SELECT equipo_id,
+                           MAX(proxima_fecha) AS proxima_fecha
+                    FROM calibraciones
+                    GROUP BY equipo_id
+                ) cal ON cal.equipo_id = e.equipo_id
+                WHERE me.subcategoria_id = @subcategoria
+                  AND e.laboratorio_id = @laboratorio
+                ORDER BY me.nombre_modelo, e.equipo_id
+                ";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("subcategoria", SubcategoriaId);
+            cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var requiereCalibracion = reader.GetBoolean(9);
+                var proxima = reader.IsDBNull(10) ? (DateTime?)null : reader.GetDateTime(10);
+                var calibracion = BuildCalibracion(requiereCalibracion, proxima);
+                equipos.Add(new EquipoRow(
+                    reader.GetString(0),
+                    reader.GetString(2),
+                    reader.GetString(1),
+                    reader.GetString(3),
+                    reader.GetString(4),
+                    reader.GetString(5),
+                    BuildUbicacion(reader.GetString(6), reader.GetString(7), reader.GetString(8)),
+                    calibracion
+                ));
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+    }
+
+    private static string BuildUbicacion(string area, string meson, string posicion)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(area)) parts.Add(area);
+        if (!string.IsNullOrWhiteSpace(meson)) parts.Add(meson);
+        if (!string.IsNullOrWhiteSpace(posicion)) parts.Add(posicion);
+        return parts.Count == 0 ? "Sin ubicación" : string.Join(" · ", parts);
+    }
+
+    private static string BuildCalibracion(bool requiereCalibracion, DateTime? proximaFecha)
+    {
+        if (!requiereCalibracion) return "No aplica";
+        if (proximaFecha is null) return "Requiere calibración";
+        return proximaFecha.Value.Date < DateTime.Today
+            ? $"Vencida ({proximaFecha:dd/MM/yyyy})"
+            : $"OK (próx. {proximaFecha:dd/MM/yyyy})";
+    }
+
+    private sealed class CategoriaRow
+    {
+        public CategoriaRow(string id, string nombre)
+        {
+            Id = id;
+            Nombre = nombre;
+        }
+
+        public string Id { get; }
+        public string Nombre { get; }
+        public List<SubcategoriaRow> Subcategorias { get; } = new();
+    }
+
+    private sealed record SubcategoriaRow(string Id, string Nombre);
+
+    private sealed record EquipoRow(
+        string EquipoId,
+        string EquipoNombre,
+        string Modelo,
+        string Categoria,
+        string Subcategoria,
+        string Estado,
+        string Ubicacion,
+        string Calibracion);
+
+    private void OnSubcategoriaChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            Nav.NavigateTo("/inventario-equipo");
+            return;
+        }
+
+        Nav.NavigateTo($"/inventario-equipo/{value}");
+    }
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
+}
+
 <style>
-    .guide-block { margin:0.5rem 0; }
-    .guide-block summary { cursor:pointer; font-weight:600; color:#0b2a68; }
-    .guide-list { margin:0.4rem 0 0; padding-left:1.2rem; color:#374151; }
-    .guide-list li { margin:0.35rem 0; }
+    .category-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+    }
+
+    .category-controls {
+        display: flex;
+        gap: .75rem;
+        align-items: center;
+    }
+
+    .category-select {
+        min-width: 220px;
+        padding: .35rem .6rem;
+        border-radius: 8px;
+        border: 1px solid #cbd5f5;
+        background: #fff;
+        color: #0f172a;
+    }
+
+    .helper {
+        margin: .3rem 0 0;
+        color: #475569;
+        font-size: .95rem;
+    }
+
+    .btn-link {
+        color: #1d4ed8;
+        text-decoration: none;
+        font-weight: 600;
+    }
+
+    .btn-link:hover {
+        text-decoration: underline;
+    }
+
+    .category-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 1rem;
+        margin-top: 1rem;
+    }
+
+    .category-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+        padding: 1rem;
+        box-shadow: 0 6px 14px rgba(15, 23, 42, 0.04);
+    }
+
+    .category-title {
+        font-weight: 700;
+        color: #0f172a;
+        margin-bottom: .5rem;
+    }
+
+    .category-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        gap: .35rem;
+    }
+
+    .category-link {
+        display: inline-flex;
+        padding: .35rem .6rem;
+        border-radius: 999px;
+        background: #f1f5f9;
+        color: #0f172a;
+        text-decoration: none;
+        font-size: .9rem;
+    }
+
+    .category-link.active,
+    .category-link:hover {
+        background: #dbeafe;
+        color: #1d4ed8;
+    }
+
+    .materials-header {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+    }
+
+    .badge {
+        background: #e2e8f0;
+        color: #0f172a;
+        padding: .2rem .55rem;
+        border-radius: 999px;
+        font-size: .85rem;
+        font-weight: 600;
+    }
+
+    .empty {
+        padding: .85rem 1rem;
+        border-radius: 10px;
+        background: #fef9c3;
+        border: 1px solid #fde68a;
+        color: #854d0e;
+    }
+
     .table-wrap { overflow-x:auto; }
     table { width:100%; border-collapse:collapse; background:#fff; }
     th, td { padding:0.6rem; border-bottom:1px solid #e5e7eb; text-align:left; }
     th { background:#f3f4f6; font-weight:600; }
+    .error-note { color:#b91c1c; margin-top:0.75rem; }
 </style>
