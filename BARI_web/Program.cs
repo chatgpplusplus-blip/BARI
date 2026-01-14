@@ -30,6 +30,7 @@ builder.Services.AddSingleton(sp => new NpgsqlDataSourceBuilder(pgConnStr).Build
 
 // CRUD and services
 builder.Services.AddScoped<PgCrud>();
+builder.Services.AddScoped<LaboratorioState>();
 
 // Seeds
 builder.Services.AddScoped<SeedCatalogs>();
