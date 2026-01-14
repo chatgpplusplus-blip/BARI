@@ -1,4 +1,6 @@
 ﻿@page "/documentacion/upsa/protocolos"
+@using BARI_web.General_Services
+@implements IDisposable
 
 <PageTitle>Protocolos UPSA</PageTitle>
 
@@ -14,7 +16,7 @@
             <thead>
                 <tr>
                     <th>Título</th>
-                    <th>Autor</th>
+                    <th>Archivo</th>
                     <th>URL</th>
                 </tr>
             </thead>
@@ -23,7 +25,7 @@
                 {
                     <tr>
                         <td>@doc.Titulo</td>
-                        <td>@doc.Autor</td>
+                        <td>@doc.Archivo</td>
                         <td>
                             @if (!string.IsNullOrWhiteSpace(doc.Url))
                             {
@@ -44,24 +46,49 @@
 
 @code {
     [Inject] private NpgsqlDataSource DataSource { get; set; } = default!;
+    [Inject] private LaboratorioState LaboratorioState { get; set; } = default!;
 
     private readonly List<DocRow> documentos = new();
     private string? loadError;
 
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
+
     protected override async Task OnInitializedAsync()
     {
+        await LoadDocumentosAsync();
+    }
+
+    private async void HandleLaboratorioChanged()
+    {
+        await LoadDocumentosAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadDocumentosAsync()
+    {
+        documentos.Clear();
+        loadError = null;
+
         try
         {
             await using var conn = await DataSource.OpenConnectionAsync();
             const string sql = @"
-                SELECT d.titulo, COALESCE(d.autor, ''), COALESCE(d.url, '')
+                SELECT d.titulo,
+                       COALESCE(d.archivo_local, ''),
+                       COALESCE(d.url, '')
                 FROM documentos d
-                LEFT JOIN documento_tipos dt ON dt.tipo_id = d.tipo_id
-                LEFT JOIN documento_fuentes df ON df.fuente_id = d.fuente_id
-                WHERE df.nombre = 'UPSA' AND dt.nombre = 'Protocolo'
+                LEFT JOIN categorias c ON c.categoria_id = d.categoria_id
+                LEFT JOIN subcategorias s ON s.subcategoria_id = d.subcategoria_id
+                WHERE c.nombre = 'UPSA'
+                  AND s.nombre = 'Protocolo'
+                  AND d.laboratorio_id = @laboratorio
                 ORDER BY d.titulo
                 ";
             await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
@@ -78,7 +105,12 @@
         }
     }
 
-    private sealed record DocRow(string Titulo, string Autor, string Url);
+    private sealed record DocRow(string Titulo, string Archivo, string Url);
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
 }
 
 <style>
