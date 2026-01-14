@@ -3,6 +3,7 @@
 using System.Net.Http;
 using Microsoft.AspNetCore.Components;
 using BARI_web.Features.Seguridad_Quimica.Models; // SeedRunner, PlanRepo DTOs
+using BARI_web.General_Services;
 using BARI_web.General_Services.DataBaseConnection; // PgCrud
 using Npgsql;
 
@@ -30,6 +31,7 @@ builder.Services.AddSingleton(sp => new NpgsqlDataSourceBuilder(pgConnStr).Build
 
 // CRUD and services
 builder.Services.AddScoped<PgCrud>();
+builder.Services.AddScoped<LaboratorioState>();
 
 // Seeds
 builder.Services.AddScoped<SeedCatalogs>();
