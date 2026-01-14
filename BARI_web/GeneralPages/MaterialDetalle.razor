@@ -1,4 +1,4 @@
-﻿@page "/inventario-materiales/item/{StockId}"
+﻿@page "/inventario-materiales/item/{MaterialId}"
 @using Npgsql
 @using BARI_web.General_Services
 @inject NpgsqlDataSource DataSource
@@ -21,7 +21,7 @@ else
     <section class="detail-card">
         <header>
             <h1>@detalle.Nombre</h1>
-            <p class="code">Stock: @detalle.StockId · Modelo: @detalle.ModeloId</p>
+            <p class="code">ID: @detalle.MaterialId · Tipo: @detalle.Tipo</p>
         </header>
 
         <dl class="info">
@@ -38,8 +38,8 @@ else
                 <dd>@detalle.Capacidad</dd>
             </div>
             <div>
-                <dt>Material</dt>
-                <dd>@detalle.Material</dd>
+                <dt>Tipo</dt>
+                <dd>@detalle.Tipo</dd>
             </div>
             <div>
                 <dt>Marca</dt>
@@ -70,14 +70,14 @@ else
 }
 
 @code {
-    [Parameter] public string? StockId { get; set; }
+    [Parameter] public string? MaterialId { get; set; }
 
     private MaterialInfo? detalle;
     private string? loadError;
 
     protected override async Task OnParametersSetAsync()
     {
-        if (string.IsNullOrWhiteSpace(StockId))
+        if (string.IsNullOrWhiteSpace(MaterialId))
         {
             loadError = "No se especificó el ID del material.";
             return;
@@ -87,52 +87,98 @@ else
         {
             await using var conn = await DataSource.OpenConnectionAsync();
             const string sql = @"
-                SELECT isx.stock_id,
-                       im.modelo_id,
-                       im.nombre_generico,
+                WITH materiales AS (
+                    SELECT mv.material_id,
+                           mv.nombre,
+                           mv.subcategoria_id,
+                           mv.capacidad_num,
+                           mv.unidad_id,
+                           mv.marca_id,
+                           mv.estado_id,
+                           mv.area_id,
+                           mv.meson_id,
+                           mv.posicion,
+                           mv.laboratorio_id,
+                           mv.observaciones,
+                           NULL::int AS cantidad,
+                           'Vidrio'::text AS tipo
+                    FROM materiales_vidrio mv
+                    UNION ALL
+                    SELECT mm.material_id,
+                           mm.nombre,
+                           mm.subcategoria_id,
+                           NULL::numeric,
+                           NULL::varchar,
+                           mm.marca_id,
+                           mm.estado_id,
+                           mm.area_id,
+                           mm.meson_id,
+                           mm.posicion,
+                           mm.laboratorio_id,
+                           mm.observaciones,
+                           NULL::int AS cantidad,
+                           'Montaje'::text AS tipo
+                    FROM materiales_montaje mm
+                    UNION ALL
+                    SELECT mc.material_id,
+                           mc.nombre,
+                           mc.subcategoria_id,
+                           NULL::numeric,
+                           NULL::varchar,
+                           mc.marca_id,
+                           mc.estado_id,
+                           mc.area_id,
+                           mc.meson_id,
+                           mc.posicion,
+                           mc.laboratorio_id,
+                           mc.observaciones,
+                           mc.cantidad,
+                           'Consumible'::text AS tipo
+                    FROM materiales_consumible mc
+                )
+                SELECT m.material_id,
+                       m.nombre,
                        COALESCE(c.nombre, '') AS categoria,
                        COALESCE(sc.nombre, '') AS subcategoria,
-                       COALESCE(im.capacidad_num::text || ' ' || u.simbolo, '—') AS capacidad,
-                       COALESCE(im.material, '—') AS material,
+                       COALESCE(m.capacidad_num::text || ' ' || u.simbolo, '—') AS capacidad,
                        COALESCE(ma.nombre, '—') AS marca,
                        COALESCE(ea.nombre, 'Sin estado') AS estado,
-                       COALESCE(isx.cantidad, 0) AS cantidad,
+                       COALESCE(m.cantidad::text, '—') AS cantidad,
                        COALESCE(a.nombre_areas, '') AS area,
-                       COALESCE(m.nombre_meson, '') AS meson,
-                       COALESCE(isx.posicion, '') AS posicion,
-                       COALESCE(isx.observaciones, '') AS observaciones
-                FROM instrumentos_stock isx
-                JOIN instrumentos_modelo im ON im.modelo_id = isx.modelo_id
-                LEFT JOIN subcategorias sc ON sc.subcategoria_id = im.subcategoria_id
+                       COALESCE(ms.nombre_meson, '') AS meson,
+                       COALESCE(m.posicion, '') AS posicion,
+                       COALESCE(m.observaciones, '') AS observaciones,
+                       m.tipo
+                FROM materiales m
+                LEFT JOIN subcategorias sc ON sc.subcategoria_id = m.subcategoria_id
                 LEFT JOIN categorias c ON c.categoria_id = sc.categoria_id
-                LEFT JOIN unidades u ON u.unidad_id = im.unidad_id
-                LEFT JOIN marcas ma ON ma.marca_id = isx.marca_id
-                LEFT JOIN estados_activo ea ON ea.estado_id = isx.estado_id
-                LEFT JOIN areas a ON a.area_id = isx.area_id
-                LEFT JOIN mesones m ON m.meson_id = isx.meson_id
-                WHERE isx.stock_id = @stockId
-                  AND isx.laboratorio_id = @laboratorio
+                LEFT JOIN unidades u ON u.unidad_id = m.unidad_id
+                LEFT JOIN marcas ma ON ma.marca_id = m.marca_id
+                LEFT JOIN estados_activo ea ON ea.estado_id = m.estado_id
+                LEFT JOIN areas a ON a.area_id = m.area_id
+                LEFT JOIN mesones ms ON ms.meson_id = m.meson_id
+                WHERE m.material_id = @materialId
+                  AND m.laboratorio_id = @laboratorio
                 ";
             await using var cmd = new NpgsqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("stockId", StockId);
+            cmd.Parameters.AddWithValue("materialId", MaterialId);
             cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
             await using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync())
             {
                 detalle = new MaterialInfo
                 {
-                    StockId = reader.GetString(0),
-                    ModeloId = reader.GetString(1),
-                    Nombre = reader.GetString(2),
-                    Categoria = reader.GetString(3),
-                    Subcategoria = reader.GetString(4),
-                    Capacidad = reader.GetString(5),
-                    Material = reader.GetString(6),
-                    Marca = reader.GetString(7),
-                    Estado = reader.GetString(8),
-                    Cantidad = reader.GetInt32(9),
-                    Ubicacion = BuildUbicacion(reader.GetString(10), reader.GetString(11), reader.GetString(12)),
-                    Observaciones = reader.GetString(13)
+                    MaterialId = reader.GetString(0),
+                    Nombre = reader.GetString(1),
+                    Categoria = reader.GetString(2),
+                    Subcategoria = reader.GetString(3),
+                    Capacidad = reader.GetString(4),
+                    Marca = reader.GetString(5),
+                    Estado = reader.GetString(6),
+                    Cantidad = reader.GetString(7),
+                    Ubicacion = BuildUbicacion(reader.GetString(8), reader.GetString(9), reader.GetString(10)),
+                    Observaciones = reader.GetString(11),
+                    Tipo = reader.GetString(12)
                 };
             }
             else
@@ -157,16 +203,15 @@ else
 
     private sealed class MaterialInfo
     {
-        public string StockId { get; set; } = "";
-        public string ModeloId { get; set; } = "";
+        public string MaterialId { get; set; } = "";
         public string Nombre { get; set; } = "";
         public string Categoria { get; set; } = "";
         public string Subcategoria { get; set; } = "";
         public string Capacidad { get; set; } = "";
-        public string Material { get; set; } = "";
+        public string Tipo { get; set; } = "";
         public string Marca { get; set; } = "";
         public string Estado { get; set; } = "";
-        public int Cantidad { get; set; }
+        public string Cantidad { get; set; } = "";
         public string Ubicacion { get; set; } = "";
         public string Observaciones { get; set; } = "";
     }
@@ -203,39 +248,29 @@ else
     }
 
     .info {
-        margin: 1rem 0 0;
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-        gap: .75rem 1.5rem;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 1rem 2rem;
+        margin-top: 1rem;
     }
 
-    .info div {
-        background: #f8fafc;
-        border-radius: 12px;
-        padding: .7rem .85rem;
-    }
-
-    .info dt {
-        font-weight: 600;
+    dt {
+        font-weight: 700;
         color: #0f172a;
     }
 
-    .info dd {
-        margin: .25rem 0 0;
-        color: #475569;
-    }
-
-    .notes {
-        margin-top: 1rem;
-        background: #f1f5f9;
-        border-radius: 12px;
-        padding: .85rem 1rem;
+    dd {
+        margin: .2rem 0 0;
         color: #334155;
     }
 
-    .notes p {
-        margin: .4rem 0 0;
+    .notes {
+        margin-top: 1.25rem;
+        padding: .8rem 1rem;
+        border-radius: 12px;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
     }
 
-    .error-note { color: #b91c1c; margin-top: 0.75rem; }
+    .error-note { color:#b91c1c; margin-top:0.75rem; }
 </style>
