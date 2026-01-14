@@ -1,4 +1,8 @@
 ﻿@page "/documentaciones"
+@using BARI_web.General_Services
+@using Npgsql
+@inject LaboratorioState LaboratorioState
+@implements IDisposable
 
 <PageTitle>Documentaciones</PageTitle>
 
@@ -20,22 +24,29 @@
     {
         <p class="error-note">No se pudo cargar asignaturas desde la base de datos: @loadError</p>
     }
-    <div class="menu-grid">
-        @foreach (var asignatura in asignaturas)
-        {
-            <details class="menu-item" @key="asignatura.Id" open>
-                <summary>
-                    <strong>@asignatura.Nombre</strong>
-                    <span class="muted">@asignatura.Codigo</span>
-                </summary>
-                <div class="menu-links">
-                    <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/laboratorios")">
-                        Documentación para asignaturas
-                    </NavLink>
-                </div>
-            </details>
-        }
-    </div>
+    else if (asignaturas.Count == 0)
+    {
+        <p class="empty-note">No hay asignaturas asociadas al laboratorio seleccionado.</p>
+    }
+    else
+    {
+        <div class="menu-grid">
+            @foreach (var asignatura in asignaturas)
+            {
+                <details class="menu-item" @key="asignatura.Id" open>
+                    <summary>
+                        <strong>@asignatura.Nombre</strong>
+                        <span class="muted">@asignatura.Codigo</span>
+                    </summary>
+                    <div class="menu-links">
+                        <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/laboratorios")">
+                            Documentación para asignaturas
+                        </NavLink>
+                    </div>
+                </details>
+            }
+        </div>
+    }
 </section>
 
 <section id="instituciones-general" class="page-card" style="margin-top:1.5rem;">
@@ -75,7 +86,7 @@
 </section>
 
 <section class="page-card" style="margin-top:1.5rem;">
-    <h3>Selecciona el tipo de documentación (Laboratorio de Química)</h3>
+    <h3>Selecciona el tipo de documentación (@(string.IsNullOrWhiteSpace(laboratorioNombre) ? "Laboratorio" : laboratorioNombre))</h3>
     <p class="section-intro">
         Elige una de las tres categorías principales para la asignatura de química.
     </p>
@@ -130,40 +141,71 @@
 
 
 @code {
-    [Inject] private PgCrud Crud { get; set; } = default!;
+    [Inject] private NpgsqlDataSource DataSource { get; set; } = default!;
 
     private readonly List<AsignaturaView> asignaturas = new();
     private string? loadError;
+    private string? laboratorioNombre;
+
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadAsignaturasAsync();
+    }
+
+    private async void HandleLaboratorioChanged()
+    {
+        await LoadAsignaturasAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadAsignaturasAsync()
+    {
         try
         {
-            Crud.UseSheet("asignaturas");
-            var rows = await Crud.ReadAllAsync();
+            loadError = null;
             asignaturas.Clear();
+            laboratorioNombre = null;
+            await using var conn = await DataSource.OpenConnectionAsync();
 
-            foreach (var row in rows)
+            const string sqlLab = @"
+                SELECT nombre
+                FROM laboratorios
+                WHERE laboratorio_id = @laboratorio
+                ";
+            await using (var cmdLab = new NpgsqlCommand(sqlLab, conn))
             {
-                var id = row.GetValueOrDefault("asignatura_id") ?? "";
-                var nombre = row.GetValueOrDefault("nombre") ?? "";
-                var codigo = row.GetValueOrDefault("codigo_clase") ?? "";
-                var slug = Slugify(!string.IsNullOrWhiteSpace(codigo) ? codigo : nombre);
+                cmdLab.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
+                laboratorioNombre = (string?)await cmdLab.ExecuteScalarAsync();
+            }
 
-                if (!string.IsNullOrWhiteSpace(id) && !string.IsNullOrWhiteSpace(nombre))
-                {
-                    asignaturas.Add(new AsignaturaView(id, nombre, codigo, slug));
-                }
+            const string sqlAsignaturas = @"
+                SELECT asignatura_id,
+                       nombre,
+                       codigo_clase
+                FROM asignaturas
+                WHERE laboratorio_id = @laboratorio
+                ORDER BY nombre
+                ";
+            await using var cmd = new NpgsqlCommand(sqlAsignaturas, conn);
+            cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var id = reader.GetString(0);
+                var nombre = reader.GetString(1);
+                var codigo = reader.GetString(2);
+                var slug = Slugify(!string.IsNullOrWhiteSpace(codigo) ? codigo : nombre);
+                asignaturas.Add(new AsignaturaView(id, nombre, codigo, slug));
             }
         }
         catch (Exception ex)
         {
             loadError = ex.Message;
-        }
-
-        if (asignaturas.Count == 0)
-        {
-            asignaturas.Add(new AsignaturaView("quimica-general", "Química General", "QUI-101", "quimica-general"));
         }
     }
 
@@ -175,6 +217,11 @@
     }
 
     private sealed record AsignaturaView(string Id, string Nombre, string Codigo, string Slug);
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
 }
 
 <style>
@@ -204,6 +251,7 @@
         gap:0.4rem;
         margin-top:0.6rem;
     }
+    .empty-note { color:#6b7280; margin-top:0.75rem; }
     .type-grid {
         display:grid;
         gap:1rem;
