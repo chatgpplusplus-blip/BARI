@@ -1,7 +1,71 @@
+@using Npgsql
+@using BARI_web.General_Services
+@inject NpgsqlDataSource DataSource
+@inject LaboratorioState LaboratorioState
+
 <div class="lab-selector">
     <label for="lab-selector">Laboratorio</label>
-    <select id="lab-selector">
-        <option selected>Química (UPSA)</option>
+    <select id="lab-selector" @onchange="OnLaboratorioChanged" value="@LaboratorioState.LaboratorioId">
+        @foreach (var lab in laboratorios)
+        {
+            <option value="@lab.Id">@lab.Nombre</option>
+        }
     </select>
-    <small>Todos los módulos parten del laboratorio base de química.</small>
+    <small>Inventario filtrado por laboratorio seleccionado.</small>
 </div>
+
+@code {
+    private readonly List<LaboratorioItem> laboratorios = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadLaboratoriosAsync();
+    }
+
+    private async Task LoadLaboratoriosAsync()
+    {
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+                SELECT laboratorio_id, nombre
+                FROM laboratorios
+                ORDER BY laboratorio_id
+                ";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                laboratorios.Add(new LaboratorioItem(
+                    reader.GetInt32(0),
+                    reader.GetString(1)
+                ));
+            }
+
+            if (laboratorios.Count == 0)
+            {
+                laboratorios.Add(new LaboratorioItem(1, "Química"));
+            }
+
+            LaboratorioState.SetLaboratorio(LaboratorioState.LaboratorioId == 0
+                ? laboratorios[0].Id
+                : LaboratorioState.LaboratorioId);
+        }
+        catch
+        {
+            laboratorios.Clear();
+            laboratorios.Add(new LaboratorioItem(1, "Química"));
+        }
+    }
+
+    private void OnLaboratorioChanged(ChangeEventArgs args)
+    {
+        if (args.Value is null) return;
+        if (int.TryParse(args.Value.ToString(), out var id))
+        {
+            LaboratorioState.SetLaboratorio(id);
+        }
+    }
+
+    private sealed record LaboratorioItem(int Id, string Nombre);
+}
