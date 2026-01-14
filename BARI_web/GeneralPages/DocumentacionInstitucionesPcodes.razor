@@ -1,4 +1,8 @@
 ﻿@page "/documentacion/instituciones/p-codes"
+@using BARI_web.General_Services
+@using Npgsql
+@inject LaboratorioState LaboratorioState
+@implements IDisposable
 
 <PageTitle>P-Codes</PageTitle>
 
@@ -45,20 +49,42 @@
     private readonly List<CodeRow> pcodes = new();
     private string? loadError;
 
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
+
     protected override async Task OnInitializedAsync()
+    {
+        await LoadPcodesAsync();
+    }
+
+    private async void HandleLaboratorioChanged()
+    {
+        await LoadPcodesAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadPcodesAsync()
     {
         try
         {
+            loadError = null;
+            pcodes.Clear();
             await using var conn = await DataSource.OpenConnectionAsync();
             const string sql = @"
                 SELECT p.p_id, p.descripcion,
-                       COALESCE(COUNT(sp.sustancia_id), 0) AS uso_count
+                       COALESCE(COUNT(s.sustancia_id), 0) AS uso_count
                 FROM p_codes p
                 LEFT JOIN sustancias_p sp ON sp.p_id = p.p_id
+                LEFT JOIN sustancias s
+                       ON s.sustancia_id = sp.sustancia_id
+                      AND s.laboratorio_id = @laboratorio
                 GROUP BY p.p_id, p.descripcion
                 ORDER BY p.p_id
                 ";
             await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
@@ -76,6 +102,11 @@
     }
 
     private sealed record CodeRow(string Code, string Descripcion, long UsoCount);
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
 }
 
 <style>
