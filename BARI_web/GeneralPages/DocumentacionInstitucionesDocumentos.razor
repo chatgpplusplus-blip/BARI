@@ -58,13 +58,13 @@
             await using var conn = await DataSource.OpenConnectionAsync();
             const string sql = @"
                 SELECT d.titulo,
-                       COALESCE(dt.nombre, ''),
-                       COALESCE(df.nombre, ''),
+                       COALESCE(s.nombre, ''),
+                       COALESCE(c.nombre, ''),
                        COALESCE(d.url, '')
                 FROM documentos d
-                LEFT JOIN documento_tipos dt ON dt.tipo_id = d.tipo_id
-                LEFT JOIN documento_fuentes df ON df.fuente_id = d.fuente_id
-                WHERE df.nombre IS NULL OR df.nombre <> 'UPSA'
+                LEFT JOIN subcategorias s ON s.subcategoria_id = d.subcategoria_id
+                LEFT JOIN categorias c ON c.categoria_id = d.categoria_id
+                WHERE c.nombre IS NULL OR c.nombre <> 'UPSA'
                 ORDER BY d.titulo
                 ";
             await using var cmd = new NpgsqlCommand(sql, conn);

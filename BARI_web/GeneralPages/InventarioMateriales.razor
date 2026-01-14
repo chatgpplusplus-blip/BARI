@@ -101,10 +101,11 @@
             <table>
                 <thead>
                     <tr>
-                        <th>ID modelo</th>
+                        <th>ID</th>
                         <th>Nombre</th>
                         <th>Categoría</th>
                         <th>Subcategoría</th>
+                        <th>Tipo</th>
                         <th>Estado</th>
                         <th>Cantidad</th>
                         <th>Ubicación</th>
@@ -114,14 +115,15 @@
                     @foreach (var material in materiales)
                     {
                         <tr>
-                            <td>@material.ModeloId</td>
+                            <td>@material.MaterialId</td>
                             <td>
-                                <NavLink href="@($"/inventario-materiales/item/{material.StockId}")">
+                                <NavLink href="@($"/inventario-materiales/item/{material.MaterialId}")">
                                     @material.Nombre
                                 </NavLink>
                             </td>
                             <td>@material.Categoria</td>
                             <td>@material.Subcategoria</td>
+                            <td>@material.Tipo</td>
                             <td>@material.Estado</td>
                             <td>@material.Cantidad</td>
                             <td>@material.Ubicacion</td>
@@ -236,27 +238,63 @@
             }
 
             const string sql = @"
-                SELECT im.modelo_id,
-                       im.nombre_generico,
+                WITH materiales AS (
+                    SELECT mv.material_id,
+                           mv.nombre,
+                           mv.subcategoria_id,
+                           mv.estado_id,
+                           mv.area_id,
+                           mv.meson_id,
+                           mv.posicion,
+                           mv.laboratorio_id,
+                           NULL::int AS cantidad,
+                           'Vidrio'::text AS tipo
+                    FROM materiales_vidrio mv
+                    UNION ALL
+                    SELECT mm.material_id,
+                           mm.nombre,
+                           mm.subcategoria_id,
+                           mm.estado_id,
+                           mm.area_id,
+                           mm.meson_id,
+                           mm.posicion,
+                           mm.laboratorio_id,
+                           NULL::int AS cantidad,
+                           'Montaje'::text AS tipo
+                    FROM materiales_montaje mm
+                    UNION ALL
+                    SELECT mc.material_id,
+                           mc.nombre,
+                           mc.subcategoria_id,
+                           mc.estado_id,
+                           mc.area_id,
+                           mc.meson_id,
+                           mc.posicion,
+                           mc.laboratorio_id,
+                           mc.cantidad,
+                           'Consumible'::text AS tipo
+                    FROM materiales_consumible mc
+                )
+                SELECT m.material_id,
+                       m.nombre,
                        COALESCE(c.nombre, '') AS categoria,
                        COALESCE(sc.nombre, '') AS subcategoria,
                        COALESCE(ea.nombre, 'Sin estado') AS estado,
-                       COALESCE(isx.cantidad, 0) AS cantidad,
+                       COALESCE(m.cantidad::text, '—') AS cantidad,
                        COALESCE(a.nombre_areas, '') AS area,
-                       COALESCE(m.nombre_meson, '') AS meson,
-                       COALESCE(isx.posicion, '') AS posicion,
-                       isx.stock_id
-                FROM instrumentos_stock isx
-                JOIN instrumentos_modelo im ON im.modelo_id = isx.modelo_id
-                LEFT JOIN subcategorias sc ON sc.subcategoria_id = im.subcategoria_id
+                       COALESCE(ms.nombre_meson, '') AS meson,
+                       COALESCE(m.posicion, '') AS posicion,
+                       m.tipo
+                FROM materiales m
+                LEFT JOIN subcategorias sc ON sc.subcategoria_id = m.subcategoria_id
                 LEFT JOIN categorias c ON c.categoria_id = sc.categoria_id
-                LEFT JOIN estados_activo ea ON ea.estado_id = isx.estado_id
-                LEFT JOIN areas a ON a.area_id = isx.area_id
-                LEFT JOIN mesones m ON m.meson_id = isx.meson_id
-                WHERE im.subcategoria_id = @subcategoria
-                  AND isx.laboratorio_id = @laboratorio
+                LEFT JOIN estados_activo ea ON ea.estado_id = m.estado_id
+                LEFT JOIN areas a ON a.area_id = m.area_id
+                LEFT JOIN mesones ms ON ms.meson_id = m.meson_id
+                WHERE m.subcategoria_id = @subcategoria
+                  AND m.laboratorio_id = @laboratorio
                   AND c.nombre = ANY(@categorias)
-                ORDER BY im.nombre_generico, isx.modelo_id
+                ORDER BY m.nombre, m.material_id
                 ";
             await using var cmd = new NpgsqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("subcategoria", SubcategoriaId);
@@ -270,10 +308,10 @@
                     reader.GetString(1),
                     reader.GetString(2),
                     reader.GetString(3),
+                    reader.GetString(9),
                     reader.GetString(4),
-                    reader.GetInt32(5),
-                    BuildUbicacion(reader.GetString(6), reader.GetString(7), reader.GetString(8)),
-                    reader.GetString(9)
+                    reader.GetString(5),
+                    BuildUbicacion(reader.GetString(6), reader.GetString(7), reader.GetString(8))
                 );
                 materiales.Add(material);
             }
@@ -309,14 +347,14 @@
     private sealed record SubcategoriaRow(string Id, string Nombre);
 
     private sealed record MaterialRow(
-        string ModeloId,
+        string MaterialId,
         string Nombre,
         string Categoria,
         string Subcategoria,
+        string Tipo,
         string Estado,
-        int Cantidad,
-        string Ubicacion,
-        string StockId);
+        string Cantidad,
+        string Ubicacion);
 
     private void OnSubcategoriaChanged(ChangeEventArgs args)
     {

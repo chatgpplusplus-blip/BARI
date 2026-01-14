@@ -14,7 +14,7 @@
             <thead>
                 <tr>
                     <th>Título</th>
-                    <th>Autor</th>
+                    <th>Archivo</th>
                     <th>URL</th>
                 </tr>
             </thead>
@@ -23,7 +23,7 @@
                 {
                     <tr>
                         <td>@doc.Titulo</td>
-                        <td>@doc.Autor</td>
+                        <td>@doc.Archivo</td>
                         <td>
                             @if (!string.IsNullOrWhiteSpace(doc.Url))
                             {
@@ -54,11 +54,13 @@
         {
             await using var conn = await DataSource.OpenConnectionAsync();
             const string sql = @"
-                SELECT d.titulo, COALESCE(d.autor, ''), COALESCE(d.url, '')
+                SELECT d.titulo,
+                       COALESCE(d.archivo_local, ''),
+                       COALESCE(d.url, '')
                 FROM documentos d
-                LEFT JOIN documento_tipos dt ON dt.tipo_id = d.tipo_id
-                LEFT JOIN documento_fuentes df ON df.fuente_id = d.fuente_id
-                WHERE df.nombre = 'UPSA' AND dt.nombre = 'Protocolo'
+                LEFT JOIN categorias c ON c.categoria_id = d.categoria_id
+                LEFT JOIN subcategorias s ON s.subcategoria_id = d.subcategoria_id
+                WHERE c.nombre = 'UPSA' AND s.nombre = 'Protocolo'
                 ORDER BY d.titulo
                 ";
             await using var cmd = new NpgsqlCommand(sql, conn);
@@ -78,7 +80,7 @@
         }
     }
 
-    private sealed record DocRow(string Titulo, string Autor, string Url);
+    private sealed record DocRow(string Titulo, string Archivo, string Url);
 }
 
 <style>
