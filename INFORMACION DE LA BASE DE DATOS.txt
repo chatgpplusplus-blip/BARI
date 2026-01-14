@@ -42,6 +42,31 @@ CREATE TABLE usos (
 );
 
 -- ==============================
+-- ASIGNATURAS Y EXPERIENCIAS
+-- ==============================
+CREATE TABLE asignaturas (
+  asignatura_id varchar PRIMARY KEY,
+  nombre text NOT NULL,
+  codigo_clase text NOT NULL UNIQUE,
+  descripcion text
+);
+
+CREATE TABLE experiencias_clases (
+  experiencia_id varchar PRIMARY KEY,
+  asignatura_id varchar NOT NULL REFERENCES asignaturas(asignatura_id),
+  nombre text NOT NULL,
+  materiales_usados text,
+  equipos_usados text,
+  procedimientos text,
+  tiempo_estimado_min integer,
+  observaciones text,
+  precauciones text
+);
+
+INSERT INTO asignaturas (asignatura_id, nombre, codigo_clase, descripcion)
+VALUES ('quimica-general', 'Química General', 'QUI-101', 'Asignatura base de laboratorio de química.');
+
+-- ==============================
 -- SEGURIDAD QUÍMICA
 -- ==============================
 CREATE TABLE h_codes (
@@ -63,6 +88,13 @@ CREATE TABLE ghs_pictogramas (
   descripcion text NOT NULL,
   icon_url text,
   detalle text
+);
+
+CREATE TABLE cas_catalogo (
+  cas_id varchar PRIMARY KEY,
+  nombre text NOT NULL,
+  categoria text,
+  notas text
 );
 
 -- ==============================
@@ -98,10 +130,7 @@ CREATE TABLE areas (
   canvas_id varchar REFERENCES canvas_lab(canvas_id)
 );
 
--- ==============================
--- POLÍGONOS REALES (VÉRTICES)
--- ==============================
--- Polígonos "base": cada polígono es una entidad
+-- Polígonos reales (vértices)
 CREATE TABLE poligonos (
   poly_id varchar PRIMARY KEY,
   canvas_id varchar NOT NULL REFERENCES canvas_lab(canvas_id),
@@ -111,7 +140,6 @@ CREATE TABLE poligonos (
   z_order integer NOT NULL DEFAULT 0
 );
 
--- Puntos (vértices) del polígono
 CREATE TABLE poligonos_puntos (
   punto_id bigserial PRIMARY KEY,
   poly_id varchar NOT NULL REFERENCES poligonos(poly_id) ON DELETE CASCADE,
@@ -121,9 +149,6 @@ CREATE TABLE poligonos_puntos (
   UNIQUE (poly_id, orden)
 );
 
--- ==============================
--- PUERTAS Y VENTANAS (segmentos)
--- ==============================
 CREATE TABLE puertas (
   puerta_id varchar PRIMARY KEY,
   canvas_id varchar NOT NULL REFERENCES canvas_lab(canvas_id),
@@ -273,7 +298,7 @@ CREATE TABLE instrumentos_stock (
 );
 
 -- ==============================
--- QUÍMICOS
+-- SUSTANCIAS (reemplaza reactivos)
 -- ==============================
 CREATE TABLE reactivos (
   reactivo_id varchar PRIMARY KEY,
@@ -288,28 +313,28 @@ CREATE TABLE reactivos (
   observaciones text
 );
 
-CREATE TABLE reactivos_h (
-  reactivo_id varchar NOT NULL REFERENCES reactivos(reactivo_id),
+CREATE TABLE sustancias_h (
+  sustancia_id varchar NOT NULL REFERENCES sustancias(sustancia_id),
   h_id varchar NOT NULL REFERENCES h_codes(h_id),
-  PRIMARY KEY (reactivo_id, h_id)
+  PRIMARY KEY (sustancia_id, h_id)
 );
 
-CREATE TABLE reactivos_p (
-  reactivo_id varchar NOT NULL REFERENCES reactivos(reactivo_id),
+CREATE TABLE sustancias_p (
+  sustancia_id varchar NOT NULL REFERENCES sustancias(sustancia_id),
   p_id varchar NOT NULL REFERENCES p_codes(p_id),
-  PRIMARY KEY (reactivo_id, p_id)
+  PRIMARY KEY (sustancia_id, p_id)
 );
 
-CREATE TABLE reactivos_pictogramas (
-  reactivo_id varchar NOT NULL REFERENCES reactivos(reactivo_id),
+CREATE TABLE sustancias_pictogramas (
+  sustancia_id varchar NOT NULL REFERENCES sustancias(sustancia_id),
   ghs_id varchar NOT NULL REFERENCES ghs_pictogramas(ghs_id),
-  PRIMARY KEY (reactivo_id, ghs_id)
+  PRIMARY KEY (sustancia_id, ghs_id)
 );
 
-CREATE TABLE reactivos_usos (
-  reactivo_id varchar NOT NULL REFERENCES reactivos(reactivo_id),
+CREATE TABLE sustancias_usos (
+  sustancia_id varchar NOT NULL REFERENCES sustancias(sustancia_id),
   uso_id varchar NOT NULL REFERENCES usos(uso_id),
-  PRIMARY KEY (reactivo_id, uso_id)
+  PRIMARY KEY (sustancia_id, uso_id)
 );
 
 CREATE TABLE contenedores (
@@ -345,4 +370,76 @@ CREATE TABLE bari_meta (
   key text PRIMARY KEY,
   val text NOT NULL,
   at timestamp
+);
+
+-- =========================================
+-- ANEXO: RELACIONES EXPERIENCIAS ↔ RECURSOS
+-- =========================================
+CREATE TABLE experiencia_equipos (
+  experiencia_id varchar NOT NULL REFERENCES experiencias_clases(experiencia_id),
+  equipo_id varchar NOT NULL REFERENCES equipos(equipo_id),
+  PRIMARY KEY (experiencia_id, equipo_id)
+);
+
+CREATE TABLE experiencia_instrumentos (
+  experiencia_id varchar NOT NULL REFERENCES experiencias_clases(experiencia_id),
+  modelo_id varchar NOT NULL REFERENCES instrumentos_modelo(modelo_id),
+  PRIMARY KEY (experiencia_id, modelo_id)
+);
+
+CREATE TABLE experiencia_sustancias (
+  experiencia_id varchar NOT NULL REFERENCES experiencias_clases(experiencia_id),
+  sustancia_id varchar NOT NULL REFERENCES sustancias(sustancia_id),
+  PRIMARY KEY (experiencia_id, sustancia_id)
+);
+
+-- =========================================
+-- ANEXO: DOCUMENTOS GENERALES / LAB / INSTITUCIONES
+-- =========================================
+CREATE TABLE documento_tipos (
+  tipo_id varchar PRIMARY KEY,
+  nombre text NOT NULL UNIQUE
+);
+
+CREATE TABLE documento_fuentes (
+  fuente_id varchar PRIMARY KEY,
+  nombre text NOT NULL UNIQUE
+);
+
+-- Documentos principales (manuales, protocolos, etc.)
+CREATE TABLE documentos (
+  documento_id varchar PRIMARY KEY,
+  titulo text NOT NULL,
+  descripcion text,
+  autor text,
+  tipo_id varchar REFERENCES documento_tipos(tipo_id),
+  fuente_id varchar REFERENCES documento_fuentes(fuente_id),
+  url text,            -- enlace externo si aplica
+  archivo_local text,  -- ruta/archivo local si aplica
+  es_general boolean NOT NULL DEFAULT false,
+  notas text
+);
+
+-- Asociación opcional de documentos a asignaturas
+CREATE TABLE documentos_asignaturas (
+  documento_id varchar NOT NULL REFERENCES documentos(documento_id),
+  asignatura_id varchar NOT NULL REFERENCES asignaturas(asignatura_id),
+  PRIMARY KEY (documento_id, asignatura_id)
+);
+
+-- =========================================
+-- ANEXO: CATÁLOGO DE NORMATIVAS INSTITUCIONALES
+-- (pictogramas, H, P, CAS) y documentos generales
+-- =========================================
+CREATE TABLE normativa_catalogo (
+  normativa_id varchar PRIMARY KEY,
+  nombre text NOT NULL UNIQUE,
+  descripcion text
+);
+
+-- Relación opcional de documentos institucionales a normativa
+CREATE TABLE documentos_normativas (
+  documento_id varchar NOT NULL REFERENCES documentos(documento_id),
+  normativa_id varchar NOT NULL REFERENCES normativa_catalogo(normativa_id),
+  PRIMARY KEY (documento_id, normativa_id)
 );
