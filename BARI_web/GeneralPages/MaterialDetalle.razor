@@ -1,0 +1,241 @@
+﻿@page "/inventario-materiales/item/{StockId}"
+@using Npgsql
+@using BARI_web.General_Services
+@inject NpgsqlDataSource DataSource
+@inject LaboratorioState LaboratorioState
+
+<PageTitle>@(detalle is null ? "Material" : detalle.Nombre)</PageTitle>
+
+@if (!string.IsNullOrWhiteSpace(loadError))
+{
+    <p class="error-note">No se pudo cargar el material: @loadError</p>
+}
+else if (detalle is null)
+{
+    <p><em>Cargando…</em></p>
+}
+else
+{
+    <a class="back" href="/inventario-materiales">← Volver a materiales</a>
+
+    <section class="detail-card">
+        <header>
+            <h1>@detalle.Nombre</h1>
+            <p class="code">Stock: @detalle.StockId · Modelo: @detalle.ModeloId</p>
+        </header>
+
+        <dl class="info">
+            <div>
+                <dt>Categoría</dt>
+                <dd>@detalle.Categoria</dd>
+            </div>
+            <div>
+                <dt>Subcategoría</dt>
+                <dd>@detalle.Subcategoria</dd>
+            </div>
+            <div>
+                <dt>Capacidad</dt>
+                <dd>@detalle.Capacidad</dd>
+            </div>
+            <div>
+                <dt>Material</dt>
+                <dd>@detalle.Material</dd>
+            </div>
+            <div>
+                <dt>Marca</dt>
+                <dd>@detalle.Marca</dd>
+            </div>
+            <div>
+                <dt>Estado</dt>
+                <dd>@detalle.Estado</dd>
+            </div>
+            <div>
+                <dt>Cantidad</dt>
+                <dd>@detalle.Cantidad</dd>
+            </div>
+            <div>
+                <dt>Ubicación</dt>
+                <dd>@detalle.Ubicacion</dd>
+            </div>
+        </dl>
+
+        @if (!string.IsNullOrWhiteSpace(detalle.Observaciones))
+        {
+            <div class="notes">
+                <strong>Observaciones</strong>
+                <p>@detalle.Observaciones</p>
+            </div>
+        }
+    </section>
+}
+
+@code {
+    [Parameter] public string? StockId { get; set; }
+
+    private MaterialInfo? detalle;
+    private string? loadError;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrWhiteSpace(StockId))
+        {
+            loadError = "No se especificó el ID del material.";
+            return;
+        }
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+                SELECT isx.stock_id,
+                       im.modelo_id,
+                       im.nombre_generico,
+                       COALESCE(c.nombre, '') AS categoria,
+                       COALESCE(sc.nombre, '') AS subcategoria,
+                       COALESCE(im.capacidad_num::text || ' ' || u.simbolo, '—') AS capacidad,
+                       COALESCE(im.material, '—') AS material,
+                       COALESCE(ma.nombre, '—') AS marca,
+                       COALESCE(ea.nombre, 'Sin estado') AS estado,
+                       COALESCE(isx.cantidad, 0) AS cantidad,
+                       COALESCE(a.nombre_areas, '') AS area,
+                       COALESCE(m.nombre_meson, '') AS meson,
+                       COALESCE(isx.posicion, '') AS posicion,
+                       COALESCE(isx.observaciones, '') AS observaciones
+                FROM instrumentos_stock isx
+                JOIN instrumentos_modelo im ON im.modelo_id = isx.modelo_id
+                LEFT JOIN subcategorias sc ON sc.subcategoria_id = im.subcategoria_id
+                LEFT JOIN categorias c ON c.categoria_id = sc.categoria_id
+                LEFT JOIN unidades u ON u.unidad_id = im.unidad_id
+                LEFT JOIN marcas ma ON ma.marca_id = isx.marca_id
+                LEFT JOIN estados_activo ea ON ea.estado_id = isx.estado_id
+                LEFT JOIN areas a ON a.area_id = isx.area_id
+                LEFT JOIN mesones m ON m.meson_id = isx.meson_id
+                WHERE isx.stock_id = @stockId
+                  AND isx.laboratorio_id = @laboratorio
+                ";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("stockId", StockId);
+            cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
+            {
+                detalle = new MaterialInfo
+                {
+                    StockId = reader.GetString(0),
+                    ModeloId = reader.GetString(1),
+                    Nombre = reader.GetString(2),
+                    Categoria = reader.GetString(3),
+                    Subcategoria = reader.GetString(4),
+                    Capacidad = reader.GetString(5),
+                    Material = reader.GetString(6),
+                    Marca = reader.GetString(7),
+                    Estado = reader.GetString(8),
+                    Cantidad = reader.GetInt32(9),
+                    Ubicacion = BuildUbicacion(reader.GetString(10), reader.GetString(11), reader.GetString(12)),
+                    Observaciones = reader.GetString(13)
+                };
+            }
+            else
+            {
+                loadError = "No se encontró el material solicitado.";
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+    }
+
+    private static string BuildUbicacion(string area, string meson, string posicion)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(area)) parts.Add(area);
+        if (!string.IsNullOrWhiteSpace(meson)) parts.Add(meson);
+        if (!string.IsNullOrWhiteSpace(posicion)) parts.Add(posicion);
+        return parts.Count == 0 ? "Sin ubicación" : string.Join(" · ", parts);
+    }
+
+    private sealed class MaterialInfo
+    {
+        public string StockId { get; set; } = "";
+        public string ModeloId { get; set; } = "";
+        public string Nombre { get; set; } = "";
+        public string Categoria { get; set; } = "";
+        public string Subcategoria { get; set; } = "";
+        public string Capacidad { get; set; } = "";
+        public string Material { get; set; } = "";
+        public string Marca { get; set; } = "";
+        public string Estado { get; set; } = "";
+        public int Cantidad { get; set; }
+        public string Ubicacion { get; set; } = "";
+        public string Observaciones { get; set; } = "";
+    }
+}
+
+<style>
+    .back {
+        display: inline-block;
+        margin: .5rem 0 1rem;
+        color: #0b5ed7;
+        text-decoration: none;
+    }
+
+    .back:hover {
+        text-decoration: underline;
+    }
+
+    .detail-card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 16px;
+        padding: 1.25rem 1.5rem;
+        box-shadow: 0 10px 22px rgba(15, 23, 42, 0.05);
+    }
+
+    .detail-card header h1 {
+        margin: 0;
+    }
+
+    .detail-card .code {
+        margin: .2rem 0 0;
+        color: #64748b;
+        font-weight: 600;
+    }
+
+    .info {
+        margin: 1rem 0 0;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: .75rem 1.5rem;
+    }
+
+    .info div {
+        background: #f8fafc;
+        border-radius: 12px;
+        padding: .7rem .85rem;
+    }
+
+    .info dt {
+        font-weight: 600;
+        color: #0f172a;
+    }
+
+    .info dd {
+        margin: .25rem 0 0;
+        color: #475569;
+    }
+
+    .notes {
+        margin-top: 1rem;
+        background: #f1f5f9;
+        border-radius: 12px;
+        padding: .85rem 1rem;
+        color: #334155;
+    }
+
+    .notes p {
+        margin: .4rem 0 0;
+    }
+
+    .error-note { color: #b91c1c; margin-top: 0.75rem; }
+</style>

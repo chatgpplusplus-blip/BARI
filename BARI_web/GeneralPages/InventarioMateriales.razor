@@ -1,7 +1,11 @@
 ﻿@page "/inventario-materiales"
 @page "/inventario-materiales/{SubcategoriaId}"
 @using Npgsql
+@using BARI_web.General_Services
 @inject NpgsqlDataSource DataSource
+@inject LaboratorioState LaboratorioState
+@inject NavigationManager Nav
+@implements IDisposable
 
 <PageTitle>Inventario de Materiales</PageTitle>
 
@@ -20,6 +24,20 @@
         <div>
             <h3>Guía de categorías (base para materiales)</h3>
             <p class="helper">Selecciona una subcategoría para ver los materiales de ese tipo.</p>
+        </div>
+        <div class="category-controls">
+            <select class="category-select" @onchange="OnSubcategoriaChanged" value="@SubcategoriaId">
+                <option value="">Todas las categorías</option>
+                @foreach (var categoria in categorias)
+                {
+                    <optgroup label="@categoria.Nombre">
+                        @foreach (var subcategoria in categoria.Subcategorias)
+                        {
+                            <option value="@subcategoria.Id">@subcategoria.Nombre</option>
+                        }
+                    </optgroup>
+                }
+            </select>
         </div>
         @if (!string.IsNullOrWhiteSpace(SubcategoriaId))
         {
@@ -97,7 +115,11 @@
                     {
                         <tr>
                             <td>@material.ModeloId</td>
-                            <td>@material.Nombre</td>
+                            <td>
+                                <NavLink href="@($"/inventario-materiales/item/{material.StockId}")">
+                                    @material.Nombre
+                                </NavLink>
+                            </td>
                             <td>@material.Categoria</td>
                             <td>@material.Subcategoria</td>
                             <td>@material.Estado</td>
@@ -119,11 +141,22 @@
     private string? subcategoriaNombre;
     private string? loadError;
 
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
+
     protected override async Task OnParametersSetAsync()
     {
         loadError = null;
         await LoadCategoriasAsync();
         await LoadMaterialesAsync();
+    }
+
+    private async void HandleLaboratorioChanged()
+    {
+        await LoadMaterialesAsync();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task LoadCategoriasAsync()
@@ -202,7 +235,8 @@
                        COALESCE(isx.cantidad, 0) AS cantidad,
                        COALESCE(a.nombre_areas, '') AS area,
                        COALESCE(m.nombre_meson, '') AS meson,
-                       COALESCE(isx.posicion, '') AS posicion
+                       COALESCE(isx.posicion, '') AS posicion,
+                       isx.stock_id
                 FROM instrumentos_stock isx
                 JOIN instrumentos_modelo im ON im.modelo_id = isx.modelo_id
                 LEFT JOIN subcategorias sc ON sc.subcategoria_id = im.subcategoria_id
@@ -211,10 +245,12 @@
                 LEFT JOIN areas a ON a.area_id = isx.area_id
                 LEFT JOIN mesones m ON m.meson_id = isx.meson_id
                 WHERE im.subcategoria_id = @subcategoria
+                  AND isx.laboratorio_id = @laboratorio
                 ORDER BY im.nombre_generico, isx.modelo_id
                 ";
             await using var cmd = new NpgsqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("subcategoria", SubcategoriaId);
+            cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
@@ -225,7 +261,8 @@
                     reader.GetString(3),
                     reader.GetString(4),
                     reader.GetInt32(5),
-                    BuildUbicacion(reader.GetString(6), reader.GetString(7), reader.GetString(8))
+                    BuildUbicacion(reader.GetString(6), reader.GetString(7), reader.GetString(8)),
+                    reader.GetString(9)
                 );
                 materiales.Add(material);
             }
@@ -267,7 +304,25 @@
         string Subcategoria,
         string Estado,
         int Cantidad,
-        string Ubicacion);
+        string Ubicacion,
+        string StockId);
+
+    private void OnSubcategoriaChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            Nav.NavigateTo("/inventario-materiales");
+            return;
+        }
+
+        Nav.NavigateTo($"/inventario-materiales/{value}");
+    }
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
 }
 
 <style>
@@ -276,6 +331,21 @@
         align-items: flex-start;
         justify-content: space-between;
         gap: 1rem;
+    }
+
+    .category-controls {
+        display: flex;
+        gap: .75rem;
+        align-items: center;
+    }
+
+    .category-select {
+        min-width: 220px;
+        padding: .35rem .6rem;
+        border-radius: 8px;
+        border: 1px solid #cbd5f5;
+        background: #fff;
+        color: #0f172a;
     }
 
     .helper {
