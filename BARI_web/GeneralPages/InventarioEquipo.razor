@@ -160,6 +160,11 @@
         await InvokeAsync(StateHasChanged);
     }
 
+    private static readonly string[] CategoriaPermitidas =
+    [
+        "Equipo/Instrumento"
+    ];
+
     private async Task LoadCategoriasAsync()
     {
         if (categorias.Count > 0) return;
@@ -172,9 +177,11 @@
                        s.subcategoria_id, s.nombre
                 FROM categorias c
                 LEFT JOIN subcategorias s ON s.categoria_id = c.categoria_id
+                WHERE c.nombre = ANY(@categorias)
                 ORDER BY c.nombre, s.nombre
                 ";
             await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("categorias", CategoriaPermitidas);
             await using var reader = await cmd.ExecuteReaderAsync();
             var map = new Dictionary<string, CategoriaRow>();
             while (await reader.ReadAsync())
@@ -254,11 +261,13 @@
                 ) cal ON cal.equipo_id = e.equipo_id
                 WHERE me.subcategoria_id = @subcategoria
                   AND e.laboratorio_id = @laboratorio
+                  AND c.nombre = ANY(@categorias)
                 ORDER BY me.nombre_modelo, e.equipo_id
                 ";
             await using var cmd = new NpgsqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("subcategoria", SubcategoriaId);
             cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
+            cmd.Parameters.AddWithValue("categorias", CategoriaPermitidas);
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
