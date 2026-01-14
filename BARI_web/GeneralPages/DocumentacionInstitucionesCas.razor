@@ -48,7 +48,17 @@
         try
         {
             await using var conn = await DataSource.OpenConnectionAsync();
-            const string sql = "SELECT cas_id, nombre, categoria FROM cas_catalogo ORDER BY cas_id";
+            const string sql = @"
+                SELECT DISTINCT ON (s.cas)
+                       s.cas,
+                       COALESCE(NULLIF(s.nombre_quimico, ''), NULLIF(s.nombre_comercial, ''), '—') AS nombre,
+                       COALESCE(c.nombre, '') AS categoria
+                FROM sustancias s
+                LEFT JOIN subcategorias sc ON sc.subcategoria_id = s.subcategoria_id
+                LEFT JOIN categorias c ON c.categoria_id = sc.categoria_id
+                WHERE s.cas IS NOT NULL AND s.cas <> ''
+                ORDER BY s.cas, s.sustancia_id
+                ";
             await using var cmd = new NpgsqlCommand(sql, conn);
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
@@ -56,7 +66,7 @@
                 catalogo.Add(new CasRow(
                     reader.GetString(0),
                     reader.GetString(1),
-                    reader.IsDBNull(2) ? "" : reader.GetString(2)
+                    reader.GetString(2)
                 ));
             }
         }

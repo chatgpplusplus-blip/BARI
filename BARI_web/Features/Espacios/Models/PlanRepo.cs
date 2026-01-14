@@ -13,19 +13,19 @@ public sealed class PlanRepo
     {
         await using var conn = await _ds.OpenConnectionAsync(ct);
 
-        var planId = await conn.ExecuteScalarAsync<string>(
-            new CommandDefinition("SELECT plan_id FROM planos WHERE vigente=TRUE ORDER BY created_at DESC LIMIT 1", cancellationToken: ct))
-            ?? throw new InvalidOperationException("No hay plano vigente.");
+        var canvasId = await conn.ExecuteScalarAsync<string>(
+            new CommandDefinition("SELECT canvas_id FROM canvas_lab ORDER BY canvas_id LIMIT 1", cancellationToken: ct))
+            ?? throw new InvalidOperationException("No hay canvas registrado.");
 
         // Áreas + puntos
         var rows = await conn.QueryAsync<(string area_id, string nombre, decimal x, decimal y, int seq)>(
             new CommandDefinition(@"
-SELECT a.area_id, a.nombre_
-as nombre, av.x_m as x, av.y_m as y, av.seq
+SELECT a.area_id, a.nombre_areas as nombre, pp.x_m as x, pp.y_m as y, pp.orden as seq
 FROM areas a
-JOIN area_vertices av ON av.area_id = a.area_id
-WHERE a.plan_id = @p
-ORDER BY a.area_id, av.seq;", new { p = planId }, cancellationToken: ct));
+JOIN poligonos p ON p.area_id = a.area_id
+JOIN poligonos_puntos pp ON pp.poly_id = p.poly_id
+WHERE p.canvas_id = @c
+ORDER BY a.area_id, p.poly_id, pp.orden;", new { c = canvasId }, cancellationToken: ct));
 
         var areas = rows
             .GroupBy(r => (r.area_id, r.nombre))
@@ -38,28 +38,25 @@ ORDER BY a.area_id, av.seq;", new { p = planId }, cancellationToken: ct));
 
         // Puertas
         var doorRows = await conn.QueryAsync<DoorRow>(new CommandDefinition(@"
-SELECT p.puerta_id, p.x1_m, p.y1_m, p.x2_m, p.y2_m, p.tipo,
-       pa.area_id
+SELECT p.puerta_id, p.x1_m, p.y1_m, p.x2_m, p.y2_m, p.area_a, p.area_b
 FROM puertas p
-LEFT JOIN puertas_areas pa ON pa.puerta_id = p.puerta_id
-WHERE p.plan_id=@p
-ORDER BY p.puerta_id;", new { p = planId }, cancellationToken: ct));
+WHERE p.canvas_id=@c
+ORDER BY p.puerta_id;", new { c = canvasId }, cancellationToken: ct));
 
         var puertas = doorRows
-            .GroupBy(d => (d.puerta_id, d.x1_m, d.y1_m, d.x2_m, d.y2_m, d.tipo))
-            .Select(g => new PuertaDto
+            .Select(d => new PuertaDto
             {
-                Id = g.Key.puerta_id,
-                P1 = new Pt(g.Key.x1_m, g.Key.y1_m),
-                P2 = new Pt(g.Key.x2_m, g.Key.y2_m),
-                Tipo = g.Key.tipo ?? "batiente",
-                Areas = g.Where(x => x.area_id != null).Select(x => x.area_id!).Distinct().ToList()
+                Id = d.puerta_id,
+                P1 = new Pt(d.x1_m, d.y1_m),
+                P2 = new Pt(d.x2_m, d.y2_m),
+                Tipo = "batiente",
+                Areas = new[] { d.area_a, d.area_b }.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!).Distinct().ToList()
             }).ToList();
 
-        return new PlanDto { PlanId = planId, Areas = areas, Puertas = puertas };
+        return new PlanDto { PlanId = canvasId, Areas = areas, Puertas = puertas };
     }
 
-    private sealed record DoorRow(string puerta_id, decimal x1_m, decimal y1_m, decimal x2_m, decimal y2_m, string? tipo, string? area_id);
+    private sealed record DoorRow(string puerta_id, decimal x1_m, decimal y1_m, decimal x2_m, decimal y2_m, string? area_a, string? area_b);
 }
 
 public sealed class PlanDto
