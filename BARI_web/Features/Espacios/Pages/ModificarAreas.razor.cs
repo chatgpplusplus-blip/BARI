@@ -457,6 +457,82 @@ namespace BARI_web.Features.Espacios.Pages
             return (decimal)Math.Sqrt((double)(dx * dx + dy * dy));
         }
 
+        private async Task LoadPolyPointsAsync()
+        {
+            var pointsByPoly = new Dictionary<string, List<(int orden, Point point)>>(StringComparer.OrdinalIgnoreCase);
+            Pg.UseSheet("poligonos_puntos");
+            foreach (var row in await Pg.ReadAllAsync())
+            {
+                var polyId = Get(row, "poly_id");
+                if (string.IsNullOrWhiteSpace(polyId)) continue;
+                var orden = Int(Get(row, "orden", "0"));
+                var x = Dec(Get(row, "x_m", "0"));
+                var y = Dec(Get(row, "y_m", "0"));
+                if (!pointsByPoly.TryGetValue(polyId, out var list))
+                {
+                    list = new List<(int, Point)>();
+                    pointsByPoly[polyId] = list;
+                }
+                list.Add((orden, new Point(x, y)));
+            }
+
+            foreach (var p in _polys)
+            {
+                if (pointsByPoly.TryGetValue(p.poly_id, out var list) && list.Count >= 3)
+                {
+                    p.puntos = list.OrderBy(item => item.orden).Select(item => item.point).ToList();
+                }
+                else
+                {
+                    p.puntos = BuildRectPoints(p);
+                }
+                UpdateBoundsFromPoints(p);
+            }
+        }
+
+        private static List<Point> BuildRectPoints(Poly p)
+            => new()
+            {
+                new Point(p.x_m, p.y_m),
+                new Point(p.x_m + p.ancho_m, p.y_m),
+                new Point(p.x_m + p.ancho_m, p.y_m + p.alto_m),
+                new Point(p.x_m, p.y_m + p.alto_m)
+            };
+
+        private void UpdateBoundsFromPoints(Poly p)
+        {
+            if (p.puntos.Count == 0) return;
+            var minX = p.puntos.Min(pt => pt.X);
+            var minY = p.puntos.Min(pt => pt.Y);
+            var maxX = p.puntos.Max(pt => pt.X);
+            var maxY = p.puntos.Max(pt => pt.Y);
+            p.x_m = minX;
+            p.y_m = minY;
+            p.ancho_m = Math.Max(0.1m, maxX - minX);
+            p.alto_m = Math.Max(0.1m, maxY - minY);
+        }
+
+        private static (decimal minX, decimal minY, decimal maxX, decimal maxY) BoundsOfPoints(IReadOnlyList<Point> points)
+        {
+            var minX = points.Min(pt => pt.X);
+            var minY = points.Min(pt => pt.Y);
+            var maxX = points.Max(pt => pt.X);
+            var maxY = points.Max(pt => pt.Y);
+            return (minX, minY, maxX, maxY);
+        }
+
+        private string PointsString(IEnumerable<Point> points)
+            => string.Join(" ", points.Select(p => $"{S(p.X)},{S(p.Y)}"));
+
+        private string PointsString(Poly p) => PointsString(p.puntos);
+
+        private static decimal Distance(Point a, Point b)
+        {
+            var dx = a.X - b.X;
+            var dy = a.Y - b.Y;
+            return (decimal)Math.Sqrt((double)(dx * dx + dy * dy));
+        }
+
         // ======== UI helpers (SVG)
         private RenderFragment VertexHandle(Poly p, decimal lx, decimal ly, Handle h) => builder =>
         {
