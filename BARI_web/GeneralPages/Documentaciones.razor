@@ -15,8 +15,8 @@
     <LaboratorioSelector />
 </section>
 
-<section class="page-card" style="margin-top:1.5rem;">
-    <h3>Menú de documentación por asignatura</h3>
+<section id="asignaturas" class="page-card" style="margin-top:1.5rem;">
+    <h3>Documentación por asignatura</h3>
     <p class="section-intro">
         Usa los desplegables para navegar a la documentación académica por asignatura.
     </p>
@@ -49,24 +49,36 @@
     }
 </section>
 
-<section id="instituciones-general" class="page-card" style="margin-top:1.5rem;">
-    <h3>Documentación institucional (general)</h3>
-    <p class="section-intro">
-        Documentación externa y normativa general: pictogramas, H-codes, P-codes y catálogos CAS.
-    </p>
-    <div class="menu-grid">
-        <div class="menu-item">
-            <strong>Instituciones y normativas</strong>
-            <div class="menu-links">
-                <NavLink class="btn-link" href="/documentacion/instituciones/pictogramas">Pictogramas (GHS)</NavLink>
-                <NavLink class="btn-link" href="/documentacion/instituciones/h-codes">H-Codes</NavLink>
-                <NavLink class="btn-link" href="/documentacion/instituciones/p-codes">P-Codes</NavLink>
-                <NavLink class="btn-link" href="/documentacion/instituciones/cas">CAS</NavLink>
-                <NavLink class="btn-link" href="/documentacion/instituciones/documentos">Documentos institucionales</NavLink>
+@if (isQuimica)
+{
+    <section id="instituciones-general" class="page-card" style="margin-top:1.5rem;">
+        <h3>Documentación institucional (general)</h3>
+        <p class="section-intro">
+            Documentación externa y normativa general: pictogramas, H-codes, P-codes y catálogos CAS.
+        </p>
+        <div class="menu-grid">
+            <div class="menu-item">
+                <strong>Instituciones y normativas</strong>
+                <div class="menu-links">
+                    <NavLink class="btn-link" href="/documentacion/instituciones/pictogramas">Pictogramas (GHS)</NavLink>
+                    <NavLink class="btn-link" href="/documentacion/instituciones/h-codes">H-Codes</NavLink>
+                    <NavLink class="btn-link" href="/documentacion/instituciones/p-codes">P-Codes</NavLink>
+                    <NavLink class="btn-link" href="/documentacion/instituciones/cas">CAS</NavLink>
+                    <NavLink class="btn-link" href="/documentacion/instituciones/documentos">Documentos institucionales</NavLink>
+                </div>
             </div>
         </div>
-    </div>
-</section>
+    </section>
+}
+else
+{
+    <section id="instituciones-general" class="page-card" style="margin-top:1.5rem;">
+        <h3>Documentación institucional (general)</h3>
+        <p class="section-intro">
+            Esta sección es específica para el laboratorio de Química.
+        </p>
+    </section>
+}
 
 <section id="upsa-general" class="page-card" style="margin-top:1.5rem;">
     <h3>Documentación del laboratorio (UPSA)</h3>
@@ -88,7 +100,7 @@
 <section class="page-card" style="margin-top:1.5rem;">
     <h3>Selecciona el tipo de documentación (@(string.IsNullOrWhiteSpace(laboratorioNombre) ? "Laboratorio" : laboratorioNombre))</h3>
     <p class="section-intro">
-        Elige una de las tres categorías principales para la asignatura de química.
+        Elige una de las tres categorías principales del laboratorio.
     </p>
     <div class="type-grid">
         <article class="type-item">
@@ -96,47 +108,20 @@
             <p>Guías de práctica, planificaciones y material académico.</p>
             <NavLink class="btn-link" href="/documentaciones#asignaturas">Ver asignaturas</NavLink>
         </article>
-        <article class="type-item">
-            <h4>Documentación de instituciones</h4>
-            <p>Normativas externas: IUPAC, GHS, consejos de prudencia y peligros.</p>
-            <NavLink class="btn-link" href="/documentaciones#instituciones-general">Ver instituciones</NavLink>
-        </article>
+        @if (isQuimica)
+        {
+            <article class="type-item">
+                <h4>Documentación de instituciones</h4>
+                <p>Normativas externas: IUPAC, GHS, consejos de prudencia y peligros.</p>
+                <NavLink class="btn-link" href="/documentaciones#instituciones-general">Ver instituciones</NavLink>
+            </article>
+        }
         <article class="type-item">
             <h4>Documentación del laboratorio (UPSA)</h4>
             <p>Manuales internos, procedimientos y reglamentos del laboratorio.</p>
             <NavLink class="btn-link" href="/documentaciones#upsa-general">Ver UPSA</NavLink>
         </article>
     </div>
-</section>
-
-<section id="asignaturas" class="page-card" style="margin-top:1.5rem;">
-    <h3>Documentación para asignaturas</h3>
-    <p class="section-intro">
-        Se listan las asignaturas disponibles. Cada una enlaza a su documentación de laboratorio.
-    </p>
-    <div class="assign-grid">
-        @foreach (var asignatura in asignaturas)
-        {
-            <article class="assign-item" @key="asignatura.Id">
-                <div>
-                    <h4>@asignatura.Nombre</h4>
-                    <span class="muted">@asignatura.Codigo</span>
-                </div>
-                <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/laboratorios")">
-                    Ver documentación
-                </NavLink>
-            </article>
-        }
-    </div>
-
-    <details open class="guide-block">
-        <summary>Sublista de experiencias por asignatura</summary>
-        <ul class="guide-list">
-            <li>Experiencia 1 · Materiales usados · Equipos usados</li>
-            <li>Experiencia 2 · Procedimientos · Precauciones</li>
-            <li>Experiencia 3 · Observaciones · Tiempo estimado</li>
-        </ul>
-    </details>
 </section>
 
 
@@ -146,6 +131,7 @@
     private readonly List<AsignaturaView> asignaturas = new();
     private string? loadError;
     private string? laboratorioNombre;
+    private bool isQuimica;
 
     protected override void OnInitialized()
     {
@@ -170,6 +156,7 @@
             loadError = null;
             asignaturas.Clear();
             laboratorioNombre = null;
+            isQuimica = false;
             await using var conn = await DataSource.OpenConnectionAsync();
 
             const string sqlLab = @"
@@ -182,6 +169,9 @@
                 cmdLab.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
                 laboratorioNombre = (string?)await cmdLab.ExecuteScalarAsync();
             }
+            var labNombre = laboratorioNombre ?? string.Empty;
+            isQuimica = LaboratorioState.LaboratorioId == 1
+                || labNombre.Contains("quim", StringComparison.OrdinalIgnoreCase);
 
             const string sqlAsignaturas = @"
                 SELECT asignatura_id,
@@ -268,29 +258,6 @@
     }
     .type-item h4 { margin:0 0 0.2rem; color:#0b2a68; }
     .error-note { color:#b91c1c; font-size:0.9rem; margin:0 0 0.75rem; }
-    .guide-block { margin:0.75rem 0; }
-    .guide-block summary { cursor:pointer; font-weight:600; color:#0b2a68; }
-    .guide-list { margin:0.4rem 0 0; padding-left:1.2rem; color:#374151; }
-    .guide-list li { margin:0.35rem 0; }
-    .table-wrap { overflow-x:auto; }
-    table { width:100%; border-collapse:collapse; background:#fff; }
-    th, td { padding:0.6rem; border-bottom:1px solid #e5e7eb; text-align:left; }
-    th { background:#f3f4f6; font-weight:600; }
-    .assign-grid {
-        display:grid;
-        gap:1rem;
-        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    }
-    .assign-item {
-        border:1px solid #e5e7eb;
-        border-radius:0.8rem;
-        padding:0.9rem 1rem;
-        background:#f9fafb;
-        display:flex;
-        flex-direction:column;
-        gap:0.6rem;
-    }
-    .assign-item h4 { margin:0 0 0.2rem; color:#0b2a68; }
     .muted { color:#6b7280; font-size:0.85rem; }
     .btn-link {
         display:inline-flex;
