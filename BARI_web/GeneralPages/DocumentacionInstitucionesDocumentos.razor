@@ -31,6 +31,10 @@
                     <div>
                         <h3>@doc.Titulo</h3>
                         <p class="meta">@doc.Tipo · @doc.Fuente</p>
+                        @if (!string.IsNullOrWhiteSpace(doc.Descripcion))
+                        {
+                            <p class="detalle">@doc.Descripcion</p>
+                        }
                     </div>
                     @if (!string.IsNullOrWhiteSpace(doc.Url))
                     {
@@ -104,7 +108,7 @@
         }
     }
 
-    private sealed record DocRow(string Titulo, string Tipo, string Fuente, string Url);
+    private sealed record DocRow(string Titulo, string Tipo, string Fuente, string Url, string Descripcion);
 
     public void Dispose()
     {
@@ -143,6 +147,7 @@
     }
     .doc-card h3 { margin:0; color:#0b2a68; }
     .meta { color:#64748b; font-size:0.85rem; margin:0.2rem 0 0; }
+    .detalle { color:#4b5563; font-size:0.85rem; margin:0.35rem 0 0; }
     .btn-link {
         display:inline-flex;
         width:max-content;
