@@ -81,7 +81,7 @@ else
                             @foreach (var p in _polys.Where(IsVisible))
                             {
                                 <clipPath id="@($"clip_{p.poly_id}")" clipPathUnits="userSpaceOnUse">
-                                    <polygon points="@PointsString(p)" />
+                                    <polygon points="@PointsStringForPoly(p)" />
                                 </clipPath>
                             }
                         </defs>
@@ -99,7 +99,7 @@ else
 
                             <g @onmouseover="() => _hoverId = p.poly_id"
                                @onmouseout="() => _hoverId = null">
-                                <polygon points="@PointsString(p)"
+                                <polygon points="@PointsStringForPoly(p)"
                                          fill="@AreaColor(p)"
                                          opacity="@(isHover && !isSel ? "0.92" : "1")"
                                          stroke="@stroke" stroke-width="@S(isSel ? 0.06 : isHover ? 0.045 : 0.03)"
@@ -141,7 +141,7 @@ else
 
                         @if (_isDrawing && _draftPoints.Count > 0)
                         {
-                            <polyline points="@PointsString(_draftPoints)"
+                            <polyline points="@PointsStringFromPoints(_draftPoints)"
                                       fill="none" stroke="#2563eb" stroke-width="@S(0.06m)" />
                             @for (var i = 0; i < _draftPoints.Count; i++)
                             {
