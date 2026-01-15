@@ -56,18 +56,9 @@
     private string? laboratorioNombre;
     private bool isQuimica;
 
-    protected override void OnInitialized()
-    {
-        LaboratorioState.OnChange += HandleLaboratorioChanged;
-    }
-
-    protected override void OnInitialized()
-    {
-        LaboratorioState.OnChange += HandleLaboratorioChanged;
-    }
-
     protected override async Task OnInitializedAsync()
     {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
         await LoadCatalogoAsync();
     }
 

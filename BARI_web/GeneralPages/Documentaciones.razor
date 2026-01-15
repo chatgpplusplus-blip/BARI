@@ -58,13 +58,13 @@
     <h3>Documentación institucional (general)</h3>
     <p class="section-intro">
         Documentos y normativas institucionales disponibles por laboratorio.
-        @if (!isQuimica)
-        {
-            <span class="muted">Los listados CAS, GHS, H y P están activos solo para Química.</span>
-        }
     </p>
+    @if (!isQuimica)
+    {
+        <p class="muted">Los listados CAS, GHS, H y P están activos solo para Química.</p>
+    }
     <div class="menu-grid">
-        <div class="menu-item">
+        <article class="menu-item">
             <strong>Instituciones y normativas</strong>
             <p class="menu-desc">
                 Catálogos, fichas y documentación general de referencia para el laboratorio.
@@ -73,18 +73,9 @@
                 <NavLink class="btn-link" href="/documentacion/instituciones">Ver mosaico institucional</NavLink>
                 <NavLink class="btn-link secondary" href="/documentacion/instituciones/documentos">Documentos institucionales</NavLink>
             </div>
-        </div>
-    </section>
-}
-else
-{
-    <section id="instituciones-general" class="page-card" style="margin-top:1.5rem;">
-        <h3>Documentación institucional (general)</h3>
-        <p class="section-intro">
-            Esta sección es específica para el laboratorio de Química.
-        </p>
-    </section>
-}
+        </article>
+    </div>
+</section>
 
 <section id="upsa-general" class="page-card" style="margin-top:1.5rem;">
     <h3>Documentación del laboratorio (UPSA)</h3>
