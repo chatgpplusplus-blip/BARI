@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
 using BARI_web.General_Services.DataBaseConnection;
 using System;
+using Npgsql;
 
 namespace BARI_web.Features.Espacios.Pages
 {
@@ -12,6 +13,7 @@ namespace BARI_web.Features.Espacios.Pages
     {
         [Parameter] public string AreaSlug { get; set; } = "";
         [Inject] private PgCrud Pg { get; set; } = default!;
+        [Inject] private NpgsqlDataSource DataSource { get; set; } = default!;
         [Inject] public NavigationManager Nav { get; set; } = default!;
 
         // ====== modelos ======
@@ -81,9 +83,28 @@ namespace BARI_web.Features.Espacios.Pages
         private bool IsLoading { get; set; } = true;
         private CanvasLab? _canvas;
         private AreaDraw? _area;
+        private AreaInfo? _areaInfo;
         private readonly List<InnerItem> _inners = new();
         private readonly List<Door> _doors = new();
         private readonly List<Win> _windows = new();
+        private readonly List<EquipoItem> _equipos = new();
+        private readonly List<MaterialItem> _materialesVidrio = new();
+        private readonly List<MaterialItem> _materialesMontaje = new();
+        private readonly List<MaterialItem> _materialesConsumible = new();
+        private readonly List<SustanciaItem> _sustancias = new();
+
+        private readonly List<SelectOption> _equiposDisponibles = new();
+        private readonly List<SelectOption> _materialesVidrioDisponibles = new();
+        private readonly List<SelectOption> _materialesMontajeDisponibles = new();
+        private readonly List<SelectOption> _materialesConsumibleDisponibles = new();
+        private readonly List<SelectOption> _contenedoresDisponibles = new();
+
+        private string? _selectedEquipoId;
+        private string? _selectedMaterialVidrioId;
+        private string? _selectedMaterialMontajeId;
+        private string? _selectedMaterialConsumibleId;
+        private string? _selectedContenedorId;
+        private string? _assignMsg;
 
         // etiqueta override tomada del rectángulo interior del mesón
         private readonly Dictionary<string, string> _mesonLabelFromInner = new(StringComparer.OrdinalIgnoreCase);
@@ -112,6 +133,42 @@ namespace BARI_web.Features.Espacios.Pages
         // grilla cache
         private decimal GridStartX, GridEndX, GridStartY, GridEndY;
 
+        private sealed record AreaInfo(
+            string area_id,
+            string nombre,
+            decimal? altura_m,
+            decimal? area_total_m2,
+            string? anotaciones,
+            string? planta_id,
+            string? canvas_id,
+            int laboratorio_id
+        );
+
+        private sealed record EquipoItem(
+            string equipo_id,
+            string nombre_modelo,
+            string serie,
+            string estado_id,
+            string posicion
+        );
+
+        private sealed record MaterialItem(
+            string material_id,
+            string nombre,
+            string detalle,
+            string posicion
+        );
+
+        private sealed record SustanciaItem(
+            string cont_id,
+            string sustancia_id,
+            string nombre,
+            string cantidad,
+            string proveedor
+        );
+
+        private sealed record SelectOption(string id, string label);
+
         // ===== Ciclo de vida =====
         protected override async Task OnInitializedAsync()
         {
@@ -119,15 +176,15 @@ namespace BARI_web.Features.Espacios.Pages
             {
                 IsLoading = true;
 
-                await LoadCanvasAsync();
+                // area_id desde el slug (sin GetLookupAsync, leemos "areas" 1 vez)
+                var targetAreaId = await ResolveAreaIdFromSlug(AreaSlug);
+                _areaInfo = await LoadAreaInfoAsync(targetAreaId);
+                await LoadCanvasAsync(_areaInfo?.canvas_id);
                 if (_canvas is null)
                 {
                     SetDefaultViewBox();
                     return;
                 }
-
-                // area_id desde el slug (sin GetLookupAsync, leemos "areas" 1 vez)
-                var targetAreaId = await ResolveAreaIdFromSlug(AreaSlug);
 
                 // Polígonos del área y construcción del AreaDraw
                 var polys = await LoadPolysForAreaAsync(targetAreaId);
@@ -156,6 +213,14 @@ namespace BARI_web.Features.Espacios.Pages
                 await LoadDoorsAndWindowsForArea(a);
                 await LoadMesonesForArea(targetAreaId);
                 await LoadInstalacionesForArea(a);
+
+                if (_areaInfo is not null)
+                {
+                    await LoadEquiposAsync(targetAreaId);
+                    await LoadMaterialesAsync(targetAreaId);
+                    await LoadSustanciasAsync(targetAreaId);
+                    await LoadDisponiblesAsync(_areaInfo.laboratorio_id, targetAreaId);
+                }
             }
             finally
             {
@@ -165,15 +230,47 @@ namespace BARI_web.Features.Espacios.Pages
         }
 
         // ===== Carga / Construcción =====
-        private async Task LoadCanvasAsync()
+        private async Task LoadCanvasAsync(string? canvasId)
         {
             Pg.UseSheet("canvas_lab");
-            var c = (await Pg.ReadAllAsync()).FirstOrDefault();
+            var canvases = await Pg.ReadAllAsync();
+            var c = canvases.FirstOrDefault(row => string.Equals(Get(row, "canvas_id"), canvasId ?? "", StringComparison.OrdinalIgnoreCase))
+                ?? canvases.FirstOrDefault();
             if (c is null) return;
 
             _canvas = new CanvasLab(
                 c["canvas_id"], c["nombre"],
                 Dec(c["ancho_m"]), Dec(c["alto_m"]), Dec(c["margen_m"])
+            );
+        }
+
+        private async Task<AreaInfo?> LoadAreaInfoAsync(string areaId)
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+                SELECT area_id,
+                       nombre_areas,
+                       altura_m,
+                       area_total_m2,
+                       anotaciones_del_area,
+                       planta_id,
+                       canvas_id,
+                       laboratorio_id
+                FROM areas
+                WHERE area_id = @area_id";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("area_id", areaId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (!await reader.ReadAsync()) return null;
+            return new AreaInfo(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetDecimal(2),
+                reader.IsDBNull(3) ? null : reader.GetDecimal(3),
+                reader.IsDBNull(4) ? null : reader.GetString(4),
+                reader.IsDBNull(5) ? null : reader.GetString(5),
+                reader.IsDBNull(6) ? null : reader.GetString(6),
+                reader.GetInt32(7)
             );
         }
 
@@ -254,10 +351,290 @@ namespace BARI_web.Features.Espacios.Pages
 
             // Label: usa primera etiqueta de poly o, si no, fallback al area_id (evita una consulta extra)
             var etiquetaPoly = ordered.Select(p => p.etiqueta).FirstOrDefault(t => !string.IsNullOrWhiteSpace(t));
-            a.Label = (etiquetaPoly ?? areaId).ToUpperInvariant();
+            var nombreArea = _areaInfo?.nombre;
+            a.Label = (etiquetaPoly ?? nombreArea ?? areaId).ToUpperInvariant();
             a.Fill = ordered.Select(p => p.color_hex).FirstOrDefault(s => !string.IsNullOrWhiteSpace(s)) ?? "#E6E6E6";
 
             return a;
+        }
+
+        private async Task LoadEquiposAsync(string areaId)
+        {
+            _equipos.Clear();
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+                SELECT e.equipo_id,
+                       COALESCE(m.nombre_modelo, '') AS nombre_modelo,
+                       COALESCE(e.serie, '') AS serie,
+                       COALESCE(e.estado_id, '') AS estado_id,
+                       COALESCE(e.posicion, '') AS posicion
+                FROM equipos e
+                LEFT JOIN modelos_equipo m ON m.modelo_id = e.modelo_id
+                WHERE e.area_id = @area_id
+                ORDER BY nombre_modelo, e.equipo_id";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("area_id", areaId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                _equipos.Add(new EquipoItem(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetString(3),
+                    reader.GetString(4)
+                ));
+            }
+        }
+
+        private async Task LoadMaterialesAsync(string areaId)
+        {
+            _materialesVidrio.Clear();
+            _materialesMontaje.Clear();
+            _materialesConsumible.Clear();
+
+            await using var conn = await DataSource.OpenConnectionAsync();
+
+            const string sqlVidrio = @"
+                SELECT material_id,
+                       nombre,
+                       COALESCE(capacidad_num::text, '') AS detalle,
+                       COALESCE(posicion, '') AS posicion
+                FROM materiales_vidrio
+                WHERE area_id = @area_id
+                ORDER BY nombre";
+            await using (var cmd = new NpgsqlCommand(sqlVidrio, conn))
+            {
+                cmd.Parameters.AddWithValue("area_id", areaId);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    _materialesVidrio.Add(new MaterialItem(
+                        reader.GetString(0),
+                        reader.GetString(1),
+                        reader.GetString(2),
+                        reader.GetString(3)
+                    ));
+                }
+            }
+
+            const string sqlMontaje = @"
+                SELECT material_id,
+                       nombre,
+                       COALESCE(estado_id, '') AS detalle,
+                       COALESCE(posicion, '') AS posicion
+                FROM materiales_montaje
+                WHERE area_id = @area_id
+                ORDER BY nombre";
+            await using (var cmd = new NpgsqlCommand(sqlMontaje, conn))
+            {
+                cmd.Parameters.AddWithValue("area_id", areaId);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    _materialesMontaje.Add(new MaterialItem(
+                        reader.GetString(0),
+                        reader.GetString(1),
+                        reader.GetString(2),
+                        reader.GetString(3)
+                    ));
+                }
+            }
+
+            const string sqlConsumible = @"
+                SELECT material_id,
+                       nombre,
+                       COALESCE(cantidad::text, '') AS detalle,
+                       COALESCE(posicion, '') AS posicion
+                FROM materiales_consumible
+                WHERE area_id = @area_id
+                ORDER BY nombre";
+            await using var cmdCons = new NpgsqlCommand(sqlConsumible, conn);
+            cmdCons.Parameters.AddWithValue("area_id", areaId);
+            await using var readerCons = await cmdCons.ExecuteReaderAsync();
+            while (await readerCons.ReadAsync())
+            {
+                _materialesConsumible.Add(new MaterialItem(
+                    readerCons.GetString(0),
+                    readerCons.GetString(1),
+                    readerCons.GetString(2),
+                    readerCons.GetString(3)
+                ));
+            }
+        }
+
+        private async Task LoadSustanciasAsync(string areaId)
+        {
+            _sustancias.Clear();
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+                SELECT c.cont_id,
+                       s.sustancia_id,
+                       COALESCE(NULLIF(s.nombre_comercial, ''),
+                                NULLIF(s.nombre_quimico, ''),
+                                s.sustancia_id) AS nombre,
+                       COALESCE(c.cantidad_reactivo_actual, c.cantidad_reactivo_nominal, 0)::text AS cantidad,
+                       COALESCE(c.proveedor, '') AS proveedor
+                FROM contenedores c
+                JOIN sustancias s ON s.sustancia_id = c.sustancia_id
+                WHERE c.area_id = @area_id
+                ORDER BY nombre";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("area_id", areaId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                _sustancias.Add(new SustanciaItem(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetString(3),
+                    reader.GetString(4)
+                ));
+            }
+        }
+
+        private async Task LoadDisponiblesAsync(int laboratorioId, string areaId)
+        {
+            _equiposDisponibles.Clear();
+            _materialesVidrioDisponibles.Clear();
+            _materialesMontajeDisponibles.Clear();
+            _materialesConsumibleDisponibles.Clear();
+            _contenedoresDisponibles.Clear();
+
+            await using var conn = await DataSource.OpenConnectionAsync();
+
+            const string sqlEquipos = @"
+                SELECT e.equipo_id,
+                       COALESCE(m.nombre_modelo, '') AS label
+                FROM equipos e
+                LEFT JOIN modelos_equipo m ON m.modelo_id = e.modelo_id
+                WHERE e.laboratorio_id = @lab
+                  AND (e.area_id IS NULL OR e.area_id <> @area_id)
+                ORDER BY label, e.equipo_id";
+            await using (var cmd = new NpgsqlCommand(sqlEquipos, conn))
+            {
+                cmd.Parameters.AddWithValue("lab", laboratorioId);
+                cmd.Parameters.AddWithValue("area_id", areaId);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    _equiposDisponibles.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+                }
+            }
+
+            const string sqlVidrio = @"
+                SELECT material_id, nombre
+                FROM materiales_vidrio
+                WHERE laboratorio_id = @lab
+                  AND (area_id IS NULL OR area_id <> @area_id)
+                ORDER BY nombre";
+            await using (var cmd = new NpgsqlCommand(sqlVidrio, conn))
+            {
+                cmd.Parameters.AddWithValue("lab", laboratorioId);
+                cmd.Parameters.AddWithValue("area_id", areaId);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    _materialesVidrioDisponibles.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+                }
+            }
+
+            const string sqlMontaje = @"
+                SELECT material_id, nombre
+                FROM materiales_montaje
+                WHERE laboratorio_id = @lab
+                  AND (area_id IS NULL OR area_id <> @area_id)
+                ORDER BY nombre";
+            await using (var cmd = new NpgsqlCommand(sqlMontaje, conn))
+            {
+                cmd.Parameters.AddWithValue("lab", laboratorioId);
+                cmd.Parameters.AddWithValue("area_id", areaId);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    _materialesMontajeDisponibles.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+                }
+            }
+
+            const string sqlConsumible = @"
+                SELECT material_id, nombre
+                FROM materiales_consumible
+                WHERE laboratorio_id = @lab
+                  AND (area_id IS NULL OR area_id <> @area_id)
+                ORDER BY nombre";
+            await using (var cmd = new NpgsqlCommand(sqlConsumible, conn))
+            {
+                cmd.Parameters.AddWithValue("lab", laboratorioId);
+                cmd.Parameters.AddWithValue("area_id", areaId);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    _materialesConsumibleDisponibles.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+                }
+            }
+
+            const string sqlCont = @"
+                SELECT cont_id, cont_id
+                FROM contenedores
+                WHERE laboratorio_id = @lab
+                  AND (area_id IS NULL OR area_id <> @area_id)
+                ORDER BY cont_id";
+            await using var contCmd = new NpgsqlCommand(sqlCont, conn);
+            contCmd.Parameters.AddWithValue("lab", laboratorioId);
+            contCmd.Parameters.AddWithValue("area_id", areaId);
+            await using var contReader = await contCmd.ExecuteReaderAsync();
+            while (await contReader.ReadAsync())
+            {
+                _contenedoresDisponibles.Add(new SelectOption(contReader.GetString(0), contReader.GetString(1)));
+            }
+        }
+
+        private async Task AssignEquipoAsync()
+        {
+            if (_areaInfo is null || string.IsNullOrWhiteSpace(_selectedEquipoId)) return;
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = "UPDATE equipos SET area_id = @area_id WHERE equipo_id = @id";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("area_id", _areaInfo.area_id);
+            cmd.Parameters.AddWithValue("id", _selectedEquipoId);
+            await cmd.ExecuteNonQueryAsync();
+            _selectedEquipoId = null;
+            await LoadEquiposAsync(_areaInfo.area_id);
+            await LoadDisponiblesAsync(_areaInfo.laboratorio_id, _areaInfo.area_id);
+            _assignMsg = "Equipo asignado.";
+        }
+
+        private async Task AssignMaterialAsync(string table, string? materialId)
+        {
+            if (_areaInfo is null || string.IsNullOrWhiteSpace(materialId)) return;
+            await using var conn = await DataSource.OpenConnectionAsync();
+            var sql = $"UPDATE {table} SET area_id = @area_id WHERE material_id = @id";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("area_id", _areaInfo.area_id);
+            cmd.Parameters.AddWithValue("id", materialId);
+            await cmd.ExecuteNonQueryAsync();
+            _selectedMaterialVidrioId = null;
+            _selectedMaterialMontajeId = null;
+            _selectedMaterialConsumibleId = null;
+            await LoadMaterialesAsync(_areaInfo.area_id);
+            await LoadDisponiblesAsync(_areaInfo.laboratorio_id, _areaInfo.area_id);
+            _assignMsg = "Material asignado.";
+        }
+
+        private async Task AssignContenedorAsync()
+        {
+            if (_areaInfo is null || string.IsNullOrWhiteSpace(_selectedContenedorId)) return;
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = "UPDATE contenedores SET area_id = @area_id WHERE cont_id = @id";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("area_id", _areaInfo.area_id);
+            cmd.Parameters.AddWithValue("id", _selectedContenedorId);
+            await cmd.ExecuteNonQueryAsync();
+            _selectedContenedorId = null;
+            await LoadSustanciasAsync(_areaInfo.area_id);
+            await LoadDisponiblesAsync(_areaInfo.laboratorio_id, _areaInfo.area_id);
+            _assignMsg = "Contenedor asignado.";
         }
 
         private void FitViewBoxToAreaWithAspect(AreaDraw a, decimal pad)
