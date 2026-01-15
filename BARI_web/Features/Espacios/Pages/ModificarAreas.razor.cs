@@ -209,7 +209,7 @@ namespace BARI_web.Features.Espacios.Pages
             _areasLookup = await Pg.GetLookupAsync("areas", "area_id", "nombre_areas");
             await LoadAreasMetaAsync();
             await LoadPolysAsync();
-            await LoadPolyPointsAsync();
+            await LoadPolyPointsDataAsync();
             _plantasLookup = await Pg.GetLookupAsync("plantas", "planta_id", "nombre");
 
             _currentPlantaId = ResolveInitialPlanta();
@@ -381,7 +381,7 @@ namespace BARI_web.Features.Espacios.Pages
             catch { }
         }
 
-        private async Task LoadPolyPointsAsync()
+        private async Task LoadPolyPointsDataAsync()
         {
             var pointsByPoly = new Dictionary<string, List<(int orden, Point point)>>(StringComparer.OrdinalIgnoreCase);
             Pg.UseSheet("poligonos_puntos");
@@ -408,13 +408,13 @@ namespace BARI_web.Features.Espacios.Pages
                 }
                 else
                 {
-                    p.puntos = BuildRectPoints(p);
+                    p.puntos = BuildRectPointsForPoly(p);
                 }
-                UpdateBoundsFromPoints(p);
+                UpdateBoundsFromPolyPoints(p);
             }
         }
 
-        private static List<Point> BuildRectPoints(Poly p)
+        private static List<Point> BuildRectPointsForPoly(Poly p)
             => new()
             {
                 new Point(p.x_m, p.y_m),
@@ -423,7 +423,7 @@ namespace BARI_web.Features.Espacios.Pages
                 new Point(p.x_m, p.y_m + p.alto_m)
             };
 
-        private void UpdateBoundsFromPoints(Poly p)
+        private void UpdateBoundsFromPolyPoints(Poly p)
         {
             if (p.puntos.Count == 0) return;
             var minX = p.puntos.Min(pt => pt.X);
@@ -436,7 +436,7 @@ namespace BARI_web.Features.Espacios.Pages
             p.alto_m = Math.Max(0.1m, maxY - minY);
         }
 
-        private static (decimal minX, decimal minY, decimal maxX, decimal maxY) BoundsOfPoints(IReadOnlyList<Point> points)
+        private static (decimal minX, decimal minY, decimal maxX, decimal maxY) BoundsOfPointList(IReadOnlyList<Point> points)
         {
             var minX = points.Min(pt => pt.X);
             var minY = points.Min(pt => pt.Y);
@@ -445,88 +445,12 @@ namespace BARI_web.Features.Espacios.Pages
             return (minX, minY, maxX, maxY);
         }
 
-        private string PointsString(IEnumerable<Point> points)
+        private string PointsStringFromPoints(IEnumerable<Point> points)
             => string.Join(" ", points.Select(p => $"{S(p.X)},{S(p.Y)}"));
 
-        private string PointsString(Poly p) => PointsString(p.puntos);
+        private string PointsStringForPoly(Poly p) => PointsStringFromPoints(p.puntos);
 
-        private static decimal Distance(Point a, Point b)
-        {
-            var dx = a.X - b.X;
-            var dy = a.Y - b.Y;
-            return (decimal)Math.Sqrt((double)(dx * dx + dy * dy));
-        }
-
-        private async Task LoadPolyPointsAsync()
-        {
-            var pointsByPoly = new Dictionary<string, List<(int orden, Point point)>>(StringComparer.OrdinalIgnoreCase);
-            Pg.UseSheet("poligonos_puntos");
-            foreach (var row in await Pg.ReadAllAsync())
-            {
-                var polyId = Get(row, "poly_id");
-                if (string.IsNullOrWhiteSpace(polyId)) continue;
-                var orden = Int(Get(row, "orden", "0"));
-                var x = Dec(Get(row, "x_m", "0"));
-                var y = Dec(Get(row, "y_m", "0"));
-                if (!pointsByPoly.TryGetValue(polyId, out var list))
-                {
-                    list = new List<(int, Point)>();
-                    pointsByPoly[polyId] = list;
-                }
-                list.Add((orden, new Point(x, y)));
-            }
-
-            foreach (var p in _polys)
-            {
-                if (pointsByPoly.TryGetValue(p.poly_id, out var list) && list.Count >= 3)
-                {
-                    p.puntos = list.OrderBy(item => item.orden).Select(item => item.point).ToList();
-                }
-                else
-                {
-                    p.puntos = BuildRectPoints(p);
-                }
-                UpdateBoundsFromPoints(p);
-            }
-        }
-
-        private static List<Point> BuildRectPoints(Poly p)
-            => new()
-            {
-                new Point(p.x_m, p.y_m),
-                new Point(p.x_m + p.ancho_m, p.y_m),
-                new Point(p.x_m + p.ancho_m, p.y_m + p.alto_m),
-                new Point(p.x_m, p.y_m + p.alto_m)
-            };
-
-        private void UpdateBoundsFromPoints(Poly p)
-        {
-            if (p.puntos.Count == 0) return;
-            var minX = p.puntos.Min(pt => pt.X);
-            var minY = p.puntos.Min(pt => pt.Y);
-            var maxX = p.puntos.Max(pt => pt.X);
-            var maxY = p.puntos.Max(pt => pt.Y);
-            p.x_m = minX;
-            p.y_m = minY;
-            p.ancho_m = Math.Max(0.1m, maxX - minX);
-            p.alto_m = Math.Max(0.1m, maxY - minY);
-        }
-
-        private static (decimal minX, decimal minY, decimal maxX, decimal maxY) BoundsOfPoints(IReadOnlyList<Point> points)
-        {
-            var minX = points.Min(pt => pt.X);
-            var minY = points.Min(pt => pt.Y);
-            var maxX = points.Max(pt => pt.X);
-            var maxY = points.Max(pt => pt.Y);
-            return (minX, minY, maxX, maxY);
-        }
-
-        private string PointsString(IEnumerable<Point> points)
-            => string.Join(" ", points.Select(p => $"{S(p.X)},{S(p.Y)}"));
-
-        private string PointsString(Poly p) => PointsString(p.puntos);
-
-        private static decimal Distance(Point a, Point b)
+        private static decimal DistanceBetweenPoints(Point a, Point b)
         {
             var dx = a.X - b.X;
             var dy = a.Y - b.Y;
@@ -676,8 +600,8 @@ namespace BARI_web.Features.Espacios.Pages
         private static bool BoundsOverlap(IReadOnlyList<Point> a, IReadOnlyList<Point> b)
         {
             if (a.Count == 0 || b.Count == 0) return false;
-            var (aMinX, aMinY, aMaxX, aMaxY) = BoundsOfPoints(a);
-            var (bMinX, bMinY, bMaxX, bMaxY) = BoundsOfPoints(b);
+                var (aMinX, aMinY, aMaxX, aMaxY) = BoundsOfPointList(a);
+            var (bMinX, bMinY, bMaxX, bMaxY) = BoundsOfPointList(b);
             return aMinX < bMaxX && aMaxX > bMinX && aMinY < bMaxY && aMaxY > bMinY;
         }
 
@@ -908,11 +832,11 @@ namespace BARI_web.Features.Espacios.Pages
                     targetX = Clamp(0m, Wm, targetX);
                     targetY = Clamp(0m, Hm, targetY);
                     _sel.puntos[_dragVertexIndex] = new Point(targetX, targetY);
-                    UpdateBoundsFromPoints(_sel);
+                    UpdateBoundsFromPolyPoints(_sel);
                 }
                 else
                 {
-                    var (minX, minY, maxX, maxY) = BoundsOfPoints(_beforeDragPoints);
+                    var (minX, minY, maxX, maxY) = BoundsOfPointList(_beforeDragPoints);
                     var maxDx = Wm - maxX;
                     var minDx = 0m - minX;
                     var maxDy = Hm - maxY;
@@ -925,7 +849,7 @@ namespace BARI_web.Features.Espacios.Pages
                         dy = SnapValue(dy);
                     }
                     _sel.puntos = _beforeDragPoints.Select(pt => new Point(pt.X + dx, pt.Y + dy)).ToList();
-                    UpdateBoundsFromPoints(_sel);
+                    UpdateBoundsFromPolyPoints(_sel);
                 }
                 StateHasChanged();
             }
@@ -956,7 +880,7 @@ namespace BARI_web.Features.Espacios.Pages
                 if (OverlapsAny(_sel, _beforeDragPoints))
                 {
                     _sel.puntos = _beforeDragPoints.Select(pt => pt).ToList();
-                    UpdateBoundsFromPoints(_sel);
+                    UpdateBoundsFromPolyPoints(_sel);
                     _saveMsg = "El polígono no puede solaparse con otra área.";
                 }
             }
@@ -1319,7 +1243,7 @@ namespace BARI_web.Features.Espacios.Pages
                 Pg.UseSheet("poligonos");
                 foreach (var p in _polys)
                 {
-                    UpdateBoundsFromPoints(p);
+                    UpdateBoundsFromPolyPoints(p);
                     var ok = await Pg.UpdateByIdAsync("poly_id", p.poly_id, new Dictionary<string, object>
                     {
                         ["canvas_id"] = p.canvas_id,
@@ -1619,7 +1543,7 @@ namespace BARI_web.Features.Espacios.Pages
             }
             var point = new Point(x, y);
 
-            if (_draftPoints.Count >= 3 && Distance(_draftPoints[0], point) <= DraftCloseRadius())
+            if (_draftPoints.Count >= 3 && DistanceBetweenPoints(_draftPoints[0], point) <= DraftCloseRadius())
             {
                 FinalizeDraftPolygon();
                 return;
@@ -1655,7 +1579,7 @@ namespace BARI_web.Features.Espacios.Pages
                 color_hex = "#E6E6E6",
                 puntos = _draftPoints.ToList()
             };
-            UpdateBoundsFromPoints(poly);
+            UpdateBoundsFromPolyPoints(poly);
 
             if (OverlapsAny(poly, null))
             {
@@ -1723,7 +1647,7 @@ namespace BARI_web.Features.Espacios.Pages
             }
             _sel.puntos.RemoveAt(_selectedVertexIndex);
             _selectedVertexIndex = -1;
-            UpdateBoundsFromPoints(_sel);
+            UpdateBoundsFromPolyPoints(_sel);
         }
 
         private async Task EliminarPuerta()
