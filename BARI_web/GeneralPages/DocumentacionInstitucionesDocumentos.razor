@@ -13,38 +13,32 @@
 </section>
 
 <section class="page-card" style="margin-top:1.5rem;">
-    <div class="table-wrap">
-        <table>
-            <thead>
-                <tr>
-                    <th>Título</th>
-                    <th>Tipo</th>
-                    <th>Fuente</th>
-                    <th>URL</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var doc in documentos)
-                {
-                    <tr>
-                        <td>@doc.Titulo</td>
-                        <td>@doc.Tipo</td>
-                        <td>@doc.Fuente</td>
-                        <td>
-                            @if (!string.IsNullOrWhiteSpace(doc.Url))
-                            {
-                                <a href="@doc.Url" target="_blank" rel="noopener">Abrir</a>
-                            }
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-
     @if (!string.IsNullOrWhiteSpace(loadError))
     {
         <p class="error-note">No se pudo cargar documentos: @loadError</p>
+    }
+    else if (documentos.Count == 0)
+    {
+        <p class="empty-note">No hay documentos institucionales registrados para este laboratorio.</p>
+    }
+    else
+    {
+        <div class="card-grid">
+            @foreach (var doc in documentos)
+            {
+                <article class="doc-card" @key="doc.Titulo">
+                    <div>
+                        <h3>@doc.Titulo</h3>
+                        <p class="meta">@doc.Tipo · @doc.Fuente</p>
+                    </div>
+                    <p class="desc">@doc.Descripcion</p>
+                    @if (!string.IsNullOrWhiteSpace(doc.Url))
+                    {
+                        <a class="btn-link" href="@doc.Url" target="_blank" rel="noopener">Abrir</a>
+                    }
+                </article>
+            }
+        </div>
     }
 </section>
 
@@ -81,7 +75,8 @@
                 SELECT d.titulo,
                        COALESCE(s.nombre, ''),
                        COALESCE(c.nombre, ''),
-                       COALESCE(d.url, '')
+                       COALESCE(d.url, ''),
+                       COALESCE(d.descripcion_detalle, '')
                 FROM documentos d
                 LEFT JOIN subcategorias s ON s.subcategoria_id = d.subcategoria_id
                 LEFT JOIN categorias c ON c.categoria_id = d.categoria_id
@@ -98,7 +93,8 @@
                     reader.GetString(0),
                     reader.GetString(1),
                     reader.GetString(2),
-                    reader.GetString(3)
+                    reader.GetString(3),
+                    reader.GetString(4)
                 ));
             }
         }
@@ -108,7 +104,7 @@
         }
     }
 
-    private sealed record DocRow(string Titulo, string Tipo, string Fuente, string Url);
+    private sealed record DocRow(string Titulo, string Tipo, string Fuente, string Url, string Descripcion);
 
     public void Dispose()
     {
@@ -117,9 +113,34 @@
 }
 
 <style>
-    .table-wrap { overflow-x:auto; }
-    table { width:100%; border-collapse:collapse; background:#fff; }
-    th, td { padding:0.6rem; border-bottom:1px solid #e5e7eb; text-align:left; }
-    th { background:#f3f4f6; font-weight:600; }
+    .card-grid {
+        display:grid;
+        gap:1rem;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    }
+    .doc-card {
+        border:1px solid #e5e7eb;
+        border-radius:0.8rem;
+        padding:1rem;
+        background:#fff;
+        display:flex;
+        flex-direction:column;
+        gap:0.6rem;
+    }
+    .doc-card h3 { margin:0; color:#0b2a68; }
+    .meta { color:#64748b; font-size:0.85rem; margin:0.2rem 0 0; }
+    .desc { color:#475569; margin:0; }
+    .btn-link {
+        display:inline-flex;
+        width:max-content;
+        padding:0.35rem 0.6rem;
+        border-radius:0.5rem;
+        background:#0b2a68;
+        color:#fff;
+        text-decoration:none;
+        font-size:0.85rem;
+    }
+    .btn-link:hover { background:#143a84; }
     .error-note { color:#b91c1c; margin-top:0.75rem; }
+    .empty-note { color:#6b7280; }
 </style>
