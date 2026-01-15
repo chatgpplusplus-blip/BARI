@@ -1,0 +1,187 @@
+@page "/documentacion/instituciones"
+@using BARI_web.General_Services
+@using Npgsql
+@inject LaboratorioState LaboratorioState
+@implements IDisposable
+
+<PageTitle>Documentación institucional</PageTitle>
+
+<section class="page-card">
+    <h2>Documentación institucional</h2>
+    <p>
+        Catálogos, fichas y referencias institucionales disponibles para el laboratorio.
+    </p>
+    <LaboratorioSelector />
+</section>
+
+<section class="page-card" style="margin-top:1.5rem;">
+    <div class="card-grid">
+        <article class="doc-card">
+            <NavLink class="card-link" href="/documentacion/instituciones/documentos">
+                <div class="card-thumb thumb-docs"></div>
+                <div class="card-body">
+                    <h3>Documentos institucionales</h3>
+                    <p>Lineamientos, reglamentos y documentos generales de instituciones externas.</p>
+                    <span class="card-cta">Ver documentos</span>
+                </div>
+            </NavLink>
+        </article>
+
+        @if (isQuimica)
+        {
+            <article class="doc-card">
+                <NavLink class="card-link" href="/documentacion/instituciones/cas">
+                    <div class="card-thumb thumb-cas"></div>
+                    <div class="card-body">
+                        <h3>Catálogo CAS</h3>
+                        <p>Listado de sustancias con número CAS asociado al laboratorio.</p>
+                        <span class="card-cta">Ver CAS</span>
+                    </div>
+                </NavLink>
+            </article>
+        }
+
+        @if (isQuimica)
+        {
+            <article class="doc-card">
+                <NavLink class="card-link" href="/documentacion/instituciones/pictogramas">
+                    <div class="card-thumb thumb-ghs"></div>
+                    <div class="card-body">
+                        <h3>Pictogramas (GHS)</h3>
+                        <p>Señales de peligro químico usadas en reactivos del laboratorio.</p>
+                        <span class="card-cta">Ver pictogramas</span>
+                    </div>
+                </NavLink>
+            </article>
+
+            <article class="doc-card">
+                <NavLink class="card-link" href="/documentacion/instituciones/h-codes">
+                    <div class="card-thumb thumb-h"></div>
+                    <div class="card-body">
+                        <h3>H-Codes</h3>
+                        <p>Frases de peligro asociadas a sustancias químicas.</p>
+                        <span class="card-cta">Ver H-Codes</span>
+                    </div>
+                </NavLink>
+            </article>
+
+            <article class="doc-card">
+                <NavLink class="card-link" href="/documentacion/instituciones/p-codes">
+                    <div class="card-thumb thumb-p"></div>
+                    <div class="card-body">
+                        <h3>P-Codes</h3>
+                        <p>Consejos de prudencia y medidas de seguridad.</p>
+                        <span class="card-cta">Ver P-Codes</span>
+                    </div>
+                </NavLink>
+            </article>
+        }
+    </div>
+
+    @if (!isQuimica)
+    {
+        <p class="note">Los listados CAS, GHS, H y P se muestran únicamente para el laboratorio de Química.</p>
+    }
+</section>
+
+@code {
+    [Inject] private NpgsqlDataSource DataSource { get; set; } = default!;
+
+    private string? laboratorioNombre;
+    private bool isQuimica;
+
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadLaboratorioAsync();
+    }
+
+    private async void HandleLaboratorioChanged()
+    {
+        await LoadLaboratorioAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadLaboratorioAsync()
+    {
+        await using var conn = await DataSource.OpenConnectionAsync();
+        const string sqlLab = @"
+            SELECT nombre
+            FROM laboratorios
+            WHERE laboratorio_id = @laboratorio
+            ";
+        await using var cmdLab = new NpgsqlCommand(sqlLab, conn);
+        cmdLab.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
+        laboratorioNombre = (string?)await cmdLab.ExecuteScalarAsync();
+        var labNombre = laboratorioNombre ?? string.Empty;
+        isQuimica = LaboratorioState.LaboratorioId == 1
+            || labNombre.Contains("quim", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
+}
+
+<style>
+    .card-grid {
+        display:grid;
+        gap:1rem;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    }
+    .doc-card {
+        border:1px solid #e5e7eb;
+        border-radius:0.8rem;
+        padding:1rem;
+        background:#fff;
+        display:flex;
+        flex-direction:column;
+        gap:0.6rem;
+    }
+    .card-link {
+        display:flex;
+        flex-direction:column;
+        gap:0.75rem;
+        text-decoration:none;
+        color:inherit;
+    }
+    .card-thumb {
+        width:100%;
+        height:120px;
+        border-radius:0.6rem;
+        background: linear-gradient(135deg, rgba(15, 23, 42, 0.15), rgba(148, 163, 184, 0.2));
+        position:relative;
+        overflow:hidden;
+    }
+    .card-thumb::after {
+        content:"";
+        position:absolute;
+        inset:0;
+        background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(15,23,42,0.15));
+    }
+    .thumb-docs { background: linear-gradient(135deg, #cbd5f5, #e2e8f0); }
+    .thumb-cas { background: linear-gradient(135deg, #fcd34d, #fde68a); }
+    .thumb-ghs { background: linear-gradient(135deg, #fda4af, #fecdd3); }
+    .thumb-h { background: linear-gradient(135deg, #bfdbfe, #dbeafe); }
+    .thumb-p { background: linear-gradient(135deg, #bbf7d0, #dcfce7); }
+    .card-body { display:flex; flex-direction:column; gap:0.4rem; }
+    .card-body h3 { margin:0; color:#0b2a68; }
+    .card-body p { color:#475569; margin:0; }
+    .card-cta {
+        margin-top:0.35rem;
+        display:inline-flex;
+        width:max-content;
+        padding:0.35rem 0.6rem;
+        border-radius:0.5rem;
+        background:#0b2a68;
+        color:#fff;
+        font-size:0.85rem;
+    }
+    .card-link:hover .card-cta { background:#143a84; }
+    .note { color:#64748b; margin-top:0.75rem; }
+</style>
