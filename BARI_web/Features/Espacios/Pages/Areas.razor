@@ -51,19 +51,6 @@
                               vector-effect="non-scaling-stroke" />
                     </pattern>
 
-                    <!-- clipPaths por área visible -->
-                    @foreach (var areaKv in currentAreas)
-                    {
-                        var clipAid = areaKv.Key; var info = areaKv.Value;
-                        <clipPath id="@($"clip_{clipAid}")" clipPathUnits="userSpaceOnUse" @key="clipAid">
-                            @foreach (var p in info.Polys)
-                            {
-                                <rect @key="p.poly_id"
-                                      x="@S(p.x_m)" y="@S(p.y_m)"
-                                      width="@S(p.ancho_m)" height="@S(p.alto_m)" />
-                            }
-                        </clipPath>
-                    }
                 </defs>
 
                 <!-- fondo + grilla -->
@@ -76,20 +63,13 @@
                     var aidMain = areaKv.Key; var aInfo = areaKv.Value;
                     var areaW = aInfo.MaxX - aInfo.MinX; var areaH = aInfo.MaxY - aInfo.MinY;
 
-                    <g class="softshadow" clip-path="@($"url(#clip_{aidMain})")" @key="aidMain">
-                        <!-- Relleno: un rectángulo grande dentro del clip -->
-                        <rect x="@S(aInfo.MinX)" y="@S(aInfo.MinY)" width="@S(areaW)" height="@S(areaH)" fill="@aInfo.Fill" />
-                    </g>
-
-                    <!-- Contornos fusionados -->
-                    @foreach (var seg in aInfo.Outline)
+                    @foreach (var poly in aInfo.Polys)
                     {
-                        <line x1="@S(seg.x1)" y1="@S(seg.y1)"
-                              x2="@S(seg.x2)" y2="@S(seg.y2)"
-                              stroke="#000" stroke-width="@S(OutlineStroke)"
-                              vector-effect="non-scaling-stroke" />
+                        <polygon points="@PointsString(poly)"
+                                 fill="@aInfo.Fill"
+                                 stroke="#000" stroke-width="@S(OutlineStroke)"
+                                 vector-effect="non-scaling-stroke" />
                     }
-
 
                     @if (!string.IsNullOrWhiteSpace(aInfo.Label))
                     {
@@ -97,22 +77,19 @@
                         var fs = fit.fs; var pillW = fit.pillW; var pillH = fit.pillH;
                         var cx = aInfo.Cx; var cy = aInfo.Cy;
 
-                        <!-- pastilla del label -->
                         <rect x="@S(cx - pillW/2)" y="@S(cy - pillH/2)" rx="@S(0.38m)" ry="@S(0.8m)"
                               width="@S(pillW)" height="@S(pillH)"
-                              fill="#fff" opacity="0.95" clip-path="@($"url(#clip_{aidMain})")" />
+                              fill="#fff" opacity="0.95" />
 
-                        <g clip-path="@($"url(#clip_{aidMain})")">
-                            <text>
-                                <tspan class="label-stroked"
-                                       x="@S(cx)" y="@S(cy)"
-                                       style="text-anchor:middle;dominant-baseline:middle"
-                                       font-size="@S(fs)" fill="#222"
-                                       textLength="@S(pillW - 2*TextPad)" lengthAdjust="spacingAndGlyphs">
-                                    @aInfo.Label
-                                </tspan>
-                            </text>
-                        </g>
+                        <text>
+                            <tspan class="label-stroked"
+                                   x="@S(cx)" y="@S(cy)"
+                                   style="text-anchor:middle;dominant-baseline:middle"
+                                   font-size="@S(fs)" fill="#222"
+                                   textLength="@S(pillW - 2*TextPad)" lengthAdjust="spacingAndGlyphs">
+                                @aInfo.Label
+                            </tspan>
+                        </text>
                     }
 
                     <!-- Capa de interacción -->
