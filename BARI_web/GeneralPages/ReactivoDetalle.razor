@@ -132,28 +132,30 @@ else
                   AND laboratorio_id = @laboratorio
                 ";
 
-            await using var cmd = new NpgsqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("id", Id);
-            cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
-            await using var reader = await cmd.ExecuteReaderAsync();
-            if (await reader.ReadAsync())
+            await using (var cmd = new NpgsqlCommand(sql, conn))
             {
-                reactivo = new ReactivoInfo
+                cmd.Parameters.AddWithValue("id", Id);
+                cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
                 {
-                    Id = reader.GetString(0),
-                    Nombre = reader.GetString(1),
-                    NombreComercial = reader.GetString(2),
-                    NombreQuimico = reader.GetString(3),
-                    Cas = reader.GetString(4),
-                    FormaFisica = reader.GetString(5),
-                    SustanciaControlada = reader.GetBoolean(6),
-                    Observaciones = reader.GetString(7)
-                };
-            }
-            else
-            {
-                loadError = "No se encontró el reactivo solicitado.";
-                return;
+                    reactivo = new ReactivoInfo
+                    {
+                        Id = reader.GetString(0),
+                        Nombre = reader.GetString(1),
+                        NombreComercial = reader.GetString(2),
+                        NombreQuimico = reader.GetString(3),
+                        Cas = reader.GetString(4),
+                        FormaFisica = reader.GetString(5),
+                        SustanciaControlada = reader.GetBoolean(6),
+                        Observaciones = reader.GetString(7)
+                    };
+                }
+                else
+                {
+                    loadError = "No se encontró el reactivo solicitado.";
+                    return;
+                }
             }
 
             const string sqlContenedores = @"

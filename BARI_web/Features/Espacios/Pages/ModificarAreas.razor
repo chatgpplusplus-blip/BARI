@@ -5,6 +5,15 @@
 
 <!-- Barra superior: selector de PLANTA fuera del lienzo -->
 <div class="flex items-center gap-2 mb-3">
+    <label class="text-sm text-gray-700">Canvas:</label>
+    <select class="border p-1 text-sm"
+            value="@(_currentCanvasId ?? "")"
+            @onchange="async (e)=> await OnChangeCanvas(e.Value?.ToString())">
+        @foreach (var kv in _canvasLookup)
+        {
+            <option value="@kv.Key">@kv.Value</option>
+        }
+    </select>
     <label class="text-sm text-gray-700">Planta:</label>
     <select class="border p-1 text-sm"
             value="@(_currentPlantaId ?? "")"
@@ -14,7 +23,13 @@
             <option value="@kv.Key">@kv.Value</option>
         }
     </select>
+    <button type="button" class="btn" @onclick="StartDrawing" disabled="@_isDrawing">Dibujar polígono</button>
+    <button type="button" class="btn" @onclick="CancelDrawing" disabled="@(!_isDrawing)">Cancelar dibujo</button>
 </div>
+@if (!string.IsNullOrWhiteSpace(_drawMsg))
+{
+    <p class="text-sm text-gray-600 mb-2">@_drawMsg</p>
+}
 
 @if (_canvas is null)
 {
@@ -66,7 +81,7 @@ else
                             @foreach (var p in _polys.Where(IsVisible))
                             {
                                 <clipPath id="@($"clip_{p.poly_id}")" clipPathUnits="userSpaceOnUse">
-                                    <rect x="0" y="0" width="@S(p.ancho_m)" height="@S(p.alto_m)" />
+                                    <polygon points="@PointsString(p)" />
                                 </clipPath>
                             }
                         </defs>
@@ -78,65 +93,65 @@ else
                             var isSel = _sel?.poly_id == p.poly_id;
                             var isHover = _hoverId == p.poly_id;
                             var stroke = isSel ? "#0a7" : isHover ? "#08a" : "#777";
+                            var label = AreaLabel(p);
+                            var (fs, show) = LabelFontSizeAndVisibility(p, label);
+                            var center = PolyCenter(p);
 
-                            <g transform="translate(@S(p.x_m),@S(p.y_m))"
-                               @onmouseover="() => _hoverId = p.poly_id"
+                            <g @onmouseover="() => _hoverId = p.poly_id"
                                @onmouseout="() => _hoverId = null">
+                                <polygon points="@PointsString(p)"
+                                         fill="@AreaColor(p)"
+                                         opacity="@(isHover && !isSel ? "0.92" : "1")"
+                                         stroke="@stroke" stroke-width="@S(isSel ? 0.06 : isHover ? 0.045 : 0.03)"
+                                         style="cursor:@(isSel ? "move" : "pointer")"
+                                         @onpointerdown:preventDefault="true"
+                                         @onpointerdown:stopPropagation="true"
+                                         @onpointerdown="(e)=>OnPointerDownMoveArea(e, p.poly_id)" />
 
-                                <rect x="0" y="0"
-                                      width="@S(p.ancho_m)" height="@S(p.alto_m)"
-                                      fill="@AreaColor(p)"
-                                      opacity="@(isHover && !isSel ? "0.92" : "1")"
-                                      stroke="@stroke" stroke-width="@S(isSel ? 0.06 : isHover ? 0.045 : 0.03)"
-                                      style="cursor:@(isSel ? "move" : "pointer")"
-                                      @onpointerdown:preventDefault="true"
-                                      @onpointerdown:stopPropagation="true"
-                                      @onpointerdown="(e)=>OnPointerDownMoveArea(e, p.poly_id)" />
-
-                                <!-- ejes locales -->
-                                <line x1="0" y1="0" x2="@S(Math.Min(0.8m, p.ancho_m))" y2="0" stroke="#c00" stroke-width="@S(0.03)" />
-                                <line x1="0" y1="0" x2="0" y2="@S(Math.Min(0.8m, p.alto_m))" stroke="#06c" stroke-width="@S(0.03)" />
-
-                                <!-- etiqueta -->
-                                @{
-                                    var label = AreaLabel(p);
-                                    var (fs, show) = LabelFontSizeAndVisibility(p, label);
-                                    var pad = 0.18m;
-                                    var targetWidth = Math.Max(0m, p.ancho_m - 2 * pad);
-                                    var cx = p.ancho_m / 2;
-                                    var cy = p.alto_m / 2;
-                                }
                                 @if (show)
                                 {
                                     <g clip-path="@($"url(#clip_{p.poly_id})")">
                                         <text class="area-label"
-                                              x="@S(cx)" y="@S(cy)"
+                                              x="@S(center.x)" y="@S(center.y)"
                                               text-anchor="middle" dominant-baseline="middle"
-                                              font-size="@S(fs)" fill="#444"
-                                              textLength="@S(targetWidth)" lengthAdjust="spacingAndGlyphs">
+                                              font-size="@S(fs)" fill="#444">
                                             @label
                                         </text>
                                     </g>
                                 }
 
-                                <!-- Manijas -->
-                                @if (isSel && !_joinMode)
+                                @if (isSel)
                                 {
-                                    @VertexHandle(p, 0m, 0m, Handle.NW)
-                                    @VertexHandle(p, p.ancho_m, 0m, Handle.NE)
-                                    @VertexHandle(p, 0m, p.alto_m, Handle.SW)
-                                    @VertexHandle(p, p.ancho_m, p.alto_m, Handle.SE)
-                                }
-
-                                <!-- Pickers juntar -->
-                                @if (_joinMode)
-                                {
-                                    @VertexPicker(p, 0m, 0m, Handle.NW)
-                                    @VertexPicker(p, p.ancho_m, 0m, Handle.NE)
-                                    @VertexPicker(p, 0m, p.alto_m, Handle.SW)
-                                    @VertexPicker(p, p.ancho_m, p.alto_m, Handle.SE)
+                                    for (var i = 0; i < p.puntos.Count; i++)
+                                    {
+                                        var pt = p.puntos[i];
+                                        var isActive = _selectedVertexIndex == i;
+                                        <circle cx="@S(pt.X)" cy="@S(pt.Y)"
+                                                r="@S(0.18m)"
+                                                fill="@(isActive ? "#f59e0b" : "#13a076")"
+                                                stroke="#0b6b50" stroke-width="@S(0.04m)"
+                                                style="cursor:grab"
+                                                @onpointerdown:preventDefault="true"
+                                                @onpointerdown:stopPropagation="true"
+                                                @onpointerdown="(e)=>OnPointerDownVertex(e, p.poly_id, i)" />
+                                    }
                                 }
                             </g>
+                        }
+
+                        @if (_isDrawing && _draftPoints.Count > 0)
+                        {
+                            <polyline points="@PointsString(_draftPoints)"
+                                      fill="none" stroke="#2563eb" stroke-width="@S(0.06m)" />
+                            @for (var i = 0; i < _draftPoints.Count; i++)
+                            {
+                                var pt = _draftPoints[i];
+                                var isFirst = i == 0;
+                                <circle cx="@S(pt.X)" cy="@S(pt.Y)"
+                                        r="@S(isFirst ? 0.28m : 0.18m)"
+                                        fill="@(isFirst ? "rgba(37,99,235,0.2)" : "rgba(37,99,235,0.12)")"
+                                        stroke="#2563eb" />
+                            }
                         }
 
                         <!-- Puertas (VERDE) -->
@@ -192,18 +207,21 @@ else
                         <div>
                             <button class="px-2 py-1 border rounded" @onclick="NuevaPuerta">+ Puerta</button>
                             <button class="px-2 py-1 border rounded ml-1" @onclick="NuevaVentana">+ Ventana</button>
-
-                            <button class="px-2 py-1 border rounded ml-1"
-                                    title="Orden: 1) click en A (se mueve) 2) click en B (objetivo)"
-                                    style="@(_joinMode ? "background:#fef3c7;border-color:#f59e0b" : null)"
-                                    @onclick="ToggleJoinMode">
-                                Juntar vértices (A → B)
-                            </button>
+                            <label class="ml-2 text-sm">Área</label>
+                            <select class="border p-1 text-sm"
+                                    value="@(_drawAreaId ?? "")"
+                                    @onchange="(e)=> _drawAreaId = e.Value?.ToString()">
+                                <option value="">Selecciona un área</option>
+                                @foreach (var kv in AreasOfCurrentPlanta())
+                                {
+                                    <option value="@kv.Key">@kv.Value</option>
+                                }
+                            </select>
                             <label class="ml-2 text-sm">
-                                <input type="checkbox" checked="@_joinAxisXOnly" @onchange="OnToggleJoinX" /> Solo X
+                                <input type="checkbox" checked="@_drawAxisXOnly" @onchange="OnToggleDrawX" /> Fijar X
                             </label>
                             <label class="ml-2 text-sm">
-                                <input type="checkbox" checked="@_joinAxisYOnly" @onchange="OnToggleJoinY" /> Solo Y
+                                <input type="checkbox" checked="@_drawAxisYOnly" @onchange="OnToggleDrawY" /> Fijar Y
                             </label>
                             <label class="ml-2 text-sm">
                                 <input type="checkbox" checked="@_snapToGrid" @onchange="(e)=> { _snapToGrid = e.Value is bool b && b; }" />
@@ -217,10 +235,6 @@ else
                                 <span class="ml-1 text-xs">(Shift = libre)</span>
                             </label>
 
-                            @if (!string.IsNullOrEmpty(_joinMsg))
-                            {
-                                <span class="ml-2 text-sm text-gray-600">@_joinMsg</span>
-                            }
                         </div>
                     </div>
                 </div>
@@ -235,40 +249,32 @@ else
                         <div class="col-span-2">
                             <label class="block text-xs text-gray-600 mb-1">Área</label>
                             <select class="border p-1 w-full" value="@(_sel.area_id ?? "")"
-                                    @onchange="(e)=> { _sel.area_id = e.Value?.ToString(); NormalizeSelected(noOverlap:true); StateHasChanged(); }">
-                                @foreach (var kv in _areasLookup)
+                                    @onchange="(e)=> { _sel.area_id = e.Value?.ToString(); StateHasChanged(); }">
+                                @foreach (var kv in _areasLookup.Where(kv => IsAreaInCurrentCanvas(kv.Key)))
                                 {
                                     <option value="@kv.Key">@kv.Value</option>
                                 }
                             </select>
                         </div>
 
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">X</label>
-                            <input style="width:100%" class="border p-1" value="@S(_sel.x_m)"
-                                   @oninput="(e)=>{ _sel.x_m = ParseFlexible(e.Value); NormalizeSelected(noOverlap:true, primaryAxis:'x'); }">
-                        </div>
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Y</label>
-                            <input style="width:100%" class="border p-1" value="@S(_sel.y_m)"
-                                   @oninput="(e)=>{ _sel.y_m = ParseFlexible(e.Value); NormalizeSelected(noOverlap:true, primaryAxis:'y'); }">
-                        </div>
-
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Ancho</label>
-                            <input style="width:100%" class="border p-1" value="@S(_sel.ancho_m)"
-                                   @oninput="(e)=>{ _sel.ancho_m = ParseFlexible(e.Value); NormalizeSelected(noOverlap:true, primaryAxis:'x'); }">
-                        </div>
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Alto</label>
-                            <input style="width:100%" class="border p-1" value="@S(_sel.alto_m)"
-                                   @oninput="(e)=>{ _sel.alto_m = ParseFlexible(e.Value); NormalizeSelected(noOverlap:true, primaryAxis:'y'); }">
-                        </div>
-
                         <div class="col-span-2">
                             <label class="block text-xs text-gray-600 mb-1">Color</label>
                             <input style="width:100%" class="border p-1" value="@(_sel.color_hex ?? "#E6E6E6")"
                                    @oninput="(e)=>{ _sel.color_hex = e.Value?.ToString(); }">
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Vértices</label>
+                            <div class="text-gray-700">@_sel.puntos.Count</div>
+                        </div>
+
+                        <div class="col-span-2 mt-1">
+                            <button type="button"
+                                    class="px-2 py-1 border rounded text-red-700 border-red-400"
+                                    @onclick="EliminarVertice"
+                                    disabled="@(_selectedVertexIndex < 0)">
+                                Eliminar vértice seleccionado
+                            </button>
                         </div>
                     </div>
                 }
