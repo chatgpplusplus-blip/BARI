@@ -1,71 +1,207 @@
 ﻿@page "/documentacion/{Asignatura}/laboratorios"
+@using BARI_web.General_Services
+@using Npgsql
+@inject LaboratorioState LaboratorioState
+@implements IDisposable
 
 <PageTitle>Documentación de laboratorio</PageTitle>
 
 <section class="page-card">
     <h2>Documentación de laboratorio</h2>
     <p>
-        Asignatura: <strong>@Asignatura</strong>. Aquí se mostrará la documentación
-        académica asociada al laboratorio como asignatura.
+        Asignatura: <strong>@(asignatura?.Nombre ?? Asignatura)</strong>.
+        Aquí se muestran las prácticas y experiencias planificadas.
     </p>
     <LaboratorioSelector />
 </section>
 
 <section class="page-card" style="margin-top:1.5rem;">
-    <h3>Experiencias y clases (ejemplo)</h3>
-    <details open class="guide-block">
-        <summary>Lista de experiencias</summary>
-        <ul class="guide-list">
-            <li>Experiencia 1 · Materiales usados · Equipos usados</li>
-            <li>Experiencia 2 · Procedimientos · Precauciones</li>
-            <li>Experiencia 3 · Observaciones · Tiempo estimado</li>
-        </ul>
-    </details>
-    <div class="table-wrap">
-        <table>
-            <thead>
-                <tr>
-                    <th>Experiencia</th>
-                    <th>Materiales</th>
-                    <th>Equipos</th>
-                    <th>Tiempo</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>Reacción ácido-base</td>
-                    <td>Material volumétrico</td>
-                    <td>Balanza</td>
-                    <td>60 min</td>
-                </tr>
-                <tr>
-                    <td>Determinación de pH</td>
-                    <td>Pipetas</td>
-                    <td>pH-metro</td>
-                    <td>45 min</td>
-                </tr>
-                <tr>
-                    <td>Formación de precipitados</td>
-                    <td>Tubos de ensayo</td>
-                    <td>Centrífuga</td>
-                    <td>50 min</td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
+    @if (!string.IsNullOrWhiteSpace(loadError))
+    {
+        <p class="error-note">No se pudo cargar asignatura: @loadError</p>
+    }
+    else if (asignatura is null)
+    {
+        <p class="empty-note">No se encontró la asignatura para este laboratorio.</p>
+    }
+    else
+    {
+        <div class="asignatura-info">
+            <div>
+                <h3>@asignatura.Nombre</h3>
+                <span class="muted">@asignatura.Codigo</span>
+            </div>
+            <p>@asignatura.Descripcion</p>
+        </div>
+
+        <h3>Laboratorios realizados</h3>
+        @if (laboratorios.Count == 0)
+        {
+            <p class="empty-note">Aún no hay laboratorios realizados registrados para esta asignatura.</p>
+        }
+        else
+        {
+            <div class="card-grid">
+                @foreach (var lab in laboratorios)
+                {
+                    <article class="card" @key="lab.Id">
+                        <h4>@lab.Nombre</h4>
+                        <p>@lab.Descripcion</p>
+                        <span class="muted">@lab.ExperienciasCount experiencias</span>
+                        <NavLink class="btn-link" href="@($"/documentacion/laboratorios-realizados/{lab.Id}")">
+                            Ver experiencias
+                        </NavLink>
+                    </article>
+                }
+            </div>
+        }
+    }
 </section>
 
 @code {
     [Parameter] public string Asignatura { get; set; } = "";
+    [Inject] private NpgsqlDataSource DataSource { get; set; } = default!;
+
+    private AsignaturaDetalle? asignatura;
+    private readonly List<LaboratorioRealizadoRow> laboratorios = new();
+    private string? loadError;
+
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadAsignaturaAsync();
+    }
+
+    private async void HandleLaboratorioChanged()
+    {
+        await LoadAsignaturaAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadAsignaturaAsync()
+    {
+        try
+        {
+            loadError = null;
+            asignatura = null;
+            laboratorios.Clear();
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sqlAsignaturas = @"
+                SELECT asignatura_id,
+                       nombre,
+                       codigo_clase,
+                       COALESCE(descripcion_detalle, '')
+                FROM asignaturas
+                WHERE laboratorio_id = @laboratorio
+                ";
+            await using (var cmd = new NpgsqlCommand(sqlAsignaturas, conn))
+            {
+                cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    var id = reader.GetString(0);
+                    var nombre = reader.GetString(1);
+                    var codigo = reader.GetString(2);
+                    var descripcion = reader.GetString(3);
+                    var slug = Slugify(!string.IsNullOrWhiteSpace(codigo) ? codigo : nombre);
+                    if (string.Equals(slug, Asignatura, StringComparison.OrdinalIgnoreCase))
+                    {
+                        asignatura = new AsignaturaDetalle(id, nombre, codigo, descripcion);
+                    }
+                }
+            }
+
+            if (asignatura is null)
+            {
+                return;
+            }
+
+            const string sqlLabs = @"
+                SELECT lr.laboratorio_realizado_id,
+                       lr.nombre,
+                       COALESCE(lr.descripcion, ''),
+                       COALESCE(COUNT(ec.experiencia_id), 0) AS experiencias_count
+                FROM laboratorio_realizado lr
+                LEFT JOIN experiencias_clases ec
+                       ON ec.laboratorio_realizado_id = lr.laboratorio_realizado_id
+                WHERE lr.laboratorio_id = @laboratorio
+                  AND lr.asignatura_id = @asignatura
+                GROUP BY lr.laboratorio_realizado_id, lr.nombre, lr.descripcion
+                ORDER BY lr.nombre
+                ";
+            await using var cmdLab = new NpgsqlCommand(sqlLabs, conn);
+            cmdLab.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
+            cmdLab.Parameters.AddWithValue("asignatura", asignatura.Id);
+            await using var labReader = await cmdLab.ExecuteReaderAsync();
+            while (await labReader.ReadAsync())
+            {
+                laboratorios.Add(new LaboratorioRealizadoRow(
+                    labReader.GetString(0),
+                    labReader.GetString(1),
+                    labReader.GetString(2),
+                    labReader.GetInt64(3)
+                ));
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+    }
+
+    private static string Slugify(string value)
+    {
+        var lower = value.ToLowerInvariant();
+        var normalized = System.Text.RegularExpressions.Regex.Replace(lower, @"[^a-z0-9]+", "-");
+        return normalized.Trim('-');
+    }
+
+    private sealed record AsignaturaDetalle(string Id, string Nombre, string Codigo, string Descripcion);
+    private sealed record LaboratorioRealizadoRow(string Id, string Nombre, string Descripcion, long ExperienciasCount);
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
 }
 
 <style>
-    .guide-block { margin:0.75rem 0; }
-    .guide-block summary { cursor:pointer; font-weight:600; color:#0b2a68; }
-    .guide-list { margin:0.4rem 0 0; padding-left:1.2rem; color:#374151; }
-    .guide-list li { margin:0.35rem 0; }
-    .table-wrap { overflow-x:auto; }
-    table { width:100%; border-collapse:collapse; background:#fff; }
-    th, td { padding:0.6rem; border-bottom:1px solid #e5e7eb; text-align:left; }
-    th { background:#f3f4f6; font-weight:600; }
+    .asignatura-info { display:grid; gap:0.4rem; margin-bottom:1rem; }
+    .asignatura-info h3 { margin:0; color:#0b2a68; }
+    .asignatura-info p { color:#475569; margin:0; }
+    .card-grid {
+        display:grid;
+        gap:1rem;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    }
+    .card {
+        border:1px solid #e5e7eb;
+        border-radius:0.8rem;
+        padding:1rem;
+        background:#fff;
+        display:flex;
+        flex-direction:column;
+        gap:0.6rem;
+    }
+    .card h4 { margin:0; color:#0b2a68; }
+    .card p { margin:0; color:#475569; }
+    .muted { color:#6b7280; font-size:0.85rem; }
+    .btn-link {
+        display:inline-flex;
+        width:max-content;
+        padding:0.35rem 0.6rem;
+        border-radius:0.5rem;
+        background:#0b2a68;
+        color:#fff;
+        text-decoration:none;
+        font-size:0.85rem;
+    }
+    .btn-link:hover { background:#143a84; }
+    .error-note { color:#b91c1c; }
+    .empty-note { color:#6b7280; }
 </style>

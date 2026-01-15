@@ -1,0 +1,184 @@
+@page "/documentacion/laboratorios-realizados/{LaboratorioRealizadoId}"
+@using BARI_web.General_Services
+@using Npgsql
+@inject LaboratorioState LaboratorioState
+@implements IDisposable
+
+<PageTitle>Laboratorio realizado</PageTitle>
+
+<section class="page-card">
+    <h2>@(laboratorio?.Nombre ?? "Laboratorio realizado")</h2>
+    <p>@laboratorio?.Descripcion</p>
+    <LaboratorioSelector />
+</section>
+
+<section class="page-card" style="margin-top:1.5rem;">
+    @if (!string.IsNullOrWhiteSpace(loadError))
+    {
+        <p class="error-note">No se pudo cargar experiencias: @loadError</p>
+    }
+    else if (laboratorio is null)
+    {
+        <p class="empty-note">No se encontró el laboratorio realizado.</p>
+    }
+    else if (experiencias.Count == 0)
+    {
+        <p class="empty-note">No hay experiencias registradas para este laboratorio.</p>
+    }
+    else
+    {
+        <div class="card-grid">
+            @foreach (var exp in experiencias)
+            {
+                <article class="card" @key="exp.Id">
+                    <div>
+                        <h3>@exp.Nombre</h3>
+                        <span class="muted">@exp.Tiempo</span>
+                    </div>
+                    <p>@exp.Descripcion</p>
+                    @if (!string.IsNullOrWhiteSpace(exp.Procedimientos))
+                    {
+                        <p class="meta"><strong>Procedimientos:</strong> @exp.Procedimientos</p>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(exp.Precauciones))
+                    {
+                        <p class="meta"><strong>Precauciones:</strong> @exp.Precauciones</p>
+                    }
+                </article>
+            }
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter] public string LaboratorioRealizadoId { get; set; } = "";
+    [Inject] private NpgsqlDataSource DataSource { get; set; } = default!;
+
+    private LaboratorioRealizadoDetalle? laboratorio;
+    private readonly List<ExperienciaRow> experiencias = new();
+    private string? loadError;
+
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadDetalleAsync();
+    }
+
+    private async void HandleLaboratorioChanged()
+    {
+        await LoadDetalleAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadDetalleAsync()
+    {
+        try
+        {
+            loadError = null;
+            laboratorio = null;
+            experiencias.Clear();
+            await using var conn = await DataSource.OpenConnectionAsync();
+
+            const string sqlLab = @"
+                SELECT laboratorio_realizado_id,
+                       nombre,
+                       COALESCE(descripcion, '')
+                FROM laboratorio_realizado
+                WHERE laboratorio_realizado_id = @id
+                  AND laboratorio_id = @laboratorio
+                ";
+            await using (var cmdLab = new NpgsqlCommand(sqlLab, conn))
+            {
+                cmdLab.Parameters.AddWithValue("id", LaboratorioRealizadoId);
+                cmdLab.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
+                await using var reader = await cmdLab.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    laboratorio = new LaboratorioRealizadoDetalle(
+                        reader.GetString(0),
+                        reader.GetString(1),
+                        reader.GetString(2)
+                    );
+                }
+            }
+
+            if (laboratorio is null)
+            {
+                return;
+            }
+
+            const string sqlExp = @"
+                SELECT experiencia_id,
+                       nombre,
+                       COALESCE(descripcion_detalle, ''),
+                       COALESCE(tiempo_estimado_min, 0),
+                       COALESCE(procedimientos, ''),
+                       COALESCE(precauciones, '')
+                FROM experiencias_clases
+                WHERE laboratorio_realizado_id = @id
+                ORDER BY nombre
+                ";
+            await using var cmdExp = new NpgsqlCommand(sqlExp, conn);
+            cmdExp.Parameters.AddWithValue("id", laboratorio.Id);
+            await using var expReader = await cmdExp.ExecuteReaderAsync();
+            while (await expReader.ReadAsync())
+            {
+                var tiempo = expReader.GetInt32(3);
+                experiencias.Add(new ExperienciaRow(
+                    expReader.GetString(0),
+                    expReader.GetString(1),
+                    expReader.GetString(2),
+                    tiempo > 0 ? $"{tiempo} min" : "",
+                    expReader.GetString(4),
+                    expReader.GetString(5)
+                ));
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+    }
+
+    private sealed record LaboratorioRealizadoDetalle(string Id, string Nombre, string Descripcion);
+    private sealed record ExperienciaRow(
+        string Id,
+        string Nombre,
+        string Descripcion,
+        string Tiempo,
+        string Procedimientos,
+        string Precauciones
+    );
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
+}
+
+<style>
+    .card-grid {
+        display:grid;
+        gap:1rem;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    }
+    .card {
+        border:1px solid #e5e7eb;
+        border-radius:0.8rem;
+        padding:1rem;
+        background:#fff;
+        display:flex;
+        flex-direction:column;
+        gap:0.6rem;
+    }
+    .card h3 { margin:0; color:#0b2a68; }
+    .card p { margin:0; color:#475569; }
+    .meta { color:#475569; font-size:0.9rem; }
+    .muted { color:#6b7280; font-size:0.85rem; }
+    .error-note { color:#b91c1c; }
+    .empty-note { color:#6b7280; }
+</style>
