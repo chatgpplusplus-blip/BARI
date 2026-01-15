@@ -1,4 +1,8 @@
 ﻿@page "/documentacion/upsa/manuales"
+@using BARI_web.General_Services
+@using Npgsql
+@inject LaboratorioState LaboratorioState
+@implements IDisposable
 
 <PageTitle>Manuales UPSA</PageTitle>
 
@@ -48,10 +52,28 @@
     private readonly List<DocRow> documentos = new();
     private string? loadError;
 
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
+
     protected override async Task OnInitializedAsync()
+    {
+        await LoadDocumentosAsync();
+    }
+
+    private async void HandleLaboratorioChanged()
+    {
+        await LoadDocumentosAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadDocumentosAsync()
     {
         try
         {
+            loadError = null;
+            documentos.Clear();
             await using var conn = await DataSource.OpenConnectionAsync();
             const string sql = @"
                 SELECT d.titulo,
@@ -60,10 +82,13 @@
                 FROM documentos d
                 LEFT JOIN categorias c ON c.categoria_id = d.categoria_id
                 LEFT JOIN subcategorias s ON s.subcategoria_id = d.subcategoria_id
-                WHERE c.nombre = 'UPSA' AND s.nombre = 'Manual'
+                WHERE c.nombre = 'UPSA'
+                  AND s.nombre = 'Manual'
+                  AND d.laboratorio_id = @laboratorio
                 ORDER BY d.titulo
                 ";
             await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
@@ -81,6 +106,11 @@
     }
 
     private sealed record DocRow(string Titulo, string Archivo, string Url);
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
 }
 
 <style>

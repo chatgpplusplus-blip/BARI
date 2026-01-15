@@ -12,47 +12,10 @@
 </section>
 
 <section class="page-card" style="margin-top:1.5rem;">
-    <h3>Experiencias y clases (ejemplo)</h3>
-    <details open class="guide-block">
-        <summary>Lista de experiencias</summary>
-        <ul class="guide-list">
-            <li>Experiencia 1 · Materiales usados · Equipos usados</li>
-            <li>Experiencia 2 · Procedimientos · Precauciones</li>
-            <li>Experiencia 3 · Observaciones · Tiempo estimado</li>
-        </ul>
-    </details>
-    <div class="table-wrap">
-        <table>
-            <thead>
-                <tr>
-                    <th>Experiencia</th>
-                    <th>Materiales</th>
-                    <th>Equipos</th>
-                    <th>Tiempo</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>Reacción ácido-base</td>
-                    <td>Material volumétrico</td>
-                    <td>Balanza</td>
-                    <td>60 min</td>
-                </tr>
-                <tr>
-                    <td>Determinación de pH</td>
-                    <td>Pipetas</td>
-                    <td>pH-metro</td>
-                    <td>45 min</td>
-                </tr>
-                <tr>
-                    <td>Formación de precipitados</td>
-                    <td>Tubos de ensayo</td>
-                    <td>Centrífuga</td>
-                    <td>50 min</td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
+    <h3>Experiencias y clases</h3>
+    <p class="empty-note">
+        Aún no hay experiencias registradas para esta asignatura.
+    </p>
 </section>
 
 @code {
@@ -60,12 +23,5 @@
 }
 
 <style>
-    .guide-block { margin:0.75rem 0; }
-    .guide-block summary { cursor:pointer; font-weight:600; color:#0b2a68; }
-    .guide-list { margin:0.4rem 0 0; padding-left:1.2rem; color:#374151; }
-    .guide-list li { margin:0.35rem 0; }
-    .table-wrap { overflow-x:auto; }
-    table { width:100%; border-collapse:collapse; background:#fff; }
-    th, td { padding:0.6rem; border-bottom:1px solid #e5e7eb; text-align:left; }
-    th { background:#f3f4f6; font-weight:600; }
+    .empty-note { color:#6b7280; }
 </style>

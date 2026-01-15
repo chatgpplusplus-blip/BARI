@@ -1,4 +1,8 @@
 ﻿@page "/documentacion/instituciones/cas"
+@using BARI_web.General_Services
+@using Npgsql
+@inject LaboratorioState LaboratorioState
+@implements IDisposable
 
 <PageTitle>CAS</PageTitle>
 
@@ -43,10 +47,28 @@
     private readonly List<CasRow> catalogo = new();
     private string? loadError;
 
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
+
     protected override async Task OnInitializedAsync()
+    {
+        await LoadCatalogoAsync();
+    }
+
+    private async void HandleLaboratorioChanged()
+    {
+        await LoadCatalogoAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadCatalogoAsync()
     {
         try
         {
+            loadError = null;
+            catalogo.Clear();
             await using var conn = await DataSource.OpenConnectionAsync();
             const string sql = @"
                 SELECT DISTINCT ON (s.cas)
@@ -56,10 +78,13 @@
                 FROM sustancias s
                 LEFT JOIN subcategorias sc ON sc.subcategoria_id = s.subcategoria_id
                 LEFT JOIN categorias c ON c.categoria_id = sc.categoria_id
-                WHERE s.cas IS NOT NULL AND s.cas <> ''
+                WHERE s.cas IS NOT NULL
+                  AND s.cas <> ''
+                  AND s.laboratorio_id = @laboratorio
                 ORDER BY s.cas, s.sustancia_id
                 ";
             await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
@@ -77,6 +102,11 @@
     }
 
     private sealed record CasRow(string CasId, string Nombre, string Categoria);
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
 }
 
 <style>
