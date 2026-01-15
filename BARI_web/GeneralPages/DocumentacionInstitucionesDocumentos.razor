@@ -1,5 +1,8 @@
 ﻿@page "/documentacion/instituciones/documentos"
+@using BARI_web.General_Services
 @using Npgsql
+@inject LaboratorioState LaboratorioState
+@implements IDisposable
 
 <PageTitle>Documentos institucionales</PageTitle>
 
@@ -10,38 +13,32 @@
 </section>
 
 <section class="page-card" style="margin-top:1.5rem;">
-    <div class="table-wrap">
-        <table>
-            <thead>
-                <tr>
-                    <th>Título</th>
-                    <th>Tipo</th>
-                    <th>Fuente</th>
-                    <th>URL</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var doc in documentos)
-                {
-                    <tr>
-                        <td>@doc.Titulo</td>
-                        <td>@doc.Tipo</td>
-                        <td>@doc.Fuente</td>
-                        <td>
-                            @if (!string.IsNullOrWhiteSpace(doc.Url))
-                            {
-                                <a href="@doc.Url" target="_blank" rel="noopener">Abrir</a>
-                            }
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-
     @if (!string.IsNullOrWhiteSpace(loadError))
     {
         <p class="error-note">No se pudo cargar documentos: @loadError</p>
+    }
+    else if (documentos.Count == 0)
+    {
+        <p class="empty-note">No hay documentos institucionales registrados para este laboratorio.</p>
+    }
+    else
+    {
+        <div class="card-grid">
+            @foreach (var doc in documentos)
+            {
+                <article class="doc-card" @key="doc.Titulo">
+                    <div class="card-thumb"></div>
+                    <div>
+                        <h3>@doc.Titulo</h3>
+                        <p class="meta">@doc.Tipo · @doc.Fuente</p>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(doc.Url))
+                    {
+                        <a class="btn-link" href="@doc.Url" target="_blank" rel="noopener">Abrir</a>
+                    }
+                </article>
+            }
+        </div>
     }
 </section>
 
@@ -51,10 +48,28 @@
     private readonly List<DocRow> documentos = new();
     private string? loadError;
 
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
+
     protected override async Task OnInitializedAsync()
+    {
+        await LoadDocumentosAsync();
+    }
+
+    private async void HandleLaboratorioChanged()
+    {
+        await LoadDocumentosAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadDocumentosAsync()
     {
         try
         {
+            loadError = null;
+            documentos.Clear();
             await using var conn = await DataSource.OpenConnectionAsync();
             const string sql = @"
                 SELECT d.titulo,
@@ -64,10 +79,12 @@
                 FROM documentos d
                 LEFT JOIN subcategorias s ON s.subcategoria_id = d.subcategoria_id
                 LEFT JOIN categorias c ON c.categoria_id = d.categoria_id
-                WHERE c.nombre IS NULL OR c.nombre <> 'UPSA'
+                WHERE (c.nombre IS NULL OR c.nombre <> 'UPSA')
+                  AND d.laboratorio_id = @laboratorio
                 ORDER BY d.titulo
                 ";
             await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
@@ -86,12 +103,55 @@
     }
 
     private sealed record DocRow(string Titulo, string Tipo, string Fuente, string Url);
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
 }
 
 <style>
-    .table-wrap { overflow-x:auto; }
-    table { width:100%; border-collapse:collapse; background:#fff; }
-    th, td { padding:0.6rem; border-bottom:1px solid #e5e7eb; text-align:left; }
-    th { background:#f3f4f6; font-weight:600; }
+    .card-grid {
+        display:grid;
+        gap:1rem;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    }
+    .doc-card {
+        border:1px solid #e5e7eb;
+        border-radius:0.8rem;
+        padding:1rem;
+        background:#fff;
+        display:flex;
+        flex-direction:column;
+        gap:0.6rem;
+    }
+    .card-thumb {
+        width:100%;
+        height:110px;
+        border-radius:0.6rem;
+        background:linear-gradient(135deg, rgba(15, 23, 42, 0.15), rgba(148, 163, 184, 0.2));
+        position:relative;
+        overflow:hidden;
+    }
+    .card-thumb::after {
+        content:"";
+        position:absolute;
+        inset:0;
+        background:linear-gradient(180deg, rgba(255,255,255,0.08), rgba(15,23,42,0.2));
+    }
+    .doc-card h3 { margin:0; color:#0b2a68; }
+    .meta { color:#64748b; font-size:0.85rem; margin:0.2rem 0 0; }
+    .btn-link {
+        display:inline-flex;
+        width:max-content;
+        padding:0.35rem 0.6rem;
+        border-radius:0.5rem;
+        background:#0b2a68;
+        color:#fff;
+        text-decoration:none;
+        font-size:0.85rem;
+    }
+    .btn-link:hover { background:#143a84; }
     .error-note { color:#b91c1c; margin-top:0.75rem; }
+    .empty-note { color:#6b7280; }
 </style>

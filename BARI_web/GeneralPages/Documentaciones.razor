@@ -1,4 +1,8 @@
 ﻿@page "/documentaciones"
+@using BARI_web.General_Services
+@using Npgsql
+@inject LaboratorioState LaboratorioState
+@implements IDisposable
 
 <PageTitle>Documentaciones</PageTitle>
 
@@ -11,49 +15,65 @@
     <LaboratorioSelector />
 </section>
 
-<section class="page-card" style="margin-top:1.5rem;">
-    <h3>Menú de documentación por asignatura</h3>
+<section id="asignaturas" class="page-card" style="margin-top:1.5rem;">
+    <h3>Documentación por asignatura</h3>
     <p class="section-intro">
-        Usa los desplegables para navegar a la documentación académica por asignatura.
+        Explora el resumen de asignaturas y entra al detalle de cada una.
     </p>
     @if (!string.IsNullOrWhiteSpace(loadError))
     {
         <p class="error-note">No se pudo cargar asignaturas desde la base de datos: @loadError</p>
     }
-    <div class="menu-grid">
-        @foreach (var asignatura in asignaturas)
-        {
-            <details class="menu-item" @key="asignatura.Id" open>
-                <summary>
-                    <strong>@asignatura.Nombre</strong>
-                    <span class="muted">@asignatura.Codigo</span>
-                </summary>
-                <div class="menu-links">
-                    <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/laboratorios")">
-                        Documentación para asignaturas
-                    </NavLink>
-                </div>
-            </details>
-        }
-    </div>
+    else if (asignaturas.Count == 0)
+    {
+        <p class="empty-note">No hay asignaturas asociadas al laboratorio seleccionado.</p>
+    }
+    else
+    {
+        <div class="menu-grid">
+            @foreach (var asignatura in asignaturas)
+            {
+                <article class="menu-item" @key="asignatura.Id">
+                    <div class="menu-thumb"></div>
+                    <div class="menu-title">
+                        <strong>@asignatura.Nombre</strong>
+                        <span class="muted">@asignatura.Codigo</span>
+                    </div>
+                    <p class="menu-desc">@asignatura.Descripcion</p>
+                    <div class="menu-links">
+                        <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/laboratorios")">
+                            Ver experiencias
+                        </NavLink>
+                        <NavLink class="btn-link secondary" href="/documentacion/asignaturas">
+                            Ver mosaico general
+                        </NavLink>
+                    </div>
+                </article>
+            }
+        </div>
+    }
 </section>
 
 <section id="instituciones-general" class="page-card" style="margin-top:1.5rem;">
     <h3>Documentación institucional (general)</h3>
     <p class="section-intro">
-        Documentación externa y normativa general: pictogramas, H-codes, P-codes y catálogos CAS.
+        Documentos y normativas institucionales disponibles por laboratorio.
     </p>
+    @if (!isQuimica)
+    {
+        <p class="muted">Los listados CAS, GHS, H y P están activos solo para Química.</p>
+    }
     <div class="menu-grid">
-        <div class="menu-item">
+        <article class="menu-item">
             <strong>Instituciones y normativas</strong>
+            <p class="menu-desc">
+                Catálogos, fichas y documentación general de referencia para el laboratorio.
+            </p>
             <div class="menu-links">
-                <NavLink class="btn-link" href="/documentacion/instituciones/pictogramas">Pictogramas (GHS)</NavLink>
-                <NavLink class="btn-link" href="/documentacion/instituciones/h-codes">H-Codes</NavLink>
-                <NavLink class="btn-link" href="/documentacion/instituciones/p-codes">P-Codes</NavLink>
-                <NavLink class="btn-link" href="/documentacion/instituciones/cas">CAS</NavLink>
-                <NavLink class="btn-link" href="/documentacion/instituciones/documentos">Documentos institucionales</NavLink>
+                <NavLink class="btn-link" href="/documentacion/instituciones">Ver mosaico institucional</NavLink>
+                <NavLink class="btn-link secondary" href="/documentacion/instituciones/documentos">Documentos institucionales</NavLink>
             </div>
-        </div>
+        </article>
     </div>
 </section>
 
@@ -75,21 +95,24 @@
 </section>
 
 <section class="page-card" style="margin-top:1.5rem;">
-    <h3>Selecciona el tipo de documentación (Laboratorio de Química)</h3>
+    <h3>Selecciona el tipo de documentación (@(string.IsNullOrWhiteSpace(laboratorioNombre) ? "Laboratorio" : laboratorioNombre))</h3>
     <p class="section-intro">
-        Elige una de las tres categorías principales para la asignatura de química.
+        Elige una de las tres categorías principales del laboratorio.
     </p>
     <div class="type-grid">
         <article class="type-item">
             <h4>Documentación para asignaturas</h4>
             <p>Guías de práctica, planificaciones y material académico.</p>
-            <NavLink class="btn-link" href="/documentaciones#asignaturas">Ver asignaturas</NavLink>
+            <NavLink class="btn-link" href="/documentacion/asignaturas">Ver asignaturas</NavLink>
         </article>
-        <article class="type-item">
-            <h4>Documentación de instituciones</h4>
-            <p>Normativas externas: IUPAC, GHS, consejos de prudencia y peligros.</p>
-            <NavLink class="btn-link" href="/documentaciones#instituciones-general">Ver instituciones</NavLink>
-        </article>
+        @if (isQuimica)
+        {
+            <article class="type-item">
+                <h4>Documentación de instituciones</h4>
+                <p>Normativas externas: IUPAC, GHS, consejos de prudencia y peligros.</p>
+                <NavLink class="btn-link" href="/documentacion/instituciones">Ver instituciones</NavLink>
+            </article>
+        }
         <article class="type-item">
             <h4>Documentación del laboratorio (UPSA)</h4>
             <p>Manuales internos, procedimientos y reglamentos del laboratorio.</p>
@@ -98,72 +121,80 @@
     </div>
 </section>
 
-<section id="asignaturas" class="page-card" style="margin-top:1.5rem;">
-    <h3>Documentación para asignaturas</h3>
-    <p class="section-intro">
-        Se listan las asignaturas disponibles. Cada una enlaza a su documentación de laboratorio.
-    </p>
-    <div class="assign-grid">
-        @foreach (var asignatura in asignaturas)
-        {
-            <article class="assign-item" @key="asignatura.Id">
-                <div>
-                    <h4>@asignatura.Nombre</h4>
-                    <span class="muted">@asignatura.Codigo</span>
-                </div>
-                <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/laboratorios")">
-                    Ver documentación
-                </NavLink>
-            </article>
-        }
-    </div>
-
-    <details open class="guide-block">
-        <summary>Sublista de experiencias por asignatura</summary>
-        <ul class="guide-list">
-            <li>Experiencia 1 · Materiales usados · Equipos usados</li>
-            <li>Experiencia 2 · Procedimientos · Precauciones</li>
-            <li>Experiencia 3 · Observaciones · Tiempo estimado</li>
-        </ul>
-    </details>
-</section>
-
 
 @code {
-    [Inject] private PgCrud Crud { get; set; } = default!;
+    [Inject] private NpgsqlDataSource DataSource { get; set; } = default!;
 
     private readonly List<AsignaturaView> asignaturas = new();
     private string? loadError;
+    private string? laboratorioNombre;
+    private bool isQuimica;
+
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadAsignaturasAsync();
+    }
+
+    private async void HandleLaboratorioChanged()
+    {
+        await LoadAsignaturasAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadAsignaturasAsync()
+    {
         try
         {
-            Crud.UseSheet("asignaturas");
-            var rows = await Crud.ReadAllAsync();
+            loadError = null;
             asignaturas.Clear();
+            laboratorioNombre = null;
+            isQuimica = false;
+            await using var conn = await DataSource.OpenConnectionAsync();
 
-            foreach (var row in rows)
+            const string sqlLab = @"
+                SELECT nombre
+                FROM laboratorios
+                WHERE laboratorio_id = @laboratorio
+                ";
+            await using (var cmdLab = new NpgsqlCommand(sqlLab, conn))
             {
-                var id = row.GetValueOrDefault("asignatura_id") ?? "";
-                var nombre = row.GetValueOrDefault("nombre") ?? "";
-                var codigo = row.GetValueOrDefault("codigo_clase") ?? "";
-                var slug = Slugify(!string.IsNullOrWhiteSpace(codigo) ? codigo : nombre);
+                cmdLab.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
+                laboratorioNombre = (string?)await cmdLab.ExecuteScalarAsync();
+            }
+            var labNombre = laboratorioNombre ?? string.Empty;
+            isQuimica = LaboratorioState.LaboratorioId == 1
+                || labNombre.Contains("quim", StringComparison.OrdinalIgnoreCase);
 
-                if (!string.IsNullOrWhiteSpace(id) && !string.IsNullOrWhiteSpace(nombre))
-                {
-                    asignaturas.Add(new AsignaturaView(id, nombre, codigo, slug));
-                }
+            const string sqlAsignaturas = @"
+                SELECT asignatura_id,
+                       nombre,
+                       codigo_clase,
+                       COALESCE(descripcion_detalle, '')
+                FROM asignaturas
+                WHERE laboratorio_id = @laboratorio
+                ORDER BY nombre
+                ";
+            await using var cmd = new NpgsqlCommand(sqlAsignaturas, conn);
+            cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var id = reader.GetString(0);
+                var nombre = reader.GetString(1);
+                var codigo = reader.GetString(2);
+                var descripcion = reader.GetString(3);
+                var slug = Slugify(!string.IsNullOrWhiteSpace(codigo) ? codigo : nombre);
+                asignaturas.Add(new AsignaturaView(id, nombre, codigo, slug, descripcion));
             }
         }
         catch (Exception ex)
         {
             loadError = ex.Message;
-        }
-
-        if (asignaturas.Count == 0)
-        {
-            asignaturas.Add(new AsignaturaView("quimica-general", "Química General", "QUI-101", "quimica-general"));
         }
     }
 
@@ -174,7 +205,12 @@
         return normalized.Trim('-');
     }
 
-    private sealed record AsignaturaView(string Id, string Nombre, string Codigo, string Slug);
+    private sealed record AsignaturaView(string Id, string Nombre, string Codigo, string Slug, string Descripcion);
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
 }
 
 <style>
@@ -190,20 +226,38 @@
         padding:0.9rem 1rem;
         background:#fff;
     }
-    .menu-item summary {
-        cursor:pointer;
+    .menu-title {
         display:flex;
         flex-direction:column;
         gap:0.25rem;
         font-weight:600;
         color:#0b2a68;
     }
+    .menu-thumb {
+        width:100%;
+        height:90px;
+        border-radius:0.6rem;
+        background:linear-gradient(135deg, rgba(30, 64, 175, 0.2), rgba(147, 197, 253, 0.25));
+        position:relative;
+        overflow:hidden;
+    }
+    .menu-thumb::after {
+        content:"";
+        position:absolute;
+        inset:0;
+        background:linear-gradient(180deg, rgba(255,255,255,0.08), rgba(15,23,42,0.2));
+    }
+    .menu-desc {
+        color:#475569;
+        margin:0.45rem 0 0;
+    }
     .menu-links {
         display:flex;
-        flex-direction:column;
+        flex-wrap:wrap;
         gap:0.4rem;
         margin-top:0.6rem;
     }
+    .empty-note { color:#6b7280; margin-top:0.75rem; }
     .type-grid {
         display:grid;
         gap:1rem;
@@ -220,29 +274,6 @@
     }
     .type-item h4 { margin:0 0 0.2rem; color:#0b2a68; }
     .error-note { color:#b91c1c; font-size:0.9rem; margin:0 0 0.75rem; }
-    .guide-block { margin:0.75rem 0; }
-    .guide-block summary { cursor:pointer; font-weight:600; color:#0b2a68; }
-    .guide-list { margin:0.4rem 0 0; padding-left:1.2rem; color:#374151; }
-    .guide-list li { margin:0.35rem 0; }
-    .table-wrap { overflow-x:auto; }
-    table { width:100%; border-collapse:collapse; background:#fff; }
-    th, td { padding:0.6rem; border-bottom:1px solid #e5e7eb; text-align:left; }
-    th { background:#f3f4f6; font-weight:600; }
-    .assign-grid {
-        display:grid;
-        gap:1rem;
-        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    }
-    .assign-item {
-        border:1px solid #e5e7eb;
-        border-radius:0.8rem;
-        padding:0.9rem 1rem;
-        background:#f9fafb;
-        display:flex;
-        flex-direction:column;
-        gap:0.6rem;
-    }
-    .assign-item h4 { margin:0 0 0.2rem; color:#0b2a68; }
     .muted { color:#6b7280; font-size:0.85rem; }
     .btn-link {
         display:inline-flex;
@@ -255,5 +286,10 @@
         font-size:0.85rem;
     }
     .btn-link:hover { background:#143a84; }
+    .btn-link.secondary {
+        background:#e2e8f0;
+        color:#0b2a68;
+    }
+    .btn-link.secondary:hover { background:#cbd5f5; }
     .link-stack { display:flex; flex-direction:column; gap:0.35rem; }
 </style>
