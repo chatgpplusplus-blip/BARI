@@ -6,7 +6,6 @@ using System.Threading.Tasks;
 using BARI_web.General_Services.DataBaseConnection;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
-using Microsoft.AspNetCore.WebUtilities;
 using Npgsql;
 
 namespace BARI_web.Features.Espacios.Pages
@@ -96,6 +95,8 @@ namespace BARI_web.Features.Espacios.Pages
         private readonly List<Door> _doors = new();
         private readonly List<Win> _windows = new();
         private Dictionary<string, string> _areasLookup = new(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, string> _canvasLookup = new(StringComparer.OrdinalIgnoreCase);
+        private string? _currentCanvasId;
 
         // --- Vista filtrada por planta activa ---
         private IEnumerable<Poly> VisiblePolys() => _polys.Where(IsVisible);
@@ -182,16 +183,89 @@ namespace BARI_web.Features.Espacios.Pages
         // ===== init
         protected override async Task OnInitializedAsync()
         {
-            // canvas
-            Pg.UseSheet("canvas_lab");
-            var c = (await Pg.ReadAllAsync()).FirstOrDefault();
-            if (c is null) return;
-            _canvas = new CanvasLab(c["canvas_id"], c["nombre"], Dec(c["ancho_m"]), Dec(c["alto_m"]), Dec(c["margen_m"]));
+            _canvasLookup = await Pg.GetLookupAsync("canvas_lab", "canvas_id", "nombre");
+            _currentCanvasId = _canvasLookup.Keys.FirstOrDefault();
+            await ReloadCanvasDataAsync();
+        }
 
-            // áreas
+        private void CenterView()
+        {
+            var vw = (decimal)((double)Wm / _zoom);
+            var vh = (decimal)((double)Hm / _zoom);
+            _panX = (Wm - vw) / 2m; _panY = (Hm - vh) / 2m;
+        }
+
+        private async Task ReloadCanvasDataAsync()
+        {
+            if (string.IsNullOrWhiteSpace(_currentCanvasId))
+            {
+                _canvas = null;
+                return;
+            }
+
+            await LoadCanvasAsync(_currentCanvasId);
+            if (_canvas is null) return;
+
             _areasLookup = await Pg.GetLookupAsync("areas", "area_id", "nombre_areas");
+            await LoadAreasMetaAsync();
+            await LoadPolysAsync();
+            await LoadPolyPointsAsync();
+            _plantasLookup = await Pg.GetLookupAsync("plantas", "planta_id", "nombre");
 
-            // polígonos
+            _currentPlantaId = ResolveInitialPlanta();
+            _drawAreaId = DefaultAreaIdForCurrentPlanta();
+            _sel = _polys.FirstOrDefault(IsVisible);
+            _selectedVertexIndex = -1;
+            _draftPoints.Clear();
+            _isDrawing = false;
+
+            await LoadDoorsAsync();
+            await LoadWindowsAsync();
+
+            CenterView();
+            NormalizeSelected();
+            StateHasChanged();
+        }
+
+        private async Task LoadCanvasAsync(string canvasId)
+        {
+            Pg.UseSheet("canvas_lab");
+            var canvases = await Pg.ReadAllAsync();
+            var c = canvases.FirstOrDefault(row => string.Equals(row["canvas_id"], canvasId, StringComparison.OrdinalIgnoreCase))
+                ?? canvases.FirstOrDefault();
+            if (c is null)
+            {
+                _canvas = null;
+                return;
+            }
+
+            _canvas = new CanvasLab(c["canvas_id"], c["nombre"], Dec(c["ancho_m"]), Dec(c["alto_m"]), Dec(c["margen_m"]));
+            _currentCanvasId = _canvas.canvas_id;
+        }
+
+        private async Task LoadAreasMetaAsync()
+        {
+            _areasMeta.Clear();
+            Pg.UseSheet("areas");
+            foreach (var r in await Pg.ReadAllAsync())
+            {
+                var id = r["area_id"];
+                _areasMeta[id] = new AreaMeta
+                {
+                    area_id = id,
+                    planta_id = NullIfEmpty(Get(r, "planta_id")),
+                    canvas_id = NullIfEmpty(Get(r, "canvas_id")),
+                    altura_m = Dec(Get(r, "altura_m", "0")),
+                    anotaciones = string.IsNullOrWhiteSpace(Get(r, "anotaciones_del_area")) ? "SIN MODIFICACIONES" : Get(r, "anotaciones_del_area")
+                };
+            }
+        }
+
+        private async Task LoadPolysAsync()
+        {
+            _polys.Clear();
+            if (_canvas is null) return;
+
             Pg.UseSheet("poligonos");
             foreach (var r in await Pg.ReadAllAsync())
             {
@@ -210,39 +284,25 @@ namespace BARI_web.Features.Espacios.Pages
                     color_hex = NullIfEmpty(Get(r, "color_hex"))
                 });
             }
+        }
 
-            await LoadPolyPointsAsync();
+        private string? ResolveInitialPlanta()
+        {
+            var firstWithArea = _polys.FirstOrDefault(p => PlantaOf(p) != null);
+            var planta = PlantaOf(firstWithArea ?? _polys.FirstOrDefault() ?? new Poly());
+            if (!string.IsNullOrWhiteSpace(planta)) return planta;
+            var fromAreas = _areasMeta.Values
+                .FirstOrDefault(meta => string.Equals(meta.canvas_id ?? "", _canvas?.canvas_id ?? "", StringComparison.OrdinalIgnoreCase))
+                ?.planta_id;
+            if (!string.IsNullOrWhiteSpace(fromAreas)) return fromAreas;
+            return _plantasLookup.Keys.FirstOrDefault();
+        }
 
-            // PLANTAS
-            _plantasLookup = await Pg.GetLookupAsync("plantas", "planta_id", "nombre");
+        private async Task LoadDoorsAsync()
+        {
+            _doors.Clear();
+            if (_canvas is null) return;
 
-            // Planta inicial
-            if (_polys.Count > 0)
-            {
-                var firstWithArea = _polys.FirstOrDefault(p => PlantaOf(p) != null);
-                _currentPlantaId = PlantaOf(firstWithArea ?? _polys[0]) ?? _plantasLookup.Keys.FirstOrDefault();
-            }
-            else
-            {
-                _currentPlantaId = _plantasLookup.Keys.FirstOrDefault();
-            }
-            _drawAreaId = DefaultAreaIdForCurrentPlanta();
-
-            // META DE ÁREAS
-            Pg.UseSheet("areas");
-            foreach (var r in await Pg.ReadAllAsync())
-            {
-                var id = r["area_id"];
-                _areasMeta[id] = new AreaMeta
-                {
-                    area_id = id,
-                    planta_id = NullIfEmpty(Get(r, "planta_id")),
-                    altura_m = Dec(Get(r, "altura_m", "0")),
-                    anotaciones = string.IsNullOrWhiteSpace(Get(r, "anotaciones_del_area")) ? "SIN MODIFICACIONES" : Get(r, "anotaciones_del_area")
-                };
-            }
-
-            // puertas
             Pg.UseSheet("puertas");
             try
             {
@@ -277,8 +337,13 @@ namespace BARI_web.Features.Espacios.Pages
                 }
             }
             catch { }
+        }
 
-            // ventanas
+        private async Task LoadWindowsAsync()
+        {
+            _windows.Clear();
+            if (_canvas is null) return;
+
             Pg.UseSheet("ventanas");
             try
             {
@@ -314,23 +379,82 @@ namespace BARI_web.Features.Espacios.Pages
                 }
             }
             catch { }
-
-            // selección inicial
-            var uri = new Uri(Nav.Uri);
-            var query = QueryHelpers.ParseQuery(uri.Query);
-            if (query.TryGetValue("sel", out var sel) && !string.IsNullOrWhiteSpace(sel))
-                _sel = _polys.FirstOrDefault(p => p.poly_id.Equals(sel.ToString(), StringComparison.OrdinalIgnoreCase));
-            _sel ??= _polys.FirstOrDefault();
-
-            CenterView();
-            NormalizeSelected();
         }
 
-        private void CenterView()
+        private async Task LoadPolyPointsAsync()
         {
-            var vw = (decimal)((double)Wm / _zoom);
-            var vh = (decimal)((double)Hm / _zoom);
-            _panX = (Wm - vw) / 2m; _panY = (Hm - vh) / 2m;
+            var pointsByPoly = new Dictionary<string, List<(int orden, Point point)>>(StringComparer.OrdinalIgnoreCase);
+            Pg.UseSheet("poligonos_puntos");
+            foreach (var row in await Pg.ReadAllAsync())
+            {
+                var polyId = Get(row, "poly_id");
+                if (string.IsNullOrWhiteSpace(polyId)) continue;
+                var orden = Int(Get(row, "orden", "0"));
+                var x = Dec(Get(row, "x_m", "0"));
+                var y = Dec(Get(row, "y_m", "0"));
+                if (!pointsByPoly.TryGetValue(polyId, out var list))
+                {
+                    list = new List<(int, Point)>();
+                    pointsByPoly[polyId] = list;
+                }
+                list.Add((orden, new Point(x, y)));
+            }
+
+            foreach (var p in _polys)
+            {
+                if (pointsByPoly.TryGetValue(p.poly_id, out var list) && list.Count >= 3)
+                {
+                    p.puntos = list.OrderBy(item => item.orden).Select(item => item.point).ToList();
+                }
+                else
+                {
+                    p.puntos = BuildRectPoints(p);
+                }
+                UpdateBoundsFromPoints(p);
+            }
+        }
+
+        private static List<Point> BuildRectPoints(Poly p)
+            => new()
+            {
+                new Point(p.x_m, p.y_m),
+                new Point(p.x_m + p.ancho_m, p.y_m),
+                new Point(p.x_m + p.ancho_m, p.y_m + p.alto_m),
+                new Point(p.x_m, p.y_m + p.alto_m)
+            };
+
+        private void UpdateBoundsFromPoints(Poly p)
+        {
+            if (p.puntos.Count == 0) return;
+            var minX = p.puntos.Min(pt => pt.X);
+            var minY = p.puntos.Min(pt => pt.Y);
+            var maxX = p.puntos.Max(pt => pt.X);
+            var maxY = p.puntos.Max(pt => pt.Y);
+            p.x_m = minX;
+            p.y_m = minY;
+            p.ancho_m = Math.Max(0.1m, maxX - minX);
+            p.alto_m = Math.Max(0.1m, maxY - minY);
+        }
+
+        private static (decimal minX, decimal minY, decimal maxX, decimal maxY) BoundsOfPoints(IReadOnlyList<Point> points)
+        {
+            var minX = points.Min(pt => pt.X);
+            var minY = points.Min(pt => pt.Y);
+            var maxX = points.Max(pt => pt.X);
+            var maxY = points.Max(pt => pt.Y);
+            return (minX, minY, maxX, maxY);
+        }
+
+        private string PointsString(IEnumerable<Point> points)
+            => string.Join(" ", points.Select(p => $"{S(p.X)},{S(p.Y)}"));
+
+        private string PointsString(Poly p) => PointsString(p.puntos);
+
+        private static decimal Distance(Point a, Point b)
+        {
+            var dx = a.X - b.X;
+            var dy = a.Y - b.Y;
+            return (decimal)Math.Sqrt((double)(dx * dx + dy * dy));
         }
 
         private async Task LoadPolyPointsAsync()
@@ -1183,6 +1307,11 @@ namespace BARI_web.Features.Espacios.Pages
                     _saveMsg = "Todos los polígonos deben estar asignados a un área.";
                     return;
                 }
+                if (_polys.Any(p => !IsAreaInCurrentCanvas(p.area_id)))
+                {
+                    _saveMsg = "Todos los polígonos deben pertenecer al canvas actual.";
+                    return;
+                }
 
                 _saving = true; _saveMsg = "Guardando…"; StateHasChanged();
 
@@ -1410,26 +1539,30 @@ namespace BARI_web.Features.Espacios.Pages
 
         // ¿El polígono pertenece a la planta actual?
         private bool IsVisible(Poly p)
-            => string.Equals(PlantaOf(p) ?? "", _currentPlantaId ?? "", StringComparison.OrdinalIgnoreCase);
+            => string.Equals(PlantaOf(p) ?? "", _currentPlantaId ?? "", StringComparison.OrdinalIgnoreCase)
+               && IsAreaInCurrentCanvas(p.area_id);
 
         private bool IsDoorVisible(Door d)
         {
             if (string.IsNullOrWhiteSpace(d.area_id_a)) return false;
             return _areasMeta.TryGetValue(d.area_id_a!, out var meta)
-                && string.Equals(meta.planta_id ?? "", _currentPlantaId ?? "", StringComparison.OrdinalIgnoreCase);
+                && string.Equals(meta.planta_id ?? "", _currentPlantaId ?? "", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(meta.canvas_id ?? "", _canvas?.canvas_id ?? "", StringComparison.OrdinalIgnoreCase);
         }
 
         private bool IsWinVisible(Win w)
         {
             if (string.IsNullOrWhiteSpace(w.area_id_a)) return false;
             return _areasMeta.TryGetValue(w.area_id_a!, out var meta)
-                && string.Equals(meta.planta_id ?? "", _currentPlantaId ?? "", StringComparison.OrdinalIgnoreCase);
+                && string.Equals(meta.planta_id ?? "", _currentPlantaId ?? "", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(meta.canvas_id ?? "", _canvas?.canvas_id ?? "", StringComparison.OrdinalIgnoreCase);
         }
 
         private IEnumerable<KeyValuePair<string, string>> AreasOfCurrentPlanta()
             => _areasLookup.Where(kv =>
                 _areasMeta.TryGetValue(kv.Key, out var meta)
-                && string.Equals(meta.planta_id ?? "", _currentPlantaId ?? "", StringComparison.OrdinalIgnoreCase));
+                && string.Equals(meta.planta_id ?? "", _currentPlantaId ?? "", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(meta.canvas_id ?? "", _canvas?.canvas_id ?? "", StringComparison.OrdinalIgnoreCase));
 
         private void OnChangePlanta(string? plantaId)
         {
@@ -1440,6 +1573,12 @@ namespace BARI_web.Features.Espacios.Pages
 
             _drawAreaId = DefaultAreaIdForCurrentPlanta();
             StateHasChanged();
+        }
+
+        private async Task OnChangeCanvas(string? canvasId)
+        {
+            _currentCanvasId = string.IsNullOrWhiteSpace(canvasId) ? null : canvasId;
+            await ReloadCanvasDataAsync();
         }
 
         private void StartDrawing()
@@ -1480,7 +1619,7 @@ namespace BARI_web.Features.Espacios.Pages
             }
             var point = new Point(x, y);
 
-            if (_draftPoints.Count >= 3 && Distance(_draftPoints[0], point) <= 0.2m)
+            if (_draftPoints.Count >= 3 && Distance(_draftPoints[0], point) <= DraftCloseRadius())
             {
                 FinalizeDraftPolygon();
                 return;
@@ -1489,6 +1628,9 @@ namespace BARI_web.Features.Espacios.Pages
             _draftPoints.Add(point);
             _drawMsg = "Haz clic en el primer punto para cerrar.";
         }
+
+        private decimal DraftCloseRadius()
+            => Math.Max(0.35m, _gridStep * 2);
 
         private void FinalizeDraftPolygon()
         {
@@ -2117,6 +2259,7 @@ namespace BARI_web.Features.Espacios.Pages
         {
             public string area_id { get; set; } = "";
             public string? planta_id { get; set; }
+            public string? canvas_id { get; set; }
             public decimal? altura_m { get; set; }
             public string anotaciones { get; set; } = "SIN MODIFICACIONES";
         }
@@ -2191,7 +2334,13 @@ namespace BARI_web.Features.Espacios.Pages
         private bool IsAreaInCurrentPlanta(string? areaId)
             => !string.IsNullOrWhiteSpace(areaId)
                && _areasMeta.TryGetValue(areaId!, out var meta)
-               && string.Equals(meta.planta_id ?? "", _currentPlantaId ?? "", StringComparison.OrdinalIgnoreCase);
+               && string.Equals(meta.planta_id ?? "", _currentPlantaId ?? "", StringComparison.OrdinalIgnoreCase)
+               && string.Equals(meta.canvas_id ?? "", _canvas?.canvas_id ?? "", StringComparison.OrdinalIgnoreCase);
+
+        private bool IsAreaInCurrentCanvas(string? areaId)
+            => !string.IsNullOrWhiteSpace(areaId)
+               && _areasMeta.TryGetValue(areaId!, out var meta)
+               && string.Equals(meta.canvas_id ?? "", _canvas?.canvas_id ?? "", StringComparison.OrdinalIgnoreCase);
 
         // Área por defecto en la planta activa
         private string? DefaultAreaIdForCurrentPlanta()
@@ -2201,7 +2350,8 @@ namespace BARI_web.Features.Espacios.Pages
             var firstInPlanta = _areasLookup
                 .Select(kv => kv.Key)
                 .FirstOrDefault(aid => _areasMeta.TryGetValue(aid, out var meta)
-                                    && string.Equals(meta.planta_id ?? "", _currentPlantaId ?? "", StringComparison.OrdinalIgnoreCase));
+                                    && string.Equals(meta.planta_id ?? "", _currentPlantaId ?? "", StringComparison.OrdinalIgnoreCase)
+                                    && string.Equals(meta.canvas_id ?? "", _canvas?.canvas_id ?? "", StringComparison.OrdinalIgnoreCase));
 
             return string.IsNullOrWhiteSpace(firstInPlanta) ? null : firstInPlanta;
         }

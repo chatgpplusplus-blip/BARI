@@ -5,21 +5,20 @@
 
 <!-- Barra superior: selector de PLANTA fuera del lienzo -->
 <div class="flex items-center gap-2 mb-3">
+    <label class="text-sm text-gray-700">Canvas:</label>
+    <select class="border p-1 text-sm"
+            value="@(_currentCanvasId ?? "")"
+            @onchange="async (e)=> await OnChangeCanvas(e.Value?.ToString())">
+        @foreach (var kv in _canvasLookup)
+        {
+            <option value="@kv.Key">@kv.Value</option>
+        }
+    </select>
     <label class="text-sm text-gray-700">Planta:</label>
     <select class="border p-1 text-sm"
             value="@(_currentPlantaId ?? "")"
             @onchange="(e)=>OnChangePlanta(e.Value?.ToString())">
         @foreach (var kv in _plantasLookup)
-        {
-            <option value="@kv.Key">@kv.Value</option>
-        }
-    </select>
-    <label class="text-sm text-gray-700">Área:</label>
-    <select class="border p-1 text-sm"
-            value="@(_drawAreaId ?? "")"
-            @onchange="(e)=> _drawAreaId = e.Value?.ToString()">
-        <option value="">Selecciona un área</option>
-        @foreach (var kv in AreasOfCurrentPlanta())
         {
             <option value="@kv.Key">@kv.Value</option>
         }
@@ -144,8 +143,15 @@ else
                         {
                             <polyline points="@PointsString(_draftPoints)"
                                       fill="none" stroke="#2563eb" stroke-width="@S(0.06m)" />
-                            <circle cx="@S(_draftPoints[0].X)" cy="@S(_draftPoints[0].Y)"
-                                    r="@S(0.2m)" fill="rgba(37,99,235,0.2)" stroke="#2563eb" />
+                            @for (var i = 0; i < _draftPoints.Count; i++)
+                            {
+                                var pt = _draftPoints[i];
+                                var isFirst = i == 0;
+                                <circle cx="@S(pt.X)" cy="@S(pt.Y)"
+                                        r="@S(isFirst ? 0.28m : 0.18m)"
+                                        fill="@(isFirst ? "rgba(37,99,235,0.2)" : "rgba(37,99,235,0.12)")"
+                                        stroke="#2563eb" />
+                            }
                         }
 
                         <!-- Puertas (VERDE) -->
@@ -201,6 +207,16 @@ else
                         <div>
                             <button class="px-2 py-1 border rounded" @onclick="NuevaPuerta">+ Puerta</button>
                             <button class="px-2 py-1 border rounded ml-1" @onclick="NuevaVentana">+ Ventana</button>
+                            <label class="ml-2 text-sm">Área</label>
+                            <select class="border p-1 text-sm"
+                                    value="@(_drawAreaId ?? "")"
+                                    @onchange="(e)=> _drawAreaId = e.Value?.ToString()">
+                                <option value="">Selecciona un área</option>
+                                @foreach (var kv in AreasOfCurrentPlanta())
+                                {
+                                    <option value="@kv.Key">@kv.Value</option>
+                                }
+                            </select>
                             <label class="ml-2 text-sm">
                                 <input type="checkbox" checked="@_drawAxisXOnly" @onchange="OnToggleDrawX" /> Fijar X
                             </label>
@@ -234,7 +250,7 @@ else
                             <label class="block text-xs text-gray-600 mb-1">Área</label>
                             <select class="border p-1 w-full" value="@(_sel.area_id ?? "")"
                                     @onchange="(e)=> { _sel.area_id = e.Value?.ToString(); StateHasChanged(); }">
-                                @foreach (var kv in _areasLookup)
+                                @foreach (var kv in _areasLookup.Where(kv => IsAreaInCurrentCanvas(kv.Key)))
                                 {
                                     <option value="@kv.Key">@kv.Value</option>
                                 }
