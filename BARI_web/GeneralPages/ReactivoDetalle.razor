@@ -54,6 +54,47 @@ else
                 <p>@reactivo.Observaciones</p>
             </div>
         }
+
+        <section class="contenedores">
+            <h2>Contenedores</h2>
+            <p class="muted">@contenedores.Count contenedores registrados.</p>
+            @if (contenedores.Count == 0)
+            {
+                <p class="empty-note">No hay contenedores asociados a esta sustancia.</p>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Cantidad</th>
+                                <th>Condición</th>
+                                <th>Proveedor</th>
+                                <th>Apertura</th>
+                                <th>Vencimiento</th>
+                                <th>Envase</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var cont in contenedores)
+                            {
+                                <tr>
+                                    <td>@cont.Id</td>
+                                    <td>@cont.Cantidad</td>
+                                    <td>@cont.Condicion</td>
+                                    <td>@cont.Proveedor</td>
+                                    <td>@cont.FechaApertura</td>
+                                    <td>@cont.FechaVencimiento</td>
+                                    <td>@cont.Envase</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
     </section>
 }
 
@@ -61,6 +102,7 @@ else
     [Parameter] public string? Id { get; set; }
 
     private ReactivoInfo? reactivo;
+    private readonly List<ContenedorInfo> contenedores = new();
     private string? loadError;
 
     protected override async Task OnParametersSetAsync()
@@ -111,6 +153,45 @@ else
             else
             {
                 loadError = "No se encontró el reactivo solicitado.";
+                return;
+            }
+
+            const string sqlContenedores = @"
+                SELECT c.cont_id,
+                       COALESCE(c.cantidad_reactivo_actual, c.cantidad_reactivo_nominal, 0) AS cantidad,
+                       COALESCE(u.simbolo, '') AS unidad,
+                       COALESCE(cond.nombre, '') AS condicion,
+                       c.fecha_apertura,
+                       c.fecha_vencimiento,
+                       COALESCE(c.proveedor, '') AS proveedor,
+                       COALESCE(c.color_envase, '') AS color_envase
+                FROM contenedores c
+                LEFT JOIN unidades u ON u.unidad_id = c.unidad_id
+                LEFT JOIN condiciones cond ON cond.condicion_id = c.condicion_id
+                WHERE c.sustancia_id = @id
+                ORDER BY c.cont_id
+                ";
+            await using var contCmd = new NpgsqlCommand(sqlContenedores, conn);
+            contCmd.Parameters.AddWithValue("id", Id);
+            await using var contReader = await contCmd.ExecuteReaderAsync();
+            contenedores.Clear();
+            while (await contReader.ReadAsync())
+            {
+                var cantidad = contReader.GetDecimal(1);
+                var unidad = contReader.GetString(2);
+                var fechaApertura = contReader.IsDBNull(4) ? "" : contReader.GetDateTime(4).ToString("dd/MM/yyyy");
+                var fechaVencimiento = contReader.IsDBNull(5) ? "" : contReader.GetDateTime(5).ToString("dd/MM/yyyy");
+                var colorEnvase = contReader.GetString(7);
+                contenedores.Add(new ContenedorInfo
+                {
+                    Id = contReader.GetString(0),
+                    Cantidad = $"{cantidad} {unidad}".Trim(),
+                    Condicion = contReader.GetString(3),
+                    FechaApertura = string.IsNullOrWhiteSpace(fechaApertura) ? "—" : fechaApertura,
+                    FechaVencimiento = string.IsNullOrWhiteSpace(fechaVencimiento) ? "—" : fechaVencimiento,
+                    Proveedor = string.IsNullOrWhiteSpace(contReader.GetString(6)) ? "—" : contReader.GetString(6),
+                    Envase = string.IsNullOrWhiteSpace(colorEnvase) ? "—" : colorEnvase
+                });
             }
         }
         catch (Exception ex)
@@ -129,6 +210,17 @@ else
         public string FormaFisica { get; set; } = "";
         public bool SustanciaControlada { get; set; }
         public string Observaciones { get; set; } = "";
+    }
+
+    private sealed class ContenedorInfo
+    {
+        public string Id { get; set; } = "";
+        public string Cantidad { get; set; } = "";
+        public string Condicion { get; set; } = "";
+        public string Proveedor { get; set; } = "";
+        public string FechaApertura { get; set; } = "";
+        public string FechaVencimiento { get; set; } = "";
+        public string Envase { get; set; } = "";
     }
 }
 
@@ -197,5 +289,22 @@ else
         margin: .4rem 0 0;
     }
 
+    .contenedores {
+        margin-top: 1.5rem;
+    }
+
+    .contenedores h2 {
+        margin-bottom: 0.4rem;
+    }
+
+    .muted {
+        color: #64748b;
+    }
+
+    .table-wrap { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; background:#fff; }
+    th, td { padding:0.6rem; border-bottom:1px solid #e5e7eb; text-align:left; }
+    th { background:#f3f4f6; font-weight:600; }
+    .empty-note { color:#6b7280; }
     .error-note { color: #b91c1c; margin-top: 0.75rem; }
 </style>

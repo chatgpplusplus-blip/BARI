@@ -34,6 +34,7 @@
             @foreach (var asignatura in asignaturas)
             {
                 <article class="menu-item" @key="asignatura.Id">
+                    <div class="menu-thumb"></div>
                     <div class="menu-title">
                         <strong>@asignatura.Nombre</strong>
                         <span class="muted">@asignatura.Codigo</span>
@@ -59,7 +60,7 @@
         Documentos y normativas institucionales disponibles por laboratorio.
         @if (!isQuimica)
         {
-            <span class="muted">Los listados GHS, H y P están activos solo para Química.</span>
+            <span class="muted">Los listados CAS, GHS, H y P están activos solo para Química.</span>
         }
     </p>
     <div class="menu-grid">
@@ -240,6 +241,20 @@ else
         gap:0.25rem;
         font-weight:600;
         color:#0b2a68;
+    }
+    .menu-thumb {
+        width:100%;
+        height:90px;
+        border-radius:0.6rem;
+        background:linear-gradient(135deg, rgba(30, 64, 175, 0.2), rgba(147, 197, 253, 0.25));
+        position:relative;
+        overflow:hidden;
+    }
+    .menu-thumb::after {
+        content:"";
+        position:absolute;
+        inset:0;
+        background:linear-gradient(180deg, rgba(255,255,255,0.08), rgba(15,23,42,0.2));
     }
     .menu-desc {
         color:#475569;

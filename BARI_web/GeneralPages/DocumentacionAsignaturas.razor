@@ -27,13 +27,14 @@
             @foreach (var asignatura in asignaturas)
             {
                 <article class="card" @key="asignatura.Id">
-                    <div>
-                        <h3>@asignatura.Nombre</h3>
-                        <span class="muted">@asignatura.Codigo</span>
-                    </div>
-                    <p>@asignatura.Descripcion</p>
-                    <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/laboratorios")">
-                        Ver experiencias
+                    <NavLink class="card-link" href="@($"/documentacion/{asignatura.Slug}/laboratorios")">
+                        <div class="card-thumb"></div>
+                        <div class="card-body">
+                            <h3>@asignatura.Nombre</h3>
+                            <span class="muted">@asignatura.Codigo</span>
+                            <p>@asignatura.Descripcion</p>
+                            <span class="card-cta">Ver experiencias</span>
+                        </div>
                     </NavLink>
                 </article>
             }
@@ -128,20 +129,42 @@
         flex-direction:column;
         gap:0.6rem;
     }
-    .card h3 { margin:0; color:#0b2a68; }
-    .card p { margin:0; color:#475569; }
+    .card-link {
+        display:flex;
+        flex-direction:column;
+        gap:0.75rem;
+        text-decoration:none;
+        color:inherit;
+    }
+    .card-thumb {
+        width:100%;
+        height:120px;
+        border-radius:0.6rem;
+        background: linear-gradient(135deg, rgba(14, 116, 144, 0.2), rgba(94, 234, 212, 0.25));
+        position:relative;
+        overflow:hidden;
+    }
+    .card-thumb::after {
+        content:"";
+        position:absolute;
+        inset:0;
+        background:linear-gradient(180deg, rgba(255,255,255,0.1), rgba(15,23,42,0.2));
+    }
+    .card-body { display:flex; flex-direction:column; gap:0.35rem; }
+    .card-body h3 { margin:0; color:#0b2a68; }
+    .card-body p { margin:0; color:#475569; }
     .muted { color:#6b7280; font-size:0.85rem; }
-    .btn-link {
+    .card-cta {
+        margin-top:0.35rem;
         display:inline-flex;
         width:max-content;
         padding:0.35rem 0.6rem;
         border-radius:0.5rem;
         background:#0b2a68;
         color:#fff;
-        text-decoration:none;
         font-size:0.85rem;
     }
-    .btn-link:hover { background:#143a84; }
+    .card-link:hover .card-cta { background:#143a84; }
     .error-note { color:#b91c1c; }
     .empty-note { color:#6b7280; }
 </style>
