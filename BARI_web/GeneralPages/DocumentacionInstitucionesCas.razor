@@ -1,4 +1,8 @@
 ﻿@page "/documentacion/instituciones/cas"
+@using BARI_web.General_Services
+@using Npgsql
+@inject LaboratorioState LaboratorioState
+@implements IDisposable
 
 <PageTitle>CAS</PageTitle>
 
@@ -9,27 +13,34 @@
 </section>
 
 <section class="page-card" style="margin-top:1.5rem;">
-    <div class="table-wrap">
-        <table>
-            <thead>
-                <tr>
-                    <th>CAS</th>
-                    <th>Nombre</th>
-                    <th>Categoría</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var item in catalogo)
-                {
+    @if (!isQuimica)
+    {
+        <p class="empty-note">El catálogo CAS está disponible solo para el laboratorio de Química.</p>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
                     <tr>
-                        <td>@item.CasId</td>
-                        <td>@item.Nombre</td>
-                        <td>@item.Categoria</td>
+                        <th>CAS</th>
+                        <th>Nombre</th>
+                        <th>Categoría</th>
                     </tr>
-                }
-            </tbody>
-        </table>
-    </div>
+                </thead>
+                <tbody>
+                    @foreach (var item in catalogo)
+                    {
+                        <tr>
+                            <td>@item.CasId</td>
+                            <td>@item.Nombre</td>
+                            <td>@item.Categoria</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
 
     @if (!string.IsNullOrWhiteSpace(loadError))
     {
@@ -42,12 +53,52 @@
 
     private readonly List<CasRow> catalogo = new();
     private string? loadError;
+    private string? laboratorioNombre;
+    private bool isQuimica;
+
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadCatalogoAsync();
+    }
+
+    private async void HandleLaboratorioChanged()
+    {
+        await LoadCatalogoAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadCatalogoAsync()
+    {
         try
         {
+            loadError = null;
+            catalogo.Clear();
+            laboratorioNombre = null;
+            isQuimica = false;
             await using var conn = await DataSource.OpenConnectionAsync();
+            const string sqlLab = @"
+                SELECT nombre
+                FROM laboratorios
+                WHERE laboratorio_id = @laboratorio
+                ";
+            await using (var cmdLab = new NpgsqlCommand(sqlLab, conn))
+            {
+                cmdLab.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
+                laboratorioNombre = (string?)await cmdLab.ExecuteScalarAsync();
+            }
+            var labNombre = laboratorioNombre ?? string.Empty;
+            isQuimica = LaboratorioState.LaboratorioId == 1
+                || labNombre.Contains("quim", StringComparison.OrdinalIgnoreCase);
+
+            if (!isQuimica)
+            {
+                return;
+            }
             const string sql = @"
                 SELECT DISTINCT ON (s.cas)
                        s.cas,
@@ -56,10 +107,13 @@
                 FROM sustancias s
                 LEFT JOIN subcategorias sc ON sc.subcategoria_id = s.subcategoria_id
                 LEFT JOIN categorias c ON c.categoria_id = sc.categoria_id
-                WHERE s.cas IS NOT NULL AND s.cas <> ''
+                WHERE s.cas IS NOT NULL
+                  AND s.cas <> ''
+                  AND s.laboratorio_id = @laboratorio
                 ORDER BY s.cas, s.sustancia_id
                 ";
             await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
@@ -77,6 +131,11 @@
     }
 
     private sealed record CasRow(string CasId, string Nombre, string Categoria);
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
 }
 
 <style>
@@ -85,4 +144,5 @@
     th, td { padding:0.6rem; border-bottom:1px solid #e5e7eb; text-align:left; }
     th { background:#f3f4f6; font-weight:600; }
     .error-note { color:#b91c1c; margin-top:0.75rem; }
+    .empty-note { color:#6b7280; }
 </style>
