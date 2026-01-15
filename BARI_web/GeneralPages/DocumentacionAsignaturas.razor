@@ -1,0 +1,147 @@
+@page "/documentacion/asignaturas"
+@using BARI_web.General_Services
+@using Npgsql
+@inject LaboratorioState LaboratorioState
+@implements IDisposable
+
+<PageTitle>Asignaturas</PageTitle>
+
+<section class="page-card">
+    <h2>Asignaturas del laboratorio</h2>
+    <p>Mosaico de asignaturas con su descripción y acceso a experiencias.</p>
+    <LaboratorioSelector />
+</section>
+
+<section class="page-card" style="margin-top:1.5rem;">
+    @if (!string.IsNullOrWhiteSpace(loadError))
+    {
+        <p class="error-note">No se pudo cargar asignaturas: @loadError</p>
+    }
+    else if (asignaturas.Count == 0)
+    {
+        <p class="empty-note">No hay asignaturas registradas para este laboratorio.</p>
+    }
+    else
+    {
+        <div class="card-grid">
+            @foreach (var asignatura in asignaturas)
+            {
+                <article class="card" @key="asignatura.Id">
+                    <div>
+                        <h3>@asignatura.Nombre</h3>
+                        <span class="muted">@asignatura.Codigo</span>
+                    </div>
+                    <p>@asignatura.Descripcion</p>
+                    <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/laboratorios")">
+                        Ver experiencias
+                    </NavLink>
+                </article>
+            }
+        </div>
+    }
+</section>
+
+@code {
+    [Inject] private NpgsqlDataSource DataSource { get; set; } = default!;
+
+    private readonly List<AsignaturaView> asignaturas = new();
+    private string? loadError;
+
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsignaturasAsync();
+    }
+
+    private async void HandleLaboratorioChanged()
+    {
+        await LoadAsignaturasAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadAsignaturasAsync()
+    {
+        try
+        {
+            loadError = null;
+            asignaturas.Clear();
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sqlAsignaturas = @"
+                SELECT asignatura_id,
+                       nombre,
+                       codigo_clase,
+                       COALESCE(descripcion_detalle, '')
+                FROM asignaturas
+                WHERE laboratorio_id = @laboratorio
+                ORDER BY nombre
+                ";
+            await using var cmd = new NpgsqlCommand(sqlAsignaturas, conn);
+            cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var id = reader.GetString(0);
+                var nombre = reader.GetString(1);
+                var codigo = reader.GetString(2);
+                var descripcion = reader.GetString(3);
+                var slug = Slugify(!string.IsNullOrWhiteSpace(codigo) ? codigo : nombre);
+                asignaturas.Add(new AsignaturaView(id, nombre, codigo, slug, descripcion));
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+    }
+
+    private static string Slugify(string value)
+    {
+        var lower = value.ToLowerInvariant();
+        var normalized = System.Text.RegularExpressions.Regex.Replace(lower, @"[^a-z0-9]+", "-");
+        return normalized.Trim('-');
+    }
+
+    private sealed record AsignaturaView(string Id, string Nombre, string Codigo, string Slug, string Descripcion);
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
+}
+
+<style>
+    .card-grid {
+        display:grid;
+        gap:1rem;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    }
+    .card {
+        border:1px solid #e5e7eb;
+        border-radius:0.8rem;
+        padding:1rem;
+        background:#fff;
+        display:flex;
+        flex-direction:column;
+        gap:0.6rem;
+    }
+    .card h3 { margin:0; color:#0b2a68; }
+    .card p { margin:0; color:#475569; }
+    .muted { color:#6b7280; font-size:0.85rem; }
+    .btn-link {
+        display:inline-flex;
+        width:max-content;
+        padding:0.35rem 0.6rem;
+        border-radius:0.5rem;
+        background:#0b2a68;
+        color:#fff;
+        text-decoration:none;
+        font-size:0.85rem;
+    }
+    .btn-link:hover { background:#143a84; }
+    .error-note { color:#b91c1c; }
+    .empty-note { color:#6b7280; }
+</style>

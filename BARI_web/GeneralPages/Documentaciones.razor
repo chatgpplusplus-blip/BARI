@@ -18,7 +18,7 @@
 <section id="asignaturas" class="page-card" style="margin-top:1.5rem;">
     <h3>Documentación por asignatura</h3>
     <p class="section-intro">
-        Usa los desplegables para navegar a la documentación académica por asignatura.
+        Explora el resumen de asignaturas y entra al detalle de cada una.
     </p>
     @if (!string.IsNullOrWhiteSpace(loadError))
     {
@@ -33,39 +33,44 @@
         <div class="menu-grid">
             @foreach (var asignatura in asignaturas)
             {
-                <details class="menu-item" @key="asignatura.Id" open>
-                    <summary>
+                <article class="menu-item" @key="asignatura.Id">
+                    <div class="menu-title">
                         <strong>@asignatura.Nombre</strong>
                         <span class="muted">@asignatura.Codigo</span>
-                    </summary>
+                    </div>
+                    <p class="menu-desc">@asignatura.Descripcion</p>
                     <div class="menu-links">
                         <NavLink class="btn-link" href="@($"/documentacion/{asignatura.Slug}/laboratorios")">
-                            Documentación para asignaturas
+                            Ver experiencias
+                        </NavLink>
+                        <NavLink class="btn-link secondary" href="/documentacion/asignaturas">
+                            Ver mosaico general
                         </NavLink>
                     </div>
-                </details>
+                </article>
             }
         </div>
     }
 </section>
 
-@if (isQuimica)
-{
-    <section id="instituciones-general" class="page-card" style="margin-top:1.5rem;">
-        <h3>Documentación institucional (general)</h3>
-        <p class="section-intro">
-            Documentación externa y normativa general: pictogramas, H-codes, P-codes y catálogos CAS.
-        </p>
-        <div class="menu-grid">
-            <div class="menu-item">
-                <strong>Instituciones y normativas</strong>
-                <div class="menu-links">
-                    <NavLink class="btn-link" href="/documentacion/instituciones/pictogramas">Pictogramas (GHS)</NavLink>
-                    <NavLink class="btn-link" href="/documentacion/instituciones/h-codes">H-Codes</NavLink>
-                    <NavLink class="btn-link" href="/documentacion/instituciones/p-codes">P-Codes</NavLink>
-                    <NavLink class="btn-link" href="/documentacion/instituciones/cas">CAS</NavLink>
-                    <NavLink class="btn-link" href="/documentacion/instituciones/documentos">Documentos institucionales</NavLink>
-                </div>
+<section id="instituciones-general" class="page-card" style="margin-top:1.5rem;">
+    <h3>Documentación institucional (general)</h3>
+    <p class="section-intro">
+        Documentos y normativas institucionales disponibles por laboratorio.
+        @if (!isQuimica)
+        {
+            <span class="muted">Los listados GHS, H y P están activos solo para Química.</span>
+        }
+    </p>
+    <div class="menu-grid">
+        <div class="menu-item">
+            <strong>Instituciones y normativas</strong>
+            <p class="menu-desc">
+                Catálogos, fichas y documentación general de referencia para el laboratorio.
+            </p>
+            <div class="menu-links">
+                <NavLink class="btn-link" href="/documentacion/instituciones">Ver mosaico institucional</NavLink>
+                <NavLink class="btn-link secondary" href="/documentacion/instituciones/documentos">Documentos institucionales</NavLink>
             </div>
         </div>
     </section>
@@ -106,14 +111,14 @@ else
         <article class="type-item">
             <h4>Documentación para asignaturas</h4>
             <p>Guías de práctica, planificaciones y material académico.</p>
-            <NavLink class="btn-link" href="/documentaciones#asignaturas">Ver asignaturas</NavLink>
+            <NavLink class="btn-link" href="/documentacion/asignaturas">Ver asignaturas</NavLink>
         </article>
         @if (isQuimica)
         {
             <article class="type-item">
                 <h4>Documentación de instituciones</h4>
                 <p>Normativas externas: IUPAC, GHS, consejos de prudencia y peligros.</p>
-                <NavLink class="btn-link" href="/documentaciones#instituciones-general">Ver instituciones</NavLink>
+                <NavLink class="btn-link" href="/documentacion/instituciones">Ver instituciones</NavLink>
             </article>
         }
         <article class="type-item">
@@ -176,7 +181,8 @@ else
             const string sqlAsignaturas = @"
                 SELECT asignatura_id,
                        nombre,
-                       codigo_clase
+                       codigo_clase,
+                       COALESCE(descripcion_detalle, '')
                 FROM asignaturas
                 WHERE laboratorio_id = @laboratorio
                 ORDER BY nombre
@@ -189,8 +195,9 @@ else
                 var id = reader.GetString(0);
                 var nombre = reader.GetString(1);
                 var codigo = reader.GetString(2);
+                var descripcion = reader.GetString(3);
                 var slug = Slugify(!string.IsNullOrWhiteSpace(codigo) ? codigo : nombre);
-                asignaturas.Add(new AsignaturaView(id, nombre, codigo, slug));
+                asignaturas.Add(new AsignaturaView(id, nombre, codigo, slug, descripcion));
             }
         }
         catch (Exception ex)
@@ -206,7 +213,7 @@ else
         return normalized.Trim('-');
     }
 
-    private sealed record AsignaturaView(string Id, string Nombre, string Codigo, string Slug);
+    private sealed record AsignaturaView(string Id, string Nombre, string Codigo, string Slug, string Descripcion);
 
     public void Dispose()
     {
@@ -227,17 +234,20 @@ else
         padding:0.9rem 1rem;
         background:#fff;
     }
-    .menu-item summary {
-        cursor:pointer;
+    .menu-title {
         display:flex;
         flex-direction:column;
         gap:0.25rem;
         font-weight:600;
         color:#0b2a68;
     }
+    .menu-desc {
+        color:#475569;
+        margin:0.45rem 0 0;
+    }
     .menu-links {
         display:flex;
-        flex-direction:column;
+        flex-wrap:wrap;
         gap:0.4rem;
         margin-top:0.6rem;
     }
@@ -270,5 +280,10 @@ else
         font-size:0.85rem;
     }
     .btn-link:hover { background:#143a84; }
+    .btn-link.secondary {
+        background:#e2e8f0;
+        color:#0b2a68;
+    }
+    .btn-link.secondary:hover { background:#cbd5f5; }
     .link-stack { display:flex; flex-direction:column; gap:0.35rem; }
 </style>
