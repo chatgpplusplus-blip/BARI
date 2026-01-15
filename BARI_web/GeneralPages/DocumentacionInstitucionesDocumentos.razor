@@ -75,7 +75,8 @@
                 SELECT d.titulo,
                        COALESCE(s.nombre, ''),
                        COALESCE(c.nombre, ''),
-                       COALESCE(d.url, '')
+                       COALESCE(d.url, ''),
+                       COALESCE(d.descripcion_detalle, '')
                 FROM documentos d
                 LEFT JOIN subcategorias s ON s.subcategoria_id = d.subcategoria_id
                 LEFT JOIN categorias c ON c.categoria_id = d.categoria_id
@@ -92,7 +93,8 @@
                     reader.GetString(0),
                     reader.GetString(1),
                     reader.GetString(2),
-                    reader.GetString(3)
+                    reader.GetString(3),
+                    reader.GetString(4)
                 ));
             }
         }
