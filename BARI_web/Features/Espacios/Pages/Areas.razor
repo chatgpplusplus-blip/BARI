@@ -85,15 +85,12 @@
                                       width="@S(pillW)" height="@S(pillH)"
                                       fill="#fff" opacity="0.95" />
 
-                                <text>
-                                    <tspan class="label-stroked"
-                                           x="@S(cx)" y="@S(cy)"
-                                           style="text-anchor:middle;dominant-baseline:middle"
-                                           font-size="@S(fs)" fill="#222"
-                                           textLength="@S(pillW - 2*TextPad)" lengthAdjust="spacingAndGlyphs">
-                                        @aInfo.Label
-                                    </tspan>
-                                </text>
+                                <svg:text class="area-label"
+                                          x="@S(cx)" y="@S(cy)"
+                                          text-anchor="middle" dominant-baseline="middle"
+                                          font-size="@S(fs)" fill="#222">
+                                    @aInfo.Label
+                                </svg:text>
                             }
 
                             <!-- Capa de interacción -->
@@ -219,3 +216,10 @@
         </div>
     }
 </div>
+
+<style>
+    .area-label {
+        pointer-events: none;
+        user-select: none;
+    }
+</style>
