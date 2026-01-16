@@ -79,7 +79,8 @@ namespace BARI_web.Features.Espacios.Pages
         {
             public string bloque_id { get; set; } = "";
             public string canvas_id { get; set; } = "";
-            public string? material_id { get; set; }
+            public string? material_montaje_id { get; set; }
+            public string? meson_id { get; set; }
             public string? etiqueta { get; set; }
             public string? color_hex { get; set; }
             public int z_order { get; set; }
@@ -130,6 +131,7 @@ namespace BARI_web.Features.Espacios.Pages
         private readonly List<BlockItem> _blocks = new();
         private readonly Dictionary<string, BlockItem> _blocksById = new(StringComparer.OrdinalIgnoreCase);
         private Dictionary<string, string> _materialesLookup = new(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, string> _mesonesLookup = new(StringComparer.OrdinalIgnoreCase);
 
         // vínculos
         private readonly Dictionary<string, Meson> _mesones = new(StringComparer.OrdinalIgnoreCase);
@@ -188,6 +190,7 @@ namespace BARI_web.Features.Espacios.Pages
         private string? _nuevoTipo_Descripcion = null;
 
         private string? _newBlockMaterialId;
+        private string? _newBlockMesonId;
         private string _newBlockEtiqueta = "";
         private decimal _newBlockAncho = 0.6m;
         private decimal _newBlockAlto = 0.4m;
@@ -305,9 +308,10 @@ namespace BARI_web.Features.Espacios.Pages
 
                 // ===== Cargas dependientes (inners, puertas/ventanas, vínculos)
                 try { await LoadInnerItemsForArea(a); } catch (Exception ex) { Console.Error.WriteLine($"[LoadInnerItemsForArea] {ex}"); }
+                try { await LoadMesonesLinks(); } catch (Exception ex) { Console.Error.WriteLine($"[LoadMesonesLinks] {ex}"); }
+                try { await LoadMesonesLookupForArea(a.AreaId); } catch (Exception ex) { Console.Error.WriteLine($"[LoadMesonesLookupForArea] {ex}"); }
                 try { await LoadBlocksForArea(a); } catch (Exception ex) { Console.Error.WriteLine($"[LoadBlocksForArea] {ex}"); }
                 try { await LoadDoorsAndWindowsForArea(a); } catch (Exception ex) { Console.Error.WriteLine($"[LoadDoorsAndWindowsForArea] {ex}"); }
-                try { await LoadMesonesLinks(); } catch (Exception ex) { Console.Error.WriteLine($"[LoadMesonesLinks] {ex}"); }
                 try { await LoadInstalacionesLinks(); } catch (Exception ex) { Console.Error.WriteLine($"[LoadInstalacionesLinks] {ex}"); }
 
                 // Catálogo de tipos
@@ -398,10 +402,17 @@ namespace BARI_web.Features.Espacios.Pages
             {
                 if (!string.Equals(Get(r, "canvas_id"), _canvas?.canvas_id ?? "", StringComparison.OrdinalIgnoreCase)) continue;
 
-                var materialId = NullIfEmpty(Get(r, "material_id"));
-                if (!string.IsNullOrWhiteSpace(materialId) && !_materialesLookup.ContainsKey(materialId!))
+                var materialId = NullIfEmpty(Get(r, "material_montaje_id"));
+                var mesonId = NullIfEmpty(Get(r, "meson_id"));
+                var hasMaterial = !string.IsNullOrWhiteSpace(materialId) && _materialesLookup.ContainsKey(materialId!);
+                var hasMeson = !string.IsNullOrWhiteSpace(mesonId) && _mesonesLookup.ContainsKey(mesonId!);
+                if (!hasMaterial && !hasMeson)
                 {
                     continue;
+                }
+                if (hasMaterial && hasMeson)
+                {
+                    mesonId = null;
                 }
 
                 var offsetX = Dec(Get(r, "offset_x", "0"));
@@ -419,7 +430,8 @@ namespace BARI_web.Features.Espacios.Pages
                 {
                     bloque_id = Get(r, "bloque_id"),
                     canvas_id = Get(r, "canvas_id"),
-                    material_id = materialId,
+                    material_montaje_id = materialId,
+                    meson_id = mesonId,
                     etiqueta = NullIfEmpty(Get(r, "etiqueta")),
                     color_hex = NullIfEmpty(Get(r, "color_hex")) ?? "#2563eb",
                     z_order = Int(Get(r, "z_order", "0")),
@@ -519,6 +531,33 @@ namespace BARI_web.Features.Espacios.Pages
                     profundidad_cm = Int(Get(r, "profundidad_cm", "0")),
                     niveles_totales = Int(Get(r, "niveles_totales", "0"))
                 };
+            }
+        }
+
+        private async Task LoadMesonesLookupForArea(string areaId)
+        {
+            _mesonesLookup.Clear();
+            Pg.UseSheet("mesones");
+            foreach (var r in await Pg.ReadAllAsync())
+            {
+                if (!string.Equals(Get(r, "area_id"), areaId, StringComparison.OrdinalIgnoreCase)) continue;
+                var id = Get(r, "meson_id");
+                if (string.IsNullOrWhiteSpace(id)) continue;
+                var nombre = Get(r, "nombre_meson");
+                _mesonesLookup[id] = nombre;
+                if (!_mesones.ContainsKey(id))
+                {
+                    _mesones[id] = new Meson
+                    {
+                        meson_id = id,
+                        area_id = Get(r, "area_id"),
+                        nombre_meson = nombre,
+                        ancho_cm = Int(Get(r, "ancho_cm", "0")),
+                        largo_cm = Int(Get(r, "largo_cm", "0")),
+                        profundidad_cm = Int(Get(r, "profundidad_cm", "0")),
+                        niveles_totales = Int(Get(r, "niveles_totales", "0"))
+                    };
+                }
             }
         }
 
@@ -1173,6 +1212,7 @@ namespace BARI_web.Features.Espacios.Pages
                         Pg.UseSheet("mesones");
                         await Pg.DeleteByIdAsync("meson_id", it.meson_id);
                         _mesones.Remove(it.meson_id);
+                        _mesonesLookup.Remove(it.meson_id);
                     }
                     catch { /* silenciar: si no existía aún en DB no pasa nada */ }
                 }
@@ -1220,10 +1260,21 @@ namespace BARI_web.Features.Espacios.Pages
             var offsetX = _newBlockOffsetX;
             var offsetY = _newBlockOffsetY;
 
+            if (string.IsNullOrWhiteSpace(_newBlockMaterialId) && string.IsNullOrWhiteSpace(_newBlockMesonId))
+            {
+                _blockMsg = "Selecciona un material o un mesón para el bloque.";
+                return;
+            }
             if (!string.IsNullOrWhiteSpace(_newBlockMaterialId)
-                && _blocks.Any(b => string.Equals(b.material_id, _newBlockMaterialId, StringComparison.OrdinalIgnoreCase)))
+                && _blocks.Any(b => string.Equals(b.material_montaje_id, _newBlockMaterialId, StringComparison.OrdinalIgnoreCase)))
             {
                 _blockMsg = "Ese material ya tiene un bloque asociado.";
+                return;
+            }
+            if (!string.IsNullOrWhiteSpace(_newBlockMesonId)
+                && _blocks.Any(b => string.Equals(b.meson_id, _newBlockMesonId, StringComparison.OrdinalIgnoreCase)))
+            {
+                _blockMsg = "Ese mesón ya tiene un bloque asociado.";
                 return;
             }
 
@@ -1231,7 +1282,8 @@ namespace BARI_web.Features.Espacios.Pages
             {
                 bloque_id = $"block_{Guid.NewGuid():N}".Substring(0, 12),
                 canvas_id = _canvas.canvas_id,
-                material_id = string.IsNullOrWhiteSpace(_newBlockMaterialId) ? null : _newBlockMaterialId,
+                material_montaje_id = string.IsNullOrWhiteSpace(_newBlockMaterialId) ? null : _newBlockMaterialId,
+                meson_id = string.IsNullOrWhiteSpace(_newBlockMesonId) ? null : _newBlockMesonId,
                 etiqueta = string.IsNullOrWhiteSpace(_newBlockEtiqueta) ? null : _newBlockEtiqueta.Trim(),
                 color_hex = string.IsNullOrWhiteSpace(_newBlockColor) ? "#2563eb" : _newBlockColor,
                 z_order = _blocks.Count == 0 ? 0 : _blocks.Max(b => b.z_order) + 1,
@@ -1245,6 +1297,28 @@ namespace BARI_web.Features.Espacios.Pages
             _blocks.Add(it);
             _blocksById[it.bloque_id] = it;
             _blockMsg = "Bloque agregado (recuerda guardar).";
+            _newBlockMaterialId = null;
+            _newBlockMesonId = null;
+        }
+
+        private void OnSelectBlockMaterial(string? value)
+        {
+            var selected = string.IsNullOrWhiteSpace(value) ? null : value;
+            _newBlockMaterialId = selected;
+            if (!string.IsNullOrWhiteSpace(selected))
+            {
+                _newBlockMesonId = null;
+            }
+        }
+
+        private void OnSelectBlockMeson(string? value)
+        {
+            var selected = string.IsNullOrWhiteSpace(value) ? null : value;
+            _newBlockMesonId = selected;
+            if (!string.IsNullOrWhiteSpace(selected))
+            {
+                _newBlockMaterialId = null;
+            }
         }
 
 
@@ -1372,7 +1446,8 @@ namespace BARI_web.Features.Espacios.Pages
                     var toSave = new Dictionary<string, object>
                     {
                         ["canvas_id"] = b.canvas_id,
-                        ["material_id"] = string.IsNullOrWhiteSpace(b.material_id) ? (object)DBNull.Value : b.material_id!,
+                        ["material_montaje_id"] = string.IsNullOrWhiteSpace(b.material_montaje_id) ? (object)DBNull.Value : b.material_montaje_id!,
+                        ["meson_id"] = string.IsNullOrWhiteSpace(b.meson_id) ? (object)DBNull.Value : b.meson_id!,
                         ["etiqueta"] = string.IsNullOrWhiteSpace(b.etiqueta) ? (object)DBNull.Value : b.etiqueta!,
                         ["color_hex"] = string.IsNullOrWhiteSpace(b.color_hex) ? (object)DBNull.Value : b.color_hex!,
                         ["z_order"] = b.z_order,
@@ -1569,6 +1644,7 @@ namespace BARI_web.Features.Espacios.Pages
                 profundidad_cm = 60,
                 niveles_totales = 1
             };
+            _mesonesLookup[mesonId] = _mesones[mesonId].nombre_meson;
 
 
             StateHasChanged();
