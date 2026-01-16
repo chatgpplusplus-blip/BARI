@@ -199,6 +199,8 @@ namespace BARI_web.Features.Espacios.Pages
 
         private string? _newBlockMaterialId;
         private string? _newBlockMesonId;
+        private bool _newBlockAssignMaterial;
+        private bool _newBlockAssignMeson;
         private string _newBlockEtiqueta = "";
         private decimal _newBlockAncho = 0.6m;
         private decimal _newBlockAlto = 0.4m;
@@ -972,29 +974,29 @@ namespace BARI_web.Features.Espacios.Pages
             // ===== Drag bloque =====
             if (_dragBlock is not null && _dragStart is not null && _beforeDragBlock is not null && _area is not null)
             {
-                var (wx, wy) = ScreenToWorld(e.OffsetX, e.OffsetY);
-                var dx = wx - _dragStart.Value.x;
-                var dy = wy - _dragStart.Value.y;
+                var (blockWx, blockWy) = ScreenToWorld(e.OffsetX, e.OffsetY);
+                var blockDx = blockWx - _dragStart.Value.x;
+                var blockDy = blockWy - _dragStart.Value.y;
 
-                var baseAbsX = _beforeDragBlock.Value.x;
-                var baseAbsY = _beforeDragBlock.Value.y;
-                var baseW = _beforeDragBlock.Value.w;
-                var baseH = _beforeDragBlock.Value.h;
+                var blockBaseAbsX = _beforeDragBlock.Value.x;
+                var blockBaseAbsY = _beforeDragBlock.Value.y;
+                var blockBaseW = _beforeDragBlock.Value.w;
+                var blockBaseH = _beforeDragBlock.Value.h;
 
-                decimal propAbsX = baseAbsX, propAbsY = baseAbsY;
-                decimal propW = baseW, propH = baseH;
+                decimal blockPropAbsX = blockBaseAbsX, blockPropAbsY = blockBaseAbsY;
+                decimal blockPropW = blockBaseW, blockPropH = blockBaseH;
 
                 if (_blockHandle == Handle.None)
                 {
                     if (_blockGrab is not null)
                     {
-                        propAbsX = wx - _blockGrab.Value.dx;
-                        propAbsY = wy - _blockGrab.Value.dy;
+                        blockPropAbsX = blockWx - _blockGrab.Value.dx;
+                        blockPropAbsY = blockWy - _blockGrab.Value.dy;
                     }
                     else
                     {
-                        propAbsX = baseAbsX + dx;
-                        propAbsY = baseAbsY + dy;
+                        blockPropAbsX = blockBaseAbsX + blockDx;
+                        blockPropAbsY = blockBaseAbsY + blockDy;
                     }
                 }
                 else
@@ -1003,38 +1005,38 @@ namespace BARI_web.Features.Espacios.Pages
                     {
                         case Handle.NE:
                             {
-                                var bottom = baseAbsY + baseH;
-                                propW = Math.Max(EPS_MINW, baseW + dx);
-                                propH = Math.Max(EPS_MINW, baseH - dy);
-                                propAbsX = baseAbsX;
-                                propAbsY = bottom - propH;
+                                var bottom = blockBaseAbsY + blockBaseH;
+                                blockPropW = Math.Max(EPS_MINW, blockBaseW + blockDx);
+                                blockPropH = Math.Max(EPS_MINW, blockBaseH - blockDy);
+                                blockPropAbsX = blockBaseAbsX;
+                                blockPropAbsY = bottom - blockPropH;
                                 break;
                             }
                         case Handle.SE:
                             {
-                                propW = Math.Max(EPS_MINW, baseW + dx);
-                                propH = Math.Max(EPS_MINW, baseH + dy);
-                                propAbsX = baseAbsX;
-                                propAbsY = baseAbsY;
+                                blockPropW = Math.Max(EPS_MINW, blockBaseW + blockDx);
+                                blockPropH = Math.Max(EPS_MINW, blockBaseH + blockDy);
+                                blockPropAbsX = blockBaseAbsX;
+                                blockPropAbsY = blockBaseAbsY;
                                 break;
                             }
                         case Handle.NW:
                             {
-                                var right = baseAbsX + baseW;
-                                var bottom = baseAbsY + baseH;
-                                propW = Math.Max(EPS_MINW, baseW - dx);
-                                propH = Math.Max(EPS_MINW, baseH - dy);
-                                propAbsX = right - propW;
-                                propAbsY = bottom - propH;
+                                var right = blockBaseAbsX + blockBaseW;
+                                var bottom = blockBaseAbsY + blockBaseH;
+                                blockPropW = Math.Max(EPS_MINW, blockBaseW - blockDx);
+                                blockPropH = Math.Max(EPS_MINW, blockBaseH - blockDy);
+                                blockPropAbsX = right - blockPropW;
+                                blockPropAbsY = bottom - blockPropH;
                                 break;
                             }
                         case Handle.SW:
                             {
-                                var right = baseAbsX + baseW;
-                                propW = Math.Max(EPS_MINW, baseW - dx);
-                                propH = Math.Max(EPS_MINW, baseH + dy);
-                                propAbsX = right - propW;
-                                propAbsY = baseAbsY;
+                                var right = blockBaseAbsX + blockBaseW;
+                                blockPropW = Math.Max(EPS_MINW, blockBaseW - blockDx);
+                                blockPropH = Math.Max(EPS_MINW, blockBaseH + blockDy);
+                                blockPropAbsX = right - blockPropW;
+                                blockPropAbsY = blockBaseAbsY;
                                 break;
                             }
                     }
@@ -1042,18 +1044,18 @@ namespace BARI_web.Features.Espacios.Pages
 
                 var minX = _area.MinX;
                 var minY = _area.MinY;
-                var maxX = _area.MaxX - propW;
-                var maxY = _area.MaxY - propH;
+                var maxX = _area.MaxX - blockPropW;
+                var maxY = _area.MaxY - blockPropH;
 
-                var clampedX = Clamp(minX, maxX, propAbsX);
-                var clampedY = Clamp(minY, maxY, propAbsY);
+                var blockClampedX = Clamp(minX, maxX, blockPropAbsX);
+                var blockClampedY = Clamp(minY, maxY, blockPropAbsY);
 
-                _dragBlock.ancho = propW;
-                _dragBlock.alto = propH;
-                _dragBlock.abs_x = clampedX;
-                _dragBlock.abs_y = clampedY;
-                _dragBlock.offset_x = clampedX - AreaCenterX;
-                _dragBlock.offset_y = clampedY - AreaCenterY;
+                _dragBlock.ancho = blockPropW;
+                _dragBlock.alto = blockPropH;
+                _dragBlock.abs_x = blockClampedX;
+                _dragBlock.abs_y = blockClampedY;
+                _dragBlock.offset_x = blockClampedX - AreaCenterX;
+                _dragBlock.offset_y = blockClampedY - AreaCenterY;
                 _dragBlock.pos_x = _dragBlock.abs_x;
                 _dragBlock.pos_y = _dragBlock.abs_y;
 
@@ -1482,6 +1484,8 @@ namespace BARI_web.Features.Espacios.Pages
             _selBlock = null;
             _selIn = null;
             _blockMsg = null;
+            _newBlockAssignMaterial = false;
+            _newBlockAssignMeson = false;
         }
 
         private void AgregarBloque()
@@ -1497,11 +1501,24 @@ namespace BARI_web.Features.Espacios.Pages
             var offsetX = _newBlockOffsetX;
             var offsetY = _newBlockOffsetY;
 
-            if (string.IsNullOrWhiteSpace(_newBlockMaterialId) && string.IsNullOrWhiteSpace(_newBlockMesonId))
+            if (_newBlockAssignMaterial && _newBlockAssignMeson)
             {
-                _blockMsg = "Selecciona un material o un mesón para el bloque.";
+                _blockMsg = "Selecciona solo una opción para asociar el bloque.";
                 return;
             }
+
+            if (_newBlockAssignMaterial && string.IsNullOrWhiteSpace(_newBlockMaterialId))
+            {
+                _blockMsg = "Selecciona un material de montaje para asociar.";
+                return;
+            }
+
+            if (_newBlockAssignMeson && string.IsNullOrWhiteSpace(_newBlockMesonId))
+            {
+                _blockMsg = "Selecciona un mesón para asociar.";
+                return;
+            }
+
             if (!string.IsNullOrWhiteSpace(_newBlockMaterialId)
                 && _blocks.Any(b => string.Equals(b.material_montaje_id, _newBlockMaterialId, StringComparison.OrdinalIgnoreCase)))
             {
@@ -1536,9 +1553,57 @@ namespace BARI_web.Features.Espacios.Pages
             _blockMsg = "Bloque agregado (recuerda guardar).";
             _newBlockMaterialId = null;
             _newBlockMesonId = null;
+            _newBlockAssignMaterial = false;
+            _newBlockAssignMeson = false;
             _showBlockCreator = false;
             _selBlock = it.bloque_id;
             _selIn = null;
+        }
+
+        private IEnumerable<KeyValuePair<string, string>> MaterialesMontajeDisponibles()
+        {
+            var usados = _blocks
+                .Where(b => !string.IsNullOrWhiteSpace(b.material_montaje_id))
+                .Select(b => b.material_montaje_id!)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            return _materialesLookup.Where(kv => !usados.Contains(kv.Key));
+        }
+
+        private IEnumerable<KeyValuePair<string, string>> MesonesDisponibles()
+        {
+            var usados = _blocks
+                .Where(b => !string.IsNullOrWhiteSpace(b.meson_id))
+                .Select(b => b.meson_id!)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            return _mesonesLookup.Where(kv => !usados.Contains(kv.Key));
+        }
+
+        private void ToggleNewBlockAssignMaterial(bool isChecked)
+        {
+            _newBlockAssignMaterial = isChecked;
+            if (isChecked)
+            {
+                _newBlockAssignMeson = false;
+                _newBlockMesonId = null;
+            }
+            if (!isChecked)
+            {
+                _newBlockMaterialId = null;
+            }
+        }
+
+        private void ToggleNewBlockAssignMeson(bool isChecked)
+        {
+            _newBlockAssignMeson = isChecked;
+            if (isChecked)
+            {
+                _newBlockAssignMaterial = false;
+                _newBlockMaterialId = null;
+            }
+            if (!isChecked)
+            {
+                _newBlockMesonId = null;
+            }
         }
 
         private void OnSelectBlockMaterial(string? value)
@@ -1548,6 +1613,8 @@ namespace BARI_web.Features.Espacios.Pages
             if (!string.IsNullOrWhiteSpace(selected))
             {
                 _newBlockMesonId = null;
+                _newBlockAssignMaterial = true;
+                _newBlockAssignMeson = false;
             }
         }
 
@@ -1558,6 +1625,8 @@ namespace BARI_web.Features.Espacios.Pages
             if (!string.IsNullOrWhiteSpace(selected))
             {
                 _newBlockMaterialId = null;
+                _newBlockAssignMeson = true;
+                _newBlockAssignMaterial = false;
             }
         }
 
@@ -2281,6 +2350,16 @@ namespace BARI_web.Features.Espacios.Pages
             if (s.Count(ch => ch == ',' || ch == '.') > 1) s = s.Replace(".", "").Replace(",", ".");
             else s = s.Replace(",", ".");
             return decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : 0m;
+        }
+
+        private static bool Bool(object? value)
+        {
+            return value switch
+            {
+                bool b => b,
+                string s when bool.TryParse(s, out var parsed) => parsed,
+                _ => false
+            };
         }
 
         private async Task<string> ResolveAreaIdFromSlug(string slugFromUrl)
