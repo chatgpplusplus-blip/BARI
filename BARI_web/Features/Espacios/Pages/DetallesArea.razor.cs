@@ -692,11 +692,13 @@ namespace BARI_web.Features.Espacios.Pages
 
             var areaPolys = a.Polys.ToDictionary(p => p.poly_id, p => p);
 
-            Pg.UseSheet("poligonos_interiores");
-            foreach (var r in await Pg.ReadAllAsync())
+            try
             {
-                var area_poly_id = Get(r, "area_poly_id");
-                if (!areaPolys.TryGetValue(area_poly_id, out var parentPoly)) continue;
+                Pg.UseSheet("poligonos_interiores");
+                foreach (var r in await Pg.ReadAllAsync())
+                {
+                    var area_poly_id = Get(r, "area_poly_id");
+                    if (!areaPolys.TryGetValue(area_poly_id, out var parentPoly)) continue;
 
                 var offset_x_m = Dec(Get(r, "offset_x_m", "0"));
                 var offset_y_m = Dec(Get(r, "offset_y_m", "0"));
@@ -719,31 +721,37 @@ namespace BARI_web.Features.Espacios.Pages
                 var abs_x = parentPoly.x_m + eje_x_rel_m + offset_x_m;
                 var abs_y = parentPoly.y_m + eje_y_rel_m + offset_y_m;
 
-                _inners.Add(new InnerItem
-                {
-                    poly_in_id = Get(r, "poly_in_id"),
-                    area_poly_id = area_poly_id,
-                    eje_x_rel_m = eje_x_rel_m,
-                    eje_y_rel_m = eje_y_rel_m,
-                    ancho_m = ancho_m,
-                    alto_m = alto_m,
-                    label = label,
-                    fill = color_hex,
-                    opacidad = op,
-                    offset_x_m = offset_x_m,
-                    offset_y_m = offset_y_m,
-                    meson_id = meson_id,
-                    instalacion_id = instalacion_id,
-                    abs_x = abs_x,
-                    abs_y = abs_y
-                });
+                    _inners.Add(new InnerItem
+                    {
+                        poly_in_id = Get(r, "poly_in_id"),
+                        area_poly_id = area_poly_id,
+                        eje_x_rel_m = eje_x_rel_m,
+                        eje_y_rel_m = eje_y_rel_m,
+                        ancho_m = ancho_m,
+                        alto_m = alto_m,
+                        label = label,
+                        fill = color_hex,
+                        opacidad = op,
+                        offset_x_m = offset_x_m,
+                        offset_y_m = offset_y_m,
+                        meson_id = meson_id,
+                        instalacion_id = instalacion_id,
+                        abs_x = abs_x,
+                        abs_y = abs_y
+                    });
 
-                // Override del nombre del mesón si aplica (primer match gana)
-                if (!string.IsNullOrWhiteSpace(meson_id) && !string.IsNullOrWhiteSpace(label))
-                {
-                    if (!_mesonLabelFromInner.ContainsKey(meson_id))
-                        _mesonLabelFromInner[meson_id] = label;
+                    // Override del nombre del mesón si aplica (primer match gana)
+                    if (!string.IsNullOrWhiteSpace(meson_id) && !string.IsNullOrWhiteSpace(label))
+                    {
+                        if (!_mesonLabelFromInner.ContainsKey(meson_id))
+                            _mesonLabelFromInner[meson_id] = label;
+                    }
                 }
+            }
+            catch
+            {
+                _inners.Clear();
+                _mesonLabelFromInner.Clear();
             }
         }
 
@@ -1161,30 +1169,46 @@ namespace BARI_web.Features.Espacios.Pages
             var areaPolyIds = a.Polys.Select(p => p.poly_id).ToHashSet(StringComparer.OrdinalIgnoreCase);
             var needed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            Pg.UseSheet("poligonos_interiores");
-            foreach (var r in await Pg.ReadAllAsync())
+            try
             {
-                var pid = Get(r, "area_poly_id");
-                if (!areaPolyIds.Contains(pid)) continue;
-                var insId = NullIfEmpty(Get(r, "instalacion_id"));
-                if (!string.IsNullOrEmpty(insId)) needed.Add(insId);
+                Pg.UseSheet("poligonos_interiores");
+                foreach (var r in await Pg.ReadAllAsync())
+                {
+                    var pid = Get(r, "area_poly_id");
+                    if (!areaPolyIds.Contains(pid)) continue;
+                    var insId = NullIfEmpty(Get(r, "instalacion_id"));
+                    if (!string.IsNullOrEmpty(insId)) needed.Add(insId);
+                }
+            }
+            catch
+            {
+                _instalaciones.Clear();
+                return;
             }
             if (needed.Count == 0) return;
 
             // 2) leer instalaciones
             var tmp = new Dictionary<string, InstalacionView>(StringComparer.OrdinalIgnoreCase);
-            Pg.UseSheet("instalaciones");
-            foreach (var r in await Pg.ReadAllAsync())
+            try
             {
-                var id = Get(r, "instalacion_id");
-                if (!needed.Contains(id)) continue;
-                tmp[id] = new InstalacionView
+                Pg.UseSheet("instalaciones");
+                foreach (var r in await Pg.ReadAllAsync())
                 {
-                    instalacion_id = id,
-                    nombre = Get(r, "nombre"),
-                    tipo_id = NullIfEmpty(Get(r, "tipo_id")),
-                    notas = NullIfEmpty(Get(r, "notas"))
-                };
+                    var id = Get(r, "instalacion_id");
+                    if (!needed.Contains(id)) continue;
+                    tmp[id] = new InstalacionView
+                    {
+                        instalacion_id = id,
+                        nombre = Get(r, "nombre"),
+                        tipo_id = NullIfEmpty(Get(r, "tipo_id")),
+                        notas = NullIfEmpty(Get(r, "notas"))
+                    };
+                }
+            }
+            catch
+            {
+                _instalaciones.Clear();
+                return;
             }
 
             // 3) nombres y descripción de tipos

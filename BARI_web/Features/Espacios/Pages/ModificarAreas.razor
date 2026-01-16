@@ -111,12 +111,12 @@ else
                                 @if (show)
                                 {
                                     <g clip-path="@($"url(#clip_{p.poly_id})")">
-                                        <text class="area-label"
-                                              x="@S(center.x)" y="@S(center.y)"
-                                              text-anchor="middle" dominant-baseline="middle"
-                                              font-size="@S(fs)" fill="#444">
+                                        <svg:text class="area-label"
+                                                  x="@S(center.x)" y="@S(center.y)"
+                                                  text-anchor="middle" dominant-baseline="middle"
+                                                  font-size="@S(fs)" fill="#444">
                                             @label
-                                        </text>
+                                        </svg:text>
                                     </g>
                                 }
 
@@ -210,7 +210,7 @@ else
                             <label class="ml-2 text-sm">Área</label>
                             <select class="border p-1 text-sm"
                                     value="@(_drawAreaId ?? "")"
-                                    @onchange="(e)=> _drawAreaId = e.Value?.ToString()">
+                                    @onchange="(e)=> OnDrawAreaChange(e.Value?.ToString())">
                                 <option value="">Selecciona un área</option>
                                 @foreach (var kv in AreasOfCurrentPlanta())
                                 {
@@ -249,8 +249,8 @@ else
                         <div class="col-span-2">
                             <label class="block text-xs text-gray-600 mb-1">Área</label>
                             <select class="border p-1 w-full" value="@(_sel.area_id ?? "")"
-                                    @onchange="(e)=> { _sel.area_id = e.Value?.ToString(); StateHasChanged(); }">
-                                @foreach (var kv in _areasLookup.Where(kv => IsAreaInCurrentCanvas(kv.Key)))
+                                    @onchange="(e)=> OnSelectedAreaChange(e.Value?.ToString())">
+                                @foreach (var kv in AreasOfCurrentPlanta())
                                 {
                                     <option value="@kv.Key">@kv.Value</option>
                                 }
@@ -480,6 +480,33 @@ else
                 <button class="px-3 py-1 border rounded" @onclick="Nuevo" disabled="@_saving">Nuevo</button>
                 <button class="px-3 py-1 border rounded" @onclick="Eliminar" disabled="@(_sel is null || _saving)">Eliminar</button>
                 <span class="text-sm text-gray-500">@_saveMsg</span>
+            </div>
+            <div class="mt-3 border-t pt-3">
+                <h5 class="font-semibold mb-2">Crear nueva área</h5>
+                <div class="flex items-center gap-2 flex-wrap">
+                    <input class="border p-1 text-sm" style="min-width:200px"
+                           placeholder="Nombre del área"
+                           value="@_newAreaName"
+                           @oninput="(e)=> _newAreaName = e.Value?.ToString() ?? string.Empty" />
+                    <select class="border p-1 text-sm"
+                            value="@(_newAreaPlantaId ?? "")"
+                            @onchange="(e)=> _newAreaPlantaId = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? null : e.Value!.ToString()">
+                        <option value="">— Planta —</option>
+                        @foreach (var kv in _plantasLookup)
+                        {
+                            <option value="@kv.Key">@kv.Value</option>
+                        }
+                    </select>
+                    <button class="px-3 py-1 border rounded"
+                            @onclick="CrearAreaAsync"
+                            disabled="@_creatingArea">
+                        @(_creatingArea ? "Creando..." : "Crear área")
+                    </button>
+                    @if (!string.IsNullOrWhiteSpace(_newAreaMsg))
+                    {
+                        <span class="text-sm text-gray-500">@_newAreaMsg</span>
+                    }
+                </div>
             </div>
             <div class="text-sm mt-2">
                 <b>Juntar vértices (A → B):</b> activa el modo, haz click en <b>A</b> (se mueve) y luego en <b>B</b> (objetivo).
