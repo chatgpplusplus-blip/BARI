@@ -20,11 +20,12 @@ namespace BARI_web.Features.Espacios.Pages
 
         // ===== Modelos =====
         private record CanvasLab(string canvas_id, string nombre, decimal ancho_m, decimal alto_m, decimal margen_m);
+        private readonly record struct Point(decimal X, decimal Y);
         // snapshot de arrastre/redimensionamiento (base)
         private (decimal x, decimal y, decimal w, decimal h)? _beforeDragIn;
         private record Poly(string poly_id, string canvas_id, string? area_id,
                             decimal x_m, decimal y_m, decimal ancho_m, decimal alto_m,
-                            int z_order, string? etiqueta, string? color_hex);
+                            int z_order, string? etiqueta, string? color_hex, List<Point> puntos);
 
         private class AreaDraw
         {
@@ -222,28 +223,48 @@ namespace BARI_web.Features.Espacios.Pages
 
                 // ===== Polígonos del área
                 List<Poly> polys = new();
+                var pointsByPoly = await LoadPolyPointsAsync();
                 Pg.UseSheet("poligonos");
                 foreach (var r in await Pg.ReadAllAsync())
                 {
-                    if (!string.Equals(r["canvas_id"], _canvas.canvas_id, StringComparison.OrdinalIgnoreCase)) continue;
-                    var areaId = NullIfEmpty(r["area_id"]) ?? "";
+                    if (!string.Equals(Get(r, "canvas_id"), _canvas.canvas_id, StringComparison.OrdinalIgnoreCase)) continue;
+                    var areaId = NullIfEmpty(Get(r, "area_id")) ?? "";
                     if (!string.Equals(areaId, targetAreaId, StringComparison.OrdinalIgnoreCase)) continue;
 
-                    // --- normalización aquí ---
-                    var x = Dec(r["x_m"]);
-                    var y = Dec(r["y_m"]);
-                    var w = Dec(r["ancho_m"]);
-                    var h = Dec(r["alto_m"]);
+                    var polyId = Get(r, "poly_id");
+                    var points = pointsByPoly.TryGetValue(polyId, out var list) ? list : new List<Point>();
+                    decimal x;
+                    decimal y;
+                    decimal w;
+                    decimal h;
 
-                    if (w < 0m) { x += w; w = -w; }
-                    if (h < 0m) { y += h; h = -h; }
+                    if (points.Count >= 3)
+                    {
+                        var bounds = BoundsOfPointList(points);
+                        x = bounds.minX;
+                        y = bounds.minY;
+                        w = Math.Max(0.1m, bounds.maxX - bounds.minX);
+                        h = Math.Max(0.1m, bounds.maxY - bounds.minY);
+                    }
+                    else
+                    {
+                        x = Dec(Get(r, "x_m", "0"));
+                        y = Dec(Get(r, "y_m", "0"));
+                        w = Dec(Get(r, "ancho_m", "0"));
+                        h = Dec(Get(r, "alto_m", "0"));
+
+                        if (w < 0m) { x += w; w = -w; }
+                        if (h < 0m) { y += h; h = -h; }
+                        points = BuildRectPoints(x, y, w, h);
+                    }
 
                     polys.Add(new Poly(
-                        r["poly_id"], r["canvas_id"], areaId,
+                        polyId, Get(r, "canvas_id"), areaId,
                         x, y, w, h,
                         Int(Get(r, "z_order", "0")),
                         NullIfEmpty(Get(r, "etiqueta")),
-                        NullIfEmpty(Get(r, "color_hex"))
+                        NullIfEmpty(Get(r, "color_hex")),
+                        points
                     ));
                 }
 
@@ -600,6 +621,12 @@ namespace BARI_web.Features.Espacios.Pages
         private static decimal RoundTol(decimal v) => Math.Round(v / Tolerance) * Tolerance;
         private static void BuildAreaOutlineSafe(AreaDraw a)
         {
+            if (a.Polys.Any(p => p.puntos.Count >= 3))
+            {
+                BuildAreaOutlineFromPoints(a);
+                return;
+            }
+
             const decimal Tol = Tolerance; // 0.004m
             static decimal RT(decimal v) => Math.Round(v / Tol) * Tol;
 
@@ -675,6 +702,26 @@ namespace BARI_web.Features.Espacios.Pages
 
             try { SweepHoriz(); SweepVert(); }
             catch { a.Outline.Clear(); }
+        }
+
+        private static void BuildAreaOutlineFromPoints(AreaDraw a)
+        {
+            a.Outline.Clear();
+            foreach (var p in a.Polys)
+            {
+                var points = p.puntos.Count >= 3
+                    ? p.puntos
+                    : BuildRectPoints(p.x_m, p.y_m, p.ancho_m, p.alto_m);
+
+                if (points.Count < 2) continue;
+                for (int i = 0; i < points.Count; i++)
+                {
+                    var start = points[i];
+                    var end = points[(i + 1) % points.Count];
+                    if (start.X == end.X && start.Y == end.Y) continue;
+                    a.Outline.Add((start.X, start.Y, end.X, end.Y));
+                }
+            }
         }
 
 
@@ -1410,6 +1457,52 @@ namespace BARI_web.Features.Espacios.Pages
         private static decimal DoorEndY(Door d) => d.y_m + ((d.orientacion is "N" or "S") ? d.largo_m : 0m);
         private static decimal WinEndX(Win w) => w.x_m + ((w.orientacion is "E" or "W") ? w.largo_m : 0m);
         private static decimal WinEndY(Win w) => w.y_m + ((w.orientacion is "N" or "S") ? w.largo_m : 0m);
+
+        private static List<Point> BuildRectPoints(decimal x, decimal y, decimal w, decimal h)
+            => new()
+            {
+                new Point(x, y),
+                new Point(x + w, y),
+                new Point(x + w, y + h),
+                new Point(x, y + h)
+            };
+
+        private static (decimal minX, decimal minY, decimal maxX, decimal maxY) BoundsOfPointList(IReadOnlyList<Point> points)
+        {
+            var minX = points.Min(pt => pt.X);
+            var minY = points.Min(pt => pt.Y);
+            var maxX = points.Max(pt => pt.X);
+            var maxY = points.Max(pt => pt.Y);
+            return (minX, minY, maxX, maxY);
+        }
+
+        private async Task<Dictionary<string, List<Point>>> LoadPolyPointsAsync()
+        {
+            var pointsByPoly = new Dictionary<string, List<(int orden, Point point)>>(StringComparer.OrdinalIgnoreCase);
+            Pg.UseSheet("poligonos_puntos");
+            foreach (var row in await Pg.ReadAllAsync())
+            {
+                var polyId = Get(row, "poly_id");
+                if (string.IsNullOrWhiteSpace(polyId)) continue;
+                var orden = Int(Get(row, "orden", "0"));
+                var x = Dec(Get(row, "x_m", "0"));
+                var y = Dec(Get(row, "y_m", "0"));
+                if (!pointsByPoly.TryGetValue(polyId, out var list))
+                {
+                    list = new List<(int, Point)>();
+                    pointsByPoly[polyId] = list;
+                }
+                list.Add((orden, new Point(x, y)));
+            }
+
+            return pointsByPoly.ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value.OrderBy(item => item.orden).Select(item => item.point).ToList(),
+                StringComparer.OrdinalIgnoreCase);
+        }
+
+        private string PointsString(IEnumerable<Point> points)
+            => string.Join(" ", points.Select(p => $"{S(p.X)},{S(p.Y)}"));
 
         private async Task AgregarMeson()
         {
