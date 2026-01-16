@@ -62,7 +62,14 @@
                             <clipPath id="clip_target" clipPathUnits="userSpaceOnUse">
                                 @foreach (var p in _area.Polys)
                                 {
-                                    <rect x="@S(p.x_m)" y="@S(p.y_m)" width="@S(p.ancho_m)" height="@S(p.alto_m)" />
+                                    if (p.puntos.Count >= 3)
+                                    {
+                                        <polygon points="@PointsString(p.puntos)" />
+                                    }
+                                    else
+                                    {
+                                        <rect x="@S(p.x_m)" y="@S(p.y_m)" width="@S(p.ancho_m)" height="@S(p.alto_m)" />
+                                    }
                                 }
                             </clipPath>
                         </defs>
