@@ -3,7 +3,7 @@
 
 <div class="areas-wrap">
     <div class="toolbar">
-        <h2 class="text-2xl" style="margin:0">Editar instalaciones y mesones — @(_area?.Label ?? AreaSlug)</h2>
+        <h2 class="text-2xl" style="margin:0">Editar materiales de montaje y mesones — @(_area?.Label ?? AreaSlug)</h2>
 
         <button type="button" class="btn" @onclick="@(()=>Nav.NavigateTo($"/detalles/{AreaSlug}"))">
             Volver a detalles
@@ -127,12 +127,19 @@
                         <!-- BLOQUES INTERNOS (materiales_montaje) -->
                         @foreach (var b in _blocks.OrderBy(b => b.z_order))
                         {
-                            <g>
+                            var isSelBlock = _selBlock == b.bloque_id;
+                            var stroke = isSelBlock ? "#0a7" : "#1f2937";
+                            <g @onmouseover="() => _hoverBlock = b.bloque_id"
+                               @onmouseout="() => _hoverBlock = null">
                                 <rect x="@S(b.abs_x)" y="@S(b.abs_y)"
                                       width="@S(b.ancho)" height="@S(b.alto)"
                                       fill="@(string.IsNullOrWhiteSpace(b.color_hex) ? "#2563eb" : b.color_hex)"
                                       opacity="@S(0.25m)"
-                                      stroke="#1f2937" stroke-width="@S(0.03m)" />
+                                      stroke="@stroke" stroke-width="@S(isSelBlock ? 0.05m : 0.03m)"
+                                      style="cursor:@(isSelBlock ? "move" : "pointer")"
+                                      @onpointerdown:preventDefault="true"
+                                      @onpointerdown:stopPropagation="true"
+                                      @onpointerdown="(e)=>OnPointerDownMoveBlock(e, b.bloque_id)" />
                                 @if (!string.IsNullOrWhiteSpace(b.etiqueta))
                                 {
                                     <svg:text class="area-label"
@@ -141,6 +148,13 @@
                                               font-size="@S(0.28m)" fill="#111">
                                         @b.etiqueta
                                     </svg:text>
+                                }
+                                @if (isSelBlock)
+                                {
+                                    @BlockCornerHandle(b, b.abs_x, b.abs_y, Handle.NW)
+                                    @BlockCornerHandle(b, b.abs_x + b.ancho, b.abs_y, Handle.NE)
+                                    @BlockCornerHandle(b, b.abs_x, b.abs_y + b.alto, Handle.SW)
+                                    @BlockCornerHandle(b, b.abs_x + b.ancho, b.abs_y + b.alto, Handle.SE)
                                 }
                             </g>
                         }
@@ -163,112 +177,9 @@
                 <div class="under-canvas-actions">
                     <div class="btn-row">
                         <button class="px-3 py-2 border rounded" @onclick="AgregarMeson">+ Agregar mesón</button>
-                        <button class="px-3 py-2 border rounded" @onclick="AgregarInstalacion">+ Agregar instalación</button>
-                        <button class="px-3 py-2 border rounded" @onclick="AbrirNuevoTipoInstalacion">+ Tipo de instalación</button>
+                        <button class="px-3 py-2 border rounded" @onclick="MostrarNuevoBloque">+ Agregar bloque de montaje</button>
                         <button class="px-3 py-2 border rounded text-red-600 border-red-300" @onclick="EliminarInner" disabled="@(_selIn is null)">Eliminar seleccionado</button>
-
-                    </div>
-
-                    <!-- Panel NUEVO TIPO DE INSTALACIÓN -->
-                    @if (_showTipoInstalacionPanel)
-                    {
-                        <div class="panel-box" @onclick:stopPropagation="true">
-                            <div class="panel-header">
-                                <div class="panel-title">Nuevo tipo de instalación</div>
-                                <button class="panel-close" title="Cerrar" @onclick="()=>_showTipoInstalacionPanel=false">✕</button>
-                            </div>
-
-                            <div class="grid grid-cols-2 gap-3 text-sm">
-                                <div class="col-span-2">
-                                    <label class="block text-xs text-gray-600 mb-1">Nombre del tipo</label>
-                                    <input class="border p-2 w-full" @bind="_nuevoTipo_Nombre" @bind:event="oninput" placeholder="p. ej. Heladera, Ducha, Surtidor..." />
-                                </div>
-                                <div class="col-span-2">
-                                    <label class="block text-xs text-gray-600 mb-1">Descripción</label>
-                                    <textarea class="border p-2 w-full" rows="2" @bind="_nuevoTipo_Descripcion"></textarea>
-                                </div>
-
-                                <div class="col-span-2 flex gap-2">
-                                    <button class="px-3 py-2 border rounded bg-black text-white" @onclick="ConfirmarCrearTipoInstalacion" disabled="@string.IsNullOrWhiteSpace(_nuevoTipo_Nombre)">Guardar tipo</button>
-                                    <button class="px-3 py-2 border rounded" @onclick="()=>_showTipoInstalacionPanel=false">Cancelar</button>
-                                </div>
-                            </div>
-                        </div>
-                    }
-
-                    <div class="panel-box" style="margin-top:1rem">
-                        <div class="panel-header">
-                            <div class="panel-title">Bloques internos (materiales montaje)</div>
-                        </div>
-                        <div class="grid grid-cols-2 gap-3 text-sm">
-                            <div class="col-span-2">
-                                <label class="block text-xs text-gray-600 mb-1">Material (opcional)</label>
-                                <select class="border p-2 w-full"
-                                        value="@(_newBlockMaterialId ?? "")"
-                                        @onchange="(e)=> _newBlockMaterialId = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? null : e.Value!.ToString()">
-                                    <option value="">— Sin material —</option>
-                                    @foreach (var kv in _materialesLookup)
-                                    {
-                                        <option value="@kv.Key">@kv.Value</option>
-                                    }
-                                </select>
-                            </div>
-                            <div class="col-span-2">
-                                <label class="block text-xs text-gray-600 mb-1">Etiqueta</label>
-                                <input class="border p-2 w-full" @bind="_newBlockEtiqueta" @bind:event="oninput" />
-                            </div>
-                            <div>
-                                <label class="block text-xs text-gray-600 mb-1">Ancho (m)</label>
-                                <input class="border p-2 w-full" value="@S(_newBlockAncho)"
-                                       @oninput="(e)=> _newBlockAncho = ParseFlexible(e.Value)" />
-                            </div>
-                            <div>
-                                <label class="block text-xs text-gray-600 mb-1">Alto (m)</label>
-                                <input class="border p-2 w-full" value="@S(_newBlockAlto)"
-                                       @oninput="(e)=> _newBlockAlto = ParseFlexible(e.Value)" />
-                            </div>
-                            <div>
-                                <label class="block text-xs text-gray-600 mb-1">Offset X (m)</label>
-                                <input class="border p-2 w-full" value="@S(_newBlockOffsetX)"
-                                       @oninput="(e)=> _newBlockOffsetX = ParseFlexible(e.Value)" />
-                            </div>
-                            <div>
-                                <label class="block text-xs text-gray-600 mb-1">Offset Y (m)</label>
-                                <input class="border p-2 w-full" value="@S(_newBlockOffsetY)"
-                                       @oninput="(e)=> _newBlockOffsetY = ParseFlexible(e.Value)" />
-                            </div>
-                            <div class="col-span-2">
-                                <label class="block text-xs text-gray-600 mb-1">Color</label>
-                                <input class="border p-2 w-full" @bind="_newBlockColor" @bind:event="oninput" />
-                            </div>
-                            <div class="col-span-2 flex gap-2">
-                                <button class="px-3 py-2 border rounded bg-black text-white" @onclick="AgregarBloque">Agregar bloque</button>
-                                @if (!string.IsNullOrWhiteSpace(_blockMsg))
-                                {
-                                    <span class="text-sm text-gray-500">@_blockMsg</span>
-                                }
-                            </div>
-                        </div>
-                        @if (_blocks.Count > 0)
-                        {
-                            <div style="margin-top:.75rem">
-                                <div class="text-xs text-gray-500 mb-1">Bloques creados</div>
-                                <ul style="list-style:none; padding-left:0; margin:0">
-                                    @foreach (var b in _blocks.OrderBy(b => b.z_order))
-                                    {
-                                        <li style="display:flex; align-items:center; justify-content:space-between; padding:.25rem 0; border-bottom:1px dashed #eee">
-                                            <div>
-                                                <strong>@(b.etiqueta ?? b.bloque_id)</strong>
-                                                <div class="text-xs text-gray-500">
-                                                    Offset: @S(b.offset_x), @S(b.offset_y)
-                                                </div>
-                                            </div>
-                                            <button type="button" class="btn link text-red-600" @onclick="() => EliminarBloque(b.bloque_id)">Eliminar</button>
-                                        </li>
-                                    }
-                                </ul>
-                            </div>
-                        }
+                        <button class="px-3 py-2 border rounded text-red-600 border-red-300" @onclick="EliminarBloqueSeleccionado" disabled="@(_selBlock is null)">Eliminar bloque</button>
                     </div>
                 </div>
             </div>
@@ -349,48 +260,132 @@
                         </div>
                     }
 
-                    <!-- INSTALACIÓN VINCULADA -->
-                    @if (!string.IsNullOrWhiteSpace(sel.instalacion_id) && _instalaciones.TryGetValue(sel.instalacion_id, out var ins))
-                    {
-                        <hr class="my-3" />
-                        <h4 class="font-semibold mb-2">Instalación vinculada</h4>
-                        <div class="grid grid-cols-2 gap-2 text-sm">
-                            <div class="col-span-2">
-                                <label class="block text-xs text-gray-600 mb-1">Nombre</label>
-                                <input class="border p-1 w-full"
-                                       @bind-value="ins.nombre"
-                                       @bind-value:event="oninput" />
-                            </div>
-
-                            <div>
-                                <label class="block text-xs text-gray-600 mb-1">Tipo</label>
-                                <select class="border p-1 w-full" @bind="ins.tipo_id">
-                                    <option value="">— Sin tipo —</option>
-                                    @if (_tiposInstalacion is not null)
-                                    {
-                                        @foreach (var kv in _tiposInstalacion)
-                                        {
-                                            <option value="@kv.Key">@kv.Value</option>
-                                        }
-                                    }
-                                </select>
-                            </div>
-
-
-                            <div>
-                                <label class="block text-xs text-gray-600 mb-1">Requiere mant.</label>
-                                <select class="border p-1 w-full" @bind="ins.requiere_mantenimiento">
-                                    <option value="false">No</option>
-                                    <option value="true">Sí</option>
-                                </select>
-                            </div>
-
-                            <div class="col-span-2">
-                                <label class="block text-xs text-gray-600 mb-1">Notas</label>
-                                <textarea class="border p-1 w-full" rows="2" @bind="ins.notas"></textarea>
-                            </div>
+                }
+                else if (_selBlock is not null && _blocksById.TryGetValue(_selBlock, out var blockSel))
+                {
+                    <h4 class="font-semibold mb-2">Bloque de montaje</h4>
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Etiqueta</label>
+                            <input class="border p-1 w-full" value="@(blockSel.etiqueta ?? "")"
+                                   @oninput="(e)=>{ blockSel.etiqueta = e.Value?.ToString(); StateHasChanged(); }" />
                         </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Ancho (m)</label>
+                            <input class="border p-1 w-full" value="@S(blockSel.ancho)"
+                                   @oninput="(e)=>{ blockSel.ancho = Clamp(0.1m, 10m, ParseFlexible(e.Value)); UpdateBlockAbs(blockSel); StateHasChanged(); }" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Alto (m)</label>
+                            <input class="border p-1 w-full" value="@S(blockSel.alto)"
+                                   @oninput="(e)=>{ blockSel.alto = Clamp(0.1m, 10m, ParseFlexible(e.Value)); UpdateBlockAbs(blockSel); StateHasChanged(); }" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Offset X (m)</label>
+                            <input class="border p-1 w-full" value="@S(blockSel.offset_x)"
+                                   @oninput="(e)=>{ blockSel.offset_x = ParseFlexible(e.Value); UpdateBlockAbs(blockSel); StateHasChanged(); }" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Offset Y (m)</label>
+                            <input class="border p-1 w-full" value="@S(blockSel.offset_y)"
+                                   @oninput="(e)=>{ blockSel.offset_y = ParseFlexible(e.Value); UpdateBlockAbs(blockSel); StateHasChanged(); }" />
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Material de montaje</label>
+                            <select class="border p-1 w-full" value="@(blockSel.material_montaje_id ?? "")"
+                                    @onchange="(e)=> UpdateBlockMaterial(blockSel, e.Value?.ToString())">
+                                <option value="">— Selecciona un material —</option>
+                                @foreach (var kv in _materialesLookup)
+                                {
+                                    <option value="@kv.Key">@kv.Value</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Mesón</label>
+                            <select class="border p-1 w-full" value="@(blockSel.meson_id ?? "")"
+                                    @onchange="(e)=> UpdateBlockMeson(blockSel, e.Value?.ToString())">
+                                <option value="">— Selecciona un mesón —</option>
+                                @foreach (var kv in _mesonesLookup)
+                                {
+                                    <option value="@kv.Key">@kv.Value</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Color</label>
+                            <input class="border p-1 w-full"
+                                   @bind-value="blockSel.color_hex"
+                                   @bind-value:event="oninput" />
+                        </div>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(_blockMsg))
+                    {
+                        <div class="text-xs text-gray-500 mt-2">@_blockMsg</div>
                     }
+                }
+                else if (_showBlockCreator)
+                {
+                    <h4 class="font-semibold mb-2">Nuevo bloque de montaje</h4>
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Material de montaje</label>
+                            <select class="border p-1 w-full"
+                                    value="@(_newBlockMaterialId ?? "")"
+                                    @onchange="(e)=> OnSelectBlockMaterial(e.Value?.ToString())">
+                                <option value="">— Selecciona un material —</option>
+                                @foreach (var kv in _materialesLookup)
+                                {
+                                    <option value="@kv.Key">@kv.Value</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Mesón</label>
+                            <select class="border p-1 w-full"
+                                    value="@(_newBlockMesonId ?? "")"
+                                    @onchange="(e)=> OnSelectBlockMeson(e.Value?.ToString())">
+                                <option value="">— Selecciona un mesón —</option>
+                                @foreach (var kv in _mesonesLookup)
+                                {
+                                    <option value="@kv.Key">@kv.Value</option>
+                                }
+                            </select>
+                            <div class="text-xs text-gray-500 mt-1">Selecciona material o mesón (solo uno por bloque).</div>
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Etiqueta</label>
+                            <input class="border p-1 w-full" @bind="_newBlockEtiqueta" @bind:event="oninput" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Ancho (m)</label>
+                            <input class="border p-1 w-full" value="@S(_newBlockAncho)"
+                                   @oninput="(e)=> _newBlockAncho = ParseFlexible(e.Value)" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Alto (m)</label>
+                            <input class="border p-1 w-full" value="@S(_newBlockAlto)"
+                                   @oninput="(e)=> _newBlockAlto = ParseFlexible(e.Value)" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Offset X (m)</label>
+                            <input class="border p-1 w-full" value="@S(_newBlockOffsetX)"
+                                   @oninput="(e)=> _newBlockOffsetX = ParseFlexible(e.Value)" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Offset Y (m)</label>
+                            <input class="border p-1 w-full" value="@S(_newBlockOffsetY)"
+                                   @oninput="(e)=> _newBlockOffsetY = ParseFlexible(e.Value)" />
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Color</label>
+                            <input class="border p-1 w-full" @bind="_newBlockColor" @bind:event="oninput" />
+                        </div>
+                        <div class="col-span-2 flex gap-2">
+                            <button class="px-3 py-2 border rounded bg-black text-white" @onclick="AgregarBloque">Agregar bloque</button>
+                            <button class="px-3 py-2 border rounded" @onclick="()=>_showBlockCreator=false">Cancelar</button>
+                        </div>
+                    </div>
                 }
                 else
                 {

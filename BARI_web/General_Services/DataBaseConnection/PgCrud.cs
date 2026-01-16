@@ -59,6 +59,7 @@ public class PgCrud
     public async Task<IList<Dictionary<string, string>>> ReadAllAsync(CancellationToken ct = default)
     {
         await EnsureSchemaAsync(ct);
+        if (_cols.Count == 0) return new List<Dictionary<string, string>>();
 
         await using var conn = await _ds.OpenConnectionAsync(ct);
 
@@ -131,6 +132,7 @@ public class PgCrud
     public async Task<bool> UpdateByIdAsync(string idColName, string idValue, Dictionary<string, object> updates, CancellationToken ct = default)
     {
         await EnsureSchemaAsync(ct);
+        if (_cols.Count == 0) return false;
         _idCol = !string.IsNullOrWhiteSpace(idColName) ? Norm(idColName) : _idCol;
 
         var setPairs = updates
@@ -165,6 +167,7 @@ public class PgCrud
     public async Task<bool> DeleteByIdAsync(string idColName, string idValue, CancellationToken ct = default)
     {
         await EnsureSchemaAsync(ct);
+        if (_cols.Count == 0) return false;
         _idCol = !string.IsNullOrWhiteSpace(idColName) ? Norm(idColName) : _idCol;
 
         var sql = $"delete from public.\"{_table}\" where \"{_idCol}\" = @id";
@@ -222,6 +225,12 @@ order by c.ordinal_position";
                 (int?)r.numeric_scale
             ))
             .ToList();
+
+        if (_cols.Count == 0)
+        {
+            _idCol = "";
+            return;
+        }
 
         _idCol = _cols.FirstOrDefault(c => c.Name.EndsWith("_id", StringComparison.OrdinalIgnoreCase))?.Name
                  ?? _cols.First().Name;

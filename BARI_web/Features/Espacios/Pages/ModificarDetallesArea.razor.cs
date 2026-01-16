@@ -79,7 +79,8 @@ namespace BARI_web.Features.Espacios.Pages
         {
             public string bloque_id { get; set; } = "";
             public string canvas_id { get; set; } = "";
-            public string? material_id { get; set; }
+            public string? material_montaje_id { get; set; }
+            public string? meson_id { get; set; }
             public string? etiqueta { get; set; }
             public string? color_hex { get; set; }
             public int z_order { get; set; }
@@ -130,6 +131,7 @@ namespace BARI_web.Features.Espacios.Pages
         private readonly List<BlockItem> _blocks = new();
         private readonly Dictionary<string, BlockItem> _blocksById = new(StringComparer.OrdinalIgnoreCase);
         private Dictionary<string, string> _materialesLookup = new(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, string> _mesonesLookup = new(StringComparer.OrdinalIgnoreCase);
 
         // vínculos
         private readonly Dictionary<string, Meson> _mesones = new(StringComparer.OrdinalIgnoreCase);
@@ -160,11 +162,18 @@ namespace BARI_web.Features.Espacios.Pages
         // selección / drag
         private string? _selIn;
         private string? _hoverIn;
+        private string? _selBlock;
+        private string? _hoverBlock;
         private (decimal x, decimal y)? _dragStart;
         private InnerItem? _dragIn;
         private Poly? _dragParent;
         private bool _resizing = false;
         private Handle _activeHandle = Handle.None;
+        private BlockItem? _dragBlock;
+        private (decimal x, decimal y, decimal w, decimal h)? _beforeDragBlock;
+        private (decimal dx, decimal dy)? _blockGrab;
+        private bool _blockResizing = false;
+        private Handle _blockHandle = Handle.None;
 
         // guardar
         private bool _saving = false;
@@ -173,6 +182,7 @@ namespace BARI_web.Features.Espacios.Pages
         // === UI: paneles bajo el lienzo
         private bool _showNuevaInstalacionPanel = false;
         private bool _showTipoInstalacionPanel = false;
+        private bool _showBlockCreator = false;
 
         // === Catálogo: tipos de instalación (id -> nombre)
         private Dictionary<string, string>? _tiposInstalacion;
@@ -188,6 +198,7 @@ namespace BARI_web.Features.Espacios.Pages
         private string? _nuevoTipo_Descripcion = null;
 
         private string? _newBlockMaterialId;
+        private string? _newBlockMesonId;
         private string _newBlockEtiqueta = "";
         private decimal _newBlockAncho = 0.6m;
         private decimal _newBlockAlto = 0.4m;
@@ -195,6 +206,8 @@ namespace BARI_web.Features.Espacios.Pages
         private decimal _newBlockOffsetY = 0m;
         private string _newBlockColor = "#2563eb";
         private string? _blockMsg;
+
+        private int _laboratorioId = 1;
 
 
         // ===== Apariencia / tolerancias =====
@@ -210,6 +223,7 @@ namespace BARI_web.Features.Espacios.Pages
             {
                 // ===== Resolver área desde slug
                 var targetAreaId = await ResolveAreaIdFromSlug(AreaSlug);
+                _laboratorioId = await LoadLaboratorioIdForArea(targetAreaId);
 
                 // ===== Canvas (según área)
                 var canvasIdForArea = await ResolveCanvasForArea(targetAreaId);
@@ -305,9 +319,10 @@ namespace BARI_web.Features.Espacios.Pages
 
                 // ===== Cargas dependientes (inners, puertas/ventanas, vínculos)
                 try { await LoadInnerItemsForArea(a); } catch (Exception ex) { Console.Error.WriteLine($"[LoadInnerItemsForArea] {ex}"); }
+                try { await LoadMesonesLinks(); } catch (Exception ex) { Console.Error.WriteLine($"[LoadMesonesLinks] {ex}"); }
+                try { await LoadMesonesLookupForArea(a.AreaId); } catch (Exception ex) { Console.Error.WriteLine($"[LoadMesonesLookupForArea] {ex}"); }
                 try { await LoadBlocksForArea(a); } catch (Exception ex) { Console.Error.WriteLine($"[LoadBlocksForArea] {ex}"); }
                 try { await LoadDoorsAndWindowsForArea(a); } catch (Exception ex) { Console.Error.WriteLine($"[LoadDoorsAndWindowsForArea] {ex}"); }
-                try { await LoadMesonesLinks(); } catch (Exception ex) { Console.Error.WriteLine($"[LoadMesonesLinks] {ex}"); }
                 try { await LoadInstalacionesLinks(); } catch (Exception ex) { Console.Error.WriteLine($"[LoadInstalacionesLinks] {ex}"); }
 
                 // Catálogo de tipos
@@ -398,10 +413,17 @@ namespace BARI_web.Features.Espacios.Pages
             {
                 if (!string.Equals(Get(r, "canvas_id"), _canvas?.canvas_id ?? "", StringComparison.OrdinalIgnoreCase)) continue;
 
-                var materialId = NullIfEmpty(Get(r, "material_id"));
-                if (!string.IsNullOrWhiteSpace(materialId) && !_materialesLookup.ContainsKey(materialId!))
+                var materialId = NullIfEmpty(Get(r, "material_montaje_id"));
+                var mesonId = NullIfEmpty(Get(r, "meson_id"));
+                var hasMaterial = !string.IsNullOrWhiteSpace(materialId) && _materialesLookup.ContainsKey(materialId!);
+                var hasMeson = !string.IsNullOrWhiteSpace(mesonId) && _mesonesLookup.ContainsKey(mesonId!);
+                if (!hasMaterial && !hasMeson)
                 {
                     continue;
+                }
+                if (hasMaterial && hasMeson)
+                {
+                    mesonId = null;
                 }
 
                 var offsetX = Dec(Get(r, "offset_x", "0"));
@@ -419,7 +441,8 @@ namespace BARI_web.Features.Espacios.Pages
                 {
                     bloque_id = Get(r, "bloque_id"),
                     canvas_id = Get(r, "canvas_id"),
-                    material_id = materialId,
+                    material_montaje_id = materialId,
+                    meson_id = mesonId,
                     etiqueta = NullIfEmpty(Get(r, "etiqueta")),
                     color_hex = NullIfEmpty(Get(r, "color_hex")) ?? "#2563eb",
                     z_order = Int(Get(r, "z_order", "0")),
@@ -520,6 +543,52 @@ namespace BARI_web.Features.Espacios.Pages
                     niveles_totales = Int(Get(r, "niveles_totales", "0"))
                 };
             }
+        }
+
+        private async Task LoadMesonesLookupForArea(string areaId)
+        {
+            _mesonesLookup.Clear();
+            Pg.UseSheet("mesones");
+            foreach (var r in await Pg.ReadAllAsync())
+            {
+                if (!string.Equals(Get(r, "area_id"), areaId, StringComparison.OrdinalIgnoreCase)) continue;
+                var id = Get(r, "meson_id");
+                if (string.IsNullOrWhiteSpace(id)) continue;
+                var nombre = Get(r, "nombre_meson");
+                _mesonesLookup[id] = nombre;
+                if (!_mesones.ContainsKey(id))
+                {
+                    _mesones[id] = new Meson
+                    {
+                        meson_id = id,
+                        area_id = Get(r, "area_id"),
+                        nombre_meson = nombre,
+                        ancho_cm = Int(Get(r, "ancho_cm", "0")),
+                        largo_cm = Int(Get(r, "largo_cm", "0")),
+                        profundidad_cm = Int(Get(r, "profundidad_cm", "0")),
+                        niveles_totales = Int(Get(r, "niveles_totales", "0"))
+                    };
+                }
+            }
+        }
+
+        private async Task<int> LoadLaboratorioIdForArea(string areaId)
+        {
+            try
+            {
+                Pg.UseSheet("areas");
+                foreach (var r in await Pg.ReadAllAsync())
+                {
+                    if (!string.Equals(Get(r, "area_id"), areaId, StringComparison.OrdinalIgnoreCase)) continue;
+                    var labRaw = Get(r, "laboratorio_id");
+                    if (int.TryParse(labRaw, out var labId)) return labId;
+                }
+            }
+            catch
+            {
+                // ignore y usa default
+            }
+            return 1;
         }
 
 
@@ -761,11 +830,48 @@ namespace BARI_web.Features.Espacios.Pages
             builder.CloseElement();
         };
 
+        private RenderFragment BlockCornerHandle(BlockItem it, decimal x, decimal y, Handle h) => builder =>
+        {
+            var size = 0.30m;
+            var rx = x - size / 2m;
+            var ry = y - size / 2m;
+            int seq = 0;
+
+            var cursor = h switch
+            {
+                Handle.NW => "nwse-resize",
+                Handle.SE => "nwse-resize",
+                Handle.NE => "nesw-resize",
+                Handle.SW => "nesw-resize",
+                _ => "nwse-resize"
+            };
+
+            builder.OpenElement(seq++, "rect");
+            builder.AddAttribute(seq++, "x", S(rx));
+            builder.AddAttribute(seq++, "y", S(ry));
+            builder.AddAttribute(seq++, "width", S(size));
+            builder.AddAttribute(seq++, "height", S(size));
+            builder.AddAttribute(seq++, "fill", "#2563eb");
+            builder.AddAttribute(seq++, "stroke", "#1e3a8a");
+            builder.AddAttribute(seq++, "stroke-width", S(0.03m));
+            builder.AddAttribute(seq++, "style", $"cursor:{cursor}");
+            builder.AddAttribute(seq++, "onpointerdown:preventDefault", true);
+            builder.AddAttribute(seq++, "onpointerdown:stopPropagation", true);
+            builder.AddAttribute(seq++, "onpointerdown",
+                EventCallback.Factory.Create<PointerEventArgs>(this,
+                    (PointerEventArgs e) => OnPointerDownResizeBlock(e, it.bloque_id, h)));
+            builder.CloseElement();
+        };
+
 
 
         private void OnPointerDownMoveInner(PointerEventArgs e, string id)
         {
-            _selIn = id; _dragIn = _mapIn[id]; _dragParent = _area!.Polys.First(p => p.poly_id == _dragIn.area_poly_id);
+            _selIn = id;
+            _selBlock = null;
+            _showBlockCreator = false;
+            _dragIn = _mapIn[id];
+            _dragParent = _area!.Polys.First(p => p.poly_id == _dragIn.area_poly_id);
             _activeHandle = Handle.None;
 
             var (wx, wy) = ScreenToWorld(e.OffsetX, e.OffsetY);
@@ -782,7 +888,11 @@ namespace BARI_web.Features.Espacios.Pages
 
         private void OnPointerDownResizeInner(PointerEventArgs e, string id, Handle h)
         {
-            _selIn = id; _dragIn = _mapIn[id]; _dragParent = _area!.Polys.First(p => p.poly_id == _dragIn.area_poly_id);
+            _selIn = id;
+            _selBlock = null;
+            _showBlockCreator = false;
+            _dragIn = _mapIn[id];
+            _dragParent = _area!.Polys.First(p => p.poly_id == _dragIn.area_poly_id);
             _activeHandle = h; _resizing = true;
 
             var (wx, wy) = ScreenToWorld(e.OffsetX, e.OffsetY);
@@ -797,6 +907,42 @@ namespace BARI_web.Features.Espacios.Pages
             StateHasChanged();
         }
 
+        private void OnPointerDownMoveBlock(PointerEventArgs e, string id)
+        {
+            if (!_blocksById.TryGetValue(id, out var block)) return;
+            _selBlock = id;
+            _selIn = null;
+            _showBlockCreator = false;
+            _dragBlock = block;
+            _blockHandle = Handle.None;
+            _blockResizing = false;
+            _blockMsg = null;
+
+            var (wx, wy) = ScreenToWorld(e.OffsetX, e.OffsetY);
+            _dragStart = (wx, wy);
+            _beforeDragBlock = (block.abs_x, block.abs_y, block.ancho, block.alto);
+            _blockGrab = (wx - block.abs_x, wy - block.abs_y);
+            StateHasChanged();
+        }
+
+        private void OnPointerDownResizeBlock(PointerEventArgs e, string id, Handle h)
+        {
+            if (!_blocksById.TryGetValue(id, out var block)) return;
+            _selBlock = id;
+            _selIn = null;
+            _showBlockCreator = false;
+            _dragBlock = block;
+            _blockHandle = h;
+            _blockResizing = true;
+            _blockMsg = null;
+
+            var (wx, wy) = ScreenToWorld(e.OffsetX, e.OffsetY);
+            _dragStart = (wx, wy);
+            _beforeDragBlock = (block.abs_x, block.abs_y, block.ancho, block.alto);
+            _blockGrab = null;
+            StateHasChanged();
+        }
+
 
         // tolerancias
         const decimal EPS_JOIN = 0.012m; // ~1.2 cm de tolerancia 
@@ -805,7 +951,7 @@ namespace BARI_web.Features.Espacios.Pages
         private void OnPointerMove(PointerEventArgs e)
         {
             // ===== Pan =====
-            if (_panStart is not null && _dragIn is null)
+            if (_panStart is not null && _dragIn is null && _dragBlock is null)
             {
                 var (sx, sy) = _panStart.Value;
                 var dxPx = e.OffsetX - sx; var dyPx = e.OffsetY - sy;
@@ -819,6 +965,98 @@ namespace BARI_web.Features.Espacios.Pages
                 var vh = (decimal)((double)Hm / _zoom);
                 _panX = Clamp(0m, Wm - vw, _panX - metersX);
                 _panY = Clamp(0m, Hm - vh, _panY - metersY);
+                StateHasChanged();
+                return;
+            }
+
+            // ===== Drag bloque =====
+            if (_dragBlock is not null && _dragStart is not null && _beforeDragBlock is not null && _area is not null)
+            {
+                var (wx, wy) = ScreenToWorld(e.OffsetX, e.OffsetY);
+                var dx = wx - _dragStart.Value.x;
+                var dy = wy - _dragStart.Value.y;
+
+                var baseAbsX = _beforeDragBlock.Value.x;
+                var baseAbsY = _beforeDragBlock.Value.y;
+                var baseW = _beforeDragBlock.Value.w;
+                var baseH = _beforeDragBlock.Value.h;
+
+                decimal propAbsX = baseAbsX, propAbsY = baseAbsY;
+                decimal propW = baseW, propH = baseH;
+
+                if (_blockHandle == Handle.None)
+                {
+                    if (_blockGrab is not null)
+                    {
+                        propAbsX = wx - _blockGrab.Value.dx;
+                        propAbsY = wy - _blockGrab.Value.dy;
+                    }
+                    else
+                    {
+                        propAbsX = baseAbsX + dx;
+                        propAbsY = baseAbsY + dy;
+                    }
+                }
+                else
+                {
+                    switch (_blockHandle)
+                    {
+                        case Handle.NE:
+                            {
+                                var bottom = baseAbsY + baseH;
+                                propW = Math.Max(EPS_MINW, baseW + dx);
+                                propH = Math.Max(EPS_MINW, baseH - dy);
+                                propAbsX = baseAbsX;
+                                propAbsY = bottom - propH;
+                                break;
+                            }
+                        case Handle.SE:
+                            {
+                                propW = Math.Max(EPS_MINW, baseW + dx);
+                                propH = Math.Max(EPS_MINW, baseH + dy);
+                                propAbsX = baseAbsX;
+                                propAbsY = baseAbsY;
+                                break;
+                            }
+                        case Handle.NW:
+                            {
+                                var right = baseAbsX + baseW;
+                                var bottom = baseAbsY + baseH;
+                                propW = Math.Max(EPS_MINW, baseW - dx);
+                                propH = Math.Max(EPS_MINW, baseH - dy);
+                                propAbsX = right - propW;
+                                propAbsY = bottom - propH;
+                                break;
+                            }
+                        case Handle.SW:
+                            {
+                                var right = baseAbsX + baseW;
+                                propW = Math.Max(EPS_MINW, baseW - dx);
+                                propH = Math.Max(EPS_MINW, baseH + dy);
+                                propAbsX = right - propW;
+                                propAbsY = baseAbsY;
+                                break;
+                            }
+                    }
+                }
+
+                var minX = _area.MinX;
+                var minY = _area.MinY;
+                var maxX = _area.MaxX - propW;
+                var maxY = _area.MaxY - propH;
+
+                var clampedX = Clamp(minX, maxX, propAbsX);
+                var clampedY = Clamp(minY, maxY, propAbsY);
+
+                _dragBlock.ancho = propW;
+                _dragBlock.alto = propH;
+                _dragBlock.abs_x = clampedX;
+                _dragBlock.abs_y = clampedY;
+                _dragBlock.offset_x = clampedX - AreaCenterX;
+                _dragBlock.offset_y = clampedY - AreaCenterY;
+                _dragBlock.pos_x = _dragBlock.abs_x;
+                _dragBlock.pos_y = _dragBlock.abs_y;
+
                 StateHasChanged();
                 return;
             }
@@ -942,12 +1180,14 @@ namespace BARI_web.Features.Espacios.Pages
         {
             var finishing = _dragIn;
             var parent = _dragParent;
+            var finishingBlock = _dragBlock;
 
             // limpia estados de drag
             _dragStart = null; _dragIn = null; _dragParent = null; _resizing = false; _activeHandle = Handle.None;
             _beforeDragIn = null; _grab = null;
+            _dragBlock = null; _beforeDragBlock = null; _blockGrab = null; _blockResizing = false; _blockHandle = Handle.None;
 
-            if (_panStart is not null && !_panMoved) { _selIn = null; }
+            if (_panStart is not null && !_panMoved) { _selIn = null; _selBlock = null; _showBlockCreator = false; }
             _panStart = null;
 
             if (finishing is not null && _area is not null && parent is not null)
@@ -973,6 +1213,20 @@ namespace BARI_web.Features.Espacios.Pages
                 // OJO: no llames NormalizeInner(finishing) aquí (no queremos mover abs)
             }
 
+            if (finishingBlock is not null && _area is not null)
+            {
+                var minX = _area.MinX;
+                var minY = _area.MinY;
+                var maxX = _area.MaxX - finishingBlock.ancho;
+                var maxY = _area.MaxY - finishingBlock.alto;
+
+                finishingBlock.abs_x = Clamp(minX, maxX, finishingBlock.abs_x);
+                finishingBlock.abs_y = Clamp(minY, maxY, finishingBlock.abs_y);
+                finishingBlock.offset_x = finishingBlock.abs_x - AreaCenterX;
+                finishingBlock.offset_y = finishingBlock.abs_y - AreaCenterY;
+                finishingBlock.pos_x = finishingBlock.abs_x;
+                finishingBlock.pos_y = finishingBlock.abs_y;
+            }
 
             StateHasChanged();
         }
@@ -1029,6 +1283,8 @@ namespace BARI_web.Features.Espacios.Pages
         {
             // Deselect al clickear fondo y comenzar pan
             _selIn = null;
+            _selBlock = null;
+            _showBlockCreator = false;
             BeginPan(e);
         }
         private void BeginPan(PointerEventArgs e) { _panStart = (e.OffsetX, e.OffsetY); _panMoved = false; }
@@ -1173,6 +1429,7 @@ namespace BARI_web.Features.Espacios.Pages
                         Pg.UseSheet("mesones");
                         await Pg.DeleteByIdAsync("meson_id", it.meson_id);
                         _mesones.Remove(it.meson_id);
+                        _mesonesLookup.Remove(it.meson_id);
                     }
                     catch { /* silenciar: si no existía aún en DB no pasa nada */ }
                 }
@@ -1204,7 +1461,27 @@ namespace BARI_web.Features.Espacios.Pages
 
             _blocks.RemoveAll(b => b.bloque_id == bloqueId);
             _blocksById.Remove(bloqueId);
+            if (string.Equals(_selBlock, bloqueId, StringComparison.OrdinalIgnoreCase))
+            {
+                _selBlock = null;
+            }
             _blockMsg = "Bloque eliminado.";
+        }
+
+        private void EliminarBloqueSeleccionado()
+        {
+            if (!string.IsNullOrWhiteSpace(_selBlock))
+            {
+                _ = EliminarBloque(_selBlock);
+            }
+        }
+
+        private void MostrarNuevoBloque()
+        {
+            _showBlockCreator = true;
+            _selBlock = null;
+            _selIn = null;
+            _blockMsg = null;
         }
 
         private void AgregarBloque()
@@ -1220,10 +1497,21 @@ namespace BARI_web.Features.Espacios.Pages
             var offsetX = _newBlockOffsetX;
             var offsetY = _newBlockOffsetY;
 
+            if (string.IsNullOrWhiteSpace(_newBlockMaterialId) && string.IsNullOrWhiteSpace(_newBlockMesonId))
+            {
+                _blockMsg = "Selecciona un material o un mesón para el bloque.";
+                return;
+            }
             if (!string.IsNullOrWhiteSpace(_newBlockMaterialId)
-                && _blocks.Any(b => string.Equals(b.material_id, _newBlockMaterialId, StringComparison.OrdinalIgnoreCase)))
+                && _blocks.Any(b => string.Equals(b.material_montaje_id, _newBlockMaterialId, StringComparison.OrdinalIgnoreCase)))
             {
                 _blockMsg = "Ese material ya tiene un bloque asociado.";
+                return;
+            }
+            if (!string.IsNullOrWhiteSpace(_newBlockMesonId)
+                && _blocks.Any(b => string.Equals(b.meson_id, _newBlockMesonId, StringComparison.OrdinalIgnoreCase)))
+            {
+                _blockMsg = "Ese mesón ya tiene un bloque asociado.";
                 return;
             }
 
@@ -1231,7 +1519,8 @@ namespace BARI_web.Features.Espacios.Pages
             {
                 bloque_id = $"block_{Guid.NewGuid():N}".Substring(0, 12),
                 canvas_id = _canvas.canvas_id,
-                material_id = string.IsNullOrWhiteSpace(_newBlockMaterialId) ? null : _newBlockMaterialId,
+                material_montaje_id = string.IsNullOrWhiteSpace(_newBlockMaterialId) ? null : _newBlockMaterialId,
+                meson_id = string.IsNullOrWhiteSpace(_newBlockMesonId) ? null : _newBlockMesonId,
                 etiqueta = string.IsNullOrWhiteSpace(_newBlockEtiqueta) ? null : _newBlockEtiqueta.Trim(),
                 color_hex = string.IsNullOrWhiteSpace(_newBlockColor) ? "#2563eb" : _newBlockColor,
                 z_order = _blocks.Count == 0 ? 0 : _blocks.Max(b => b.z_order) + 1,
@@ -1245,6 +1534,67 @@ namespace BARI_web.Features.Espacios.Pages
             _blocks.Add(it);
             _blocksById[it.bloque_id] = it;
             _blockMsg = "Bloque agregado (recuerda guardar).";
+            _newBlockMaterialId = null;
+            _newBlockMesonId = null;
+            _showBlockCreator = false;
+            _selBlock = it.bloque_id;
+            _selIn = null;
+        }
+
+        private void OnSelectBlockMaterial(string? value)
+        {
+            var selected = string.IsNullOrWhiteSpace(value) ? null : value;
+            _newBlockMaterialId = selected;
+            if (!string.IsNullOrWhiteSpace(selected))
+            {
+                _newBlockMesonId = null;
+            }
+        }
+
+        private void OnSelectBlockMeson(string? value)
+        {
+            var selected = string.IsNullOrWhiteSpace(value) ? null : value;
+            _newBlockMesonId = selected;
+            if (!string.IsNullOrWhiteSpace(selected))
+            {
+                _newBlockMaterialId = null;
+            }
+        }
+
+        private void UpdateBlockMaterial(BlockItem block, string? value)
+        {
+            var selected = string.IsNullOrWhiteSpace(value) ? null : value;
+            if (!string.IsNullOrWhiteSpace(selected)
+                && _blocks.Any(b => !string.Equals(b.bloque_id, block.bloque_id, StringComparison.OrdinalIgnoreCase)
+                                    && string.Equals(b.material_montaje_id, selected, StringComparison.OrdinalIgnoreCase)))
+            {
+                _blockMsg = "Ese material ya tiene un bloque asociado.";
+                return;
+            }
+            block.material_montaje_id = selected;
+            if (!string.IsNullOrWhiteSpace(selected))
+            {
+                block.meson_id = null;
+            }
+            _blockMsg = null;
+        }
+
+        private void UpdateBlockMeson(BlockItem block, string? value)
+        {
+            var selected = string.IsNullOrWhiteSpace(value) ? null : value;
+            if (!string.IsNullOrWhiteSpace(selected)
+                && _blocks.Any(b => !string.Equals(b.bloque_id, block.bloque_id, StringComparison.OrdinalIgnoreCase)
+                                    && string.Equals(b.meson_id, selected, StringComparison.OrdinalIgnoreCase)))
+            {
+                _blockMsg = "Ese mesón ya tiene un bloque asociado.";
+                return;
+            }
+            block.meson_id = selected;
+            if (!string.IsNullOrWhiteSpace(selected))
+            {
+                block.material_montaje_id = null;
+            }
+            _blockMsg = null;
         }
 
 
@@ -1280,7 +1630,8 @@ namespace BARI_web.Features.Espacios.Pages
                                 ["ancho_cm"] = m.ancho_cm,
                                 ["largo_cm"] = m.largo_cm,
                                 ["profundidad_cm"] = m.profundidad_cm,
-                                ["niveles_totales"] = m.niveles_totales
+                                ["niveles_totales"] = m.niveles_totales,
+                                ["laboratorio_id"] = _laboratorioId
                             };
 
                             var ok = await Pg.UpdateByIdAsync("meson_id", m.meson_id, toSave);
@@ -1372,7 +1723,8 @@ namespace BARI_web.Features.Espacios.Pages
                     var toSave = new Dictionary<string, object>
                     {
                         ["canvas_id"] = b.canvas_id,
-                        ["material_id"] = string.IsNullOrWhiteSpace(b.material_id) ? (object)DBNull.Value : b.material_id!,
+                        ["material_montaje_id"] = string.IsNullOrWhiteSpace(b.material_montaje_id) ? (object)DBNull.Value : b.material_montaje_id!,
+                        ["meson_id"] = string.IsNullOrWhiteSpace(b.meson_id) ? (object)DBNull.Value : b.meson_id!,
                         ["etiqueta"] = string.IsNullOrWhiteSpace(b.etiqueta) ? (object)DBNull.Value : b.etiqueta!,
                         ["color_hex"] = string.IsNullOrWhiteSpace(b.color_hex) ? (object)DBNull.Value : b.color_hex!,
                         ["z_order"] = b.z_order,
@@ -1569,6 +1921,7 @@ namespace BARI_web.Features.Espacios.Pages
                 profundidad_cm = 60,
                 niveles_totales = 1
             };
+            _mesonesLookup[mesonId] = _mesones[mesonId].nombre_meson;
 
 
             StateHasChanged();

@@ -121,7 +121,7 @@
             </div>
         }
 
-        <!-- === Índice de Áreas (planta actual) con mesones/instalaciones === -->
+        <!-- === Índice de Áreas (planta actual) con mesones/materiales de montaje === -->
         <div style="margin-top:1rem; border:1px solid #e5e7eb; border-radius:.5rem; padding:.75rem; background:#fff">
             <details open>
                 <summary style="cursor:pointer; font-weight:600">
@@ -132,13 +132,13 @@
                 {
                     var aidList = areaKv2.Key; var aList = areaKv2.Value;
                     var mes = _mesonesPorArea.TryGetValue(aidList, out var lm) ? lm : new List<MesonSummary>();
-                    var ins = _instalacionesPorArea.TryGetValue(aidList, out var li) ? li : new List<InstalacionView>();
+                    var montaje = _materialesMontajePorArea.TryGetValue(aidList, out var li) ? li : new List<MaterialMontajeView>();
 
                     <details style="margin:.5rem 0" @key="aidList">
                         <summary style="cursor:pointer; display:flex; align-items:center; gap:.5rem">
                             <span style="font-weight:600">@aList.Label</span>
                             <span style="color:#6b7280; font-size:.9rem">
-                                (@mes.Count mesones · @ins.Count instalaciones)
+                                (@mes.Count mesones · @montaje.Count materiales de montaje)
                             </span>
                             <button type="button" class="btn link" style="margin-left:auto"
                                     @onclick="@(()=>GoToArea(aidList))">
@@ -172,38 +172,27 @@
                             </div>
 
                             <div>
-                                <h4 style="margin:.25rem 0; font-weight:600">Instalaciones</h4>
+                                <h4 style="margin:.25rem 0; font-weight:600">Materiales de montaje</h4>
                                 <ul style="list-style:none; padding-left:0; margin:.25rem 0 0">
-                                    @if (ins.Count == 0)
+                                    @if (montaje.Count == 0)
                                     {
-                                        <li style="color:#6b7280"><em>Sin instalaciones.</em></li>
+                                        <li style="color:#6b7280"><em>Sin materiales de montaje.</em></li>
                                     }
                                     else
                                     {
-                                        @foreach (var inst in ins)
+                                        @foreach (var item in montaje)
                                         {
-                                            <li @key="inst.instalacion_id" style="padding:.25rem 0; border-bottom:1px dashed #eee">
-                                                <div style="display:flex; align-items:center; justify-content:space-between;">
-                                                    <div>
-                                                        <strong>@inst.nombre</strong>
-                                                        @if (!string.IsNullOrWhiteSpace(inst.tipo_nombre))
-                                                        {
-                                                            <span style="margin-left:.5rem; font-size:.8rem; background:#e5f9f1; color:#047857; padding:.05rem .4rem; border-radius:.4rem">
-                                                                @inst.tipo_nombre
-                                                            </span>
-                                                        }
-                                                    </div>
-                                                    <button type="button" class="btn link"
-                                                            @onclick="@(()=>Nav.NavigateTo($"/detalles-instalacion/{inst.instalacion_id}"))">
-                                                        ver
-                                                    </button>
+                                            <li @key="item.material_id" style="padding:.25rem 0; border-bottom:1px dashed #eee">
+                                                <div>
+                                                    <strong>@item.nombre</strong>
                                                 </div>
-                                                @if (!string.IsNullOrWhiteSpace(inst.tipo_descripcion))
-                                                {
-                                                    <div style="color:#4b5563; font-size:.9rem; margin-top:.15rem">
-                                                        @inst.tipo_descripcion
-                                                    </div>
-                                                }
+                                                <div style="color:#4b5563; font-size:.9rem; margin-top:.15rem">
+                                                    @item.estado_id
+                                                    @if (!string.IsNullOrWhiteSpace(item.posicion))
+                                                    {
+                                                        <span style="color:#6b7280">· @item.posicion</span>
+                                                    }
+                                                </div>
                                             </li>
                                         }
                                     }
