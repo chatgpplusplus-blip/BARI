@@ -90,19 +90,24 @@
                     <!-- bloques internos -->
                     @foreach (var b in _blocks.OrderBy(b => b.z_order))
                     {
+                        var blockLabel = BlockLabel(b);
+                        var labelWidth = Math.Max(0.2m, b.ancho - 0.1m);
+                        var labelFont = Math.Max(0.22m, Math.Min(0.6m, b.alto * 0.4m));
+
                         <rect x="@S(b.abs_x)" y="@S(b.abs_y)"
                               width="@S(b.ancho)" height="@S(b.alto)"
                               fill="@b.color_hex" opacity="0.45"
                               stroke="#1f2937" stroke-width="@S(0.03m)" />
 
-                        var blockLabel = BlockLabel(b);
                         @if (!string.IsNullOrWhiteSpace(blockLabel))
                         {
                             <text>
                                 <tspan x="@S(b.abs_x + b.ancho / 2m)"
                                        y="@S(b.abs_y + b.alto / 2m)"
                                        style="text-anchor:middle;dominant-baseline:middle"
-                                       font-size="@S(0.25m)"
+                                       font-size="@S(labelFont)"
+                                       textLength="@S(labelWidth)"
+                                       lengthAdjust="spacingAndGlyphs"
                                        fill="#111">
                                     @blockLabel
                                 </tspan>
