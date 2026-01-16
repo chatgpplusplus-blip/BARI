@@ -110,6 +110,16 @@ namespace BARI_web.Features.Espacios.Pages
             public int niveles_totales { get; set; }
         }
 
+        private class MaterialMontaje
+        {
+            public string material_id { get; set; } = "";
+            public string area_id { get; set; } = "";
+            public string nombre { get; set; } = "";
+            public string? estado_id { get; set; }
+            public string? posicion { get; set; }
+            public int laboratorio_id { get; set; }
+        }
+
 
         // Instalaciones (resumen de columnas editables)
         private class Instalacion
@@ -135,6 +145,7 @@ namespace BARI_web.Features.Espacios.Pages
 
         // vínculos
         private readonly Dictionary<string, Meson> _mesones = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, MaterialMontaje> _materialesMontaje = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, Instalacion> _instalaciones = new(StringComparer.OrdinalIgnoreCase);
 
         // viewbox
@@ -208,6 +219,18 @@ namespace BARI_web.Features.Espacios.Pages
         private decimal _newBlockOffsetY = 0m;
         private string _newBlockColor = "#2563eb";
         private string? _blockMsg;
+
+        private string _nuevoMesonNombre = "";
+        private int _nuevoMesonAnchoCm = 100;
+        private int _nuevoMesonLargoCm = 200;
+        private int _nuevoMesonProfundidadCm = 60;
+        private int _nuevoMesonNiveles = 1;
+        private string? _nuevoMesonMsg;
+
+        private string _nuevoMaterialNombre = "";
+        private string? _nuevoMaterialEstado;
+        private string? _nuevoMaterialPosicion;
+        private string? _nuevoMaterialMsg;
 
         private int _laboratorioId = 1;
 
@@ -400,6 +423,7 @@ namespace BARI_web.Features.Espacios.Pages
             _blocks.Clear();
             _blocksById.Clear();
             _materialesLookup.Clear();
+            _materialesMontaje.Clear();
 
             Pg.UseSheet("materiales_montaje");
             foreach (var r in await Pg.ReadAllAsync())
@@ -407,7 +431,17 @@ namespace BARI_web.Features.Espacios.Pages
                 if (!string.Equals(Get(r, "area_id"), a.AreaId, StringComparison.OrdinalIgnoreCase)) continue;
                 var materialId = Get(r, "material_id");
                 if (string.IsNullOrWhiteSpace(materialId)) continue;
-                _materialesLookup[materialId] = Get(r, "nombre");
+                var nombre = Get(r, "nombre");
+                _materialesLookup[materialId] = nombre;
+                _materialesMontaje[materialId] = new MaterialMontaje
+                {
+                    material_id = materialId,
+                    area_id = a.AreaId,
+                    nombre = nombre,
+                    estado_id = NullIfEmpty(Get(r, "estado_id")),
+                    posicion = NullIfEmpty(Get(r, "posicion")),
+                    laboratorio_id = _laboratorioId
+                };
             }
 
             Pg.UseSheet("bloques_int");
@@ -417,15 +451,22 @@ namespace BARI_web.Features.Espacios.Pages
 
                 var materialId = NullIfEmpty(Get(r, "material_montaje_id"));
                 var mesonId = NullIfEmpty(Get(r, "meson_id"));
-                var hasMaterial = !string.IsNullOrWhiteSpace(materialId) && _materialesLookup.ContainsKey(materialId!);
-                var hasMeson = !string.IsNullOrWhiteSpace(mesonId) && _mesonesLookup.ContainsKey(mesonId!);
-                if (!hasMaterial && !hasMeson)
-                {
-                    continue;
-                }
-                if (hasMaterial && hasMeson)
+                if (!string.IsNullOrWhiteSpace(materialId)
+                    && !string.IsNullOrWhiteSpace(mesonId))
                 {
                     mesonId = null;
+                }
+                if (!string.IsNullOrWhiteSpace(materialId) && !_materialesMontaje.ContainsKey(materialId))
+                {
+                    var fallbackName = _materialesLookup.TryGetValue(materialId, out var name) ? name : materialId;
+                    _materialesMontaje[materialId] = new MaterialMontaje
+                    {
+                        material_id = materialId,
+                        area_id = a.AreaId,
+                        nombre = fallbackName,
+                        laboratorio_id = _laboratorioId
+                    };
+                    _materialesLookup[materialId] = fallbackName;
                 }
 
                 var offsetX = Dec(Get(r, "offset_x", "0"));
@@ -1713,6 +1754,30 @@ namespace BARI_web.Features.Espacios.Pages
 
                     }
 
+                // 1.5) — MATERIALES DE MONTAJE
+                if (_materialesMontaje.Count > 0)
+                {
+                    Pg.UseSheet("materiales_montaje");
+                    foreach (var mat in _materialesMontaje.Values)
+                    {
+                        var toSave = new Dictionary<string, object>
+                        {
+                            ["nombre"] = mat.nombre,
+                            ["estado_id"] = string.IsNullOrWhiteSpace(mat.estado_id) ? (object)DBNull.Value : mat.estado_id!,
+                            ["area_id"] = mat.area_id,
+                            ["posicion"] = string.IsNullOrWhiteSpace(mat.posicion) ? (object)DBNull.Value : mat.posicion!,
+                            ["laboratorio_id"] = mat.laboratorio_id
+                        };
+
+                        var ok = await Pg.UpdateByIdAsync("material_id", mat.material_id, toSave);
+                        if (!ok)
+                        {
+                            toSave["material_id"] = mat.material_id;
+                            await Pg.CreateAsync(toSave);
+                        }
+                    }
+                }
+
 
                 // 2) — INSTALACIONES (padre)
                 if (_instalaciones.Count > 0)
@@ -1925,74 +1990,59 @@ namespace BARI_web.Features.Espacios.Pages
         private string PointsString(IEnumerable<Point> points)
             => string.Join(" ", points.Select(p => $"{S(p.X)},{S(p.Y)}"));
 
-        private async Task AgregarMeson()
+        private void CrearMesonRegistro()
         {
-            if (_area is null || _area.Polys.Count == 0 || _canvas is null) return;
+            if (_area is null) return;
 
-            var parent = _area.Polys[0];
-
-            // tamaño por defecto (m)
-            var w = Math.Min(1.2m, parent.ancho_m * 0.4m);
-            var h = Math.Min(0.8m, parent.alto_m * 0.4m);
-
-            // centrar dentro del parent
-            var rx = Math.Max(0m, (parent.ancho_m - w) / 2m);
-            var ry = Math.Max(0m, (parent.alto_m - h) / 2m);
-
-            var innerId = $"pin_{Guid.NewGuid():N}".Substring(0, 12);
             var mesonId = $"mes_{Guid.NewGuid():N}".Substring(0, 12);
-
-            var it = new InnerItem
-            {
-                poly_in_id = innerId,
-                area_poly_id = parent.poly_id,
-
-                canvas_id = _canvas.canvas_id,
-                area_id = _area.AreaId,
-
-                eje_x_rel_m = rx,
-                eje_y_rel_m = ry,
-                eje_z_rel_m = 0m,
-
-                ancho_m = w,
-                profundo_m = 0.6m,
-                alto_m = h,
-
-                yaw_deg = 0m,
-                pivot_kind = "center",
-                offset_x_m = 0m,
-                offset_y_m = 0m,
-                offset_z_m = 0m,
-
-                z_order = 50,
-
-                label = "MESÓN",
-                fill = "#4B5563",
-                opacidad = 0.35m,
-
-                meson_id = mesonId,
-                instalacion_id = null
-            };
-            it.abs_x = parent.x_m + it.eje_x_rel_m;
-            it.abs_y = parent.y_m + it.eje_y_rel_m;
-
-            _inners.Add(it);
-            _mapIn[it.poly_in_id] = it;
-            _selIn = it.poly_in_id;
+            var nombre = string.IsNullOrWhiteSpace(_nuevoMesonNombre)
+                ? PickNombreUnico(_area.AreaId, _mesones.Values)
+                : _nuevoMesonNombre.Trim();
 
             _mesones[mesonId] = new Meson
             {
                 meson_id = mesonId,
                 area_id = _area.AreaId,
-                nombre_meson = PickNombreUnico(_area.AreaId, _mesones.Values), // <-- clave
-                ancho_cm = 100,
-                largo_cm = 200,
-                profundidad_cm = 60,
-                niveles_totales = 1
+                nombre_meson = nombre,
+                ancho_cm = _nuevoMesonAnchoCm,
+                largo_cm = _nuevoMesonLargoCm,
+                profundidad_cm = _nuevoMesonProfundidadCm,
+                niveles_totales = _nuevoMesonNiveles
             };
-            _mesonesLookup[mesonId] = _mesones[mesonId].nombre_meson;
+            _mesonesLookup[mesonId] = nombre;
 
+            _nuevoMesonNombre = "";
+            _nuevoMesonMsg = "Mesón registrado (recuerda guardar).";
+            StateHasChanged();
+        }
 
+        private void CrearMaterialMontaje()
+        {
+            if (_area is null) return;
+
+            var nombre = (_nuevoMaterialNombre ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(nombre))
+            {
+                _nuevoMaterialMsg = "Ingresa un nombre para el material.";
+                return;
+            }
+
+            var materialId = $"mat_{Guid.NewGuid():N}".Substring(0, 12);
+            _materialesMontaje[materialId] = new MaterialMontaje
+            {
+                material_id = materialId,
+                area_id = _area.AreaId,
+                nombre = nombre,
+                estado_id = string.IsNullOrWhiteSpace(_nuevoMaterialEstado) ? null : _nuevoMaterialEstado.Trim(),
+                posicion = string.IsNullOrWhiteSpace(_nuevoMaterialPosicion) ? null : _nuevoMaterialPosicion.Trim(),
+                laboratorio_id = _laboratorioId
+            };
+            _materialesLookup[materialId] = nombre;
+
+            _nuevoMaterialNombre = "";
+            _nuevoMaterialEstado = null;
+            _nuevoMaterialPosicion = null;
+            _nuevoMaterialMsg = "Material registrado (recuerda guardar).";
             StateHasChanged();
         }
 
