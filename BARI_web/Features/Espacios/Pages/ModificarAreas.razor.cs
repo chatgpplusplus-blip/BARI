@@ -2316,8 +2316,14 @@ namespace BARI_web.Features.Espacios.Pages
                && IsCanvasMatch(meta.canvas_id);
 
         private bool IsCanvasMatch(string? canvasId)
-            => string.IsNullOrWhiteSpace(canvasId)
+            => AllowCrossCanvasAreas()
+               || string.IsNullOrWhiteSpace(canvasId)
                || string.Equals(canvasId, _canvas?.canvas_id ?? "", StringComparison.OrdinalIgnoreCase);
+
+        private bool AllowCrossCanvasAreas()
+            => !_areasMeta.Values.Any(meta =>
+                   string.Equals(meta.planta_id ?? "", _currentPlantaId ?? "", StringComparison.OrdinalIgnoreCase)
+                   && string.Equals(meta.canvas_id ?? "", _canvas?.canvas_id ?? "", StringComparison.OrdinalIgnoreCase));
 
         // Área por defecto en la planta activa
         private string? DefaultAreaIdForCurrentPlanta()
