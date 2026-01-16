@@ -207,14 +207,18 @@ namespace BARI_web.Features.Espacios.Pages
         {
             try
             {
-                // ===== Canvas
-                Pg.UseSheet("canvas_lab");
-                var c = (await Pg.ReadAllAsync()).FirstOrDefault();
-                if (c is null) { _saveMsg = "No hay canvas_lab."; return; }
-                _canvas = new CanvasLab(c["canvas_id"], c["nombre"], Dec(c["ancho_m"]), Dec(c["alto_m"]), Dec(c["margen_m"]));
-
                 // ===== Resolver área desde slug
                 var targetAreaId = await ResolveAreaIdFromSlug(AreaSlug);
+
+                // ===== Canvas (según área)
+                var canvasIdForArea = await ResolveCanvasForArea(targetAreaId);
+                Pg.UseSheet("canvas_lab");
+                var canvases = await Pg.ReadAllAsync();
+                var c = !string.IsNullOrWhiteSpace(canvasIdForArea)
+                    ? canvases.FirstOrDefault(row => string.Equals(row["canvas_id"], canvasIdForArea, StringComparison.OrdinalIgnoreCase))
+                    : canvases.FirstOrDefault();
+                if (c is null) { _saveMsg = "No hay canvas_lab."; return; }
+                _canvas = new CanvasLab(c["canvas_id"], c["nombre"], Dec(c["ancho_m"]), Dec(c["alto_m"]), Dec(c["margen_m"]));
 
                 // ===== Polígonos del área
                 List<Poly> polys = new();
@@ -1845,6 +1849,22 @@ namespace BARI_web.Features.Espacios.Pages
                     return kv.Key;
             }
             return candidate;
+        }
+
+        private async Task<string?> ResolveCanvasForArea(string areaId)
+        {
+            if (string.IsNullOrWhiteSpace(areaId)) return null;
+            try
+            {
+                Pg.UseSheet("areas");
+                foreach (var r in await Pg.ReadAllAsync())
+                {
+                    if (!string.Equals(Get(r, "area_id"), areaId, StringComparison.OrdinalIgnoreCase)) continue;
+                    return NullIfEmpty(Get(r, "canvas_id"));
+                }
+            }
+            catch { }
+            return null;
         }
 
 
