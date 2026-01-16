@@ -314,7 +314,7 @@
                         <option value="@opt.id">@opt.label</option>
                     }
                 </select>
-                <button class="btn" @onclick="() => AssignMaterialAsync(\"materiales_vidrio\", _selectedMaterialVidrioId)" disabled="@string.IsNullOrWhiteSpace(_selectedMaterialVidrioId)">Asignar</button>
+                <button class="btn" @onclick='@(() => AssignMaterialAsync("materiales_vidrio", _selectedMaterialVidrioId))' disabled="@string.IsNullOrWhiteSpace(_selectedMaterialVidrioId)">Asignar</button>
             </div>
             @if (_materialesVidrio.Count == 0)
             {
@@ -339,7 +339,7 @@
                         <option value="@opt.id">@opt.label</option>
                     }
                 </select>
-                <button class="btn" @onclick="() => AssignMaterialAsync(\"materiales_montaje\", _selectedMaterialMontajeId)" disabled="@string.IsNullOrWhiteSpace(_selectedMaterialMontajeId)">Asignar</button>
+                <button class="btn" @onclick='@(() => AssignMaterialAsync("materiales_montaje", _selectedMaterialMontajeId))' disabled="@string.IsNullOrWhiteSpace(_selectedMaterialMontajeId)">Asignar</button>
             </div>
             @if (_materialesMontaje.Count == 0)
             {
@@ -364,7 +364,7 @@
                         <option value="@opt.id">@opt.label</option>
                     }
                 </select>
-                <button class="btn" @onclick="() => AssignMaterialAsync(\"materiales_consumible\", _selectedMaterialConsumibleId)" disabled="@string.IsNullOrWhiteSpace(_selectedMaterialConsumibleId)">Asignar</button>
+                <button class="btn" @onclick='@(() => AssignMaterialAsync("materiales_consumible", _selectedMaterialConsumibleId))' disabled="@string.IsNullOrWhiteSpace(_selectedMaterialConsumibleId)">Asignar</button>
             </div>
             @if (_materialesConsumible.Count == 0)
             {
