@@ -1169,30 +1169,46 @@ namespace BARI_web.Features.Espacios.Pages
             var areaPolyIds = a.Polys.Select(p => p.poly_id).ToHashSet(StringComparer.OrdinalIgnoreCase);
             var needed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            Pg.UseSheet("poligonos_interiores");
-            foreach (var r in await Pg.ReadAllAsync())
+            try
             {
-                var pid = Get(r, "area_poly_id");
-                if (!areaPolyIds.Contains(pid)) continue;
-                var insId = NullIfEmpty(Get(r, "instalacion_id"));
-                if (!string.IsNullOrEmpty(insId)) needed.Add(insId);
+                Pg.UseSheet("poligonos_interiores");
+                foreach (var r in await Pg.ReadAllAsync())
+                {
+                    var pid = Get(r, "area_poly_id");
+                    if (!areaPolyIds.Contains(pid)) continue;
+                    var insId = NullIfEmpty(Get(r, "instalacion_id"));
+                    if (!string.IsNullOrEmpty(insId)) needed.Add(insId);
+                }
+            }
+            catch
+            {
+                _instalaciones.Clear();
+                return;
             }
             if (needed.Count == 0) return;
 
             // 2) leer instalaciones
             var tmp = new Dictionary<string, InstalacionView>(StringComparer.OrdinalIgnoreCase);
-            Pg.UseSheet("instalaciones");
-            foreach (var r in await Pg.ReadAllAsync())
+            try
             {
-                var id = Get(r, "instalacion_id");
-                if (!needed.Contains(id)) continue;
-                tmp[id] = new InstalacionView
+                Pg.UseSheet("instalaciones");
+                foreach (var r in await Pg.ReadAllAsync())
                 {
-                    instalacion_id = id,
-                    nombre = Get(r, "nombre"),
-                    tipo_id = NullIfEmpty(Get(r, "tipo_id")),
-                    notas = NullIfEmpty(Get(r, "notas"))
-                };
+                    var id = Get(r, "instalacion_id");
+                    if (!needed.Contains(id)) continue;
+                    tmp[id] = new InstalacionView
+                    {
+                        instalacion_id = id,
+                        nombre = Get(r, "nombre"),
+                        tipo_id = NullIfEmpty(Get(r, "tipo_id")),
+                        notas = NullIfEmpty(Get(r, "notas"))
+                    };
+                }
+            }
+            catch
+            {
+                _instalaciones.Clear();
+                return;
             }
 
             // 3) nombres y descripción de tipos
