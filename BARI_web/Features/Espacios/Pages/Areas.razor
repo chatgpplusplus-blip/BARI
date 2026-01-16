@@ -1,9 +1,6 @@
 ﻿@page "/areas"
 @namespace BARI_web.Features.Espacios.Pages
 
-@* Precalcular áreas visibles en esta render *@
-@{ var currentAreas = _byArea.Where(kv => IsAreaInCurrentPlanta(kv.Key)).ToList(); }
-
 <section class="page-card" style="margin-bottom:1.5rem;">
     <h2>Áreas del Laboratorio</h2>
     <p>
@@ -19,7 +16,8 @@
         <h2 class="text-2xl" style="margin:0">Mapa del Laboratorio</h2>
 
         <!-- SELECTOR DE PLANTA (usa @bind en .NET6+) -->
-        <select class="btn" style="margin-right:.5rem" @bind="_currentPlantaId">
+        <select class="btn" style="margin-right:.5rem" value="@_currentPlantaId"
+                @onchange="e => OnChangePlanta(e.Value?.ToString())">
             @foreach (var plantaKv in _plantasLookup)
             {
                 <option value="@plantaKv.Key">@plantaKv.Value</option>
@@ -31,92 +29,100 @@
         </button>
     </div>
 
-    @if (_canvas is null)
+    @if (_canvasViews.Count == 0)
     {
         <p>Cargando...</p>
     }
     else
     {
-        <div style="border:1px solid #e5e7eb; aspect-ratio:@AspectRatioString(); width:100%;">
-            <svg width="100%" height="100%" viewBox="@ViewBox()" preserveAspectRatio="xMidYMid meet">
-                <defs>
-                    <!-- Fondo -->
-                    <rect id="bg" x="0" y="0" width="@S(Wm)" height="@S(Hm)" />
+        @foreach (var view in _canvasViews)
+        {
+            var canvas = view.Canvas;
+            var currentAreas = view.Areas.Where(kv => IsAreaInCurrentPlanta(kv.Key)).ToList();
 
-                    <!-- Grilla con pattern: mucho menos DOM que cientos de <line> -->
-                    <pattern id="grid1m" width="@S(1m)" height="@S(1m)" patternUnits="userSpaceOnUse">
-                        <path d="M 0 0 L 1 0 M 0 0 L 0 1"
-                              stroke="#f1f1f1"
-                              stroke-width="@S(0.02)"
-                              vector-effect="non-scaling-stroke" />
-                    </pattern>
+            <div style="margin-bottom:1rem;">
+                <h3 style="margin:.5rem 0">@canvas.nombre</h3>
+                <div style="border:1px solid #e5e7eb; aspect-ratio:@AspectRatioString(canvas); width:100%;">
+                    <svg width="100%" height="100%" viewBox="@ViewBox(canvas)" preserveAspectRatio="xMidYMid meet">
+                        <defs>
+                            <!-- Fondo -->
+                            <rect id="bg-@canvas.canvas_id" x="0" y="0" width="@S(canvas.ancho_m)" height="@S(canvas.alto_m)" />
 
-                </defs>
+                            <!-- Grilla con pattern: mucho menos DOM que cientos de <line> -->
+                            <pattern id="grid1m-@canvas.canvas_id" width="@S(1m)" height="@S(1m)" patternUnits="userSpaceOnUse">
+                                <path d="M 0 0 L 1 0 M 0 0 L 0 1"
+                                      stroke="#f1f1f1"
+                                      stroke-width="@S(0.02)"
+                                      vector-effect="non-scaling-stroke" />
+                            </pattern>
+                        </defs>
 
-                <!-- fondo + grilla -->
-                <use href="#bg" fill="white" />
-                <rect x="0" y="0" width="@S(Wm)" height="@S(Hm)" fill="url(#grid1m)" />
+                        <!-- fondo + grilla -->
+                        <use href="#bg-@canvas.canvas_id" fill="white" />
+                        <rect x="0" y="0" width="@S(canvas.ancho_m)" height="@S(canvas.alto_m)" fill="url(#grid1m-@canvas.canvas_id)" />
 
-                <!-- Áreas visibles -->
-                @foreach (var areaKv in currentAreas)
-                {
-                    var aidMain = areaKv.Key; var aInfo = areaKv.Value;
-                    var areaW = aInfo.MaxX - aInfo.MinX; var areaH = aInfo.MaxY - aInfo.MinY;
+                        <!-- Áreas visibles -->
+                        @foreach (var areaKv in currentAreas)
+                        {
+                            var aidMain = areaKv.Key; var aInfo = areaKv.Value;
+                            var areaW = aInfo.MaxX - aInfo.MinX; var areaH = aInfo.MaxY - aInfo.MinY;
 
-                    @foreach (var poly in aInfo.Polys)
-                    {
-                        <polygon points="@PointsString(poly)"
-                                 fill="@aInfo.Fill"
-                                 stroke="#000" stroke-width="@S(OutlineStroke)"
-                                 vector-effect="non-scaling-stroke" />
-                    }
+                            @foreach (var poly in aInfo.Polys)
+                            {
+                                <polygon points="@PointsString(poly)"
+                                         fill="@aInfo.Fill"
+                                         stroke="#000" stroke-width="@S(OutlineStroke)"
+                                         vector-effect="non-scaling-stroke" />
+                            }
 
-                    @if (!string.IsNullOrWhiteSpace(aInfo.Label))
-                    {
-                        var fit = FitLabel(aInfo);
-                        var fs = fit.fs; var pillW = fit.pillW; var pillH = fit.pillH;
-                        var cx = aInfo.Cx; var cy = aInfo.Cy;
+                            @if (!string.IsNullOrWhiteSpace(aInfo.Label))
+                            {
+                                var fit = FitLabel(aInfo);
+                                var fs = fit.fs; var pillW = fit.pillW; var pillH = fit.pillH;
+                                var cx = aInfo.Cx; var cy = aInfo.Cy;
 
-                        <rect x="@S(cx - pillW/2)" y="@S(cy - pillH/2)" rx="@S(0.38m)" ry="@S(0.8m)"
-                              width="@S(pillW)" height="@S(pillH)"
-                              fill="#fff" opacity="0.95" />
+                                <rect x="@S(cx - pillW/2)" y="@S(cy - pillH/2)" rx="@S(0.38m)" ry="@S(0.8m)"
+                                      width="@S(pillW)" height="@S(pillH)"
+                                      fill="#fff" opacity="0.95" />
 
-                        <text>
-                            <tspan class="label-stroked"
-                                   x="@S(cx)" y="@S(cy)"
-                                   style="text-anchor:middle;dominant-baseline:middle"
-                                   font-size="@S(fs)" fill="#222"
-                                   textLength="@S(pillW - 2*TextPad)" lengthAdjust="spacingAndGlyphs">
-                                @aInfo.Label
-                            </tspan>
-                        </text>
-                    }
+                                <text>
+                                    <tspan class="label-stroked"
+                                           x="@S(cx)" y="@S(cy)"
+                                           style="text-anchor:middle;dominant-baseline:middle"
+                                           font-size="@S(fs)" fill="#222"
+                                           textLength="@S(pillW - 2*TextPad)" lengthAdjust="spacingAndGlyphs">
+                                        @aInfo.Label
+                                    </tspan>
+                                </text>
+                            }
 
-                    <!-- Capa de interacción -->
-                    <rect x="@S(aInfo.MinX)" y="@S(aInfo.MinY)" width="@S(areaW)" height="@S(areaH)"
-                          fill="transparent" style="cursor:@(string.IsNullOrEmpty(aInfo.AreaId) ? "default" : "pointer")"
-                          @onclick="@(()=>GoToArea(aInfo.AreaId))" />
-                }
+                            <!-- Capa de interacción -->
+                            <rect x="@S(aInfo.MinX)" y="@S(aInfo.MinY)" width="@S(areaW)" height="@S(areaH)"
+                                  fill="transparent" style="cursor:@(string.IsNullOrEmpty(aInfo.AreaId) ? "default" : "pointer")"
+                                  @onclick="@(()=>GoToArea(aInfo.AreaId))" />
+                        }
 
-                <!-- Puertas -->
-                @foreach (var doorItem in _doors.Where(IsDoorVisible))
-                {
-                    <line @key="doorItem.door_id"
-                          x1="@S(doorItem.x_m)" y1="@S(doorItem.y_m)"
-                          x2="@S(DoorEndX(doorItem))" y2="@S(DoorEndY(doorItem))"
-                          stroke="#13A076" stroke-width="@S(0.10m)" stroke-linecap="round" />
-                }
+                        <!-- Puertas -->
+                        @foreach (var doorItem in view.Doors.Where(IsDoorVisible))
+                        {
+                            <line @key="doorItem.door_id"
+                                  x1="@S(doorItem.x_m)" y1="@S(doorItem.y_m)"
+                                  x2="@S(DoorEndX(doorItem))" y2="@S(DoorEndY(doorItem))"
+                                  stroke="#13A076" stroke-width="@S(0.10m)" stroke-linecap="round" />
+                        }
 
-                <!-- Ventanas -->
-                @foreach (var winItem in _windows.Where(IsWinVisible))
-                {
-                    <line @key="winItem.win_id"
-                          x1="@S(winItem.x_m)" y1="@S(winItem.y_m)"
-                          x2="@S(WinEndX(winItem))" y2="@S(WinEndY(winItem))"
-                          stroke="#66CCFF" stroke-width="@S(0.05m)" stroke-linecap="round" />
-                }
-            </svg>
-        </div>
+                        <!-- Ventanas -->
+                        @foreach (var winItem in view.Windows.Where(IsWinVisible))
+                        {
+                            <line @key="winItem.win_id"
+                                  x1="@S(winItem.x_m)" y1="@S(winItem.y_m)"
+                                  x2="@S(WinEndX(winItem))" y2="@S(WinEndY(winItem))"
+                                  stroke="#66CCFF" stroke-width="@S(0.05m)" stroke-linecap="round" />
+                        }
+                    </svg>
+                </div>
+            </div>
+        }
 
         <!-- === Índice de Áreas (planta actual) con mesones/instalaciones === -->
         <div style="margin-top:1rem; border:1px solid #e5e7eb; border-radius:.5rem; padding:.75rem; background:#fff">
@@ -125,7 +131,7 @@
                     Áreas de @(_plantasLookup.TryGetValue(_currentPlantaId ?? "", out var _p) ? _p : "Planta")
                 </summary>
 
-                @foreach (var areaKv2 in currentAreas.OrderBy(k => k.Value.Label, StringComparer.OrdinalIgnoreCase))
+                @foreach (var areaKv2 in _byArea.Where(kv => IsAreaInCurrentPlanta(kv.Key)).OrderBy(k => k.Value.Label, StringComparer.OrdinalIgnoreCase))
                 {
                     var aidList = areaKv2.Key; var aList = areaKv2.Value;
                     var mes = _mesonesPorArea.TryGetValue(aidList, out var lm) ? lm : new List<MesonSummary>();

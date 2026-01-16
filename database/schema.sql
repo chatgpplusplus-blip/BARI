@@ -133,6 +133,7 @@ CREATE TABLE canvas_lab (
   ancho_m numeric NOT NULL,
   alto_m numeric NOT NULL,
   margen_m numeric NOT NULL,
+  laboratorio_id integer REFERENCES laboratorios(laboratorio_id),
   anotaciones text
 );
 
