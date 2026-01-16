@@ -862,3 +862,15 @@ namespace BARI_web.Features.Espacios.Pages
         private static string Get(Dictionary<string, string> d, string key, string fallback = "") => d.TryGetValue(key, out var v) ? v : fallback;
     }
 }
+
+namespace BARI_web.Features.Espacios.Pages
+{
+    public sealed class MaterialMontajeView
+    {
+        public string material_id { get; set; } = "";
+        public string area_id { get; set; } = "";
+        public string nombre { get; set; } = "";
+        public string? estado_id { get; set; }
+        public string? posicion { get; set; }
+    }
+}
