@@ -10,7 +10,7 @@
         </button>
         <button type="button" class="btn" style="margin-left:.5rem"
                 @onclick="@(()=>Nav.NavigateTo($"/modificar-detalles/{AreaSlug}"))">
-            Editar instalaciones / mesones
+            Editar materiales de montaje / mesones
         </button>
 
     </div>
@@ -161,7 +161,7 @@
             </div>
         }
 
-        <!-- === Panel de listas: Mesones e Instalaciones === -->
+        <!-- === Panel de listas: Mesones y Materiales de montaje === -->
         <div style="margin-top:1rem; border:1px solid #e5e7eb; border-radius:.5rem; padding:.75rem; background:#fff">
             <details open>
                 <summary style="cursor:pointer; font-weight:600">
@@ -195,44 +195,38 @@
 
             <details open style="margin-top:.75rem">
                 <summary style="cursor:pointer; font-weight:600">
-                    Instalaciones (@_instalaciones.Count)
+                    Materiales de montaje (@_materialesMontaje.Count)
                 </summary>
+                <div class="assign-row" style="margin-top:.5rem">
+                    <select class="border p-1" @bind="_selectedMaterialMontajeId">
+                        <option value="">Selecciona material</option>
+                        @foreach (var opt in _materialesMontajeDisponibles)
+                        {
+                            <option value="@opt.id">@opt.label</option>
+                        }
+                    </select>
+                    <button class="btn" @onclick='@(() => AssignMaterialAsync("materiales_montaje", _selectedMaterialMontajeId))' disabled="@string.IsNullOrWhiteSpace(_selectedMaterialMontajeId)">Asignar</button>
+                </div>
                 <ul style="list-style:none; padding-left:0; margin:.5rem 0 0">
-                    @if (_instalaciones.Count == 0)
+                    @if (_materialesMontaje.Count == 0)
                     {
-                        <li style="color:#6b7280"><em>Sin instalaciones.</em></li>
+                        <li style="color:#6b7280"><em>Sin materiales de montaje.</em></li>
                     }
                     else
                     {
-                        @foreach (var ins in _instalaciones)
+                        @foreach (var item in _materialesMontaje)
                         {
                             <li style="padding:.5rem 0; border-bottom:1px dashed #eee">
-                                <div style="display:flex; align-items:center; justify-content:space-between;">
-                                    <div>
-                                        <strong>@ins.nombre</strong>
-                                        @if (!string.IsNullOrWhiteSpace(ins.tipo_nombre))
-                                        {
-                                            <span style="margin-left:.5rem; font-size:.8rem; background:#e5f9f1; color:#047857; padding:.05rem .4rem; border-radius:.4rem">
-                                                @ins.tipo_nombre
-                                            </span>
-                                        }
-                                    </div>
-                                    <button type="button" class="btn link"
-                                            @onclick='@(() => Nav.NavigateTo($"/detalles-instalacion/{ins.instalacion_id}"))'>
-                                        ver
-                                    </button>
+                                <div>
+                                    <strong>@item.nombre</strong>
                                 </div>
-
-                                @if (!string.IsNullOrWhiteSpace(ins.tipo_descripcion))
-                                {
-                                    <div style="color:#4b5563; font-size:.9rem; margin-top:.25rem">
-                                        @ins.tipo_descripcion
-                                    </div>
-                                }
-                                @if (!string.IsNullOrWhiteSpace(ins.notas))
-                                {
-                                    <div style="color:#6b7280; font-size:.85rem; margin-top:.15rem"><em>@ins.notas</em></div>
-                                }
+                                <div style="color:#4b5563; font-size:.9rem; margin-top:.15rem">
+                                    @item.detalle
+                                    @if (!string.IsNullOrWhiteSpace(item.posicion))
+                                    {
+                                        <span class="muted"> · @item.posicion</span>
+                                    }
+                                </div>
                             </li>
                         }
                     }
@@ -324,31 +318,6 @@
             {
                 <ul class="simple-list">
                     @foreach (var item in _materialesVidrio)
-                    {
-                        <li><strong>@item.nombre</strong> · @item.detalle</li>
-                    }
-                </ul>
-            }
-
-            <h4 style="margin:.8rem 0 0">Montaje (@_materialesMontaje.Count)</h4>
-            <div class="assign-row">
-                <select class="border p-1" @bind="_selectedMaterialMontajeId">
-                    <option value="">Selecciona material</option>
-                    @foreach (var opt in _materialesMontajeDisponibles)
-                    {
-                        <option value="@opt.id">@opt.label</option>
-                    }
-                </select>
-                <button class="btn" @onclick='@(() => AssignMaterialAsync("materiales_montaje", _selectedMaterialMontajeId))' disabled="@string.IsNullOrWhiteSpace(_selectedMaterialMontajeId)">Asignar</button>
-            </div>
-            @if (_materialesMontaje.Count == 0)
-            {
-                <p class="muted">Sin materiales de montaje.</p>
-            }
-            else
-            {
-                <ul class="simple-list">
-                    @foreach (var item in _materialesMontaje)
                     {
                         <li><strong>@item.nombre</strong> · @item.detalle</li>
                     }

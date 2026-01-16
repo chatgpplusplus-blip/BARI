@@ -761,18 +761,8 @@ namespace BARI_web.Features.Espacios.Pages
             public string nombre_meson { get; set; } = "";
         }
 
-        private class InstalacionView
-        {
-            public string instalacion_id { get; set; } = "";
-            public string nombre { get; set; } = "";
-            public string? tipo_id { get; set; }
-            public string? tipo_nombre { get; set; }
-            public string? tipo_descripcion { get; set; }
-            public string? notas { get; set; }
-        }
-
         private Dictionary<string, List<MesonSummary>> _mesonesPorArea = new(StringComparer.OrdinalIgnoreCase);
-        private Dictionary<string, List<InstalacionView>> _instalacionesPorArea = new(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, List<MaterialMontajeView>> _materialesMontajePorArea = new(StringComparer.OrdinalIgnoreCase);
 
         private async Task BuildAreaSideListsAsync()
         {
@@ -800,11 +790,8 @@ namespace BARI_web.Features.Espacios.Pages
                 foreach (var p in kv.Value.Polys)
                     polyToArea[p.poly_id] = kv.Key;
 
-            // ===== Desde poligonos_interiores: instalaciones + override de nombre de mesón =====
+            // ===== Desde poligonos_interiores: override de nombre de mesón =====
             _mesonLabelFromInner.Clear();
-            var neededInst = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var instArea = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
             try
             {
                 Pg.UseSheet("poligonos_interiores");
@@ -812,14 +799,6 @@ namespace BARI_web.Features.Espacios.Pages
                 {
                     var pid = Get(r, "area_poly_id");
                     if (!polyToArea.TryGetValue(pid, out var aidOfPoly)) continue;
-
-                    // Instalaciones (para contarlas y listarlas por área)
-                    var insId = NullIfEmpty(Get(r, "instalacion_id"));
-                    if (!string.IsNullOrEmpty(insId))
-                    {
-                        neededInst.Add(insId);
-                        instArea[insId] = aidOfPoly; // último gana (válido para nuestro caso)
-                    }
 
                     // OVERRIDE de nombre de mesón en la lista (si este inner pertenece a un mesón)
                     var mesonId = NullIfEmpty(Get(r, "meson_id"));
@@ -845,54 +824,28 @@ namespace BARI_web.Features.Espacios.Pages
                               g => g.OrderBy(x => x.nombre_meson, StringComparer.OrdinalIgnoreCase).ToList(),
                               StringComparer.OrdinalIgnoreCase);
 
-            // ===== Cargar metadatos de instalaciones (solo las necesarias) =====
-            var tmpInst = new Dictionary<string, InstalacionView>(StringComparer.OrdinalIgnoreCase);
-            if (neededInst.Count > 0)
+            // ===== Materiales de montaje por área =====
+            var tmpMontaje = new List<MaterialMontajeView>();
+            try
             {
-                try
+                Pg.UseSheet("materiales_montaje");
+                foreach (var r in await Pg.ReadAllAsync())
                 {
-                    Pg.UseSheet("instalaciones");
-                    foreach (var r in await Pg.ReadAllAsync())
+                    var areaId = Get(r, "area_id");
+                    tmpMontaje.Add(new MaterialMontajeView
                     {
-                        var id = Get(r, "instalacion_id");
-                        if (!neededInst.Contains(id)) continue;
-                        tmpInst[id] = new InstalacionView
-                        {
-                            instalacion_id = id,
-                            nombre = Get(r, "nombre"),
-                            tipo_id = NullIfEmpty(Get(r, "tipo_id")),
-                            notas = NullIfEmpty(Get(r, "notas"))
-                        };
-                    }
+                        material_id = Get(r, "material_id"),
+                        area_id = areaId,
+                        nombre = Get(r, "nombre"),
+                        estado_id = NullIfEmpty(Get(r, "estado_id")),
+                        posicion = NullIfEmpty(Get(r, "posicion"))
+                    });
                 }
-                catch { }
-
-                try
-                {
-                    Pg.UseSheet("instalaciones_tipo");
-                    var tipoNombre = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                    var tipoNotas = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-                    foreach (var r in await Pg.ReadAllAsync())
-                    {
-                        var tid = Get(r, "tipo_id");
-                        tipoNombre[tid] = Get(r, "nombre");
-                        tipoNotas[tid] = NullIfEmpty(Get(r, "notas"));
-                    }
-                    foreach (var it in tmpInst.Values)
-                    {
-                        if (!string.IsNullOrEmpty(it.tipo_id) && tipoNombre.TryGetValue(it.tipo_id, out var tn))
-                        {
-                            it.tipo_nombre = tn;
-                            it.tipo_descripcion = tipoNotas.TryGetValue(it.tipo_id, out var td) ? td : null;
-                        }
-                    }
-                }
-                catch { }
             }
+            catch { }
 
-            // Agrupa instalaciones por el área detectada desde el inner
-            _instalacionesPorArea = tmpInst.Values
-                .GroupBy(v => instArea.TryGetValue(v.instalacion_id, out var aid) ? aid : "", StringComparer.OrdinalIgnoreCase)
+            _materialesMontajePorArea = tmpMontaje
+                .GroupBy(m => m.area_id ?? "", StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(g => g.Key,
                               g => g.OrderBy(x => x.nombre, StringComparer.OrdinalIgnoreCase).ToList(),
                               StringComparer.OrdinalIgnoreCase);
