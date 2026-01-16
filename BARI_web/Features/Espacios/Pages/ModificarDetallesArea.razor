@@ -3,7 +3,7 @@
 
 <div class="areas-wrap">
     <div class="toolbar">
-        <h2 class="text-2xl" style="margin:0">Editar instalaciones y mesones — @(_area?.Label ?? AreaSlug)</h2>
+        <h2 class="text-2xl" style="margin:0">Editar materiales de montaje y mesones — @(_area?.Label ?? AreaSlug)</h2>
 
         <button type="button" class="btn" @onclick="@(()=>Nav.NavigateTo($"/detalles/{AreaSlug}"))">
             Volver a detalles
@@ -163,38 +163,8 @@
                 <div class="under-canvas-actions">
                     <div class="btn-row">
                         <button class="px-3 py-2 border rounded" @onclick="AgregarMeson">+ Agregar mesón</button>
-                        <button class="px-3 py-2 border rounded" @onclick="AgregarInstalacion">+ Agregar instalación</button>
-                        <button class="px-3 py-2 border rounded" @onclick="AbrirNuevoTipoInstalacion">+ Tipo de instalación</button>
                         <button class="px-3 py-2 border rounded text-red-600 border-red-300" @onclick="EliminarInner" disabled="@(_selIn is null)">Eliminar seleccionado</button>
-
                     </div>
-
-                    <!-- Panel NUEVO TIPO DE INSTALACIÓN -->
-                    @if (_showTipoInstalacionPanel)
-                    {
-                        <div class="panel-box" @onclick:stopPropagation="true">
-                            <div class="panel-header">
-                                <div class="panel-title">Nuevo tipo de instalación</div>
-                                <button class="panel-close" title="Cerrar" @onclick="()=>_showTipoInstalacionPanel=false">✕</button>
-                            </div>
-
-                            <div class="grid grid-cols-2 gap-3 text-sm">
-                                <div class="col-span-2">
-                                    <label class="block text-xs text-gray-600 mb-1">Nombre del tipo</label>
-                                    <input class="border p-2 w-full" @bind="_nuevoTipo_Nombre" @bind:event="oninput" placeholder="p. ej. Heladera, Ducha, Surtidor..." />
-                                </div>
-                                <div class="col-span-2">
-                                    <label class="block text-xs text-gray-600 mb-1">Descripción</label>
-                                    <textarea class="border p-2 w-full" rows="2" @bind="_nuevoTipo_Descripcion"></textarea>
-                                </div>
-
-                                <div class="col-span-2 flex gap-2">
-                                    <button class="px-3 py-2 border rounded bg-black text-white" @onclick="ConfirmarCrearTipoInstalacion" disabled="@string.IsNullOrWhiteSpace(_nuevoTipo_Nombre)">Guardar tipo</button>
-                                    <button class="px-3 py-2 border rounded" @onclick="()=>_showTipoInstalacionPanel=false">Cancelar</button>
-                                </div>
-                            </div>
-                        </div>
-                    }
 
                     <div class="panel-box" style="margin-top:1rem">
                         <div class="panel-header">
@@ -202,16 +172,29 @@
                         </div>
                         <div class="grid grid-cols-2 gap-3 text-sm">
                             <div class="col-span-2">
-                                <label class="block text-xs text-gray-600 mb-1">Material (opcional)</label>
+                                <label class="block text-xs text-gray-600 mb-1">Material de montaje</label>
                                 <select class="border p-2 w-full"
                                         value="@(_newBlockMaterialId ?? "")"
-                                        @onchange="(e)=> _newBlockMaterialId = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? null : e.Value!.ToString()">
-                                    <option value="">— Sin material —</option>
+                                        @onchange="(e)=> OnSelectBlockMaterial(e.Value?.ToString())">
+                                    <option value="">— Selecciona un material —</option>
                                     @foreach (var kv in _materialesLookup)
                                     {
                                         <option value="@kv.Key">@kv.Value</option>
                                     }
                                 </select>
+                            </div>
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Mesón</label>
+                                <select class="border p-2 w-full"
+                                        value="@(_newBlockMesonId ?? "")"
+                                        @onchange="(e)=> OnSelectBlockMeson(e.Value?.ToString())">
+                                    <option value="">— Selecciona un mesón —</option>
+                                    @foreach (var kv in _mesonesLookup)
+                                    {
+                                        <option value="@kv.Key">@kv.Value</option>
+                                    }
+                                </select>
+                                <div class="text-xs text-gray-500 mt-1">Selecciona material o mesón (solo uno por bloque).</div>
                             </div>
                             <div class="col-span-2">
                                 <label class="block text-xs text-gray-600 mb-1">Etiqueta</label>
@@ -256,12 +239,18 @@
                                 <ul style="list-style:none; padding-left:0; margin:0">
                                     @foreach (var b in _blocks.OrderBy(b => b.z_order))
                                     {
+                                        var refLabel = !string.IsNullOrWhiteSpace(b.material_montaje_id) && _materialesLookup.TryGetValue(b.material_montaje_id, out var matName)
+                                            ? $"Material: {matName}"
+                                            : (!string.IsNullOrWhiteSpace(b.meson_id) && _mesonesLookup.TryGetValue(b.meson_id, out var mesName)
+                                                ? $"Mesón: {mesName}"
+                                                : "Sin vínculo");
                                         <li style="display:flex; align-items:center; justify-content:space-between; padding:.25rem 0; border-bottom:1px dashed #eee">
                                             <div>
                                                 <strong>@(b.etiqueta ?? b.bloque_id)</strong>
                                                 <div class="text-xs text-gray-500">
                                                     Offset: @S(b.offset_x), @S(b.offset_y)
                                                 </div>
+                                                <div class="text-xs text-gray-500">@refLabel</div>
                                             </div>
                                             <button type="button" class="btn link text-red-600" @onclick="() => EliminarBloque(b.bloque_id)">Eliminar</button>
                                         </li>
@@ -349,48 +338,6 @@
                         </div>
                     }
 
-                    <!-- INSTALACIÓN VINCULADA -->
-                    @if (!string.IsNullOrWhiteSpace(sel.instalacion_id) && _instalaciones.TryGetValue(sel.instalacion_id, out var ins))
-                    {
-                        <hr class="my-3" />
-                        <h4 class="font-semibold mb-2">Instalación vinculada</h4>
-                        <div class="grid grid-cols-2 gap-2 text-sm">
-                            <div class="col-span-2">
-                                <label class="block text-xs text-gray-600 mb-1">Nombre</label>
-                                <input class="border p-1 w-full"
-                                       @bind-value="ins.nombre"
-                                       @bind-value:event="oninput" />
-                            </div>
-
-                            <div>
-                                <label class="block text-xs text-gray-600 mb-1">Tipo</label>
-                                <select class="border p-1 w-full" @bind="ins.tipo_id">
-                                    <option value="">— Sin tipo —</option>
-                                    @if (_tiposInstalacion is not null)
-                                    {
-                                        @foreach (var kv in _tiposInstalacion)
-                                        {
-                                            <option value="@kv.Key">@kv.Value</option>
-                                        }
-                                    }
-                                </select>
-                            </div>
-
-
-                            <div>
-                                <label class="block text-xs text-gray-600 mb-1">Requiere mant.</label>
-                                <select class="border p-1 w-full" @bind="ins.requiere_mantenimiento">
-                                    <option value="false">No</option>
-                                    <option value="true">Sí</option>
-                                </select>
-                            </div>
-
-                            <div class="col-span-2">
-                                <label class="block text-xs text-gray-600 mb-1">Notas</label>
-                                <textarea class="border p-1 w-full" rows="2" @bind="ins.notas"></textarea>
-                            </div>
-                        </div>
-                    }
                 }
                 else
                 {
