@@ -147,6 +147,10 @@ namespace BARI_web.Features.Espacios.Pages
         private string? _drawMsg;
         private bool _drawAxisXOnly = false;
         private bool _drawAxisYOnly = false;
+        private string _newAreaName = string.Empty;
+        private string? _newAreaPlantaId;
+        private string? _newAreaMsg;
+        private bool _creatingArea = false;
 
         private string ViewBox()
         {
@@ -214,6 +218,7 @@ namespace BARI_web.Features.Espacios.Pages
 
             _currentPlantaId = ResolveInitialPlanta();
             _drawAreaId = DefaultAreaIdForCurrentPlanta();
+            _newAreaPlantaId = _currentPlantaId;
             _sel = _polys.FirstOrDefault(IsVisible);
             _selectedVertexIndex = -1;
             _draftPoints.Clear();
@@ -1385,10 +1390,12 @@ namespace BARI_web.Features.Espacios.Pages
                     if (plantaId != null && !_plantasLookup.ContainsKey(plantaId)) plantaId = null;
 
                     var anot = string.IsNullOrWhiteSpace(meta.anotaciones) ? "SIN MODIFICACIONES" : meta.anotaciones;
+                    meta.canvas_id ??= _canvas?.canvas_id;
 
                     var okArea = await Pg.UpdateByIdAsync("area_id", areaId, new Dictionary<string, object>
                     {
                         ["planta_id"] = plantaId ?? (object)DBNull.Value,
+                        ["canvas_id"] = meta.canvas_id ?? (object)DBNull.Value,
                         ["altura_m"] = meta.altura_m ?? (object)DBNull.Value,
                         ["area_total_m2"] = areaTotal,
                         ["anotaciones_del_area"] = anot
@@ -1401,6 +1408,7 @@ namespace BARI_web.Features.Espacios.Pages
                             ["area_id"] = areaId,
                             ["nombre_areas"] = _areasLookup[areaId],
                             ["planta_id"] = plantaId ?? (object)DBNull.Value,
+                            ["canvas_id"] = meta.canvas_id ?? (object)DBNull.Value,
                             ["altura_m"] = meta.altura_m ?? (object)DBNull.Value,
                             ["area_total_m2"] = areaTotal,
                             ["anotaciones_del_area"] = anot
@@ -1471,7 +1479,7 @@ namespace BARI_web.Features.Espacios.Pages
             if (string.IsNullOrWhiteSpace(d.area_id_a)) return false;
             return _areasMeta.TryGetValue(d.area_id_a!, out var meta)
                 && string.Equals(meta.planta_id ?? "", _currentPlantaId ?? "", StringComparison.OrdinalIgnoreCase)
-                && string.Equals(meta.canvas_id ?? "", _canvas?.canvas_id ?? "", StringComparison.OrdinalIgnoreCase);
+                && IsCanvasMatch(meta.canvas_id);
         }
 
         private bool IsWinVisible(Win w)
@@ -1479,14 +1487,14 @@ namespace BARI_web.Features.Espacios.Pages
             if (string.IsNullOrWhiteSpace(w.area_id_a)) return false;
             return _areasMeta.TryGetValue(w.area_id_a!, out var meta)
                 && string.Equals(meta.planta_id ?? "", _currentPlantaId ?? "", StringComparison.OrdinalIgnoreCase)
-                && string.Equals(meta.canvas_id ?? "", _canvas?.canvas_id ?? "", StringComparison.OrdinalIgnoreCase);
+                && IsCanvasMatch(meta.canvas_id);
         }
 
         private IEnumerable<KeyValuePair<string, string>> AreasOfCurrentPlanta()
             => _areasLookup.Where(kv =>
                 _areasMeta.TryGetValue(kv.Key, out var meta)
                 && string.Equals(meta.planta_id ?? "", _currentPlantaId ?? "", StringComparison.OrdinalIgnoreCase)
-                && string.Equals(meta.canvas_id ?? "", _canvas?.canvas_id ?? "", StringComparison.OrdinalIgnoreCase));
+                && IsCanvasMatch(meta.canvas_id));
 
         private void OnChangePlanta(string? plantaId)
         {
@@ -1496,7 +1504,38 @@ namespace BARI_web.Features.Espacios.Pages
                 _sel = _polys.FirstOrDefault(IsVisible);
 
             _drawAreaId = DefaultAreaIdForCurrentPlanta();
+            _newAreaPlantaId = _currentPlantaId;
             StateHasChanged();
+        }
+
+        private void OnSelectedAreaChange(string? areaId)
+        {
+            if (_sel is null)
+            {
+                return;
+            }
+
+            var nextId = string.IsNullOrWhiteSpace(areaId) ? null : areaId;
+            if (!IsAreaInCurrentPlanta(nextId))
+            {
+                _saveMsg = "El área seleccionada no pertenece a la planta actual.";
+                return;
+            }
+
+            _sel.area_id = nextId;
+            StateHasChanged();
+        }
+
+        private void OnDrawAreaChange(string? areaId)
+        {
+            var nextId = string.IsNullOrWhiteSpace(areaId) ? null : areaId;
+            if (!IsAreaInCurrentPlanta(nextId))
+            {
+                _drawMsg = "El área seleccionada no pertenece a la planta actual.";
+                return;
+            }
+
+            _drawAreaId = nextId;
         }
 
         private async Task OnChangeCanvas(string? canvasId)
@@ -1526,6 +1565,11 @@ namespace BARI_web.Features.Espacios.Pages
             if (string.IsNullOrWhiteSpace(_drawAreaId))
             {
                 _drawMsg = "Selecciona un área antes de dibujar.";
+                return;
+            }
+            if (!IsAreaInCurrentPlanta(_drawAreaId))
+            {
+                _drawMsg = "El área seleccionada no pertenece a la planta actual.";
                 return;
             }
 
@@ -1567,6 +1611,11 @@ namespace BARI_web.Features.Espacios.Pages
             if (string.IsNullOrWhiteSpace(_drawAreaId))
             {
                 _drawMsg = "Selecciona un área antes de cerrar el polígono.";
+                return;
+            }
+            if (!IsAreaInCurrentPlanta(_drawAreaId))
+            {
+                _drawMsg = "El área seleccionada no pertenece a la planta actual.";
                 return;
             }
 
@@ -2259,12 +2308,22 @@ namespace BARI_web.Features.Espacios.Pages
             => !string.IsNullOrWhiteSpace(areaId)
                && _areasMeta.TryGetValue(areaId!, out var meta)
                && string.Equals(meta.planta_id ?? "", _currentPlantaId ?? "", StringComparison.OrdinalIgnoreCase)
-               && string.Equals(meta.canvas_id ?? "", _canvas?.canvas_id ?? "", StringComparison.OrdinalIgnoreCase);
+               && IsCanvasMatch(meta.canvas_id);
 
         private bool IsAreaInCurrentCanvas(string? areaId)
             => !string.IsNullOrWhiteSpace(areaId)
                && _areasMeta.TryGetValue(areaId!, out var meta)
-               && string.Equals(meta.canvas_id ?? "", _canvas?.canvas_id ?? "", StringComparison.OrdinalIgnoreCase);
+               && IsCanvasMatch(meta.canvas_id);
+
+        private bool IsCanvasMatch(string? canvasId)
+            => AllowCrossCanvasAreas()
+               || string.IsNullOrWhiteSpace(canvasId)
+               || string.Equals(canvasId, _canvas?.canvas_id ?? "", StringComparison.OrdinalIgnoreCase);
+
+        private bool AllowCrossCanvasAreas()
+            => !_areasMeta.Values.Any(meta =>
+                   string.Equals(meta.planta_id ?? "", _currentPlantaId ?? "", StringComparison.OrdinalIgnoreCase)
+                   && string.Equals(meta.canvas_id ?? "", _canvas?.canvas_id ?? "", StringComparison.OrdinalIgnoreCase));
 
         // Área por defecto en la planta activa
         private string? DefaultAreaIdForCurrentPlanta()
@@ -2275,9 +2334,97 @@ namespace BARI_web.Features.Espacios.Pages
                 .Select(kv => kv.Key)
                 .FirstOrDefault(aid => _areasMeta.TryGetValue(aid, out var meta)
                                     && string.Equals(meta.planta_id ?? "", _currentPlantaId ?? "", StringComparison.OrdinalIgnoreCase)
-                                    && string.Equals(meta.canvas_id ?? "", _canvas?.canvas_id ?? "", StringComparison.OrdinalIgnoreCase));
+                                    && IsCanvasMatch(meta.canvas_id));
 
             return string.IsNullOrWhiteSpace(firstInPlanta) ? null : firstInPlanta;
+        }
+
+        private async Task CrearAreaAsync()
+        {
+            if (_canvas is null)
+            {
+                _newAreaMsg = "Selecciona un canvas antes de crear un área.";
+                return;
+            }
+
+            var nombre = _newAreaName.Trim();
+            if (string.IsNullOrWhiteSpace(nombre))
+            {
+                _newAreaMsg = "Ingresa un nombre para el área.";
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(_newAreaPlantaId) || !_plantasLookup.ContainsKey(_newAreaPlantaId))
+            {
+                _newAreaMsg = "Selecciona una planta válida.";
+                return;
+            }
+
+            _creatingArea = true;
+            _newAreaMsg = null;
+            try
+            {
+                var baseId = BuildAreaId(nombre);
+                var areaId = baseId;
+                var suffix = 1;
+                while (_areasLookup.ContainsKey(areaId))
+                {
+                    areaId = $"{baseId}_{suffix++}";
+                }
+
+                Pg.UseSheet("areas");
+                var payload = new Dictionary<string, object>
+                {
+                    ["area_id"] = areaId,
+                    ["nombre_areas"] = nombre,
+                    ["planta_id"] = _newAreaPlantaId!,
+                    ["canvas_id"] = _canvas.canvas_id,
+                    ["altura_m"] = DBNull.Value,
+                    ["area_total_m2"] = 0m,
+                    ["anotaciones_del_area"] = "SIN MODIFICACIONES"
+                };
+                await Pg.CreateAsync(payload);
+
+                _areasLookup[areaId] = nombre;
+                _areasMeta[areaId] = new AreaMeta
+                {
+                    area_id = areaId,
+                    planta_id = _newAreaPlantaId,
+                    canvas_id = _canvas.canvas_id,
+                    altura_m = null,
+                    anotaciones = "SIN MODIFICACIONES"
+                };
+
+                _drawAreaId = areaId;
+                _newAreaName = string.Empty;
+                _newAreaMsg = "Área creada.";
+            }
+            catch (Exception ex)
+            {
+                _newAreaMsg = "Error al crear el área.";
+                Console.Error.WriteLine($"[CrearAreaAsync] {ex}");
+            }
+            finally
+            {
+                _creatingArea = false;
+                StateHasChanged();
+            }
+        }
+
+        private static string BuildAreaId(string name)
+        {
+            var normalized = name.Trim().ToLowerInvariant();
+            var formD = normalized.Normalize(System.Text.NormalizationForm.FormD);
+            var sb = new System.Text.StringBuilder();
+            foreach (var ch in formD)
+            {
+                var cat = CharUnicodeInfo.GetUnicodeCategory(ch);
+                if (cat == UnicodeCategory.NonSpacingMark) continue;
+                if (char.IsLetterOrDigit(ch)) sb.Append(ch);
+                else if (char.IsWhiteSpace(ch) || ch == '-' || ch == '_') sb.Append('_');
+            }
+            var slug = System.Text.RegularExpressions.Regex.Replace(sb.ToString(), "_{2,}", "_").Trim('_');
+            return string.IsNullOrWhiteSpace(slug) ? $"area_{Guid.NewGuid():N}".Substring(0, 9) : slug;
         }
 
         private bool CanTranslateY(Poly p, decimal dy)
