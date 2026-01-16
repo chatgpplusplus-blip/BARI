@@ -95,7 +95,8 @@
                               fill="@b.color_hex" opacity="0.45"
                               stroke="#1f2937" stroke-width="@S(0.03m)" />
 
-                        @if (!string.IsNullOrWhiteSpace(b.etiqueta))
+                        var blockLabel = BlockLabel(b);
+                        @if (!string.IsNullOrWhiteSpace(blockLabel))
                         {
                             <text>
                                 <tspan x="@S(b.abs_x + b.ancho / 2m)"
@@ -103,7 +104,7 @@
                                        style="text-anchor:middle;dominant-baseline:middle"
                                        font-size="@S(0.25m)"
                                        fill="#111">
-                                    @b.etiqueta
+                                    @blockLabel
                                 </tspan>
                             </text>
                         }
