@@ -329,29 +329,53 @@
                     <h4 class="font-semibold mb-2">Nuevo bloque de montaje</h4>
                     <div class="grid grid-cols-2 gap-2 text-sm">
                         <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Asociar bloque</label>
+                            <div class="flex items-center gap-3">
+                                <label class="flex items-center gap-2 text-xs text-gray-700">
+                                    <input type="checkbox" checked="@_newBlockAssignMaterial"
+                                           @onchange="(e)=> ToggleNewBlockAssignMaterial(Bool(e.Value))" />
+                                    Material de montaje
+                                </label>
+                                <label class="flex items-center gap-2 text-xs text-gray-700">
+                                    <input type="checkbox" checked="@_newBlockAssignMeson"
+                                           @onchange="(e)=> ToggleNewBlockAssignMeson(Bool(e.Value))" />
+                                    Mesón
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-span-2">
                             <label class="block text-xs text-gray-600 mb-1">Material de montaje</label>
                             <select class="border p-1 w-full"
                                     value="@(_newBlockMaterialId ?? "")"
+                                    disabled="@(!_newBlockAssignMaterial)"
                                     @onchange="(e)=> OnSelectBlockMaterial(e.Value?.ToString())">
                                 <option value="">— Selecciona un material —</option>
-                                @foreach (var kv in _materialesLookup)
+                                @foreach (var kv in MaterialesMontajeDisponibles())
                                 {
                                     <option value="@kv.Key">@kv.Value</option>
                                 }
                             </select>
+                            @if (_newBlockAssignMaterial && MaterialesMontajeDisponibles().Count() == 0)
+                            {
+                                <div class="text-xs text-gray-500 mt-1">No hay materiales disponibles. Crea uno más abajo.</div>
+                            }
                         </div>
                         <div class="col-span-2">
                             <label class="block text-xs text-gray-600 mb-1">Mesón</label>
                             <select class="border p-1 w-full"
                                     value="@(_newBlockMesonId ?? "")"
+                                    disabled="@(!_newBlockAssignMeson)"
                                     @onchange="(e)=> OnSelectBlockMeson(e.Value?.ToString())">
                                 <option value="">— Selecciona un mesón —</option>
-                                @foreach (var kv in _mesonesLookup)
+                                @foreach (var kv in MesonesDisponibles())
                                 {
                                     <option value="@kv.Key">@kv.Value</option>
                                 }
                             </select>
-                            <div class="text-xs text-gray-500 mt-1">Selecciona material o mesón (solo uno por bloque).</div>
+                            @if (_newBlockAssignMeson && MesonesDisponibles().Count() == 0)
+                            {
+                                <div class="text-xs text-gray-500 mt-1">No hay mesones disponibles. Crea uno más abajo.</div>
+                            }
                         </div>
                         <div class="col-span-2">
                             <label class="block text-xs text-gray-600 mb-1">Etiqueta</label>
