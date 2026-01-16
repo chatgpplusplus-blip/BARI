@@ -972,29 +972,29 @@ namespace BARI_web.Features.Espacios.Pages
             // ===== Drag bloque =====
             if (_dragBlock is not null && _dragStart is not null && _beforeDragBlock is not null && _area is not null)
             {
-                var (wx, wy) = ScreenToWorld(e.OffsetX, e.OffsetY);
-                var dx = wx - _dragStart.Value.x;
-                var dy = wy - _dragStart.Value.y;
+                var (blockWx, blockWy) = ScreenToWorld(e.OffsetX, e.OffsetY);
+                var blockDx = blockWx - _dragStart.Value.x;
+                var blockDy = blockWy - _dragStart.Value.y;
 
-                var baseAbsX = _beforeDragBlock.Value.x;
-                var baseAbsY = _beforeDragBlock.Value.y;
-                var baseW = _beforeDragBlock.Value.w;
-                var baseH = _beforeDragBlock.Value.h;
+                var blockBaseAbsX = _beforeDragBlock.Value.x;
+                var blockBaseAbsY = _beforeDragBlock.Value.y;
+                var blockBaseW = _beforeDragBlock.Value.w;
+                var blockBaseH = _beforeDragBlock.Value.h;
 
-                decimal propAbsX = baseAbsX, propAbsY = baseAbsY;
-                decimal propW = baseW, propH = baseH;
+                decimal blockPropAbsX = blockBaseAbsX, blockPropAbsY = blockBaseAbsY;
+                decimal blockPropW = blockBaseW, blockPropH = blockBaseH;
 
                 if (_blockHandle == Handle.None)
                 {
                     if (_blockGrab is not null)
                     {
-                        propAbsX = wx - _blockGrab.Value.dx;
-                        propAbsY = wy - _blockGrab.Value.dy;
+                        blockPropAbsX = blockWx - _blockGrab.Value.dx;
+                        blockPropAbsY = blockWy - _blockGrab.Value.dy;
                     }
                     else
                     {
-                        propAbsX = baseAbsX + dx;
-                        propAbsY = baseAbsY + dy;
+                        blockPropAbsX = blockBaseAbsX + blockDx;
+                        blockPropAbsY = blockBaseAbsY + blockDy;
                     }
                 }
                 else
@@ -1003,38 +1003,38 @@ namespace BARI_web.Features.Espacios.Pages
                     {
                         case Handle.NE:
                             {
-                                var bottom = baseAbsY + baseH;
-                                propW = Math.Max(EPS_MINW, baseW + dx);
-                                propH = Math.Max(EPS_MINW, baseH - dy);
-                                propAbsX = baseAbsX;
-                                propAbsY = bottom - propH;
+                                var bottom = blockBaseAbsY + blockBaseH;
+                                blockPropW = Math.Max(EPS_MINW, blockBaseW + blockDx);
+                                blockPropH = Math.Max(EPS_MINW, blockBaseH - blockDy);
+                                blockPropAbsX = blockBaseAbsX;
+                                blockPropAbsY = bottom - blockPropH;
                                 break;
                             }
                         case Handle.SE:
                             {
-                                propW = Math.Max(EPS_MINW, baseW + dx);
-                                propH = Math.Max(EPS_MINW, baseH + dy);
-                                propAbsX = baseAbsX;
-                                propAbsY = baseAbsY;
+                                blockPropW = Math.Max(EPS_MINW, blockBaseW + blockDx);
+                                blockPropH = Math.Max(EPS_MINW, blockBaseH + blockDy);
+                                blockPropAbsX = blockBaseAbsX;
+                                blockPropAbsY = blockBaseAbsY;
                                 break;
                             }
                         case Handle.NW:
                             {
-                                var right = baseAbsX + baseW;
-                                var bottom = baseAbsY + baseH;
-                                propW = Math.Max(EPS_MINW, baseW - dx);
-                                propH = Math.Max(EPS_MINW, baseH - dy);
-                                propAbsX = right - propW;
-                                propAbsY = bottom - propH;
+                                var right = blockBaseAbsX + blockBaseW;
+                                var bottom = blockBaseAbsY + blockBaseH;
+                                blockPropW = Math.Max(EPS_MINW, blockBaseW - blockDx);
+                                blockPropH = Math.Max(EPS_MINW, blockBaseH - blockDy);
+                                blockPropAbsX = right - blockPropW;
+                                blockPropAbsY = bottom - blockPropH;
                                 break;
                             }
                         case Handle.SW:
                             {
-                                var right = baseAbsX + baseW;
-                                propW = Math.Max(EPS_MINW, baseW - dx);
-                                propH = Math.Max(EPS_MINW, baseH + dy);
-                                propAbsX = right - propW;
-                                propAbsY = baseAbsY;
+                                var right = blockBaseAbsX + blockBaseW;
+                                blockPropW = Math.Max(EPS_MINW, blockBaseW - blockDx);
+                                blockPropH = Math.Max(EPS_MINW, blockBaseH + blockDy);
+                                blockPropAbsX = right - blockPropW;
+                                blockPropAbsY = blockBaseAbsY;
                                 break;
                             }
                     }
@@ -1042,18 +1042,18 @@ namespace BARI_web.Features.Espacios.Pages
 
                 var minX = _area.MinX;
                 var minY = _area.MinY;
-                var maxX = _area.MaxX - propW;
-                var maxY = _area.MaxY - propH;
+                var maxX = _area.MaxX - blockPropW;
+                var maxY = _area.MaxY - blockPropH;
 
-                var clampedX = Clamp(minX, maxX, propAbsX);
-                var clampedY = Clamp(minY, maxY, propAbsY);
+                var blockClampedX = Clamp(minX, maxX, blockPropAbsX);
+                var blockClampedY = Clamp(minY, maxY, blockPropAbsY);
 
-                _dragBlock.ancho = propW;
-                _dragBlock.alto = propH;
-                _dragBlock.abs_x = clampedX;
-                _dragBlock.abs_y = clampedY;
-                _dragBlock.offset_x = clampedX - AreaCenterX;
-                _dragBlock.offset_y = clampedY - AreaCenterY;
+                _dragBlock.ancho = blockPropW;
+                _dragBlock.alto = blockPropH;
+                _dragBlock.abs_x = blockClampedX;
+                _dragBlock.abs_y = blockClampedY;
+                _dragBlock.offset_x = blockClampedX - AreaCenterX;
+                _dragBlock.offset_y = blockClampedY - AreaCenterY;
                 _dragBlock.pos_x = _dragBlock.abs_x;
                 _dragBlock.pos_y = _dragBlock.abs_y;
 
