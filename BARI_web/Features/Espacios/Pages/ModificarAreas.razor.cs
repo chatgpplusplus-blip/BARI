@@ -43,7 +43,7 @@ namespace BARI_web.Features.Espacios.Pages
         }
 
         // ===== modelos
-        private record CanvasLab(string canvas_id, string nombre, decimal ancho_m, decimal alto_m, decimal margen_m);
+        private record CanvasLab(string canvas_id, string nombre, decimal ancho_m, decimal alto_m, decimal margen_m, int? laboratorio_id);
         private readonly record struct Point(decimal X, decimal Y);
 
         private class Poly
@@ -244,7 +244,13 @@ namespace BARI_web.Features.Espacios.Pages
                 return;
             }
 
-            _canvas = new CanvasLab(c["canvas_id"], c["nombre"], Dec(c["ancho_m"]), Dec(c["alto_m"]), Dec(c["margen_m"]));
+            _canvas = new CanvasLab(
+                c["canvas_id"],
+                c["nombre"],
+                Dec(c["ancho_m"]),
+                Dec(c["alto_m"]),
+                Dec(c["margen_m"]),
+                IntOrNull(NullIfEmpty(Get(c, "laboratorio_id"))));
             _currentCanvasId = _canvas.canvas_id;
         }
 
@@ -260,6 +266,7 @@ namespace BARI_web.Features.Espacios.Pages
                     area_id = id,
                     planta_id = NullIfEmpty(Get(r, "planta_id")),
                     canvas_id = NullIfEmpty(Get(r, "canvas_id")),
+                    laboratorio_id = IntOrNull(NullIfEmpty(Get(r, "laboratorio_id"))),
                     altura_m = Dec(Get(r, "altura_m", "0")),
                     anotaciones = string.IsNullOrWhiteSpace(Get(r, "anotaciones_del_area")) ? "SIN MODIFICACIONES" : Get(r, "anotaciones_del_area")
                 };
@@ -1391,11 +1398,19 @@ namespace BARI_web.Features.Espacios.Pages
 
                     var anot = string.IsNullOrWhiteSpace(meta.anotaciones) ? "SIN MODIFICACIONES" : meta.anotaciones;
                     meta.canvas_id ??= _canvas?.canvas_id;
+                    meta.laboratorio_id ??= _canvas?.laboratorio_id;
+
+                    if (meta.laboratorio_id is null)
+                    {
+                        _saveMsg = "No se pudo resolver laboratorio_id del canvas.";
+                        return;
+                    }
 
                     var okArea = await Pg.UpdateByIdAsync("area_id", areaId, new Dictionary<string, object>
                     {
                         ["planta_id"] = plantaId ?? (object)DBNull.Value,
                         ["canvas_id"] = meta.canvas_id ?? (object)DBNull.Value,
+                        ["laboratorio_id"] = meta.laboratorio_id ?? (object)DBNull.Value,
                         ["altura_m"] = meta.altura_m ?? (object)DBNull.Value,
                         ["area_total_m2"] = areaTotal,
                         ["anotaciones_del_area"] = anot
@@ -1409,6 +1424,7 @@ namespace BARI_web.Features.Espacios.Pages
                             ["nombre_areas"] = _areasLookup[areaId],
                             ["planta_id"] = plantaId ?? (object)DBNull.Value,
                             ["canvas_id"] = meta.canvas_id ?? (object)DBNull.Value,
+                            ["laboratorio_id"] = meta.laboratorio_id ?? (object)DBNull.Value,
                             ["altura_m"] = meta.altura_m ?? (object)DBNull.Value,
                             ["area_total_m2"] = areaTotal,
                             ["anotaciones_del_area"] = anot
@@ -1788,6 +1804,7 @@ namespace BARI_web.Features.Espacios.Pages
         private static string Get(Dictionary<string, string> d, string key, string fallback = "") => d.TryGetValue(key, out var v) ? v : fallback;
         private static string S(decimal v) => v.ToString(CultureInfo.InvariantCulture);
         private static string S(double v) => v.ToString(CultureInfo.InvariantCulture);
+        private static int? IntOrNull(string? s) => int.TryParse(s, out var n) ? n : null;
         private void DeselectAll() { _sel = null; _selDoorId = null; _selWinId = null; _hoverId = null; _selectedVertexIndex = -1; StateHasChanged(); }
 
         // ======================= MODO JUNTAR VÉRTICES =======================
@@ -2233,6 +2250,7 @@ namespace BARI_web.Features.Espacios.Pages
             public string area_id { get; set; } = "";
             public string? planta_id { get; set; }
             public string? canvas_id { get; set; }
+            public int? laboratorio_id { get; set; }
             public decimal? altura_m { get; set; }
             public string anotaciones { get; set; } = "SIN MODIFICACIONES";
         }
@@ -2346,6 +2364,11 @@ namespace BARI_web.Features.Espacios.Pages
                 _newAreaMsg = "Selecciona un canvas antes de crear un área.";
                 return;
             }
+            if (_canvas.laboratorio_id is null)
+            {
+                _newAreaMsg = "El canvas no tiene laboratorio asociado.";
+                return;
+            }
 
             var nombre = _newAreaName.Trim();
             if (string.IsNullOrWhiteSpace(nombre))
@@ -2379,6 +2402,7 @@ namespace BARI_web.Features.Espacios.Pages
                     ["nombre_areas"] = nombre,
                     ["planta_id"] = _newAreaPlantaId!,
                     ["canvas_id"] = _canvas.canvas_id,
+                    ["laboratorio_id"] = _canvas.laboratorio_id.Value,
                     ["altura_m"] = DBNull.Value,
                     ["area_total_m2"] = 0m,
                     ["anotaciones_del_area"] = "SIN MODIFICACIONES"
@@ -2391,6 +2415,7 @@ namespace BARI_web.Features.Espacios.Pages
                     area_id = areaId,
                     planta_id = _newAreaPlantaId,
                     canvas_id = _canvas.canvas_id,
+                    laboratorio_id = _canvas.laboratorio_id,
                     altura_m = null,
                     anotaciones = "SIN MODIFICACIONES"
                 };
