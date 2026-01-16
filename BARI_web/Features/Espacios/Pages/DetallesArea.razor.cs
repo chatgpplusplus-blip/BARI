@@ -208,11 +208,10 @@ namespace BARI_web.Features.Espacios.Pages
                 GridStartY = (decimal)Math.Floor((double)VY);
                 GridEndY = (decimal)Math.Ceiling((double)(VY + VH));
 
-                // interiores / puertas / ventanas / mesones / instalaciones
+                // interiores / puertas / ventanas / mesones
                 await LoadInnerItemsForArea(a);
                 await LoadDoorsAndWindowsForArea(a);
                 await LoadMesonesForArea(targetAreaId);
-                await LoadInstalacionesForArea(a);
 
                 if (_areaInfo is not null)
                 {
@@ -1056,7 +1055,7 @@ namespace BARI_web.Features.Espacios.Pages
             return string.IsNullOrEmpty(slug) ? "sin-area" : slug;
         }
 
-        // === RESUMEN MESONES / INSTALACIONES PARA VISTA ===
+        // === RESUMEN MESONES PARA VISTA ===
         private class MesonSummary
         {
             public string meson_id { get; set; } = "";
@@ -1066,18 +1065,7 @@ namespace BARI_web.Features.Espacios.Pages
             public int equipos_count { get; set; }
         }
 
-        private class InstalacionView
-        {
-            public string instalacion_id { get; set; } = "";
-            public string nombre { get; set; } = "";
-            public string? tipo_id { get; set; }
-            public string? tipo_nombre { get; set; }
-            public string? tipo_descripcion { get; set; } // notas del tipo
-            public string? notas { get; set; }            // notas de la instalación
-        }
-
         private readonly List<MesonSummary> _mesones = new();
-        private readonly List<InstalacionView> _instalaciones = new();
 
         private async Task LoadMesonesForArea(string areaId)
         {
@@ -1161,80 +1149,5 @@ namespace BARI_web.Features.Espacios.Pages
             return "MESON";
         }
 
-        private async Task LoadInstalacionesForArea(AreaDraw a)
-        {
-            _instalaciones.Clear();
-
-            // 1) capturar instalacion_id desde los poligonos_interiores de esta área
-            var areaPolyIds = a.Polys.Select(p => p.poly_id).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var needed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            try
-            {
-                Pg.UseSheet("poligonos_interiores");
-                foreach (var r in await Pg.ReadAllAsync())
-                {
-                    var pid = Get(r, "area_poly_id");
-                    if (!areaPolyIds.Contains(pid)) continue;
-                    var insId = NullIfEmpty(Get(r, "instalacion_id"));
-                    if (!string.IsNullOrEmpty(insId)) needed.Add(insId);
-                }
-            }
-            catch
-            {
-                _instalaciones.Clear();
-                return;
-            }
-            if (needed.Count == 0) return;
-
-            // 2) leer instalaciones
-            var tmp = new Dictionary<string, InstalacionView>(StringComparer.OrdinalIgnoreCase);
-            try
-            {
-                Pg.UseSheet("instalaciones");
-                foreach (var r in await Pg.ReadAllAsync())
-                {
-                    var id = Get(r, "instalacion_id");
-                    if (!needed.Contains(id)) continue;
-                    tmp[id] = new InstalacionView
-                    {
-                        instalacion_id = id,
-                        nombre = Get(r, "nombre"),
-                        tipo_id = NullIfEmpty(Get(r, "tipo_id")),
-                        notas = NullIfEmpty(Get(r, "notas"))
-                    };
-                }
-            }
-            catch
-            {
-                _instalaciones.Clear();
-                return;
-            }
-
-            // 3) nombres y descripción de tipos
-            try
-            {
-                Pg.UseSheet("instalaciones_tipo");
-                var tipoNombre = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                var tipoNotas = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-                foreach (var r in await Pg.ReadAllAsync())
-                {
-                    var tid = Get(r, "tipo_id");
-                    tipoNombre[tid] = Get(r, "nombre");
-                    tipoNotas[tid] = NullIfEmpty(Get(r, "notas"));
-                }
-                foreach (var it in tmp.Values)
-                {
-                    if (!string.IsNullOrEmpty(it.tipo_id) && tipoNombre.TryGetValue(it.tipo_id, out var tn))
-                    {
-                        it.tipo_nombre = tn;
-                        it.tipo_descripcion = tipoNotas.TryGetValue(it.tipo_id, out var td) ? td : null;
-                    }
-                }
-            }
-            catch { /* si no existe tabla de tipos, quedan nulos */ }
-
-            _instalaciones.AddRange(tmp.Values.OrderBy(v => v.nombre, StringComparer.OrdinalIgnoreCase));
-        }
     }
 }
