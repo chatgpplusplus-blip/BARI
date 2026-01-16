@@ -18,9 +18,21 @@ namespace BARI_web.Features.Espacios.Pages
 
         // ====== modelos ======
         private record CanvasLab(string canvas_id, string nombre, decimal ancho_m, decimal alto_m, decimal margen_m);
-        private record Poly(string poly_id, string canvas_id, string? area_id,
-                            decimal x_m, decimal y_m, decimal ancho_m, decimal alto_m,
-                            int z_order, string? etiqueta, string? color_hex);
+        private readonly record struct Point(decimal X, decimal Y);
+        private class Poly
+        {
+            public string poly_id { get; init; } = "";
+            public string canvas_id { get; init; } = "";
+            public string? area_id { get; init; }
+            public decimal x_m { get; set; }
+            public decimal y_m { get; set; }
+            public decimal ancho_m { get; set; }
+            public decimal alto_m { get; set; }
+            public int z_order { get; init; }
+            public string? etiqueta { get; init; }
+            public string? color_hex { get; init; }
+            public List<Point> puntos { get; set; } = new();
+        }
 
         private class AreaDraw
         {
@@ -56,6 +68,25 @@ namespace BARI_web.Features.Espacios.Pages
             public decimal abs_y { get; set; }
         }
 
+        private class BlockItem
+        {
+            public string bloque_id { get; set; } = "";
+            public string canvas_id { get; set; } = "";
+            public string? material_montaje_id { get; set; }
+            public string? meson_id { get; set; }
+            public string? etiqueta { get; set; }
+            public string? color_hex { get; set; }
+            public int z_order { get; set; }
+            public decimal pos_x { get; set; }
+            public decimal pos_y { get; set; }
+            public decimal ancho { get; set; }
+            public decimal alto { get; set; }
+            public decimal offset_x { get; set; }
+            public decimal offset_y { get; set; }
+            public decimal abs_x { get; set; }
+            public decimal abs_y { get; set; }
+        }
+
         private class Door
         {
             public string door_id { get; set; } = "";
@@ -85,6 +116,7 @@ namespace BARI_web.Features.Espacios.Pages
         private AreaDraw? _area;
         private AreaInfo? _areaInfo;
         private readonly List<InnerItem> _inners = new();
+        private readonly List<BlockItem> _blocks = new();
         private readonly List<Door> _doors = new();
         private readonly List<Win> _windows = new();
         private readonly List<EquipoItem> _equipos = new();
@@ -210,6 +242,7 @@ namespace BARI_web.Features.Espacios.Pages
 
                 // interiores / puertas / ventanas / mesones
                 await LoadInnerItemsForArea(a);
+                await LoadBlocksForArea(a);
                 await LoadDoorsAndWindowsForArea(a);
                 await LoadMesonesForArea(targetAreaId);
 
@@ -313,14 +346,46 @@ namespace BARI_web.Features.Espacios.Pages
                 if (!string.Equals(areaId, targetAreaId, StringComparison.OrdinalIgnoreCase))
                     continue;
 
-                polys.Add(new Poly(
-                    Get(r, "poly_id"), Get(r, "canvas_id"), areaId,
-                    Dec(Get(r, "x_m", "0")), Dec(Get(r, "y_m", "0")),
-                    Dec(Get(r, "ancho_m", "0")), Dec(Get(r, "alto_m", "0")),
-                    Int(Get(r, "z_order", "0")),
-                    NullIfEmpty(Get(r, "etiqueta")),
-                    NullIfEmpty(Get(r, "color_hex"))
-                ));
+                polys.Add(new Poly
+                {
+                    poly_id = Get(r, "poly_id"),
+                    canvas_id = Get(r, "canvas_id"),
+                    area_id = areaId,
+                    x_m = Dec(Get(r, "x_m", "0")),
+                    y_m = Dec(Get(r, "y_m", "0")),
+                    ancho_m = Dec(Get(r, "ancho_m", "0")),
+                    alto_m = Dec(Get(r, "alto_m", "0")),
+                    z_order = Int(Get(r, "z_order", "0")),
+                    etiqueta = NullIfEmpty(Get(r, "etiqueta")),
+                    color_hex = NullIfEmpty(Get(r, "color_hex"))
+                });
+            }
+
+            if (polys.Count == 0) return polys;
+
+            Pg.UseSheet("poligonos_puntos");
+            var pointRows = await Pg.ReadAllAsync();
+            var pointsByPoly = pointRows
+                .Where(r => polys.Any(p => string.Equals(p.poly_id, Get(r, "poly_id"), StringComparison.OrdinalIgnoreCase)))
+                .GroupBy(r => Get(r, "poly_id"), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderBy(r => Int(Get(r, "orden", "0")))
+                          .Select(r => new Point(Dec(Get(r, "x_m", "0")), Dec(Get(r, "y_m", "0"))))
+                          .ToList(),
+                    StringComparer.OrdinalIgnoreCase);
+
+            foreach (var p in polys)
+            {
+                if (pointsByPoly.TryGetValue(p.poly_id, out var pts) && pts.Count >= 3)
+                {
+                    p.puntos = pts;
+                }
+                else
+                {
+                    p.puntos = BuildRectPoints(p.x_m, p.y_m, p.ancho_m, p.alto_m);
+                }
+                UpdateBoundsFromPoints(p);
             }
             return polys;
         }
@@ -331,18 +396,19 @@ namespace BARI_web.Features.Espacios.Pages
             var ordered = polys.OrderBy(p => p.z_order).ToList();
             a.Polys.AddRange(ordered);
 
-            a.MinX = ordered.Min(p => p.x_m);
-            a.MinY = ordered.Min(p => p.y_m);
-            a.MaxX = ordered.Max(p => p.x_m + p.ancho_m);
-            a.MaxY = ordered.Max(p => p.y_m + p.alto_m);
+            a.MinX = ordered.Min(p => p.puntos.Min(pt => pt.X));
+            a.MinY = ordered.Min(p => p.puntos.Min(pt => pt.Y));
+            a.MaxX = ordered.Max(p => p.puntos.Max(pt => pt.X));
+            a.MaxY = ordered.Max(p => p.puntos.Max(pt => pt.Y));
 
             decimal sx = 0, sy = 0, sa = 0;
             foreach (var p in ordered)
             {
-                var area = p.ancho_m * p.alto_m;
+                var area = PolygonArea(p.puntos);
                 if (area <= 0) continue;
-                sx += (p.x_m + p.ancho_m / 2m) * area;
-                sy += (p.y_m + p.alto_m / 2m) * area;
+                var centroid = PolygonCentroid(p.puntos);
+                sx += centroid.x * area;
+                sy += centroid.y * area;
                 sa += area;
             }
             if (sa > 0) { a.Cx = sx / sa; a.Cy = sy / sa; }
@@ -355,6 +421,64 @@ namespace BARI_web.Features.Espacios.Pages
             a.Fill = ordered.Select(p => p.color_hex).FirstOrDefault(s => !string.IsNullOrWhiteSpace(s)) ?? "#E6E6E6";
 
             return a;
+        }
+
+        private static List<Point> BuildRectPoints(decimal x, decimal y, decimal w, decimal h)
+            => new()
+            {
+                new Point(x, y),
+                new Point(x + w, y),
+                new Point(x + w, y + h),
+                new Point(x, y + h)
+            };
+
+        private static void UpdateBoundsFromPoints(Poly p)
+        {
+            if (p.puntos.Count == 0) return;
+            var minX = p.puntos.Min(pt => pt.X);
+            var minY = p.puntos.Min(pt => pt.Y);
+            var maxX = p.puntos.Max(pt => pt.X);
+            var maxY = p.puntos.Max(pt => pt.Y);
+            p.x_m = minX;
+            p.y_m = minY;
+            p.ancho_m = Math.Max(0.1m, maxX - minX);
+            p.alto_m = Math.Max(0.1m, maxY - minY);
+        }
+
+        private string PointsString(Poly p)
+            => string.Join(" ", p.puntos.Select(pt => $"{S(pt.X)},{S(pt.Y)}"));
+
+        private static decimal PolygonArea(IReadOnlyList<Point> points)
+        {
+            if (points.Count < 3) return 0m;
+            decimal area = 0m;
+            for (int i = 0; i < points.Count; i++)
+            {
+                var a = points[i];
+                var b = points[(i + 1) % points.Count];
+                area += (a.X * b.Y) - (b.X * a.Y);
+            }
+            return Math.Abs(area) / 2m;
+        }
+
+        private static (decimal x, decimal y) PolygonCentroid(IReadOnlyList<Point> points)
+        {
+            if (points.Count < 3) return (0m, 0m);
+            decimal cx = 0m;
+            decimal cy = 0m;
+            decimal area = 0m;
+            for (int i = 0; i < points.Count; i++)
+            {
+                var a = points[i];
+                var b = points[(i + 1) % points.Count];
+                var cross = (a.X * b.Y) - (b.X * a.Y);
+                area += cross;
+                cx += (a.X + b.X) * cross;
+                cy += (a.Y + b.Y) * cross;
+            }
+            if (area == 0m) return (0m, 0m);
+            area *= 0.5m;
+            return (cx / (6m * area), cy / (6m * area));
         }
 
         private async Task LoadEquiposAsync(string areaId)
@@ -832,9 +956,66 @@ namespace BARI_web.Features.Espacios.Pages
             }
         }
 
+        private async Task LoadBlocksForArea(AreaDraw a)
+        {
+            _blocks.Clear();
+
+            Pg.UseSheet("bloques_int");
+            foreach (var r in await Pg.ReadAllAsync())
+            {
+                if (!string.Equals(Get(r, "canvas_id"), _canvas?.canvas_id ?? "", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var offsetX = Dec(Get(r, "offset_x", "0"));
+                var offsetY = Dec(Get(r, "offset_y", "0"));
+                var absX = Dec(Get(r, "pos_x", "0"));
+                var absY = Dec(Get(r, "pos_y", "0"));
+                var ancho = Dec(Get(r, "ancho", "0.6"));
+                var alto = Dec(Get(r, "alto", "0.4"));
+
+                if (offsetX != 0m || offsetY != 0m)
+                {
+                    absX = a.Cx + offsetX;
+                    absY = a.Cy + offsetY;
+                }
+
+                var block = new BlockItem
+                {
+                    bloque_id = Get(r, "bloque_id"),
+                    canvas_id = Get(r, "canvas_id"),
+                    material_montaje_id = NullIfEmpty(Get(r, "material_montaje_id")),
+                    meson_id = NullIfEmpty(Get(r, "meson_id")),
+                    etiqueta = NullIfEmpty(Get(r, "etiqueta")),
+                    color_hex = NullIfEmpty(Get(r, "color_hex")) ?? "#2563eb",
+                    z_order = Int(Get(r, "z_order", "0")),
+                    pos_x = absX,
+                    pos_y = absY,
+                    ancho = ancho,
+                    alto = alto,
+                    offset_x = offsetX,
+                    offset_y = offsetY,
+                    abs_x = absX,
+                    abs_y = absY
+                };
+
+                var withinX = block.abs_x + block.ancho >= a.MinX && block.abs_x <= a.MaxX;
+                var withinY = block.abs_y + block.alto >= a.MinY && block.abs_y <= a.MaxY;
+                if (!withinX || !withinY)
+                    continue;
+
+                _blocks.Add(block);
+            }
+        }
+
         // ===== outline =====
         private static void BuildAreaOutline(AreaDraw a)
         {
+            if (a.Polys.Any(p => p.puntos.Count >= 3))
+            {
+                BuildAreaOutlineFromPoints(a);
+                return;
+            }
+
             var H = new Dictionary<decimal, List<(decimal x1, decimal x2)>>();
             var V = new Dictionary<decimal, List<(decimal y1, decimal y2)>>();
 
@@ -908,6 +1089,26 @@ namespace BARI_web.Features.Espacios.Pages
             var merged = MergeCollinear(a.Outline);
             a.Outline.Clear();
             a.Outline.AddRange(merged);
+        }
+
+        private static void BuildAreaOutlineFromPoints(AreaDraw a)
+        {
+            a.Outline.Clear();
+            foreach (var p in a.Polys)
+            {
+                var points = p.puntos.Count >= 3
+                    ? p.puntos
+                    : BuildRectPoints(p.x_m, p.y_m, p.ancho_m, p.alto_m);
+
+                if (points.Count < 2) continue;
+                for (int i = 0; i < points.Count; i++)
+                {
+                    var start = points[i];
+                    var end = points[(i + 1) % points.Count];
+                    if (start.X == end.X && start.Y == end.Y) continue;
+                    a.Outline.Add((start.X, start.Y, end.X, end.Y));
+                }
+            }
         }
 
         private static List<(decimal x1, decimal y1, decimal x2, decimal y2)> MergeCollinear(
