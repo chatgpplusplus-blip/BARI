@@ -43,7 +43,14 @@
                         <clipPath id="clip_target" clipPathUnits="userSpaceOnUse">
                             @foreach (var p in _area.Polys)
                             {
-                                <rect x="@S(p.x_m)" y="@S(p.y_m)" width="@S(p.ancho_m)" height="@S(p.alto_m)" />
+                                if (p.puntos.Count >= 3)
+                                {
+                                    <polygon points="@PointsString(p)" />
+                                }
+                                else
+                                {
+                                    <rect x="@S(p.x_m)" y="@S(p.y_m)" width="@S(p.ancho_m)" height="@S(p.alto_m)" />
+                                }
                             }
                         </clipPath>
 
@@ -57,10 +64,19 @@
 
                     <!-- relleno -->
                     <g class="softshadow" clip-path="url(#clip_target)">
-                        <rect x="@S(_area.MinX)" y="@S(_area.MinY)"
-                              width="@S(_area.MaxX - _area.MinX)"
-                              height="@S(_area.MaxY - _area.MinY)"
-                              fill="@_area.Fill" />
+                        @foreach (var p in _area.Polys)
+                        {
+                            if (p.puntos.Count >= 3)
+                            {
+                                <polygon points="@PointsString(p)" fill="@_area.Fill" />
+                            }
+                            else
+                            {
+                                <rect x="@S(p.x_m)" y="@S(p.y_m)"
+                                      width="@S(p.ancho_m)" height="@S(p.alto_m)"
+                                      fill="@_area.Fill" />
+                            }
+                        }
                     </g>
 
                     <!-- contorno -->
