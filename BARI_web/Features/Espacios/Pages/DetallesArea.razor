@@ -4,7 +4,7 @@
 <div class="areas-wrap">
     <div class="toolbar">
 
-        <h2 class="text-2xl" style="margin:0">Detalles del Area: @AreaSlug</h2>
+        <h2 class="text-2xl" style="margin:0">Detalles del Area: @(_areaInfo?.nombre ?? AreaSlug)</h2>
         <button type="button" class="btn" @onclick="@(()=>Nav.NavigateTo("/areas"))">
             Volver al mapa
         </button>
@@ -130,86 +130,281 @@
                     </text>
                 }
             </svg>
-</div>
+        </div>
 
-<!-- === Panel de listas: Mesones e Instalaciones === -->
-<div style="margin-top:1rem; border:1px solid #e5e7eb; border-radius:.5rem; padding:.75rem; background:#fff">
-    <details open>
-        <summary style="cursor:pointer; font-weight:600">
-            Mesones (@_mesones.Count)
-        </summary>
-        <ul style="list-style:none; padding-left:0; margin:.5rem 0 0">
-            @if (_mesones.Count == 0)
-            {
-                <li style="color:#6b7280"><em>Sin mesones.</em></li>
-            }
-            else
-            {
-                @foreach (var m in _mesones)
+        @if (_areaInfo is not null)
+        {
+            <div style="margin-top:1rem; border:1px solid #e5e7eb; border-radius:.5rem; padding:.75rem; background:#fff">
+                <h3 style="margin:0 0 .5rem 0">Información del área</h3>
+                <div class="info-grid">
+                    <div>
+                        <strong>Nombre</strong>
+                        <div>@_areaInfo.nombre</div>
+                    </div>
+                    <div>
+                        <strong>Altura</strong>
+                        <div>@(_areaInfo.altura_m is null ? "—" : $"{_areaInfo.altura_m} m")</div>
+                    </div>
+                    <div>
+                        <strong>Área total</strong>
+                        <div>@(_areaInfo.area_total_m2 is null ? "—" : $"{_areaInfo.area_total_m2} m²")</div>
+                    </div>
+                    <div>
+                        <strong>Planta</strong>
+                        <div>@(_areaInfo.planta_id ?? "—")</div>
+                    </div>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(_areaInfo.anotaciones))
                 {
-                    <li style="display:flex; align-items:center; justify-content:space-between; padding:.25rem 0; border-bottom:1px dashed #eee">
-                        <div>
+                    <div style="margin-top:.5rem; color:#4b5563">@_areaInfo.anotaciones</div>
+                }
+            </div>
+        }
+
+        <!-- === Panel de listas: Mesones e Instalaciones === -->
+        <div style="margin-top:1rem; border:1px solid #e5e7eb; border-radius:.5rem; padding:.75rem; background:#fff">
+            <details open>
+                <summary style="cursor:pointer; font-weight:600">
+                    Mesones (@_mesones.Count)
+                </summary>
+                <ul style="list-style:none; padding-left:0; margin:.5rem 0 0">
+                    @if (_mesones.Count == 0)
+                    {
+                        <li style="color:#6b7280"><em>Sin mesones.</em></li>
+                    }
+                    else
+                    {
+                        @foreach (var m in _mesones)
+                        {
+                            <li style="display:flex; align-items:center; justify-content:space-between; padding:.25rem 0; border-bottom:1px dashed #eee">
+                                <div>
                                     <strong>@MesonNameForDisplay(m)</strong>
                                     <div style="font-size:.85rem; color:#6b7280">
-                                Reactivos: @m.reactivos_count · Equipos: @m.equipos_count
-                            </div>
-                        </div>
-                        <button type="button" class="btn link"
+                                        Reactivos: @m.reactivos_count · Equipos: @m.equipos_count
+                                    </div>
+                                </div>
+                                <button type="button" class="btn link"
                                         @onclick='@(() => Nav.NavigateTo($"/detalles-meson/{m.meson_id}"))'>
                                     ver
-                        </button>
-                    </li>
-                }
-            }
-        </ul>
-    </details>
+                                </button>
+                            </li>
+                        }
+                    }
+                </ul>
+            </details>
 
-    <details open style="margin-top:.75rem">
-        <summary style="cursor:pointer; font-weight:600">
-            Instalaciones (@_instalaciones.Count)
-        </summary>
-        <ul style="list-style:none; padding-left:0; margin:.5rem 0 0">
-            @if (_instalaciones.Count == 0)
+            <details open style="margin-top:.75rem">
+                <summary style="cursor:pointer; font-weight:600">
+                    Instalaciones (@_instalaciones.Count)
+                </summary>
+                <ul style="list-style:none; padding-left:0; margin:.5rem 0 0">
+                    @if (_instalaciones.Count == 0)
+                    {
+                        <li style="color:#6b7280"><em>Sin instalaciones.</em></li>
+                    }
+                    else
+                    {
+                        @foreach (var ins in _instalaciones)
+                        {
+                            <li style="padding:.5rem 0; border-bottom:1px dashed #eee">
+                                <div style="display:flex; align-items:center; justify-content:space-between;">
+                                    <div>
+                                        <strong>@ins.nombre</strong>
+                                        @if (!string.IsNullOrWhiteSpace(ins.tipo_nombre))
+                                        {
+                                            <span style="margin-left:.5rem; font-size:.8rem; background:#e5f9f1; color:#047857; padding:.05rem .4rem; border-radius:.4rem">
+                                                @ins.tipo_nombre
+                                            </span>
+                                        }
+                                    </div>
+                                    <button type="button" class="btn link"
+                                            @onclick='@(() => Nav.NavigateTo($"/detalles-instalacion/{ins.instalacion_id}"))'>
+                                        ver
+                                    </button>
+                                </div>
+
+                                @if (!string.IsNullOrWhiteSpace(ins.tipo_descripcion))
+                                {
+                                    <div style="color:#4b5563; font-size:.9rem; margin-top:.25rem">
+                                        @ins.tipo_descripcion
+                                    </div>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(ins.notas))
+                                {
+                                    <div style="color:#6b7280; font-size:.85rem; margin-top:.15rem"><em>@ins.notas</em></div>
+                                }
+                            </li>
+                        }
+                    }
+                </ul>
+            </details>
+        </div>
+
+        <div style="margin-top:1rem; border:1px solid #e5e7eb; border-radius:.5rem; padding:.75rem; background:#fff">
+            <h3 style="margin:0 0 .5rem 0">Sustancias (@_sustancias.Count)</h3>
+            <div class="assign-row">
+                <select class="border p-1" @bind="_selectedContenedorId">
+                    <option value="">Selecciona contenedor</option>
+                    @foreach (var opt in _contenedoresDisponibles)
+                    {
+                        <option value="@opt.id">@opt.label</option>
+                    }
+                </select>
+                <button class="btn" @onclick="AssignContenedorAsync" disabled="@string.IsNullOrWhiteSpace(_selectedContenedorId)">Asignar</button>
+                <span class="text-sm text-gray-500">@_assignMsg</span>
+            </div>
+            @if (_sustancias.Count == 0)
             {
-                <li style="color:#6b7280"><em>Sin instalaciones.</em></li>
+                <p class="muted">Sin sustancias registradas.</p>
             }
             else
             {
-                @foreach (var ins in _instalaciones)
-                {
-                    <li style="padding:.5rem 0; border-bottom:1px dashed #eee">
-                        <div style="display:flex; align-items:center; justify-content:space-between;">
-                            <div>
-                                <strong>@ins.nombre</strong>
-                                @if (!string.IsNullOrWhiteSpace(ins.tipo_nombre))
-                                {
-                                    <span style="margin-left:.5rem; font-size:.8rem; background:#e5f9f1; color:#047857; padding:.05rem .4rem; border-radius:.4rem">
-                                        @ins.tipo_nombre
-                                    </span>
-                                }
-                            </div>
-                            <button type="button" class="btn link"
-        @onclick='@(() => Nav.NavigateTo($"/detalles-instalacion/{ins.instalacion_id}"))'>
-                                ver
-                            </button>
-                        </div>
-
-                        @if (!string.IsNullOrWhiteSpace(ins.tipo_descripcion))
-                        {
-                            <div style="color:#4b5563; font-size:.9rem; margin-top:.25rem">
-                                @ins.tipo_descripcion
-                            </div>
-                        }
-                        @if (!string.IsNullOrWhiteSpace(ins.notas))
-                        {
-                            <div style="color:#6b7280; font-size:.85rem; margin-top:.15rem"><em>@ins.notas</em></div>
-                        }
-                    </li>
-                }
+                <ul class="simple-list">
+                    @foreach (var item in _sustancias)
+                    {
+                        <li>
+                            <strong>@item.nombre</strong> · @item.cantidad
+                            <span class="muted">(@item.cont_id)</span>
+                        </li>
+                    }
+                </ul>
             }
-        </ul>
-    </details>
-</div>
+        </div>
+
+        <div style="margin-top:1rem; border:1px solid #e5e7eb; border-radius:.5rem; padding:.75rem; background:#fff">
+            <h3 style="margin:0 0 .5rem 0">Equipos (@_equipos.Count)</h3>
+            <div class="assign-row">
+                <select class="border p-1" @bind="_selectedEquipoId">
+                    <option value="">Selecciona equipo</option>
+                    @foreach (var opt in _equiposDisponibles)
+                    {
+                        <option value="@opt.id">@opt.label</option>
+                    }
+                </select>
+                <button class="btn" @onclick="AssignEquipoAsync" disabled="@string.IsNullOrWhiteSpace(_selectedEquipoId)">Asignar</button>
+                <span class="text-sm text-gray-500">@_assignMsg</span>
+            </div>
+            @if (_equipos.Count == 0)
+            {
+                <p class="muted">Sin equipos registrados.</p>
+            }
+            else
+            {
+                <ul class="simple-list">
+                    @foreach (var item in _equipos)
+                    {
+                        <li>
+                            <strong>@item.nombre_modelo</strong> · @item.serie
+                            <span class="muted">@item.posicion</span>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+
+        <div style="margin-top:1rem; border:1px solid #e5e7eb; border-radius:.5rem; padding:.75rem; background:#fff">
+            <h3 style="margin:0 0 .5rem 0">Materiales</h3>
+
+            <h4 style="margin:.5rem 0 0">Vidrio (@_materialesVidrio.Count)</h4>
+            <div class="assign-row">
+                <select class="border p-1" @bind="_selectedMaterialVidrioId">
+                    <option value="">Selecciona material</option>
+                    @foreach (var opt in _materialesVidrioDisponibles)
+                    {
+                        <option value="@opt.id">@opt.label</option>
+                    }
+                </select>
+                <button class="btn" @onclick='@(() => AssignMaterialAsync("materiales_vidrio", _selectedMaterialVidrioId))' disabled="@string.IsNullOrWhiteSpace(_selectedMaterialVidrioId)">Asignar</button>
+            </div>
+            @if (_materialesVidrio.Count == 0)
+            {
+                <p class="muted">Sin materiales de vidrio.</p>
+            }
+            else
+            {
+                <ul class="simple-list">
+                    @foreach (var item in _materialesVidrio)
+                    {
+                        <li><strong>@item.nombre</strong> · @item.detalle</li>
+                    }
+                </ul>
+            }
+
+            <h4 style="margin:.8rem 0 0">Montaje (@_materialesMontaje.Count)</h4>
+            <div class="assign-row">
+                <select class="border p-1" @bind="_selectedMaterialMontajeId">
+                    <option value="">Selecciona material</option>
+                    @foreach (var opt in _materialesMontajeDisponibles)
+                    {
+                        <option value="@opt.id">@opt.label</option>
+                    }
+                </select>
+                <button class="btn" @onclick='@(() => AssignMaterialAsync("materiales_montaje", _selectedMaterialMontajeId))' disabled="@string.IsNullOrWhiteSpace(_selectedMaterialMontajeId)">Asignar</button>
+            </div>
+            @if (_materialesMontaje.Count == 0)
+            {
+                <p class="muted">Sin materiales de montaje.</p>
+            }
+            else
+            {
+                <ul class="simple-list">
+                    @foreach (var item in _materialesMontaje)
+                    {
+                        <li><strong>@item.nombre</strong> · @item.detalle</li>
+                    }
+                </ul>
+            }
+
+            <h4 style="margin:.8rem 0 0">Consumible (@_materialesConsumible.Count)</h4>
+            <div class="assign-row">
+                <select class="border p-1" @bind="_selectedMaterialConsumibleId">
+                    <option value="">Selecciona material</option>
+                    @foreach (var opt in _materialesConsumibleDisponibles)
+                    {
+                        <option value="@opt.id">@opt.label</option>
+                    }
+                </select>
+                <button class="btn" @onclick='@(() => AssignMaterialAsync("materiales_consumible", _selectedMaterialConsumibleId))' disabled="@string.IsNullOrWhiteSpace(_selectedMaterialConsumibleId)">Asignar</button>
+            </div>
+            @if (_materialesConsumible.Count == 0)
+            {
+                <p class="muted">Sin materiales consumibles.</p>
+            }
+            else
+            {
+                <ul class="simple-list">
+                    @foreach (var item in _materialesConsumible)
+                    {
+                        <li><strong>@item.nombre</strong> · @item.detalle</li>
+                    }
+                </ul>
+            }
+        </div>
 
     }
 </div>
+
+<style>
+    .info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 0.75rem;
+    }
+    .assign-row {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+        margin: 0.5rem 0;
+        flex-wrap: wrap;
+    }
+    .simple-list {
+        list-style: none;
+        padding-left: 0;
+        margin: 0.5rem 0 0;
+        display: grid;
+        gap: 0.35rem;
+    }
+    .muted {
+        color: #6b7280;
+    }
+</style>
