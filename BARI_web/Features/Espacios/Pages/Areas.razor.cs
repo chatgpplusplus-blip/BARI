@@ -3,24 +3,38 @@ using System.Linq;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
+using BARI_web.General_Services;
 using BARI_web.General_Services.DataBaseConnection;
 using System;
 
 namespace BARI_web.Features.Espacios.Pages
 {
-    public partial class Areas : ComponentBase
+    public partial class Areas : ComponentBase, IDisposable
     {
         [Inject] private PgCrud Pg { get; set; } = default!;
         [Inject] public NavigationManager Nav { get; set; } = default!;
+        [Inject] private LaboratorioState LaboratorioState { get; set; } = default!;
 
         // ===== State / UI =====
         private bool IsLoading { get; set; } = true;
 
         // ===== Model / data records =====
-        private record CanvasLab(string canvas_id, string nombre, decimal ancho_m, decimal alto_m, decimal margen_m);
-        private record Poly(string poly_id, string canvas_id, string? area_id,
-                            decimal x_m, decimal y_m, decimal ancho_m, decimal alto_m,
-                            int z_order, string? etiqueta, string? color_hex);
+        private record CanvasLab(string canvas_id, string nombre, decimal ancho_m, decimal alto_m, decimal margen_m, int? laboratorio_id);
+        private readonly record struct Point(decimal X, decimal Y);
+        private class Poly
+        {
+            public string poly_id { get; init; } = "";
+            public string canvas_id { get; init; } = "";
+            public string? area_id { get; init; }
+            public decimal x_m { get; set; }
+            public decimal y_m { get; set; }
+            public decimal ancho_m { get; set; }
+            public decimal alto_m { get; set; }
+            public int z_order { get; init; }
+            public string? etiqueta { get; init; }
+            public string? color_hex { get; init; }
+            public List<Point> puntos { get; set; } = new();
+        }
 
         // Etiqueta de mesón tomada desde poligonos_interiores
         private readonly Dictionary<string, string> _mesonLabelFromInner = new(StringComparer.OrdinalIgnoreCase);
@@ -65,13 +79,24 @@ namespace BARI_web.Features.Espacios.Pages
             public List<(decimal x1, decimal y1, decimal x2, decimal y2)> Outline { get; } = new();
         }
 
-        private CanvasLab? _canvas;
-        private readonly List<Poly> _polys = new();
-        private readonly Dictionary<string, AreaDraw> _byArea = new(StringComparer.OrdinalIgnoreCase);
+        private sealed class CanvasView
+        {
+            public CanvasView(CanvasLab canvas, Dictionary<string, AreaDraw> areas, List<Door> doors, List<Win> windows)
+            {
+                Canvas = canvas;
+                Areas = areas;
+                Doors = doors;
+                Windows = windows;
+            }
 
-        // Listas para puertas/ventanas (coordenadas absolutas)
-        private readonly List<Door> _doors = new();
-        private readonly List<Win> _windows = new();
+            public CanvasLab Canvas { get; }
+            public Dictionary<string, AreaDraw> Areas { get; }
+            public List<Door> Doors { get; set; }
+            public List<Win> Windows { get; set; }
+        }
+
+        private readonly List<CanvasView> _canvasViews = new();
+        private readonly Dictionary<string, AreaDraw> _byArea = new(StringComparer.OrdinalIgnoreCase);
 
         // ===== Appearance and tolerances =====
         private const decimal OutlineStroke = 0.28m;
@@ -79,10 +104,12 @@ namespace BARI_web.Features.Espacios.Pages
         private const decimal Tolerance = 0.004m; // 4 mm
         private static decimal RoundToTolerance(decimal v) => Math.Round(v / Tolerance) * Tolerance;
 
-        private decimal Wm => _canvas?.ancho_m ?? 20m;
-        private decimal Hm => _canvas?.alto_m ?? 10m;
-        private string ViewBox() => $"0 0 {S(Wm)} {S(Hm)}";
-        private string AspectRatioString() { var ar = (double)Wm / (double)Hm; return $"{ar:0.###} / 1"; }
+        private static string ViewBox(CanvasLab canvas) => $"0 0 {S(canvas.ancho_m)} {S(canvas.alto_m)}";
+        private static string AspectRatioString(CanvasLab canvas)
+        {
+            var ar = (double)canvas.ancho_m / (double)canvas.alto_m;
+            return $"{ar:0.###} / 1";
+        }
 
         // Lookup de plantas y meta por área
         private Dictionary<string, string> _plantasLookup = new(StringComparer.OrdinalIgnoreCase);
@@ -106,27 +133,13 @@ namespace BARI_web.Features.Espacios.Pages
             try
             {
                 IsLoading = true;
-
-                await LoadCanvasAsync();
-                if (_canvas is null) return;
+                LaboratorioState.OnChange += HandleLaboratorioChanged;
 
                 // Cargamos metadatos de áreas (planta + nombre) una sola vez.
                 await LoadAreasAsync();
-
-                // Cargamos polígonos del canvas y construimos estructura por área.
-                await LoadPolysAsync();
-                BuildAreasFromPolys();
-
-                // Definir planta inicial (según meta de primera área válida o primera planta del catálogo)
                 await LoadPlantasLookupAsync();
-                InitCurrentPlanta();
 
-                // Construir listas laterales (mesones/instalaciones) — usa _byArea y _areasMeta ya cargados
-                await BuildAreaSideListsAsync();
-
-                // Cargar puertas/ventanas ya con planta definida para filtrar de entrada
-                await LoadDoorsAsync();
-                await LoadWindowsAsync();
+                await ReloadForLaboratorioAsync();
             }
             finally
             {
@@ -135,20 +148,31 @@ namespace BARI_web.Features.Espacios.Pages
             }
         }
 
+        public void Dispose()
+        {
+            LaboratorioState.OnChange -= HandleLaboratorioChanged;
+        }
+
         // ===== Carga de datos =====
-        private async Task LoadCanvasAsync()
+        private async Task<List<CanvasLab>> LoadCanvasesAsync()
         {
             Pg.UseSheet("canvas_lab");
-            var c = (await Pg.ReadAllAsync()).FirstOrDefault();
-            if (c is null) return;
+            var rows = await Pg.ReadAllAsync();
+            var labId = LaboratorioState.LaboratorioId;
 
-            _canvas = new CanvasLab(
-                c["canvas_id"],
-                c["nombre"],
-                Dec(c["ancho_m"]),
-                Dec(c["alto_m"]),
-                Dec(c["margen_m"])
-            );
+            var canvases = rows
+                .Select(r => new CanvasLab(
+                    Get(r, "canvas_id"),
+                    Get(r, "nombre"),
+                    Dec(Get(r, "ancho_m", "0")),
+                    Dec(Get(r, "alto_m", "0")),
+                    Dec(Get(r, "margen_m", "0")),
+                    IntOrNull(Get(r, "laboratorio_id"))))
+                .Where(c => c.laboratorio_id == labId)
+                .OrderBy(c => c.canvas_id, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            return canvases;
         }
 
         private async Task LoadAreasAsync()
@@ -175,11 +199,45 @@ namespace BARI_web.Features.Espacios.Pages
             }
         }
 
-        private async Task LoadPolysAsync()
+        private async void HandleLaboratorioChanged()
         {
-            _polys.Clear();
+            await InvokeAsync(async () =>
+            {
+                IsLoading = true;
+                await ReloadForLaboratorioAsync();
+                IsLoading = false;
+                StateHasChanged();
+            });
+        }
 
-            if (_canvas is null) return;
+        private async Task ReloadForLaboratorioAsync()
+        {
+            _canvasViews.Clear();
+            _byArea.Clear();
+
+            var canvases = await LoadCanvasesAsync();
+            foreach (var canvas in canvases)
+            {
+                var polys = await LoadPolysAsync(canvas.canvas_id);
+                var areas = BuildAreasFromPolys(polys);
+                var doors = await LoadDoorsAsync(canvas.canvas_id);
+                var windows = await LoadWindowsAsync(canvas.canvas_id);
+                _canvasViews.Add(new CanvasView(canvas, areas, doors, windows));
+
+                foreach (var kv in areas)
+                {
+                    if (!_byArea.ContainsKey(kv.Key))
+                        _byArea[kv.Key] = kv.Value;
+                }
+            }
+
+            EnsurePlantaSelection();
+            await BuildAreaSideListsAsync();
+        }
+
+        private async Task<List<Poly>> LoadPolysAsync(string canvasId)
+        {
+            var polys = new List<Poly>();
 
             Pg.UseSheet("poligonos");
             var rows = await Pg.ReadAllAsync();
@@ -187,49 +245,75 @@ namespace BARI_web.Features.Espacios.Pages
             // Filtramos en memoria por canvas (mejorable si PgCrud permite WHERE en el futuro)
             foreach (var r in rows)
             {
-                if (!string.Equals(Get(r, "canvas_id"), _canvas.canvas_id, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(Get(r, "canvas_id"), canvasId, StringComparison.OrdinalIgnoreCase))
                     continue;
 
-                _polys.Add(new Poly(
-                    Get(r, "poly_id"),
-                    Get(r, "canvas_id"),
-                    NullIfEmpty(Get(r, "area_id")),
-                    Dec(Get(r, "x_m", "0")),
-                    Dec(Get(r, "y_m", "0")),
-                    Dec(Get(r, "ancho_m", "0")),
-                    Dec(Get(r, "alto_m", "0")),
-                    Int(Get(r, "z_order", "0")),
-                    NullIfEmpty(Get(r, "etiqueta")),
-                    NullIfEmpty(Get(r, "color_hex"))
-                ));
+                polys.Add(new Poly
+                {
+                    poly_id = Get(r, "poly_id"),
+                    canvas_id = Get(r, "canvas_id"),
+                    area_id = NullIfEmpty(Get(r, "area_id")),
+                    x_m = Dec(Get(r, "x_m", "0")),
+                    y_m = Dec(Get(r, "y_m", "0")),
+                    ancho_m = Dec(Get(r, "ancho_m", "0")),
+                    alto_m = Dec(Get(r, "alto_m", "0")),
+                    z_order = Int(Get(r, "z_order", "0")),
+                    etiqueta = NullIfEmpty(Get(r, "etiqueta")),
+                    color_hex = NullIfEmpty(Get(r, "color_hex"))
+                });
             }
+
+            Pg.UseSheet("poligonos_puntos");
+            var pointRows = await Pg.ReadAllAsync();
+            var pointsByPoly = pointRows
+                .GroupBy(r => Get(r, "poly_id"), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderBy(r => Int(Get(r, "orden", "0")))
+                          .Select(r => new Point(Dec(Get(r, "x_m", "0")), Dec(Get(r, "y_m", "0"))))
+                          .ToList(),
+                    StringComparer.OrdinalIgnoreCase);
+
+            foreach (var p in polys)
+            {
+                if (pointsByPoly.TryGetValue(p.poly_id, out var pts) && pts.Count >= 3)
+                {
+                    p.puntos = pts;
+                }
+                else
+                {
+                    p.puntos = BuildRectPoints(p);
+                }
+                UpdateBoundsFromPoints(p);
+            }
+
+            return polys;
         }
 
-        private void BuildAreasFromPolys()
+        private Dictionary<string, AreaDraw> BuildAreasFromPolys(List<Poly> polys)
         {
-            _byArea.Clear();
+            var byArea = new Dictionary<string, AreaDraw>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var g in _polys.GroupBy(p => p.area_id ?? "", StringComparer.OrdinalIgnoreCase))
+            foreach (var g in polys.GroupBy(p => p.area_id ?? "", StringComparer.OrdinalIgnoreCase))
             {
                 var a = new AreaDraw { AreaId = g.Key };
                 var ordered = g.OrderBy(p => p.z_order).ToList();
                 a.Polys.AddRange(ordered);
 
                 // BBox
-                a.MinX = ordered.Min(p => p.x_m);
-                a.MinY = ordered.Min(p => p.y_m);
-                a.MaxX = ordered.Max(p => p.x_m + p.ancho_m);
-                a.MaxY = ordered.Max(p => p.y_m + p.alto_m);
+                a.MinX = ordered.Min(p => p.puntos.Min(pt => pt.X));
+                a.MinY = ordered.Min(p => p.puntos.Min(pt => pt.Y));
+                a.MaxX = ordered.Max(p => p.puntos.Max(pt => pt.X));
+                a.MaxY = ordered.Max(p => p.puntos.Max(pt => pt.Y));
 
-                // Centro ponderado por área de rectángulos
+                // Centro ponderado por área de polígonos
                 decimal sx = 0, sy = 0, sa = 0;
                 foreach (var p in ordered)
                 {
-                    var area = p.ancho_m * p.alto_m;
+                    var area = PolygonArea(p.puntos);
                     if (area <= 0) continue;
-                    var cx = p.x_m + p.ancho_m / 2m;
-                    var cy = p.y_m + p.alto_m / 2m;
-                    sx += cx * area; sy += cy * area; sa += area;
+                    var centroid = PolygonCentroid(p.puntos);
+                    sx += centroid.x * area; sy += centroid.y * area; sa += area;
                 }
                 if (sa > 0)
                 {
@@ -242,16 +326,17 @@ namespace BARI_web.Features.Espacios.Pages
                 }
 
                 // Label: etiqueta del poly o nombre de área desde _areasMeta
-                var etiquetaPoly = ordered.Select(p => p.etiqueta).FirstOrDefault(t => !string.IsNullOrWhiteSpace(t));
                 var nombreArea = _areaNombre.TryGetValue(a.AreaId, out var n) ? n : null;
-                var label = etiquetaPoly ?? nombreArea ?? "SIN AREA";
+                var etiquetaPoly = ordered.Select(p => p.etiqueta).FirstOrDefault(t => !string.IsNullOrWhiteSpace(t));
+                var label = nombreArea ?? etiquetaPoly ?? (string.IsNullOrWhiteSpace(a.AreaId) ? "SIN AREA" : a.AreaId);
 
-                a.Label = label.ToUpperInvariant();
+                a.Label = string.IsNullOrWhiteSpace(label) ? "SIN AREA" : label.ToUpperInvariant();
                 a.Fill = ordered.Select(p => p.color_hex).FirstOrDefault(s => !string.IsNullOrWhiteSpace(s)) ?? "#E6E6E6";
 
-                BuildAreaOutline(a);
-                _byArea[a.AreaId] = a;
+                byArea[a.AreaId] = a;
             }
+
+            return byArea;
         }
 
         private async Task LoadPlantasLookupAsync()
@@ -260,7 +345,7 @@ namespace BARI_web.Features.Espacios.Pages
             _plantasLookup = await Pg.GetLookupAsync("plantas", "planta_id", "nombre");
         }
 
-        private void InitCurrentPlanta()
+        private void EnsurePlantaSelection()
         {
             if (_byArea.Count == 0)
             {
@@ -268,27 +353,30 @@ namespace BARI_web.Features.Espacios.Pages
                 return;
             }
 
+            if (!string.IsNullOrWhiteSpace(_currentPlantaId)
+                && _plantasLookup.ContainsKey(_currentPlantaId)
+                && _byArea.Keys.Any(IsAreaInCurrentPlanta))
+            {
+                return;
+            }
+
             var firstAreaId = _byArea.Keys.FirstOrDefault(k => !string.IsNullOrWhiteSpace(PlantaOfArea(k)));
             _currentPlantaId = PlantaOfArea(firstAreaId) ?? _plantasLookup.Keys.FirstOrDefault();
         }
 
-        private async Task LoadDoorsAsync()
+        private async Task<List<Door>> LoadDoorsAsync(string canvasId)
         {
-            _doors.Clear();
-            if (_canvas is null) return;
+            var doors = new List<Door>();
 
             Pg.UseSheet("puertas");
             try
             {
                 foreach (var r in await Pg.ReadAllAsync())
                 {
-                    if (!string.Equals(Get(r, "canvas_id"), _canvas.canvas_id, StringComparison.OrdinalIgnoreCase))
+                    if (!string.Equals(Get(r, "canvas_id"), canvasId, StringComparison.OrdinalIgnoreCase))
                         continue;
 
-                    // Filtramos por planta activa (usando area_a si existe)
                     var areaA = NullIfEmpty(Get(r, "area_a"));
-                    if (!IsAreaInCurrentPlanta(areaA)) continue;
-
                     var x1 = Dec(Get(r, "x1_m", "0")); var y1 = Dec(Get(r, "y1_m", "0"));
                     var x2 = Dec(Get(r, "x2_m", "0")); var y2 = Dec(Get(r, "y2_m", "0"));
 
@@ -305,7 +393,7 @@ namespace BARI_web.Features.Espacios.Pages
                         len = Math.Abs(y2 - y1);
                     }
 
-                    _doors.Add(new Door
+                    doors.Add(new Door
                     {
                         door_id = Get(r, "puerta_id"),
                         canvas_id = Get(r, "canvas_id"),
@@ -319,24 +407,23 @@ namespace BARI_web.Features.Espacios.Pages
                 }
             }
             catch { /* silencioso como en editor */ }
+
+            return doors;
         }
 
-        private async Task LoadWindowsAsync()
+        private async Task<List<Win>> LoadWindowsAsync(string canvasId)
         {
-            _windows.Clear();
-            if (_canvas is null) return;
+            var windows = new List<Win>();
 
             Pg.UseSheet("ventanas");
             try
             {
                 foreach (var r in await Pg.ReadAllAsync())
                 {
-                    if (!string.Equals(Get(r, "canvas_id"), _canvas.canvas_id, StringComparison.OrdinalIgnoreCase))
+                    if (!string.Equals(Get(r, "canvas_id"), canvasId, StringComparison.OrdinalIgnoreCase))
                         continue;
 
                     var areaA = NullIfEmpty(Get(r, "area_a"));
-                    if (!IsAreaInCurrentPlanta(areaA)) continue;
-
                     var x1 = Dec(Get(r, "x1_m", "0")); var y1 = Dec(Get(r, "y1_m", "0"));
                     var x2 = Dec(Get(r, "x2_m", "0")); var y2 = Dec(Get(r, "y2_m", "0"));
 
@@ -353,7 +440,7 @@ namespace BARI_web.Features.Espacios.Pages
                         len = Math.Abs(y2 - y1);
                     }
 
-                    _windows.Add(new Win
+                    windows.Add(new Win
                     {
                         win_id = Get(r, "ventana_id"),
                         canvas_id = Get(r, "canvas_id"),
@@ -367,6 +454,8 @@ namespace BARI_web.Features.Espacios.Pages
                 }
             }
             catch { /* silencioso */ }
+
+            return windows;
         }
 
         // ===== Build area outline from rectangles =====
@@ -502,6 +591,64 @@ namespace BARI_web.Features.Espacios.Pages
             return outSegs;
         }
 
+        private static List<Point> BuildRectPoints(Poly p)
+            => new()
+            {
+                new Point(p.x_m, p.y_m),
+                new Point(p.x_m + p.ancho_m, p.y_m),
+                new Point(p.x_m + p.ancho_m, p.y_m + p.alto_m),
+                new Point(p.x_m, p.y_m + p.alto_m)
+            };
+
+        private static void UpdateBoundsFromPoints(Poly p)
+        {
+            if (p.puntos.Count == 0) return;
+            var minX = p.puntos.Min(pt => pt.X);
+            var minY = p.puntos.Min(pt => pt.Y);
+            var maxX = p.puntos.Max(pt => pt.X);
+            var maxY = p.puntos.Max(pt => pt.Y);
+            p.x_m = minX;
+            p.y_m = minY;
+            p.ancho_m = Math.Max(0.1m, maxX - minX);
+            p.alto_m = Math.Max(0.1m, maxY - minY);
+        }
+
+        private string PointsString(Poly p)
+            => string.Join(" ", p.puntos.Select(pt => $"{S(pt.X)},{S(pt.Y)}"));
+
+        private static decimal PolygonArea(IReadOnlyList<Point> points)
+        {
+            if (points.Count < 3) return 0m;
+            decimal area = 0m;
+            for (int i = 0; i < points.Count; i++)
+            {
+                var a = points[i];
+                var b = points[(i + 1) % points.Count];
+                area += (a.X * b.Y) - (b.X * a.Y);
+            }
+            return Math.Abs(area) / 2m;
+        }
+
+        private static (decimal x, decimal y) PolygonCentroid(IReadOnlyList<Point> points)
+        {
+            if (points.Count < 3) return (0m, 0m);
+            decimal cx = 0m;
+            decimal cy = 0m;
+            decimal area = 0m;
+            for (int i = 0; i < points.Count; i++)
+            {
+                var a = points[i];
+                var b = points[(i + 1) % points.Count];
+                var cross = (a.X * b.Y) - (b.X * a.Y);
+                area += cross;
+                cx += (a.X + b.X) * cross;
+                cy += (a.Y + b.Y) * cross;
+            }
+            if (area == 0m) return (0m, 0m);
+            area *= 0.5m;
+            return (cx / (6m * area), cy / (6m * area));
+        }
+
         // ===== Navigation / helpers =====
         private void GoToArea(string? areaId)
         {
@@ -571,8 +718,11 @@ namespace BARI_web.Features.Espacios.Pages
 
         private async Task ReloadOpeningsForPlantaAsync()
         {
-            await LoadDoorsAsync();
-            await LoadWindowsAsync();
+            foreach (var view in _canvasViews)
+            {
+                view.Doors = await LoadDoorsAsync(view.Canvas.canvas_id);
+                view.Windows = await LoadWindowsAsync(view.Canvas.canvas_id);
+            }
             StateHasChanged();
         }
 
@@ -754,6 +904,7 @@ namespace BARI_web.Features.Espacios.Pages
         private static string S(double v) => v.ToString(CultureInfo.InvariantCulture);
         private static decimal Dec(string s) => decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : 0m;
         private static int Int(string s) => int.TryParse(s, out var n) ? n : 0;
+        private static int? IntOrNull(string s) => int.TryParse(s, out var n) ? n : null;
         private static string? NullIfEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s;
         private static string Get(Dictionary<string, string> d, string key, string fallback = "") => d.TryGetValue(key, out var v) ? v : fallback;
     }

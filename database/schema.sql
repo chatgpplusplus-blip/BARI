@@ -49,13 +49,24 @@ CREATE TABLE usos (
 );
 
 -- ==============================
+-- LABORATORIOS
+-- ==============================
+CREATE TABLE laboratorios (
+  laboratorio_id integer PRIMARY KEY,
+  nombre text NOT NULL UNIQUE,
+  tiene_ghs boolean NOT NULL DEFAULT false
+);
+
+-- ==============================
 -- ASIGNATURAS Y EXPERIENCIAS
 -- ==============================
 CREATE TABLE asignaturas (
   asignatura_id varchar PRIMARY KEY,
   nombre text NOT NULL,
   codigo_clase text NOT NULL UNIQUE,
-  descripcion text
+  descripcion text,
+  descripcion_detalle text,
+  laboratorio_id integer REFERENCES laboratorios(laboratorio_id)
 );
 
 CREATE TABLE experiencias_clases (
@@ -67,7 +78,11 @@ CREATE TABLE experiencias_clases (
   procedimientos text,
   tiempo_estimado_min integer,
   observaciones text,
-  precauciones text
+  precauciones text,
+  orden integer,
+  descripcion_detalle text,
+  laboratorio_id integer REFERENCES laboratorios(laboratorio_id),
+  laboratorio_realizado_id varchar
 );
 
 INSERT INTO asignaturas (asignatura_id, nombre, codigo_clase, descripcion)
@@ -118,12 +133,8 @@ CREATE TABLE canvas_lab (
   ancho_m numeric NOT NULL,
   alto_m numeric NOT NULL,
   margen_m numeric NOT NULL,
+  laboratorio_id integer REFERENCES laboratorios(laboratorio_id),
   anotaciones text
-);
-
-CREATE TABLE laboratorios (
-  laboratorio_id integer PRIMARY KEY,
-  nombre text NOT NULL UNIQUE
 );
 
 CREATE TABLE areas (
@@ -364,6 +375,115 @@ CREATE TABLE contenedores (
   posicion text,
   laboratorio_id integer NOT NULL DEFAULT 1 REFERENCES laboratorios(laboratorio_id),
   qr text
+);
+
+-- ==============================
+-- MATERIALES
+-- ==============================
+CREATE TABLE materiales_vidrio (
+  material_id varchar PRIMARY KEY,
+  nombre text NOT NULL,
+  subcategoria_id varchar REFERENCES subcategorias(subcategoria_id),
+  capacidad_num numeric,
+  unidad_id varchar REFERENCES unidades(unidad_id),
+  marca_id varchar REFERENCES marcas(marca_id),
+  estado_id varchar REFERENCES estados_activo(estado_id),
+  area_id varchar REFERENCES areas(area_id),
+  meson_id varchar REFERENCES mesones(meson_id),
+  nivel integer,
+  posicion text,
+  laboratorio_id integer NOT NULL DEFAULT 1 REFERENCES laboratorios(laboratorio_id),
+  observaciones text
+);
+
+CREATE TABLE materiales_montaje (
+  material_id varchar PRIMARY KEY,
+  nombre text NOT NULL,
+  subcategoria_id varchar REFERENCES subcategorias(subcategoria_id),
+  marca_id varchar REFERENCES marcas(marca_id),
+  estado_id varchar REFERENCES estados_activo(estado_id),
+  area_id varchar REFERENCES areas(area_id),
+  meson_id varchar REFERENCES mesones(meson_id),
+  nivel integer,
+  posicion text,
+  laboratorio_id integer NOT NULL DEFAULT 1 REFERENCES laboratorios(laboratorio_id),
+  observaciones text
+);
+
+CREATE TABLE materiales_consumible (
+  material_id varchar PRIMARY KEY,
+  nombre text NOT NULL,
+  subcategoria_id varchar REFERENCES subcategorias(subcategoria_id),
+  marca_id varchar REFERENCES marcas(marca_id),
+  estado_id varchar REFERENCES estados_activo(estado_id),
+  cantidad integer,
+  area_id varchar REFERENCES areas(area_id),
+  meson_id varchar REFERENCES mesones(meson_id),
+  nivel integer,
+  posicion text,
+  laboratorio_id integer NOT NULL DEFAULT 1 REFERENCES laboratorios(laboratorio_id),
+  observaciones text
+);
+
+-- ==============================
+-- EXPERIENCIAS: RELACIONES
+-- ==============================
+CREATE TABLE laboratorio_realizado (
+  laboratorio_realizado_id varchar PRIMARY KEY,
+  laboratorio_id integer NOT NULL REFERENCES laboratorios(laboratorio_id),
+  asignatura_id varchar REFERENCES asignaturas(asignatura_id),
+  nombre text NOT NULL,
+  descripcion text
+);
+
+ALTER TABLE experiencias_clases
+ADD CONSTRAINT experiencias_clases_laboratorio_realizado_id_fkey
+FOREIGN KEY (laboratorio_realizado_id)
+REFERENCES laboratorio_realizado(laboratorio_realizado_id);
+
+CREATE TABLE experiencia_equipos (
+  experiencia_id varchar NOT NULL REFERENCES experiencias_clases(experiencia_id),
+  equipo_id varchar NOT NULL REFERENCES equipos(equipo_id),
+  PRIMARY KEY (experiencia_id, equipo_id)
+);
+
+CREATE TABLE experiencia_materiales_vidrio (
+  experiencia_id varchar NOT NULL REFERENCES experiencias_clases(experiencia_id),
+  material_id varchar NOT NULL REFERENCES materiales_vidrio(material_id),
+  PRIMARY KEY (experiencia_id, material_id)
+);
+
+CREATE TABLE experiencia_materiales_montaje (
+  experiencia_id varchar NOT NULL REFERENCES experiencias_clases(experiencia_id),
+  material_id varchar NOT NULL REFERENCES materiales_montaje(material_id),
+  PRIMARY KEY (experiencia_id, material_id)
+);
+
+CREATE TABLE experiencia_materiales_consumible (
+  experiencia_id varchar NOT NULL REFERENCES experiencias_clases(experiencia_id),
+  material_id varchar NOT NULL REFERENCES materiales_consumible(material_id),
+  PRIMARY KEY (experiencia_id, material_id)
+);
+
+CREATE TABLE experiencia_sustancias (
+  experiencia_id varchar NOT NULL REFERENCES experiencias_clases(experiencia_id),
+  sustancia_id varchar NOT NULL REFERENCES sustancias(sustancia_id),
+  PRIMARY KEY (experiencia_id, sustancia_id)
+);
+
+-- ==============================
+-- DOCUMENTACIÓN
+-- ==============================
+CREATE TABLE documentos (
+  documento_id varchar PRIMARY KEY,
+  titulo text NOT NULL,
+  categoria_id varchar REFERENCES categorias(categoria_id),
+  subcategoria_id varchar REFERENCES subcategorias(subcategoria_id),
+  url text,
+  archivo_local text,
+  notas text,
+  descripcion_detalle text,
+  laboratorio_id integer REFERENCES laboratorios(laboratorio_id)
 );
 
 -- ==============================
