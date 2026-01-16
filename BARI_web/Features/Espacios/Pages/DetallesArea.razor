@@ -43,7 +43,14 @@
                         <clipPath id="clip_target" clipPathUnits="userSpaceOnUse">
                             @foreach (var p in _area.Polys)
                             {
-                                <rect x="@S(p.x_m)" y="@S(p.y_m)" width="@S(p.ancho_m)" height="@S(p.alto_m)" />
+                                if (p.puntos.Count >= 3)
+                                {
+                                    <polygon points="@PointsString(p)" />
+                                }
+                                else
+                                {
+                                    <rect x="@S(p.x_m)" y="@S(p.y_m)" width="@S(p.ancho_m)" height="@S(p.alto_m)" />
+                                }
                             }
                         </clipPath>
 
@@ -57,10 +64,19 @@
 
                     <!-- relleno -->
                     <g class="softshadow" clip-path="url(#clip_target)">
-                        <rect x="@S(_area.MinX)" y="@S(_area.MinY)"
-                              width="@S(_area.MaxX - _area.MinX)"
-                              height="@S(_area.MaxY - _area.MinY)"
-                              fill="@_area.Fill" />
+                        @foreach (var p in _area.Polys)
+                        {
+                            if (p.puntos.Count >= 3)
+                            {
+                                <polygon points="@PointsString(p)" fill="@_area.Fill" />
+                            }
+                            else
+                            {
+                                <rect x="@S(p.x_m)" y="@S(p.y_m)"
+                                      width="@S(p.ancho_m)" height="@S(p.alto_m)"
+                                      fill="@_area.Fill" />
+                            }
+                        }
                     </g>
 
                     <!-- contorno -->
@@ -69,6 +85,29 @@
                         <line x1="@S(seg.x1)" y1="@S(seg.y1)" x2="@S(seg.x2)" y2="@S(seg.y2)"
                               stroke="#000" stroke-width="@S(OutlineStroke)"
                               vector-effect="non-scaling-stroke" />
+                    }
+
+                    <!-- bloques internos -->
+                    @foreach (var b in _blocks.OrderBy(b => b.z_order))
+                    {
+                        <rect x="@S(b.abs_x)" y="@S(b.abs_y)"
+                              width="@S(b.ancho)" height="@S(b.alto)"
+                              fill="@b.color_hex" opacity="0.45"
+                              stroke="#1f2937" stroke-width="@S(0.03m)" />
+
+                        var blockLabel = BlockLabel(b);
+                        @if (!string.IsNullOrWhiteSpace(blockLabel))
+                        {
+                            <text>
+                                <tspan x="@S(b.abs_x + b.ancho / 2m)"
+                                       y="@S(b.abs_y + b.alto / 2m)"
+                                       style="text-anchor:middle;dominant-baseline:middle"
+                                       font-size="@S(0.25m)"
+                                       fill="#111">
+                                    @blockLabel
+                                </tspan>
+                            </text>
+                        }
                     }
 
                     <!-- elementos interiores (rect + texto centrado y escalado) -->
