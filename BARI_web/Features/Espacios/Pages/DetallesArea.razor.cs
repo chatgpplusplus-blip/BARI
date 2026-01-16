@@ -68,6 +68,25 @@ namespace BARI_web.Features.Espacios.Pages
             public decimal abs_y { get; set; }
         }
 
+        private class BlockItem
+        {
+            public string bloque_id { get; set; } = "";
+            public string canvas_id { get; set; } = "";
+            public string? material_montaje_id { get; set; }
+            public string? meson_id { get; set; }
+            public string? etiqueta { get; set; }
+            public string? color_hex { get; set; }
+            public int z_order { get; set; }
+            public decimal pos_x { get; set; }
+            public decimal pos_y { get; set; }
+            public decimal ancho { get; set; }
+            public decimal alto { get; set; }
+            public decimal offset_x { get; set; }
+            public decimal offset_y { get; set; }
+            public decimal abs_x { get; set; }
+            public decimal abs_y { get; set; }
+        }
+
         private class Door
         {
             public string door_id { get; set; } = "";
@@ -97,6 +116,7 @@ namespace BARI_web.Features.Espacios.Pages
         private AreaDraw? _area;
         private AreaInfo? _areaInfo;
         private readonly List<InnerItem> _inners = new();
+        private readonly List<BlockItem> _blocks = new();
         private readonly List<Door> _doors = new();
         private readonly List<Win> _windows = new();
         private readonly List<EquipoItem> _equipos = new();
@@ -222,6 +242,7 @@ namespace BARI_web.Features.Espacios.Pages
 
                 // interiores / puertas / ventanas / mesones
                 await LoadInnerItemsForArea(a);
+                await LoadBlocksForArea(a);
                 await LoadDoorsAndWindowsForArea(a);
                 await LoadMesonesForArea(targetAreaId);
 
@@ -932,6 +953,57 @@ namespace BARI_web.Features.Espacios.Pages
                     orientacion = orient,
                     largo_m = Math.Max(0.4m, len)
                 });
+            }
+        }
+
+        private async Task LoadBlocksForArea(AreaDraw a)
+        {
+            _blocks.Clear();
+
+            Pg.UseSheet("bloques_int");
+            foreach (var r in await Pg.ReadAllAsync())
+            {
+                if (!string.Equals(Get(r, "canvas_id"), _canvas?.canvas_id ?? "", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var offsetX = Dec(Get(r, "offset_x", "0"));
+                var offsetY = Dec(Get(r, "offset_y", "0"));
+                var absX = Dec(Get(r, "pos_x", "0"));
+                var absY = Dec(Get(r, "pos_y", "0"));
+                var ancho = Dec(Get(r, "ancho", "0.6"));
+                var alto = Dec(Get(r, "alto", "0.4"));
+
+                if (offsetX != 0m || offsetY != 0m)
+                {
+                    absX = a.Cx + offsetX;
+                    absY = a.Cy + offsetY;
+                }
+
+                var block = new BlockItem
+                {
+                    bloque_id = Get(r, "bloque_id"),
+                    canvas_id = Get(r, "canvas_id"),
+                    material_montaje_id = NullIfEmpty(Get(r, "material_montaje_id")),
+                    meson_id = NullIfEmpty(Get(r, "meson_id")),
+                    etiqueta = NullIfEmpty(Get(r, "etiqueta")),
+                    color_hex = NullIfEmpty(Get(r, "color_hex")) ?? "#2563eb",
+                    z_order = Int(Get(r, "z_order", "0")),
+                    pos_x = absX,
+                    pos_y = absY,
+                    ancho = ancho,
+                    alto = alto,
+                    offset_x = offsetX,
+                    offset_y = offsetY,
+                    abs_x = absX,
+                    abs_y = absY
+                };
+
+                var withinX = block.abs_x + block.ancho >= a.MinX && block.abs_x <= a.MaxX;
+                var withinY = block.abs_y + block.alto >= a.MinY && block.abs_y <= a.MaxY;
+                if (!withinX || !withinY)
+                    continue;
+
+                _blocks.Add(block);
             }
         }
 
