@@ -230,10 +230,10 @@ namespace BARI_web.Features.Espacios.Pages
                     if (!string.Equals(areaId, targetAreaId, StringComparison.OrdinalIgnoreCase)) continue;
 
                     // --- normalización aquí ---
-                    var x = Dec(r["x_m"]);
-                    var y = Dec(r["y_m"]);
-                    var w = Dec(r["ancho_m"]);
-                    var h = Dec(r["alto_m"]);
+                    var x = Dec(Get(r, "x_m", "0"));
+                    var y = Dec(Get(r, "y_m", "0"));
+                    var w = Dec(Get(r, "ancho_m", "0"));
+                    var h = Dec(Get(r, "alto_m", "0"));
 
                     if (w < 0m) { x += w; w = -w; }
                     if (h < 0m) { y += h; h = -h; }
