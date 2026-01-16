@@ -74,6 +74,24 @@ namespace BARI_web.Features.Espacios.Pages
             public string? instalacion_id { get; set; }
         }
 
+        private class BlockItem
+        {
+            public string bloque_id { get; set; } = "";
+            public string canvas_id { get; set; } = "";
+            public string? material_id { get; set; }
+            public string? etiqueta { get; set; }
+            public string? color_hex { get; set; }
+            public int z_order { get; set; }
+            public decimal pos_x { get; set; }
+            public decimal pos_y { get; set; }
+            public decimal ancho { get; set; }
+            public decimal alto { get; set; }
+            public decimal offset_x { get; set; }
+            public decimal offset_y { get; set; }
+
+            public decimal abs_x { get; set; }
+            public decimal abs_y { get; set; }
+        }
 
         private class Door { public decimal x_m, y_m, largo_m; public string orientacion = "E"; }
         private class Win { public decimal x_m, y_m, largo_m; public string orientacion = "E"; }
@@ -108,6 +126,9 @@ namespace BARI_web.Features.Espacios.Pages
         private readonly List<Win> _windows = new();
         private readonly List<InnerItem> _inners = new();
         private readonly Dictionary<string, InnerItem> _mapIn = new(StringComparer.OrdinalIgnoreCase);
+        private readonly List<BlockItem> _blocks = new();
+        private readonly Dictionary<string, BlockItem> _blocksById = new(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, string> _materialesLookup = new(StringComparer.OrdinalIgnoreCase);
 
         // vínculos
         private readonly Dictionary<string, Meson> _mesones = new(StringComparer.OrdinalIgnoreCase);
@@ -122,6 +143,8 @@ namespace BARI_web.Features.Espacios.Pages
             return $"{S(_panX)} {S(_panY)} {S(vw)} {S(vh)}";
         }
         private string AspectRatioString() { var vw = VW <= 0 ? 1 : VW; var vh = VH <= 0 ? 1 : VH; var ar = (double)vw / (double)vh; return $"{ar:0.###} / 1"; }
+        private decimal AreaCenterX => _area is null ? 0m : (_area.MinX + _area.MaxX) / 2m;
+        private decimal AreaCenterY => _area is null ? 0m : (_area.MinY + _area.MaxY) / 2m;
 
         // grilla cache
         private decimal GridStartX, GridEndX, GridStartY, GridEndY;
@@ -162,6 +185,15 @@ namespace BARI_web.Features.Espacios.Pages
         // === Formulario: Nuevo tipo de instalación
         private string _nuevoTipo_Nombre = "";
         private string? _nuevoTipo_Descripcion = null;
+
+        private string? _newBlockMaterialId;
+        private string _newBlockEtiqueta = "";
+        private decimal _newBlockAncho = 0.6m;
+        private decimal _newBlockAlto = 0.4m;
+        private decimal _newBlockOffsetX = 0m;
+        private decimal _newBlockOffsetY = 0m;
+        private string _newBlockColor = "#2563eb";
+        private string? _blockMsg;
 
 
         // ===== Apariencia / tolerancias =====
@@ -248,6 +280,7 @@ namespace BARI_web.Features.Espacios.Pages
 
                 // ===== Cargas dependientes (inners, puertas/ventanas, vínculos)
                 try { await LoadInnerItemsForArea(a); } catch (Exception ex) { Console.Error.WriteLine($"[LoadInnerItemsForArea] {ex}"); }
+                try { await LoadBlocksForArea(a); } catch (Exception ex) { Console.Error.WriteLine($"[LoadBlocksForArea] {ex}"); }
                 try { await LoadDoorsAndWindowsForArea(a); } catch (Exception ex) { Console.Error.WriteLine($"[LoadDoorsAndWindowsForArea] {ex}"); }
                 try { await LoadMesonesLinks(); } catch (Exception ex) { Console.Error.WriteLine($"[LoadMesonesLinks] {ex}"); }
                 try { await LoadInstalacionesLinks(); } catch (Exception ex) { Console.Error.WriteLine($"[LoadInstalacionesLinks] {ex}"); }
@@ -318,6 +351,72 @@ namespace BARI_web.Features.Espacios.Pages
                 _inners.Add(it);
                 _mapIn[it.poly_in_id] = it;
             }
+        }
+
+        private async Task LoadBlocksForArea(AreaDraw a)
+        {
+            _blocks.Clear();
+            _blocksById.Clear();
+            _materialesLookup.Clear();
+
+            Pg.UseSheet("materiales_montaje");
+            foreach (var r in await Pg.ReadAllAsync())
+            {
+                if (!string.Equals(Get(r, "area_id"), a.AreaId, StringComparison.OrdinalIgnoreCase)) continue;
+                var materialId = Get(r, "material_id");
+                if (string.IsNullOrWhiteSpace(materialId)) continue;
+                _materialesLookup[materialId] = Get(r, "nombre");
+            }
+
+            Pg.UseSheet("bloques_int");
+            foreach (var r in await Pg.ReadAllAsync())
+            {
+                if (!string.Equals(Get(r, "canvas_id"), _canvas?.canvas_id ?? "", StringComparison.OrdinalIgnoreCase)) continue;
+
+                var materialId = NullIfEmpty(Get(r, "material_id"));
+                if (!string.IsNullOrWhiteSpace(materialId) && !_materialesLookup.ContainsKey(materialId!))
+                {
+                    continue;
+                }
+
+                var offsetX = Dec(Get(r, "offset_x", "0"));
+                var offsetY = Dec(Get(r, "offset_y", "0"));
+                var absX = Dec(Get(r, "pos_x", "0"));
+                var absY = Dec(Get(r, "pos_y", "0"));
+
+                if (offsetX == 0m && offsetY == 0m && (absX != 0m || absY != 0m))
+                {
+                    offsetX = absX - AreaCenterX;
+                    offsetY = absY - AreaCenterY;
+                }
+
+                var it = new BlockItem
+                {
+                    bloque_id = Get(r, "bloque_id"),
+                    canvas_id = Get(r, "canvas_id"),
+                    material_id = materialId,
+                    etiqueta = NullIfEmpty(Get(r, "etiqueta")),
+                    color_hex = NullIfEmpty(Get(r, "color_hex")) ?? "#2563eb",
+                    z_order = Int(Get(r, "z_order", "0")),
+                    pos_x = absX,
+                    pos_y = absY,
+                    ancho = Dec(Get(r, "ancho", "0.6")),
+                    alto = Dec(Get(r, "alto", "0.4")),
+                    offset_x = offsetX,
+                    offset_y = offsetY
+                };
+                UpdateBlockAbs(it);
+                _blocks.Add(it);
+                _blocksById[it.bloque_id] = it;
+            }
+        }
+
+        private void UpdateBlockAbs(BlockItem it)
+        {
+            it.abs_x = AreaCenterX + it.offset_x;
+            it.abs_y = AreaCenterY + it.offset_y;
+            it.pos_x = it.abs_x;
+            it.pos_y = it.abs_y;
         }
 
         private async Task LoadDoorsAndWindowsForArea(AreaDraw a)
@@ -1042,6 +1141,61 @@ namespace BARI_web.Features.Espacios.Pages
             _selIn = null; _saveMsg = "Elemento interior eliminado";
         }
 
+        private async Task EliminarBloque(string bloqueId)
+        {
+            if (string.IsNullOrWhiteSpace(bloqueId)) return;
+            try
+            {
+                Pg.UseSheet("bloques_int");
+                await Pg.DeleteByIdAsync("bloque_id", bloqueId);
+            }
+            catch { }
+
+            _blocks.RemoveAll(b => b.bloque_id == bloqueId);
+            _blocksById.Remove(bloqueId);
+            _blockMsg = "Bloque eliminado.";
+        }
+
+        private void AgregarBloque()
+        {
+            if (_canvas is null || _area is null)
+            {
+                _blockMsg = "No hay canvas/área activa.";
+                return;
+            }
+
+            var ancho = Clamp(0.1m, 10m, _newBlockAncho);
+            var alto = Clamp(0.1m, 10m, _newBlockAlto);
+            var offsetX = _newBlockOffsetX;
+            var offsetY = _newBlockOffsetY;
+
+            if (!string.IsNullOrWhiteSpace(_newBlockMaterialId)
+                && _blocks.Any(b => string.Equals(b.material_id, _newBlockMaterialId, StringComparison.OrdinalIgnoreCase)))
+            {
+                _blockMsg = "Ese material ya tiene un bloque asociado.";
+                return;
+            }
+
+            var it = new BlockItem
+            {
+                bloque_id = $"block_{Guid.NewGuid():N}".Substring(0, 12),
+                canvas_id = _canvas.canvas_id,
+                material_id = string.IsNullOrWhiteSpace(_newBlockMaterialId) ? null : _newBlockMaterialId,
+                etiqueta = string.IsNullOrWhiteSpace(_newBlockEtiqueta) ? null : _newBlockEtiqueta.Trim(),
+                color_hex = string.IsNullOrWhiteSpace(_newBlockColor) ? "#2563eb" : _newBlockColor,
+                z_order = _blocks.Count == 0 ? 0 : _blocks.Max(b => b.z_order) + 1,
+                ancho = ancho,
+                alto = alto,
+                offset_x = offsetX,
+                offset_y = offsetY
+            };
+            UpdateBlockAbs(it);
+
+            _blocks.Add(it);
+            _blocksById[it.bloque_id] = it;
+            _blockMsg = "Bloque agregado (recuerda guardar).";
+        }
+
 
 
         // ================== Guardar ==================
@@ -1156,6 +1310,35 @@ namespace BARI_web.Features.Espacios.Pages
 
                     var ok = await Pg.UpdateByIdAsync("poly_in_id", it.poly_in_id, toSave);
                     if (!ok) { toSave["poly_in_id"] = it.poly_in_id; await Pg.CreateAsync(toSave); }
+                }
+
+                // 4) — BLOQUES INTERNOS (materiales_montaje)
+                Pg.UseSheet("bloques_int");
+                foreach (var b in _blocks)
+                {
+                    UpdateBlockAbs(b);
+
+                    var toSave = new Dictionary<string, object>
+                    {
+                        ["canvas_id"] = b.canvas_id,
+                        ["material_id"] = string.IsNullOrWhiteSpace(b.material_id) ? (object)DBNull.Value : b.material_id!,
+                        ["etiqueta"] = string.IsNullOrWhiteSpace(b.etiqueta) ? (object)DBNull.Value : b.etiqueta!,
+                        ["color_hex"] = string.IsNullOrWhiteSpace(b.color_hex) ? (object)DBNull.Value : b.color_hex!,
+                        ["z_order"] = b.z_order,
+                        ["pos_x"] = b.pos_x,
+                        ["pos_y"] = b.pos_y,
+                        ["ancho"] = b.ancho,
+                        ["alto"] = b.alto,
+                        ["offset_x"] = b.offset_x,
+                        ["offset_y"] = b.offset_y
+                    };
+
+                    var ok = await Pg.UpdateByIdAsync("bloque_id", b.bloque_id, toSave);
+                    if (!ok)
+                    {
+                        toSave["bloque_id"] = b.bloque_id;
+                        await Pg.CreateAsync(toSave);
+                    }
                 }
 
 
