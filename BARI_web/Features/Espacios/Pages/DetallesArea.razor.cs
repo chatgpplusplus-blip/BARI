@@ -130,6 +130,8 @@ namespace BARI_web.Features.Espacios.Pages
         private readonly List<SelectOption> _materialesMontajeDisponibles = new();
         private readonly List<SelectOption> _materialesConsumibleDisponibles = new();
         private readonly List<SelectOption> _contenedoresDisponibles = new();
+        private readonly Dictionary<string, string> _mesonesLookup = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, string> _materialesMontajeLookup = new(StringComparer.OrdinalIgnoreCase);
 
         private string? _selectedEquipoId;
         private string? _selectedMaterialVidrioId;
@@ -515,6 +517,7 @@ namespace BARI_web.Features.Espacios.Pages
             _materialesVidrio.Clear();
             _materialesMontaje.Clear();
             _materialesConsumible.Clear();
+            _materialesMontajeLookup.Clear();
 
             await using var conn = await DataSource.OpenConnectionAsync();
 
@@ -555,9 +558,12 @@ namespace BARI_web.Features.Espacios.Pages
                 await using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
+                    var materialId = reader.GetString(0);
+                    var materialName = reader.GetString(1);
+                    _materialesMontajeLookup[materialId] = materialName;
                     _materialesMontaje.Add(new MaterialItem(
-                        reader.GetString(0),
-                        reader.GetString(1),
+                        materialId,
+                        materialName,
                         reader.GetString(2),
                         reader.GetString(3)
                     ));
@@ -1271,6 +1277,7 @@ namespace BARI_web.Features.Espacios.Pages
         private async Task LoadMesonesForArea(string areaId)
         {
             _mesones.Clear();
+            _mesonesLookup.Clear();
 
             // 1) mesones del área
             Pg.UseSheet("mesones");
@@ -1278,11 +1285,14 @@ namespace BARI_web.Features.Espacios.Pages
             foreach (var r in await Pg.ReadAllAsync())
             {
                 if (!string.Equals(Get(r, "area_id"), areaId, StringComparison.OrdinalIgnoreCase)) continue;
+                var mesonId = Get(r, "meson_id");
+                var nombreMeson = Get(r, "nombre_meson");
+                _mesonesLookup[mesonId] = nombreMeson;
                 list.Add(new MesonSummary
                 {
-                    meson_id = Get(r, "meson_id"),
+                    meson_id = mesonId,
                     area_id = Get(r, "area_id"),
-                    nombre_meson = Get(r, "nombre_meson")
+                    nombre_meson = nombreMeson
                 });
             }
 
@@ -1336,6 +1346,24 @@ namespace BARI_web.Features.Espacios.Pages
             }
 
             _mesones.AddRange(list.OrderBy(m => m.nombre_meson, StringComparer.OrdinalIgnoreCase));
+        }
+
+        private string BlockLabel(BlockItem block)
+        {
+            if (!string.IsNullOrWhiteSpace(block.etiqueta))
+                return block.etiqueta!;
+
+            if (!string.IsNullOrWhiteSpace(block.meson_id)
+                && _mesonesLookup.TryGetValue(block.meson_id, out var mesonName)
+                && !string.IsNullOrWhiteSpace(mesonName))
+                return mesonName;
+
+            if (!string.IsNullOrWhiteSpace(block.material_montaje_id)
+                && _materialesMontajeLookup.TryGetValue(block.material_montaje_id, out var materialName)
+                && !string.IsNullOrWhiteSpace(materialName))
+                return materialName;
+
+            return string.Empty;
         }
 
         private string MesonNameForDisplay(MesonSummary m)
