@@ -17,18 +17,25 @@
 </section>
 
 <section class="page-card" style="margin-top:1.5rem;">
-    <h3>Subir documento</h3>
-    <div class="assign-row">
-        <input class="border p-1" placeholder="Título" @bind="_nuevoDocumentoTitulo" />
-        <input class="border p-1" placeholder="URL" @bind="_nuevoDocumentoUrl" />
-        <input class="border p-1" placeholder="Ruta local (cualquier dirección)" @bind="_nuevoDocumentoArchivoLocal" />
-        <input class="border p-1" placeholder="Notas" @bind="_nuevoDocumentoNotas" />
-        <button class="btn-link" @onclick="SubirDocumentoAsync">Subir</button>
-        @if (!string.IsNullOrWhiteSpace(_nuevoDocumentoMsg))
-        {
-            <span class="muted">@_nuevoDocumentoMsg</span>
-        }
-    </div>
+    <details>
+        <summary style="cursor:pointer; font-weight:600;">Subir documento</summary>
+        <div class="assign-row" style="margin-top:.75rem;">
+            <input class="border p-1" placeholder="Título" @bind="_nuevoDocumentoTitulo" />
+            <input class="border p-1" placeholder="Categoría ID" @bind="_nuevoDocumentoCategoriaId" />
+            <input class="border p-1" placeholder="Subcategoría ID" @bind="_nuevoDocumentoSubcategoriaId" />
+            <input class="border p-1" placeholder="Descripción" @bind="_nuevoDocumentoDescripcion" />
+            <input class="border p-1" placeholder="URL" @bind="_nuevoDocumentoUrl" />
+            <input class="border p-1" placeholder="Ruta local (cualquier dirección)" @bind="_nuevoDocumentoArchivoLocal" />
+            <input class="border p-1" placeholder="Procedencia (UNIVERSIDAD/ORGANISMO/ASIGNATURA)" @bind="_nuevoDocumentoProcedencia" />
+            <input class="border p-1" placeholder="Imagen URL" @bind="_nuevoDocumentoImagenUrl" />
+            <input class="border p-1" placeholder="Notas" @bind="_nuevoDocumentoNotas" />
+            <button class="btn-link" @onclick="SubirDocumentoAsync">Subir</button>
+            @if (!string.IsNullOrWhiteSpace(_nuevoDocumentoMsg))
+            {
+                <span class="muted">@_nuevoDocumentoMsg</span>
+            }
+        </div>
+    </details>
 </section>
 <section id="asignaturas" class="page-card" style="margin-top:1.5rem;">
     <h3>Documentación por asignatura</h3>
@@ -145,8 +152,13 @@
     private string? laboratorioNombre;
     private bool isQuimica;
     private string? _nuevoDocumentoTitulo;
+    private string? _nuevoDocumentoCategoriaId;
+    private string? _nuevoDocumentoSubcategoriaId;
+    private string? _nuevoDocumentoDescripcion;
     private string? _nuevoDocumentoUrl;
     private string? _nuevoDocumentoArchivoLocal;
+    private string? _nuevoDocumentoProcedencia;
+    private string? _nuevoDocumentoImagenUrl;
     private string? _nuevoDocumentoNotas;
     private string? _nuevoDocumentoMsg;
 
@@ -229,20 +241,33 @@
         var docId = $"doc_{Guid.NewGuid():N}".Substring(0, 12);
         await using var conn = await DataSource.OpenConnectionAsync();
         const string sql = @"
-            INSERT INTO documentos (documento_id, titulo, url, archivo_local, notas, laboratorio_id)
-            VALUES (@id, @titulo, @url, @archivo, @notas, @lab)";
+            INSERT INTO documentos
+            (documento_id, titulo, categoria_id, subcategoria_id, descripcion_detalle, url, archivo_local,
+             procedencia, imagen_url, notas, laboratorio_id)
+            VALUES (@id, @titulo, @categoria, @subcategoria, @descripcion, @url, @archivo,
+                    @procedencia, @imagen, @notas, @lab)";
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("id", docId);
         cmd.Parameters.AddWithValue("titulo", _nuevoDocumentoTitulo!);
+        cmd.Parameters.AddWithValue("categoria", string.IsNullOrWhiteSpace(_nuevoDocumentoCategoriaId) ? (object)DBNull.Value : _nuevoDocumentoCategoriaId!);
+        cmd.Parameters.AddWithValue("subcategoria", string.IsNullOrWhiteSpace(_nuevoDocumentoSubcategoriaId) ? (object)DBNull.Value : _nuevoDocumentoSubcategoriaId!);
+        cmd.Parameters.AddWithValue("descripcion", string.IsNullOrWhiteSpace(_nuevoDocumentoDescripcion) ? (object)DBNull.Value : _nuevoDocumentoDescripcion!);
         cmd.Parameters.AddWithValue("url", string.IsNullOrWhiteSpace(_nuevoDocumentoUrl) ? (object)DBNull.Value : _nuevoDocumentoUrl!);
         cmd.Parameters.AddWithValue("archivo", string.IsNullOrWhiteSpace(_nuevoDocumentoArchivoLocal) ? (object)DBNull.Value : _nuevoDocumentoArchivoLocal!);
+        cmd.Parameters.AddWithValue("procedencia", string.IsNullOrWhiteSpace(_nuevoDocumentoProcedencia) ? "UNIVERSIDAD" : _nuevoDocumentoProcedencia!);
+        cmd.Parameters.AddWithValue("imagen", string.IsNullOrWhiteSpace(_nuevoDocumentoImagenUrl) ? (object)DBNull.Value : _nuevoDocumentoImagenUrl!);
         cmd.Parameters.AddWithValue("notas", string.IsNullOrWhiteSpace(_nuevoDocumentoNotas) ? (object)DBNull.Value : _nuevoDocumentoNotas!);
         cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
         await cmd.ExecuteNonQueryAsync();
 
         _nuevoDocumentoTitulo = null;
+        _nuevoDocumentoCategoriaId = null;
+        _nuevoDocumentoSubcategoriaId = null;
+        _nuevoDocumentoDescripcion = null;
         _nuevoDocumentoUrl = null;
         _nuevoDocumentoArchivoLocal = null;
+        _nuevoDocumentoProcedencia = null;
+        _nuevoDocumentoImagenUrl = null;
         _nuevoDocumentoNotas = null;
         _nuevoDocumentoMsg = "Documento registrado.";
     }
