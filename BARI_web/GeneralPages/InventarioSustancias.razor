@@ -26,6 +26,15 @@
             <input class="border p-1" placeholder="ID sustancia (opcional)" @bind="_nuevoSustanciaId" />
             <input class="border p-1" placeholder="Nombre comercial" @bind="_nuevoSustanciaNombreComercial" />
             <input class="border p-1" placeholder="Nombre químico" @bind="_nuevoSustanciaNombreQuimico" />
+            <input class="border p-1" placeholder="CAS" @bind="_nuevoSustanciaCas" />
+            <input class="border p-1" placeholder="Forma física" @bind="_nuevoSustanciaFormaFisica" />
+            <input class="border p-1" placeholder="Subcategoría ID" @bind="_nuevoSustanciaSubcategoriaId" />
+            <input class="border p-1" placeholder="Descripción" @bind="_nuevoSustanciaDescripcion" />
+            <input class="border p-1" placeholder="Imagen URL" @bind="_nuevoSustanciaImagenUrl" />
+            <input class="border p-1" placeholder="Observaciones" @bind="_nuevoSustanciaObservaciones" />
+            <label class="text-sm text-gray-600">
+                <input type="checkbox" @bind="_nuevoSustanciaControlada" /> Sustancia controlada
+            </label>
             <button class="btn" @onclick="SubirSustanciaAsync">Subir sustancia</button>
             @if (!string.IsNullOrWhiteSpace(_nuevoSustanciaMsg))
             {
@@ -47,7 +56,26 @@
                     <option value="@opt.Id">@opt.Nombre</option>
                 }
             </select>
+            <input class="border p-1" placeholder="Marca ID" @bind="_nuevoContenedorMarcaId" />
+            <input class="border p-1" placeholder="Densidad g/mL" @bind="_nuevoContenedorDensidad" />
+            <input class="border p-1" placeholder="Proveedor" @bind="_nuevoContenedorProveedor" />
+            <input class="border p-1" placeholder="Fecha compra (YYYY-MM-DD)" @bind="_nuevoContenedorFechaCompra" />
+            <input class="border p-1" placeholder="Fecha recepción (YYYY-MM-DD)" @bind="_nuevoContenedorFechaRecepcion" />
+            <input class="border p-1" placeholder="Fecha vencimiento (YYYY-MM-DD)" @bind="_nuevoContenedorFechaVencimiento" />
+            <input class="border p-1" placeholder="Fecha apertura (YYYY-MM-DD)" @bind="_nuevoContenedorFechaApertura" />
+            <input class="border p-1" placeholder="Masa envase vacío (g)" @bind="_nuevoContenedorMasaEnvase" />
+            <input class="border p-1" placeholder="Masa tapa (g)" @bind="_nuevoContenedorMasaTapa" />
+            <input class="border p-1" placeholder="Color envase" @bind="_nuevoContenedorColor" />
+            <input class="border p-1" placeholder="Unidad ID" @bind="_nuevoContenedorUnidadId" />
+            <input class="border p-1" placeholder="Cantidad nominal" @bind="_nuevoContenedorCantidadNominal" />
             <input class="border p-1" placeholder="Cantidad actual" @bind="_nuevoContenedorCantidad" />
+            <input class="border p-1" placeholder="Condición ID" @bind="_nuevoContenedorCondicionId" />
+            <input class="border p-1" placeholder="Observaciones" @bind="_nuevoContenedorObservaciones" />
+            <input class="border p-1" placeholder="Área ID (opcional)" @bind="_nuevoContenedorAreaId" />
+            <input class="border p-1" placeholder="Mesón ID (opcional)" @bind="_nuevoContenedorMesonId" />
+            <input class="border p-1" placeholder="Nivel" @bind="_nuevoContenedorNivel" />
+            <input class="border p-1" placeholder="Posición" @bind="_nuevoContenedorPosicion" />
+            <input class="border p-1" placeholder="QR" @bind="_nuevoContenedorQr" />
             <button class="btn" @onclick="SubirContenedorAsync">Subir contenedor</button>
             @if (!string.IsNullOrWhiteSpace(_nuevoContenedorMsg))
             {
@@ -179,9 +207,35 @@
     private string? _nuevoSustanciaId;
     private string? _nuevoSustanciaNombreComercial;
     private string? _nuevoSustanciaNombreQuimico;
+    private string? _nuevoSustanciaCas;
+    private string? _nuevoSustanciaFormaFisica;
+    private string? _nuevoSustanciaSubcategoriaId;
+    private string? _nuevoSustanciaDescripcion;
+    private string? _nuevoSustanciaImagenUrl;
+    private string? _nuevoSustanciaObservaciones;
+    private bool _nuevoSustanciaControlada;
     private string? _nuevoContenedorId;
     private string? _nuevoContenedorSustanciaId;
+    private string? _nuevoContenedorMarcaId;
+    private string? _nuevoContenedorDensidad;
+    private string? _nuevoContenedorProveedor;
+    private string? _nuevoContenedorFechaCompra;
+    private string? _nuevoContenedorFechaRecepcion;
+    private string? _nuevoContenedorFechaVencimiento;
+    private string? _nuevoContenedorFechaApertura;
+    private string? _nuevoContenedorMasaEnvase;
+    private string? _nuevoContenedorMasaTapa;
+    private string? _nuevoContenedorColor;
+    private string? _nuevoContenedorUnidadId;
+    private string? _nuevoContenedorCantidadNominal;
     private string? _nuevoContenedorCantidad;
+    private string? _nuevoContenedorCondicionId;
+    private string? _nuevoContenedorObservaciones;
+    private string? _nuevoContenedorAreaId;
+    private string? _nuevoContenedorMesonId;
+    private string? _nuevoContenedorNivel;
+    private string? _nuevoContenedorPosicion;
+    private string? _nuevoContenedorQr;
     private string? _nuevoSustanciaMsg;
     private string? _nuevoContenedorMsg;
     private readonly List<SustanciaLookup> sustanciasLookup = new();
@@ -214,14 +268,24 @@
 
         await using var conn = await DataSource.OpenConnectionAsync();
         const string sqlSust = @"
-            INSERT INTO sustancias (sustancia_id, nombre_comercial, nombre_quimico, laboratorio_id)
-            VALUES (@id, @comercial, @quimico, @lab)
+            INSERT INTO sustancias
+            (sustancia_id, nombre_comercial, nombre_quimico, cas, forma_fisica, sustancia_controlada,
+             subcategoria_id, descripcion, imagen_url, observaciones, laboratorio_id)
+            VALUES (@id, @comercial, @quimico, @cas, @forma, @controlada,
+                    @subcat, @descripcion, @imagen, @obs, @lab)
             ON CONFLICT (sustancia_id) DO NOTHING";
         await using (var cmd = new NpgsqlCommand(sqlSust, conn))
         {
             cmd.Parameters.AddWithValue("id", sustanciaId);
             cmd.Parameters.AddWithValue("comercial", string.IsNullOrWhiteSpace(_nuevoSustanciaNombreComercial) ? (object)DBNull.Value : _nuevoSustanciaNombreComercial!);
             cmd.Parameters.AddWithValue("quimico", string.IsNullOrWhiteSpace(_nuevoSustanciaNombreQuimico) ? (object)DBNull.Value : _nuevoSustanciaNombreQuimico!);
+            cmd.Parameters.AddWithValue("cas", string.IsNullOrWhiteSpace(_nuevoSustanciaCas) ? (object)DBNull.Value : _nuevoSustanciaCas!);
+            cmd.Parameters.AddWithValue("forma", string.IsNullOrWhiteSpace(_nuevoSustanciaFormaFisica) ? (object)DBNull.Value : _nuevoSustanciaFormaFisica!);
+            cmd.Parameters.AddWithValue("controlada", _nuevoSustanciaControlada);
+            cmd.Parameters.AddWithValue("subcat", string.IsNullOrWhiteSpace(_nuevoSustanciaSubcategoriaId) ? (object)DBNull.Value : _nuevoSustanciaSubcategoriaId!);
+            cmd.Parameters.AddWithValue("descripcion", string.IsNullOrWhiteSpace(_nuevoSustanciaDescripcion) ? (object)DBNull.Value : _nuevoSustanciaDescripcion!);
+            cmd.Parameters.AddWithValue("imagen", string.IsNullOrWhiteSpace(_nuevoSustanciaImagenUrl) ? (object)DBNull.Value : _nuevoSustanciaImagenUrl!);
+            cmd.Parameters.AddWithValue("obs", string.IsNullOrWhiteSpace(_nuevoSustanciaObservaciones) ? (object)DBNull.Value : _nuevoSustanciaObservaciones!);
             cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
             await cmd.ExecuteNonQueryAsync();
         }
@@ -229,6 +293,13 @@
         _nuevoSustanciaId = null;
         _nuevoSustanciaNombreComercial = null;
         _nuevoSustanciaNombreQuimico = null;
+        _nuevoSustanciaCas = null;
+        _nuevoSustanciaFormaFisica = null;
+        _nuevoSustanciaSubcategoriaId = null;
+        _nuevoSustanciaDescripcion = null;
+        _nuevoSustanciaImagenUrl = null;
+        _nuevoSustanciaObservaciones = null;
+        _nuevoSustanciaControlada = false;
         _nuevoSustanciaMsg = "Sustancia registrada.";
         await LoadSustanciasLookupAsync();
     }
@@ -247,20 +318,85 @@
 
         await using var conn = await DataSource.OpenConnectionAsync();
         const string sqlCont = @"
-            INSERT INTO contenedores (cont_id, sustancia_id, cantidad_reactivo_actual, laboratorio_id)
-            VALUES (@cont, @sus, @cantidad, @lab)";
+            INSERT INTO contenedores
+            (cont_id, sustancia_id, marca_id, densidad_g_ml, fecha_compra, proveedor, fecha_recepcion, fecha_vencimiento,
+             masa_envase_vacio_g, masa_tapa_g, color_envase, unidad_id, cantidad_reactivo_nominal,
+             cantidad_reactivo_actual, fecha_apertura, condicion_id, observaciones, area_id, meson_id, nivel, posicion,
+             laboratorio_id, qr)
+            VALUES (@cont, @sus, @marca, @densidad, @fcompra, @proveedor, @frecep, @fvenc,
+                    @menvase, @mtapa, @color, @unidad, @nominal,
+                    @actual, @fapertura, @cond, @obs, @area, @meson, @nivel, @posicion,
+                    @lab, @qr)";
         await using var cmd = new NpgsqlCommand(sqlCont, conn);
         cmd.Parameters.AddWithValue("cont", contenedorId);
         cmd.Parameters.AddWithValue("sus", _nuevoContenedorSustanciaId!);
-        var cantidad = decimal.TryParse(_nuevoContenedorCantidad, NumberStyles.Any, CultureInfo.InvariantCulture, out var qty) ? qty : 0m;
-        cmd.Parameters.AddWithValue("cantidad", cantidad);
+        cmd.Parameters.AddWithValue("marca", string.IsNullOrWhiteSpace(_nuevoContenedorMarcaId) ? (object)DBNull.Value : _nuevoContenedorMarcaId!);
+        cmd.Parameters.AddWithValue("densidad", ParseDecimalOrNull(_nuevoContenedorDensidad));
+        cmd.Parameters.AddWithValue("fcompra", ParseDateOrNull(_nuevoContenedorFechaCompra));
+        cmd.Parameters.AddWithValue("proveedor", string.IsNullOrWhiteSpace(_nuevoContenedorProveedor) ? (object)DBNull.Value : _nuevoContenedorProveedor!);
+        cmd.Parameters.AddWithValue("frecep", ParseDateOrNull(_nuevoContenedorFechaRecepcion));
+        cmd.Parameters.AddWithValue("fvenc", ParseDateOrNull(_nuevoContenedorFechaVencimiento));
+        cmd.Parameters.AddWithValue("menvase", ParseDecimalOrNull(_nuevoContenedorMasaEnvase));
+        cmd.Parameters.AddWithValue("mtapa", ParseDecimalOrNull(_nuevoContenedorMasaTapa));
+        cmd.Parameters.AddWithValue("color", string.IsNullOrWhiteSpace(_nuevoContenedorColor) ? (object)DBNull.Value : _nuevoContenedorColor!);
+        cmd.Parameters.AddWithValue("unidad", string.IsNullOrWhiteSpace(_nuevoContenedorUnidadId) ? (object)DBNull.Value : _nuevoContenedorUnidadId!);
+        cmd.Parameters.AddWithValue("nominal", ParseDecimalOrNull(_nuevoContenedorCantidadNominal));
+        cmd.Parameters.AddWithValue("actual", ParseDecimalOrNull(_nuevoContenedorCantidad));
+        cmd.Parameters.AddWithValue("fapertura", ParseDateOrNull(_nuevoContenedorFechaApertura));
+        cmd.Parameters.AddWithValue("cond", string.IsNullOrWhiteSpace(_nuevoContenedorCondicionId) ? (object)DBNull.Value : _nuevoContenedorCondicionId!);
+        cmd.Parameters.AddWithValue("obs", string.IsNullOrWhiteSpace(_nuevoContenedorObservaciones) ? (object)DBNull.Value : _nuevoContenedorObservaciones!);
+        cmd.Parameters.AddWithValue("area", string.IsNullOrWhiteSpace(_nuevoContenedorAreaId) ? (object)DBNull.Value : _nuevoContenedorAreaId!);
+        cmd.Parameters.AddWithValue("meson", string.IsNullOrWhiteSpace(_nuevoContenedorMesonId) ? (object)DBNull.Value : _nuevoContenedorMesonId!);
+        cmd.Parameters.AddWithValue("nivel", ParseIntOrNull(_nuevoContenedorNivel));
+        cmd.Parameters.AddWithValue("posicion", string.IsNullOrWhiteSpace(_nuevoContenedorPosicion) ? (object)DBNull.Value : _nuevoContenedorPosicion!);
         cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+        cmd.Parameters.AddWithValue("qr", string.IsNullOrWhiteSpace(_nuevoContenedorQr) ? (object)DBNull.Value : _nuevoContenedorQr!);
         await cmd.ExecuteNonQueryAsync();
 
         _nuevoContenedorId = null;
         _nuevoContenedorSustanciaId = null;
+        _nuevoContenedorMarcaId = null;
+        _nuevoContenedorDensidad = null;
+        _nuevoContenedorProveedor = null;
+        _nuevoContenedorFechaCompra = null;
+        _nuevoContenedorFechaRecepcion = null;
+        _nuevoContenedorFechaVencimiento = null;
+        _nuevoContenedorFechaApertura = null;
+        _nuevoContenedorMasaEnvase = null;
+        _nuevoContenedorMasaTapa = null;
+        _nuevoContenedorColor = null;
+        _nuevoContenedorUnidadId = null;
+        _nuevoContenedorCantidadNominal = null;
         _nuevoContenedorCantidad = null;
+        _nuevoContenedorCondicionId = null;
+        _nuevoContenedorObservaciones = null;
+        _nuevoContenedorAreaId = null;
+        _nuevoContenedorMesonId = null;
+        _nuevoContenedorNivel = null;
+        _nuevoContenedorPosicion = null;
+        _nuevoContenedorQr = null;
         _nuevoContenedorMsg = "Contenedor registrado.";
+    }
+
+    private static object ParseDecimalOrNull(string? value)
+    {
+        return decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var d)
+            ? d
+            : DBNull.Value;
+    }
+
+    private static object ParseIntOrNull(string? value)
+    {
+        return int.TryParse(value, out var i)
+            ? i
+            : DBNull.Value;
+    }
+
+    private static object ParseDateOrNull(string? value)
+    {
+        return DateTime.TryParse(value, out var d)
+            ? d
+            : DBNull.Value;
     }
 
     private async Task LoadSustanciasLookupAsync()
@@ -558,6 +694,14 @@
         background: #fef9c3;
         border: 1px solid #fde68a;
         color: #854d0e;
+    }
+
+    .assign-row {
+        display:flex;
+        flex-wrap:wrap;
+        gap:0.5rem;
+        align-items:center;
+        margin-top:0.5rem;
     }
 
     .table-wrap { overflow-x:auto; }

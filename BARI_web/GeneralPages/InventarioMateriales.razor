@@ -21,24 +21,34 @@
 </section>
 
 <section class="page-card" style="margin-top:1.5rem;">
-    <h3>Subir material</h3>
-    <div class="assign-row">
-        <select class="border p-1" @bind="_nuevoMaterialTipo">
-            <option value="vidrio">Vidrio</option>
-            <option value="consumible">Consumible</option>
-            <option value="montaje">Montaje</option>
-        </select>
-        <input class="border p-1" placeholder="Nombre" @bind="_nuevoMaterialNombre" />
-        <input class="border p-1" placeholder="Detalle (capacidad/cantidad)" @bind="_nuevoMaterialDetalle" />
-        <input class="border p-1" placeholder="Unidad ID (vidrio)" @bind="_nuevoMaterialUnidadId" />
-        <input class="border p-1" placeholder="Estado ID" @bind="_nuevoMaterialEstadoId" />
-        <input class="border p-1" placeholder="Posición" @bind="_nuevoMaterialPosicion" />
-        <button class="btn" @onclick="SubirMaterialAsync">Subir</button>
-        @if (!string.IsNullOrWhiteSpace(_nuevoMaterialMsg))
-        {
-            <span class="text-sm text-gray-500">@_nuevoMaterialMsg</span>
-        }
-    </div>
+    <details>
+        <summary style="cursor:pointer; font-weight:600;">Subir material</summary>
+        <div class="assign-row" style="margin-top:.75rem;">
+            <select class="border p-1" @bind="_nuevoMaterialTipo">
+                <option value="vidrio">Vidrio</option>
+                <option value="consumible">Consumible</option>
+                <option value="montaje">Montaje</option>
+            </select>
+            <input class="border p-1" placeholder="Nombre" @bind="_nuevoMaterialNombre" />
+            <input class="border p-1" placeholder="Detalle (capacidad/cantidad)" @bind="_nuevoMaterialDetalle" />
+            <input class="border p-1" placeholder="Unidad ID (vidrio)" @bind="_nuevoMaterialUnidadId" />
+            <input class="border p-1" placeholder="Estado ID" @bind="_nuevoMaterialEstadoId" />
+            <input class="border p-1" placeholder="Marca ID" @bind="_nuevoMaterialMarcaId" />
+            <input class="border p-1" placeholder="Subcategoría ID" @bind="_nuevoMaterialSubcategoriaId" />
+            <input class="border p-1" placeholder="Área ID (opcional)" @bind="_nuevoMaterialAreaId" />
+            <input class="border p-1" placeholder="Mesón ID (opcional)" @bind="_nuevoMaterialMesonId" />
+            <input class="border p-1" placeholder="Nivel" @bind="_nuevoMaterialNivel" />
+            <input class="border p-1" placeholder="Posición" @bind="_nuevoMaterialPosicion" />
+            <input class="border p-1" placeholder="Descripción" @bind="_nuevoMaterialDescripcion" />
+            <input class="border p-1" placeholder="Imagen URL" @bind="_nuevoMaterialImagenUrl" />
+            <input class="border p-1" placeholder="Observaciones" @bind="_nuevoMaterialObservaciones" />
+            <button class="btn" @onclick="SubirMaterialAsync">Subir</button>
+            @if (!string.IsNullOrWhiteSpace(_nuevoMaterialMsg))
+            {
+                <span class="text-sm text-gray-500">@_nuevoMaterialMsg</span>
+            }
+        </div>
+    </details>
 </section>
 <section class="page-card" style="margin-top:1.5rem;">
     <div class="category-header">
@@ -169,6 +179,14 @@
     private string? _nuevoMaterialPosicion;
     private string? _nuevoMaterialEstadoId;
     private string? _nuevoMaterialUnidadId;
+    private string? _nuevoMaterialMarcaId;
+    private string? _nuevoMaterialSubcategoriaId;
+    private string? _nuevoMaterialAreaId;
+    private string? _nuevoMaterialMesonId;
+    private string? _nuevoMaterialNivel;
+    private string? _nuevoMaterialDescripcion;
+    private string? _nuevoMaterialImagenUrl;
+    private string? _nuevoMaterialObservaciones;
     private string? _nuevoMaterialMsg;
 
     protected override void OnInitialized()
@@ -206,14 +224,24 @@
         cmd.Parameters.AddWithValue("nombre", _nuevoMaterialNombre!);
         cmd.Parameters.AddWithValue("estado", string.IsNullOrWhiteSpace(_nuevoMaterialEstadoId) ? (object)DBNull.Value : _nuevoMaterialEstadoId!);
         cmd.Parameters.AddWithValue("posicion", string.IsNullOrWhiteSpace(_nuevoMaterialPosicion) ? (object)DBNull.Value : _nuevoMaterialPosicion!);
+        cmd.Parameters.AddWithValue("marca", string.IsNullOrWhiteSpace(_nuevoMaterialMarcaId) ? (object)DBNull.Value : _nuevoMaterialMarcaId!);
+        cmd.Parameters.AddWithValue("subcat", string.IsNullOrWhiteSpace(_nuevoMaterialSubcategoriaId) ? (object)DBNull.Value : _nuevoMaterialSubcategoriaId!);
+        cmd.Parameters.AddWithValue("area", string.IsNullOrWhiteSpace(_nuevoMaterialAreaId) ? (object)DBNull.Value : _nuevoMaterialAreaId!);
+        cmd.Parameters.AddWithValue("meson", string.IsNullOrWhiteSpace(_nuevoMaterialMesonId) ? (object)DBNull.Value : _nuevoMaterialMesonId!);
+        cmd.Parameters.AddWithValue("nivel", ParseIntOrNull(_nuevoMaterialNivel));
+        cmd.Parameters.AddWithValue("descripcion", string.IsNullOrWhiteSpace(_nuevoMaterialDescripcion) ? (object)DBNull.Value : _nuevoMaterialDescripcion!);
+        cmd.Parameters.AddWithValue("imagen", string.IsNullOrWhiteSpace(_nuevoMaterialImagenUrl) ? (object)DBNull.Value : _nuevoMaterialImagenUrl!);
+        cmd.Parameters.AddWithValue("obs", string.IsNullOrWhiteSpace(_nuevoMaterialObservaciones) ? (object)DBNull.Value : _nuevoMaterialObservaciones!);
         cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
 
         if (_nuevoMaterialTipo == "consumible")
         {
             sql = @"
                 INSERT INTO materiales_consumible
-                (material_id, nombre, estado_id, cantidad, posicion, laboratorio_id)
-                VALUES (@id, @nombre, @estado, @cantidad, @posicion, @lab)";
+                (material_id, nombre, subcategoria_id, marca_id, estado_id, cantidad, area_id, meson_id, nivel, posicion,
+                 laboratorio_id, descripcion, imagen_url, observaciones)
+                VALUES (@id, @nombre, @subcat, @marca, @estado, @cantidad, @area, @meson, @nivel, @posicion,
+                        @lab, @descripcion, @imagen, @obs)";
             var cantidad = int.TryParse(_nuevoMaterialDetalle, out var qty) ? qty : 0;
             cmd.Parameters.AddWithValue("cantidad", cantidad);
         }
@@ -221,17 +249,20 @@
         {
             sql = @"
                 INSERT INTO materiales_montaje
-                (material_id, nombre, estado_id, posicion, laboratorio_id)
-                VALUES (@id, @nombre, @estado, @posicion, @lab)";
+                (material_id, nombre, subcategoria_id, marca_id, estado_id, area_id, meson_id, nivel, posicion,
+                 laboratorio_id, descripcion, imagen_url, observaciones)
+                VALUES (@id, @nombre, @subcat, @marca, @estado, @area, @meson, @nivel, @posicion,
+                        @lab, @descripcion, @imagen, @obs)";
         }
         else
         {
             sql = @"
                 INSERT INTO materiales_vidrio
-                (material_id, nombre, capacidad_num, unidad_id, estado_id, posicion, laboratorio_id)
-                VALUES (@id, @nombre, @capacidad, @unidad, @estado, @posicion, @lab)";
-            var capacidad = decimal.TryParse(_nuevoMaterialDetalle, NumberStyles.Any, CultureInfo.InvariantCulture, out var cap) ? cap : 0m;
-            cmd.Parameters.AddWithValue("capacidad", capacidad);
+                (material_id, nombre, subcategoria_id, capacidad_num, unidad_id, marca_id, estado_id, area_id, meson_id,
+                 nivel, posicion, laboratorio_id, descripcion, imagen_url, observaciones)
+                VALUES (@id, @nombre, @subcat, @capacidad, @unidad, @marca, @estado, @area, @meson,
+                        @nivel, @posicion, @lab, @descripcion, @imagen, @obs)";
+            cmd.Parameters.AddWithValue("capacidad", ParseDecimalOrNull(_nuevoMaterialDetalle));
             cmd.Parameters.AddWithValue("unidad", string.IsNullOrWhiteSpace(_nuevoMaterialUnidadId) ? (object)DBNull.Value : _nuevoMaterialUnidadId!);
         }
 
@@ -243,8 +274,30 @@
         _nuevoMaterialEstadoId = null;
         _nuevoMaterialPosicion = null;
         _nuevoMaterialUnidadId = null;
+        _nuevoMaterialMarcaId = null;
+        _nuevoMaterialSubcategoriaId = null;
+        _nuevoMaterialAreaId = null;
+        _nuevoMaterialMesonId = null;
+        _nuevoMaterialNivel = null;
+        _nuevoMaterialDescripcion = null;
+        _nuevoMaterialImagenUrl = null;
+        _nuevoMaterialObservaciones = null;
         _nuevoMaterialMsg = "Material registrado.";
         await LoadMaterialesAsync();
+    }
+
+    private static object ParseIntOrNull(string? value)
+    {
+        return int.TryParse(value, out var i)
+            ? i
+            : DBNull.Value;
+    }
+
+    private static object ParseDecimalOrNull(string? value)
+    {
+        return decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var d)
+            ? d
+            : DBNull.Value;
     }
 
     private static readonly string[] CategoriaPermitidas =
@@ -565,6 +618,14 @@
         background: #fef9c3;
         border: 1px solid #fde68a;
         color: #854d0e;
+    }
+
+    .assign-row {
+        display:flex;
+        flex-wrap:wrap;
+        gap:0.5rem;
+        align-items:center;
+        margin-top:0.5rem;
     }
 
     .table-wrap { overflow-x:auto; }

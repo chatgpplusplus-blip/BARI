@@ -20,21 +20,32 @@
 </section>
 
 <section class="page-card" style="margin-top:1.5rem;">
-    <h3>Subir equipo</h3>
-    <div class="assign-row">
-        <input class="border p-1" placeholder="Modelo ID" @bind="_nuevoEquipoModeloId" />
-        <input class="border p-1" placeholder="Serie" @bind="_nuevoEquipoSerie" />
-        <input class="border p-1" placeholder="Estado ID" @bind="_nuevoEquipoEstadoId" />
-        <input class="border p-1" placeholder="Posición" @bind="_nuevoEquipoPosicion" />
-        <label class="text-sm text-gray-600">
-            <input type="checkbox" @bind="_nuevoEquipoRequiereCalibracion" /> Requiere calibración
-        </label>
-        <button class="btn" @onclick="SubirEquipoAsync">Subir</button>
-        @if (!string.IsNullOrWhiteSpace(_nuevoEquipoMsg))
-        {
-            <span class="text-sm text-gray-500">@_nuevoEquipoMsg</span>
-        }
-    </div>
+    <details>
+        <summary style="cursor:pointer; font-weight:600;">Subir equipo</summary>
+        <div class="assign-row" style="margin-top:.75rem;">
+            <input class="border p-1" placeholder="Modelo ID" @bind="_nuevoEquipoModeloId" />
+            <input class="border p-1" placeholder="Serie" @bind="_nuevoEquipoSerie" />
+            <input class="border p-1" placeholder="Estado ID" @bind="_nuevoEquipoEstadoId" />
+            <input class="border p-1" placeholder="Área ID (opcional)" @bind="_nuevoEquipoAreaId" />
+            <input class="border p-1" placeholder="Mesón ID (opcional)" @bind="_nuevoEquipoMesonId" />
+            <input class="border p-1" placeholder="Nivel" @bind="_nuevoEquipoNivel" />
+            <input class="border p-1" placeholder="Posición" @bind="_nuevoEquipoPosicion" />
+            <input class="border p-1" placeholder="Canvas ID" @bind="_nuevoEquipoCanvasId" />
+            <input class="border p-1" placeholder="Poly ID" @bind="_nuevoEquipoPolyId" />
+            <input class="border p-1" placeholder="Fecha compra (YYYY-MM-DD)" @bind="_nuevoEquipoFechaCompra" />
+            <input class="border p-1" placeholder="Garantía hasta (YYYY-MM-DD)" @bind="_nuevoEquipoGarantiaHasta" />
+            <input class="border p-1" placeholder="Observaciones" @bind="_nuevoEquipoObservaciones" />
+            <input class="border p-1" placeholder="Imagen URL" @bind="_nuevoEquipoImagenUrl" />
+            <label class="text-sm text-gray-600">
+                <input type="checkbox" @bind="_nuevoEquipoRequiereCalibracion" /> Requiere calibración
+            </label>
+            <button class="btn" @onclick="SubirEquipoAsync">Subir</button>
+            @if (!string.IsNullOrWhiteSpace(_nuevoEquipoMsg))
+            {
+                <span class="text-sm text-gray-500">@_nuevoEquipoMsg</span>
+            }
+        </div>
+    </details>
 </section>
 <section class="page-card" style="margin-top:1.5rem;">
     <div class="category-header">
@@ -162,7 +173,16 @@
     private string? _nuevoEquipoModeloId;
     private string? _nuevoEquipoSerie;
     private string? _nuevoEquipoEstadoId;
+    private string? _nuevoEquipoAreaId;
+    private string? _nuevoEquipoMesonId;
+    private string? _nuevoEquipoNivel;
     private string? _nuevoEquipoPosicion;
+    private string? _nuevoEquipoCanvasId;
+    private string? _nuevoEquipoPolyId;
+    private string? _nuevoEquipoFechaCompra;
+    private string? _nuevoEquipoGarantiaHasta;
+    private string? _nuevoEquipoObservaciones;
+    private string? _nuevoEquipoImagenUrl;
     private bool _nuevoEquipoRequiereCalibracion;
     private string? _nuevoEquipoMsg;
 
@@ -196,25 +216,60 @@
         await using var conn = await DataSource.OpenConnectionAsync();
         const string sql = @"
             INSERT INTO equipos
-            (equipo_id, modelo_id, serie, estado_id, requiere_calibracion, laboratorio_id, posicion)
-            VALUES (@id, @modelo, @serie, @estado, @cal, @lab, @posicion)";
+            (equipo_id, modelo_id, serie, estado_id, area_id, meson_id, nivel, posicion,
+             canvas_id, poly_id, fecha_compra, garantia_hasta, requiere_calibracion,
+             laboratorio_id, observaciones, imagen_url)
+            VALUES (@id, @modelo, @serie, @estado, @area, @meson, @nivel, @posicion,
+                    @canvas, @poly, @fcompra, @fgarantia, @cal, @lab, @obs, @img)";
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("id", equipoId);
         cmd.Parameters.AddWithValue("modelo", string.IsNullOrWhiteSpace(_nuevoEquipoModeloId) ? (object)DBNull.Value : _nuevoEquipoModeloId!);
         cmd.Parameters.AddWithValue("serie", string.IsNullOrWhiteSpace(_nuevoEquipoSerie) ? (object)DBNull.Value : _nuevoEquipoSerie!);
         cmd.Parameters.AddWithValue("estado", string.IsNullOrWhiteSpace(_nuevoEquipoEstadoId) ? (object)DBNull.Value : _nuevoEquipoEstadoId!);
+        cmd.Parameters.AddWithValue("area", string.IsNullOrWhiteSpace(_nuevoEquipoAreaId) ? (object)DBNull.Value : _nuevoEquipoAreaId!);
+        cmd.Parameters.AddWithValue("meson", string.IsNullOrWhiteSpace(_nuevoEquipoMesonId) ? (object)DBNull.Value : _nuevoEquipoMesonId!);
+        cmd.Parameters.AddWithValue("nivel", ParseIntOrNull(_nuevoEquipoNivel));
         cmd.Parameters.AddWithValue("cal", _nuevoEquipoRequiereCalibracion);
         cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
         cmd.Parameters.AddWithValue("posicion", string.IsNullOrWhiteSpace(_nuevoEquipoPosicion) ? (object)DBNull.Value : _nuevoEquipoPosicion!);
+        cmd.Parameters.AddWithValue("canvas", string.IsNullOrWhiteSpace(_nuevoEquipoCanvasId) ? (object)DBNull.Value : _nuevoEquipoCanvasId!);
+        cmd.Parameters.AddWithValue("poly", string.IsNullOrWhiteSpace(_nuevoEquipoPolyId) ? (object)DBNull.Value : _nuevoEquipoPolyId!);
+        cmd.Parameters.AddWithValue("fcompra", ParseDateOrNull(_nuevoEquipoFechaCompra));
+        cmd.Parameters.AddWithValue("fgarantia", ParseDateOrNull(_nuevoEquipoGarantiaHasta));
+        cmd.Parameters.AddWithValue("obs", string.IsNullOrWhiteSpace(_nuevoEquipoObservaciones) ? (object)DBNull.Value : _nuevoEquipoObservaciones!);
+        cmd.Parameters.AddWithValue("img", string.IsNullOrWhiteSpace(_nuevoEquipoImagenUrl) ? (object)DBNull.Value : _nuevoEquipoImagenUrl!);
         await cmd.ExecuteNonQueryAsync();
 
         _nuevoEquipoModeloId = null;
         _nuevoEquipoSerie = null;
         _nuevoEquipoEstadoId = null;
+        _nuevoEquipoAreaId = null;
+        _nuevoEquipoMesonId = null;
+        _nuevoEquipoNivel = null;
         _nuevoEquipoPosicion = null;
+        _nuevoEquipoCanvasId = null;
+        _nuevoEquipoPolyId = null;
+        _nuevoEquipoFechaCompra = null;
+        _nuevoEquipoGarantiaHasta = null;
+        _nuevoEquipoObservaciones = null;
+        _nuevoEquipoImagenUrl = null;
         _nuevoEquipoRequiereCalibracion = false;
         _nuevoEquipoMsg = "Equipo registrado.";
         await LoadEquiposAsync();
+    }
+
+    private static object ParseIntOrNull(string? value)
+    {
+        return int.TryParse(value, out var i)
+            ? i
+            : DBNull.Value;
+    }
+
+    private static object ParseDateOrNull(string? value)
+    {
+        return DateTime.TryParse(value, out var d)
+            ? d
+            : DBNull.Value;
     }
 
     private static readonly string[] CategoriaPermitidas =
@@ -515,6 +570,14 @@
         background: #fef9c3;
         border: 1px solid #fde68a;
         color: #854d0e;
+    }
+
+    .assign-row {
+        display:flex;
+        flex-wrap:wrap;
+        gap:0.5rem;
+        align-items:center;
+        margin-top:0.5rem;
     }
 
     .table-wrap { overflow-x:auto; }
