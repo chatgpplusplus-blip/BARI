@@ -25,7 +25,7 @@
         <div class="editor-layout">
             <!-- Canvas -->
             <div class="canvas-host">
-                <div class="canvas-box" style="--ar:@AspectRatioString();width:1150px; position:relative;">
+                <div class="canvas-box" style="--ar:@AspectRatioString();width:100%; max-width:1150px; position:relative; margin:0 auto;">
                     <!-- Zoom -->
                     <div style="position:absolute; right:10px; top:10px; display:flex; gap:.4rem;" @onclick:stopPropagation="true">
                         <button class="zoom-btn" title="Zoom in" @onclick="ZoomIn">+</button>
@@ -176,7 +176,6 @@
                 <!-- ACCIONES DEBAJO DEL LIENZO -->
                 <div class="under-canvas-actions">
                     <div class="btn-row">
-                        <button class="px-3 py-2 border rounded" @onclick="AgregarMeson">+ Agregar mesón</button>
                         <button class="px-3 py-2 border rounded" @onclick="MostrarNuevoBloque">+ Agregar bloque de montaje</button>
                         <button class="px-3 py-2 border rounded text-red-600 border-red-300" @onclick="EliminarInner" disabled="@(_selIn is null)">Eliminar seleccionado</button>
                         <button class="px-3 py-2 border rounded text-red-600 border-red-300" @onclick="EliminarBloqueSeleccionado" disabled="@(_selBlock is null)">Eliminar bloque</button>
@@ -319,6 +318,56 @@
                                    @bind-value:event="oninput" />
                         </div>
                     </div>
+                    @if (!string.IsNullOrWhiteSpace(blockSel.meson_id) && _mesones.TryGetValue(blockSel.meson_id, out var blockMeson))
+                    {
+                        <hr class="my-3" />
+                        <h4 class="font-semibold mb-2">Mesón asociado</h4>
+                        <div class="grid grid-cols-2 gap-2 text-sm">
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Nombre</label>
+                                <input class="border p-1 w-full" value="@blockMeson.nombre_meson"
+                                       @oninput="(e)=>{ blockMeson.nombre_meson = e.Value?.ToString() ?? string.Empty; _mesonesLookup[blockMeson.meson_id] = blockMeson.nombre_meson; StateHasChanged(); }" />
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Ancho (cm)</label>
+                                <input class="border p-1 w-full" value="@blockMeson.ancho_cm" @oninput="(e)=>{ blockMeson.ancho_cm = Int(e.Value); StateHasChanged(); }" />
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Largo (cm)</label>
+                                <input class="border p-1 w-full" value="@blockMeson.largo_cm" @oninput="(e)=>{ blockMeson.largo_cm = Int(e.Value); StateHasChanged(); }" />
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Profundidad (cm)</label>
+                                <input class="border p-1 w-full" value="@blockMeson.profundidad_cm" @oninput="(e)=>{ blockMeson.profundidad_cm = Int(e.Value); StateHasChanged(); }" />
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Niveles</label>
+                                <input class="border p-1 w-full" value="@blockMeson.niveles_totales" @oninput="(e)=>{ blockMeson.niveles_totales = Int(e.Value); StateHasChanged(); }" />
+                            </div>
+                        </div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(blockSel.material_montaje_id) && _materialesMontaje.TryGetValue(blockSel.material_montaje_id, out var blockMaterial))
+                    {
+                        <hr class="my-3" />
+                        <h4 class="font-semibold mb-2">Material de montaje asociado</h4>
+                        <div class="grid grid-cols-2 gap-2 text-sm">
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Nombre</label>
+                                <input class="border p-1 w-full" value="@blockMaterial.nombre"
+                                       @oninput="(e)=>{ blockMaterial.nombre = e.Value?.ToString() ?? string.Empty; _materialesLookup[blockMaterial.material_id] = blockMaterial.nombre; StateHasChanged(); }" />
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Estado</label>
+                                <input class="border p-1 w-full" value="@blockMaterial.estado_id"
+                                       @oninput="(e)=>{ blockMaterial.estado_id = e.Value?.ToString(); StateHasChanged(); }" />
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Posición</label>
+                                <input class="border p-1 w-full" value="@blockMaterial.posicion"
+                                       @oninput="(e)=>{ blockMaterial.posicion = e.Value?.ToString(); StateHasChanged(); }" />
+                            </div>
+                        </div>
+                    }
                     @if (!string.IsNullOrWhiteSpace(_blockMsg))
                     {
                         <div class="text-xs text-gray-500 mt-2">@_blockMsg</div>
@@ -329,29 +378,53 @@
                     <h4 class="font-semibold mb-2">Nuevo bloque de montaje</h4>
                     <div class="grid grid-cols-2 gap-2 text-sm">
                         <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Asociar bloque</label>
+                            <div class="flex items-center gap-3">
+                                <label class="flex items-center gap-2 text-xs text-gray-700">
+                                    <input type="checkbox" checked="@_newBlockAssignMaterial"
+                                           @onchange="(e)=> ToggleNewBlockAssignMaterial(Bool(e.Value))" />
+                                    Material de montaje
+                                </label>
+                                <label class="flex items-center gap-2 text-xs text-gray-700">
+                                    <input type="checkbox" checked="@_newBlockAssignMeson"
+                                           @onchange="(e)=> ToggleNewBlockAssignMeson(Bool(e.Value))" />
+                                    Mesón
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-span-2">
                             <label class="block text-xs text-gray-600 mb-1">Material de montaje</label>
                             <select class="border p-1 w-full"
                                     value="@(_newBlockMaterialId ?? "")"
+                                    disabled="@(!_newBlockAssignMaterial)"
                                     @onchange="(e)=> OnSelectBlockMaterial(e.Value?.ToString())">
                                 <option value="">— Selecciona un material —</option>
-                                @foreach (var kv in _materialesLookup)
+                                @foreach (var kv in MaterialesMontajeDisponibles())
                                 {
                                     <option value="@kv.Key">@kv.Value</option>
                                 }
                             </select>
+                            @if (_newBlockAssignMaterial && MaterialesMontajeDisponibles().Count() == 0)
+                            {
+                                <div class="text-xs text-gray-500 mt-1">No hay materiales disponibles. Crea uno más abajo.</div>
+                            }
                         </div>
                         <div class="col-span-2">
                             <label class="block text-xs text-gray-600 mb-1">Mesón</label>
                             <select class="border p-1 w-full"
                                     value="@(_newBlockMesonId ?? "")"
+                                    disabled="@(!_newBlockAssignMeson)"
                                     @onchange="(e)=> OnSelectBlockMeson(e.Value?.ToString())">
                                 <option value="">— Selecciona un mesón —</option>
-                                @foreach (var kv in _mesonesLookup)
+                                @foreach (var kv in MesonesDisponibles())
                                 {
                                     <option value="@kv.Key">@kv.Value</option>
                                 }
                             </select>
-                            <div class="text-xs text-gray-500 mt-1">Selecciona material o mesón (solo uno por bloque).</div>
+                            @if (_newBlockAssignMeson && MesonesDisponibles().Count() == 0)
+                            {
+                                <div class="text-xs text-gray-500 mt-1">No hay mesones disponibles. Crea uno más abajo.</div>
+                            }
                         </div>
                         <div class="col-span-2">
                             <label class="block text-xs text-gray-600 mb-1">Etiqueta</label>
@@ -393,6 +466,73 @@
                 }
             </aside>
         </div>
+
+        <section style="margin-top:1rem; border:1px solid #e5e7eb; border-radius:.5rem; padding:1rem; background:#fff">
+            <h3 class="font-semibold mb-3">Registrar mesones y materiales (sin crear bloque)</h3>
+            <div class="grid grid-cols-2 gap-6">
+                <div>
+                    <h4 class="font-semibold mb-2">Nuevo mesón</h4>
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Nombre</label>
+                            <input class="border p-1 w-full" @bind="_nuevoMesonNombre" @bind:event="oninput" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Ancho (cm)</label>
+                            <input class="border p-1 w-full" value="@_nuevoMesonAnchoCm"
+                                   @oninput="(e)=> _nuevoMesonAnchoCm = Int(e.Value)" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Largo (cm)</label>
+                            <input class="border p-1 w-full" value="@_nuevoMesonLargoCm"
+                                   @oninput="(e)=> _nuevoMesonLargoCm = Int(e.Value)" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Profundidad (cm)</label>
+                            <input class="border p-1 w-full" value="@_nuevoMesonProfundidadCm"
+                                   @oninput="(e)=> _nuevoMesonProfundidadCm = Int(e.Value)" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Niveles</label>
+                            <input class="border p-1 w-full" value="@_nuevoMesonNiveles"
+                                   @oninput="(e)=> _nuevoMesonNiveles = Int(e.Value)" />
+                        </div>
+                        <div class="col-span-2">
+                            <button class="px-3 py-2 border rounded bg-black text-white" @onclick="CrearMesonRegistro">Registrar mesón</button>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(_nuevoMesonMsg))
+                        {
+                            <div class="col-span-2 text-xs text-gray-500">@_nuevoMesonMsg</div>
+                        }
+                    </div>
+                </div>
+
+                <div>
+                    <h4 class="font-semibold mb-2">Nuevo material de montaje</h4>
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Nombre</label>
+                            <input class="border p-1 w-full" @bind="_nuevoMaterialNombre" @bind:event="oninput" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Estado</label>
+                            <input class="border p-1 w-full" @bind="_nuevoMaterialEstado" @bind:event="oninput" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Posición</label>
+                            <input class="border p-1 w-full" @bind="_nuevoMaterialPosicion" @bind:event="oninput" />
+                        </div>
+                        <div class="col-span-2">
+                            <button class="px-3 py-2 border rounded bg-black text-white" @onclick="CrearMaterialMontaje">Registrar material</button>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(_nuevoMaterialMsg))
+                        {
+                            <div class="col-span-2 text-xs text-gray-500">@_nuevoMaterialMsg</div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </section>
     }
 </div>
 
