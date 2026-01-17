@@ -101,17 +101,17 @@
 
                         @if (!string.IsNullOrWhiteSpace(blockLabel))
                         {
-                            <text>
-                                <tspan x="@S(b.abs_x + b.ancho / 2m)"
-                                       y="@S(b.abs_y + b.alto / 2m)"
-                                       style="text-anchor:middle;dominant-baseline:middle"
-                                       font-size="@S(labelFont)"
-                                       textLength="@S(labelWidth)"
-                                       lengthAdjust="spacingAndGlyphs"
-                                       fill="#111">
+                            <svg:text>
+                                <svg:tspan x="@S(b.abs_x + b.ancho / 2m)"
+                                           y="@S(b.abs_y + b.alto / 2m)"
+                                           style="text-anchor:middle;dominant-baseline:middle"
+                                           font-size="@S(labelFont)"
+                                           textLength="@S(labelWidth)"
+                                           lengthAdjust="spacingAndGlyphs"
+                                           fill="#111">
                                     @blockLabel
-                                </tspan>
-                            </text>
+                                </svg:tspan>
+                            </svg:text>
                         }
                     }
 
