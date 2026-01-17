@@ -2,6 +2,7 @@
 @page "/inventario-sustancias/categoria/{SubcategoriaId}"
 @using Npgsql
 @using BARI_web.General_Services
+@using System.Globalization
 @inject NpgsqlDataSource DataSource
 @inject LaboratorioState LaboratorioState
 @inject NavigationManager Nav
@@ -16,6 +17,22 @@
         datos químicos, seguridad, pictogramas y stock disponible.
     </p>
     <LaboratorioSelector />
+</section>
+
+<section class="page-card" style="margin-top:1.5rem;">
+    <h3>Subir sustancia y contenedor</h3>
+    <div class="assign-row">
+        <input class="border p-1" placeholder="ID sustancia (opcional)" @bind="_nuevoSustanciaId" />
+        <input class="border p-1" placeholder="Nombre comercial" @bind="_nuevoSustanciaNombreComercial" />
+        <input class="border p-1" placeholder="Nombre químico" @bind="_nuevoSustanciaNombreQuimico" />
+        <input class="border p-1" placeholder="ID contenedor (opcional)" @bind="_nuevoContenedorId" />
+        <input class="border p-1" placeholder="Cantidad actual" @bind="_nuevoContenedorCantidad" />
+        <button class="btn" @onclick="SubirSustanciaAsync">Subir</button>
+        @if (!string.IsNullOrWhiteSpace(_nuevoSustanciaMsg))
+        {
+            <span class="text-sm text-gray-500">@_nuevoSustanciaMsg</span>
+        }
+    </div>
 </section>
 
 <section class="page-card" style="margin-top:1.5rem;">
@@ -137,6 +154,12 @@
     private readonly List<SustanciaRow> sustancias = new();
     private string? subcategoriaNombre;
     private string? loadError;
+    private string? _nuevoSustanciaId;
+    private string? _nuevoSustanciaNombreComercial;
+    private string? _nuevoSustanciaNombreQuimico;
+    private string? _nuevoContenedorId;
+    private string? _nuevoContenedorCantidad;
+    private string? _nuevoSustanciaMsg;
 
     protected override void OnInitialized()
     {
@@ -154,6 +177,50 @@
     {
         await LoadSustanciasAsync();
         await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SubirSustanciaAsync()
+    {
+        var sustanciaId = string.IsNullOrWhiteSpace(_nuevoSustanciaId)
+            ? $"sus_{Guid.NewGuid():N}".Substring(0, 12)
+            : _nuevoSustanciaId!.Trim();
+        var contenedorId = string.IsNullOrWhiteSpace(_nuevoContenedorId)
+            ? $"cont_{Guid.NewGuid():N}".Substring(0, 12)
+            : _nuevoContenedorId!.Trim();
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+        const string sqlSust = @"
+            INSERT INTO sustancias (sustancia_id, nombre_comercial, nombre_quimico, laboratorio_id)
+            VALUES (@id, @comercial, @quimico, @lab)
+            ON CONFLICT (sustancia_id) DO NOTHING";
+        await using (var cmd = new NpgsqlCommand(sqlSust, conn))
+        {
+            cmd.Parameters.AddWithValue("id", sustanciaId);
+            cmd.Parameters.AddWithValue("comercial", string.IsNullOrWhiteSpace(_nuevoSustanciaNombreComercial) ? (object)DBNull.Value : _nuevoSustanciaNombreComercial!);
+            cmd.Parameters.AddWithValue("quimico", string.IsNullOrWhiteSpace(_nuevoSustanciaNombreQuimico) ? (object)DBNull.Value : _nuevoSustanciaNombreQuimico!);
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        const string sqlCont = @"
+            INSERT INTO contenedores (cont_id, sustancia_id, cantidad_reactivo_actual, laboratorio_id)
+            VALUES (@cont, @sus, @cantidad, @lab)";
+        await using (var cmd = new NpgsqlCommand(sqlCont, conn))
+        {
+            cmd.Parameters.AddWithValue("cont", contenedorId);
+            cmd.Parameters.AddWithValue("sus", sustanciaId);
+            var cantidad = decimal.TryParse(_nuevoContenedorCantidad, NumberStyles.Any, CultureInfo.InvariantCulture, out var qty) ? qty : 0m;
+            cmd.Parameters.AddWithValue("cantidad", cantidad);
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        _nuevoSustanciaId = null;
+        _nuevoSustanciaNombreComercial = null;
+        _nuevoSustanciaNombreQuimico = null;
+        _nuevoContenedorId = null;
+        _nuevoContenedorCantidad = null;
+        _nuevoSustanciaMsg = "Sustancia registrada.";
     }
 
     private static readonly string[] CategoriaPermitidas =

@@ -1,6 +1,7 @@
 ﻿@page "/documentaciones"
 @using BARI_web.General_Services
 @using Npgsql
+@using System.Globalization
 @inject LaboratorioState LaboratorioState
 @implements IDisposable
 
@@ -15,6 +16,20 @@
     <LaboratorioSelector />
 </section>
 
+<section class="page-card" style="margin-top:1.5rem;">
+    <h3>Subir documento</h3>
+    <div class="assign-row">
+        <input class="border p-1" placeholder="Título" @bind="_nuevoDocumentoTitulo" />
+        <input class="border p-1" placeholder="URL" @bind="_nuevoDocumentoUrl" />
+        <input class="border p-1" placeholder="Ruta local (cualquier dirección)" @bind="_nuevoDocumentoArchivoLocal" />
+        <input class="border p-1" placeholder="Notas" @bind="_nuevoDocumentoNotas" />
+        <button class="btn-link" @onclick="SubirDocumentoAsync">Subir</button>
+        @if (!string.IsNullOrWhiteSpace(_nuevoDocumentoMsg))
+        {
+            <span class="muted">@_nuevoDocumentoMsg</span>
+        }
+    </div>
+</section>
 <section id="asignaturas" class="page-card" style="margin-top:1.5rem;">
     <h3>Documentación por asignatura</h3>
     <p class="section-intro">
@@ -129,6 +144,11 @@
     private string? loadError;
     private string? laboratorioNombre;
     private bool isQuimica;
+    private string? _nuevoDocumentoTitulo;
+    private string? _nuevoDocumentoUrl;
+    private string? _nuevoDocumentoArchivoLocal;
+    private string? _nuevoDocumentoNotas;
+    private string? _nuevoDocumentoMsg;
 
     protected override void OnInitialized()
     {
@@ -196,6 +216,35 @@
         {
             loadError = ex.Message;
         }
+    }
+
+    private async Task SubirDocumentoAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_nuevoDocumentoTitulo))
+        {
+            _nuevoDocumentoMsg = "Ingresa un título para el documento.";
+            return;
+        }
+
+        var docId = $"doc_{Guid.NewGuid():N}".Substring(0, 12);
+        await using var conn = await DataSource.OpenConnectionAsync();
+        const string sql = @"
+            INSERT INTO documentos (documento_id, titulo, url, archivo_local, notas, laboratorio_id)
+            VALUES (@id, @titulo, @url, @archivo, @notas, @lab)";
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("id", docId);
+        cmd.Parameters.AddWithValue("titulo", _nuevoDocumentoTitulo!);
+        cmd.Parameters.AddWithValue("url", string.IsNullOrWhiteSpace(_nuevoDocumentoUrl) ? (object)DBNull.Value : _nuevoDocumentoUrl!);
+        cmd.Parameters.AddWithValue("archivo", string.IsNullOrWhiteSpace(_nuevoDocumentoArchivoLocal) ? (object)DBNull.Value : _nuevoDocumentoArchivoLocal!);
+        cmd.Parameters.AddWithValue("notas", string.IsNullOrWhiteSpace(_nuevoDocumentoNotas) ? (object)DBNull.Value : _nuevoDocumentoNotas!);
+        cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+        await cmd.ExecuteNonQueryAsync();
+
+        _nuevoDocumentoTitulo = null;
+        _nuevoDocumentoUrl = null;
+        _nuevoDocumentoArchivoLocal = null;
+        _nuevoDocumentoNotas = null;
+        _nuevoDocumentoMsg = "Documento registrado.";
     }
 
     private static string Slugify(string value)
@@ -275,6 +324,13 @@
     .type-item h4 { margin:0 0 0.2rem; color:#0b2a68; }
     .error-note { color:#b91c1c; font-size:0.9rem; margin:0 0 0.75rem; }
     .muted { color:#6b7280; font-size:0.85rem; }
+    .assign-row {
+        display:flex;
+        flex-wrap:wrap;
+        gap:0.5rem;
+        align-items:center;
+        margin-top:0.5rem;
+    }
     .btn-link {
         display:inline-flex;
         width:max-content;
