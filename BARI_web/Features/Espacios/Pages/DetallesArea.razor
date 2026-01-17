@@ -291,6 +291,18 @@
                 <button class="btn" @onclick="AssignContenedorAsync" disabled="@string.IsNullOrWhiteSpace(_selectedContenedorId)">Asignar</button>
                 <span class="text-sm text-gray-500">@_assignMsg</span>
             </div>
+            <div class="assign-row">
+                <input class="border p-1" placeholder="ID sustancia (opcional)" @bind="_nuevoSustanciaId" />
+                <input class="border p-1" placeholder="Nombre comercial" @bind="_nuevoSustanciaNombreComercial" />
+                <input class="border p-1" placeholder="Nombre químico" @bind="_nuevoSustanciaNombreQuimico" />
+                <input class="border p-1" placeholder="ID contenedor (opcional)" @bind="_nuevoContenedorId" />
+                <input class="border p-1" placeholder="Cantidad actual" @bind="_nuevoContenedorCantidad" />
+                <button class="btn" @onclick="SubirSustanciaAsync">Subir sustancia</button>
+                @if (!string.IsNullOrWhiteSpace(_nuevoSustanciaMsg))
+                {
+                    <span class="text-sm text-gray-500">@_nuevoSustanciaMsg</span>
+                }
+            </div>
             @if (_sustancias.Count == 0)
             {
                 <p class="muted">Sin sustancias registradas.</p>
@@ -321,6 +333,20 @@
                 </select>
                 <button class="btn" @onclick="AssignEquipoAsync" disabled="@string.IsNullOrWhiteSpace(_selectedEquipoId)">Asignar</button>
                 <span class="text-sm text-gray-500">@_assignMsg</span>
+            </div>
+            <div class="assign-row">
+                <input class="border p-1" placeholder="Modelo ID" @bind="_nuevoEquipoModeloId" />
+                <input class="border p-1" placeholder="Serie" @bind="_nuevoEquipoSerie" />
+                <input class="border p-1" placeholder="Estado ID" @bind="_nuevoEquipoEstadoId" />
+                <input class="border p-1" placeholder="Posición" @bind="_nuevoEquipoPosicion" />
+                <label class="text-sm text-gray-600">
+                    <input type="checkbox" @bind="_nuevoEquipoRequiereCalibracion" /> Requiere calibración
+                </label>
+                <button class="btn" @onclick="SubirEquipoAsync">Subir equipo</button>
+                @if (!string.IsNullOrWhiteSpace(_nuevoEquipoMsg))
+                {
+                    <span class="text-sm text-gray-500">@_nuevoEquipoMsg</span>
+                }
             </div>
             @if (_equipos.Count == 0)
             {
@@ -353,6 +379,23 @@
                     }
                 </select>
                 <button class="btn" @onclick='@(() => AssignMaterialAsync("materiales_vidrio", _selectedMaterialVidrioId))' disabled="@string.IsNullOrWhiteSpace(_selectedMaterialVidrioId)">Asignar</button>
+            </div>
+            <div class="assign-row">
+                <select class="border p-1" @bind="_nuevoMaterialTipo">
+                    <option value="vidrio">Vidrio</option>
+                    <option value="consumible">Consumible</option>
+                    <option value="montaje">Montaje</option>
+                </select>
+                <input class="border p-1" placeholder="Nombre" @bind="_nuevoMaterialNombre" />
+                <input class="border p-1" placeholder="Detalle (capacidad/cantidad)" @bind="_nuevoMaterialDetalle" />
+                <input class="border p-1" placeholder="Unidad ID (vidrio)" @bind="_nuevoMaterialUnidadId" />
+                <input class="border p-1" placeholder="Estado ID" @bind="_nuevoMaterialEstadoId" />
+                <input class="border p-1" placeholder="Posición" @bind="_nuevoMaterialPosicion" />
+                <button class="btn" @onclick="SubirMaterialAsync">Subir material</button>
+                @if (!string.IsNullOrWhiteSpace(_nuevoMaterialMsg))
+                {
+                    <span class="text-sm text-gray-500">@_nuevoMaterialMsg</span>
+                }
             </div>
             @if (_materialesVidrio.Count == 0)
             {
@@ -392,6 +435,21 @@
                     }
                 </ul>
             }
+        </div>
+
+        <div style="margin-top:1rem; border:1px solid #e5e7eb; border-radius:.5rem; padding:.75rem; background:#fff">
+            <h3 style="margin:0 0 .5rem 0">Documentos</h3>
+            <div class="assign-row">
+                <input class="border p-1" placeholder="Título" @bind="_nuevoDocumentoTitulo" />
+                <input class="border p-1" placeholder="URL" @bind="_nuevoDocumentoUrl" />
+                <input class="border p-1" placeholder="Ruta local (puede ser cualquier dirección)" @bind="_nuevoDocumentoArchivoLocal" />
+                <input class="border p-1" placeholder="Notas" @bind="_nuevoDocumentoNotas" />
+                <button class="btn" @onclick="SubirDocumentoAsync">Subir documento</button>
+                @if (!string.IsNullOrWhiteSpace(_nuevoDocumentoMsg))
+                {
+                    <span class="text-sm text-gray-500">@_nuevoDocumentoMsg</span>
+                }
+            </div>
         </div>
 
     }
