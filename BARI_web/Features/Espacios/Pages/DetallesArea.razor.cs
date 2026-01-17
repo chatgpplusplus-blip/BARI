@@ -140,6 +140,34 @@ namespace BARI_web.Features.Espacios.Pages
         private string? _selectedContenedorId;
         private string? _assignMsg;
 
+        private string? _nuevoEquipoModeloId;
+        private string? _nuevoEquipoSerie;
+        private string? _nuevoEquipoEstadoId;
+        private string? _nuevoEquipoPosicion;
+        private bool _nuevoEquipoRequiereCalibracion;
+        private string? _nuevoEquipoMsg;
+
+        private string _nuevoMaterialTipo = "vidrio";
+        private string? _nuevoMaterialNombre;
+        private string? _nuevoMaterialDetalle;
+        private string? _nuevoMaterialPosicion;
+        private string? _nuevoMaterialEstadoId;
+        private string? _nuevoMaterialUnidadId;
+        private string? _nuevoMaterialMsg;
+
+        private string? _nuevoSustanciaId;
+        private string? _nuevoSustanciaNombreComercial;
+        private string? _nuevoSustanciaNombreQuimico;
+        private string? _nuevoContenedorId;
+        private string? _nuevoContenedorCantidad;
+        private string? _nuevoSustanciaMsg;
+
+        private string? _nuevoDocumentoTitulo;
+        private string? _nuevoDocumentoUrl;
+        private string? _nuevoDocumentoArchivoLocal;
+        private string? _nuevoDocumentoNotas;
+        private string? _nuevoDocumentoMsg;
+
         // etiqueta override tomada del rectángulo interior del mesón
         private readonly Dictionary<string, string> _mesonLabelFromInner = new(StringComparer.OrdinalIgnoreCase);
 
@@ -734,6 +762,41 @@ namespace BARI_web.Features.Espacios.Pages
             _assignMsg = "Equipo asignado.";
         }
 
+        private async Task SubirEquipoAsync()
+        {
+            if (_areaInfo is null) return;
+            if (string.IsNullOrWhiteSpace(_nuevoEquipoModeloId) && string.IsNullOrWhiteSpace(_nuevoEquipoSerie))
+            {
+                _nuevoEquipoMsg = "Completa al menos modelo o serie.";
+                return;
+            }
+
+            var equipoId = $"eq_{Guid.NewGuid():N}".Substring(0, 12);
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+                INSERT INTO equipos
+                (equipo_id, modelo_id, serie, estado_id, area_id, posicion, requiere_calibracion, laboratorio_id)
+                VALUES (@id, @modelo, @serie, @estado, @area, @posicion, @cal, @lab)";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("id", equipoId);
+            cmd.Parameters.AddWithValue("modelo", string.IsNullOrWhiteSpace(_nuevoEquipoModeloId) ? (object)DBNull.Value : _nuevoEquipoModeloId!);
+            cmd.Parameters.AddWithValue("serie", string.IsNullOrWhiteSpace(_nuevoEquipoSerie) ? (object)DBNull.Value : _nuevoEquipoSerie!);
+            cmd.Parameters.AddWithValue("estado", string.IsNullOrWhiteSpace(_nuevoEquipoEstadoId) ? (object)DBNull.Value : _nuevoEquipoEstadoId!);
+            cmd.Parameters.AddWithValue("area", _areaInfo.area_id);
+            cmd.Parameters.AddWithValue("posicion", string.IsNullOrWhiteSpace(_nuevoEquipoPosicion) ? (object)DBNull.Value : _nuevoEquipoPosicion!);
+            cmd.Parameters.AddWithValue("cal", _nuevoEquipoRequiereCalibracion);
+            cmd.Parameters.AddWithValue("lab", _areaInfo.laboratorio_id);
+            await cmd.ExecuteNonQueryAsync();
+
+            _nuevoEquipoModeloId = null;
+            _nuevoEquipoSerie = null;
+            _nuevoEquipoEstadoId = null;
+            _nuevoEquipoPosicion = null;
+            _nuevoEquipoRequiereCalibracion = false;
+            _nuevoEquipoMsg = "Equipo registrado.";
+            await LoadEquiposAsync(_areaInfo.area_id);
+        }
+
         private async Task AssignMaterialAsync(string table, string? materialId)
         {
             if (_areaInfo is null || string.IsNullOrWhiteSpace(materialId)) return;
@@ -751,6 +814,67 @@ namespace BARI_web.Features.Espacios.Pages
             _assignMsg = "Material asignado.";
         }
 
+        private async Task SubirMaterialAsync()
+        {
+            if (_areaInfo is null) return;
+            if (string.IsNullOrWhiteSpace(_nuevoMaterialNombre))
+            {
+                _nuevoMaterialMsg = "Ingresa el nombre del material.";
+                return;
+            }
+
+            var materialId = $"mat_{Guid.NewGuid():N}".Substring(0, 12);
+            await using var conn = await DataSource.OpenConnectionAsync();
+            string sql;
+            var cmd = new NpgsqlCommand();
+            cmd.Connection = conn;
+            cmd.Parameters.AddWithValue("id", materialId);
+            cmd.Parameters.AddWithValue("nombre", _nuevoMaterialNombre!);
+            cmd.Parameters.AddWithValue("estado", string.IsNullOrWhiteSpace(_nuevoMaterialEstadoId) ? (object)DBNull.Value : _nuevoMaterialEstadoId!);
+            cmd.Parameters.AddWithValue("area", _areaInfo.area_id);
+            cmd.Parameters.AddWithValue("posicion", string.IsNullOrWhiteSpace(_nuevoMaterialPosicion) ? (object)DBNull.Value : _nuevoMaterialPosicion!);
+            cmd.Parameters.AddWithValue("lab", _areaInfo.laboratorio_id);
+
+            if (_nuevoMaterialTipo == "consumible")
+            {
+                sql = @"
+                    INSERT INTO materiales_consumible
+                    (material_id, nombre, estado_id, cantidad, area_id, posicion, laboratorio_id)
+                    VALUES (@id, @nombre, @estado, @cantidad, @area, @posicion, @lab)";
+                var cantidad = int.TryParse(_nuevoMaterialDetalle, out var qty) ? qty : 0;
+                cmd.Parameters.AddWithValue("cantidad", cantidad);
+            }
+            else if (_nuevoMaterialTipo == "montaje")
+            {
+                sql = @"
+                    INSERT INTO materiales_montaje
+                    (material_id, nombre, estado_id, area_id, posicion, laboratorio_id)
+                    VALUES (@id, @nombre, @estado, @area, @posicion, @lab)";
+            }
+            else
+            {
+                sql = @"
+                    INSERT INTO materiales_vidrio
+                    (material_id, nombre, capacidad_num, unidad_id, estado_id, area_id, posicion, laboratorio_id)
+                    VALUES (@id, @nombre, @capacidad, @unidad, @estado, @area, @posicion, @lab)";
+                var capacidad = decimal.TryParse(_nuevoMaterialDetalle, NumberStyles.Any, CultureInfo.InvariantCulture, out var cap) ? cap : 0m;
+                cmd.Parameters.AddWithValue("capacidad", capacidad);
+                cmd.Parameters.AddWithValue("unidad", string.IsNullOrWhiteSpace(_nuevoMaterialUnidadId) ? (object)DBNull.Value : _nuevoMaterialUnidadId!);
+            }
+
+            cmd.CommandText = sql;
+            await cmd.ExecuteNonQueryAsync();
+
+            _nuevoMaterialNombre = null;
+            _nuevoMaterialDetalle = null;
+            _nuevoMaterialPosicion = null;
+            _nuevoMaterialEstadoId = null;
+            _nuevoMaterialUnidadId = null;
+            _nuevoMaterialMsg = "Material registrado.";
+            await LoadMaterialesAsync(_areaInfo.area_id);
+            await LoadDisponiblesAsync(_areaInfo.laboratorio_id, _areaInfo.area_id);
+        }
+
         private async Task AssignContenedorAsync()
         {
             if (_areaInfo is null || string.IsNullOrWhiteSpace(_selectedContenedorId)) return;
@@ -764,6 +888,85 @@ namespace BARI_web.Features.Espacios.Pages
             await LoadSustanciasAsync(_areaInfo.area_id);
             await LoadDisponiblesAsync(_areaInfo.laboratorio_id, _areaInfo.area_id);
             _assignMsg = "Contenedor asignado.";
+        }
+
+        private async Task SubirSustanciaAsync()
+        {
+            if (_areaInfo is null) return;
+
+            var sustanciaId = string.IsNullOrWhiteSpace(_nuevoSustanciaId)
+                ? $"sus_{Guid.NewGuid():N}".Substring(0, 12)
+                : _nuevoSustanciaId!.Trim();
+            var contenedorId = string.IsNullOrWhiteSpace(_nuevoContenedorId)
+                ? $"cont_{Guid.NewGuid():N}".Substring(0, 12)
+                : _nuevoContenedorId!.Trim();
+
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sqlSust = @"
+                INSERT INTO sustancias (sustancia_id, nombre_comercial, nombre_quimico, laboratorio_id)
+                VALUES (@id, @comercial, @quimico, @lab)
+                ON CONFLICT (sustancia_id) DO NOTHING";
+            await using (var cmd = new NpgsqlCommand(sqlSust, conn))
+            {
+                cmd.Parameters.AddWithValue("id", sustanciaId);
+                cmd.Parameters.AddWithValue("comercial", string.IsNullOrWhiteSpace(_nuevoSustanciaNombreComercial) ? (object)DBNull.Value : _nuevoSustanciaNombreComercial!);
+                cmd.Parameters.AddWithValue("quimico", string.IsNullOrWhiteSpace(_nuevoSustanciaNombreQuimico) ? (object)DBNull.Value : _nuevoSustanciaNombreQuimico!);
+                cmd.Parameters.AddWithValue("lab", _areaInfo.laboratorio_id);
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            const string sqlCont = @"
+                INSERT INTO contenedores (cont_id, sustancia_id, cantidad_reactivo_actual, area_id, laboratorio_id)
+                VALUES (@cont, @sus, @cantidad, @area, @lab)";
+            await using (var cmd = new NpgsqlCommand(sqlCont, conn))
+            {
+                cmd.Parameters.AddWithValue("cont", contenedorId);
+                cmd.Parameters.AddWithValue("sus", sustanciaId);
+                var cantidad = decimal.TryParse(_nuevoContenedorCantidad, NumberStyles.Any, CultureInfo.InvariantCulture, out var qty) ? qty : 0m;
+                cmd.Parameters.AddWithValue("cantidad", cantidad);
+                cmd.Parameters.AddWithValue("area", _areaInfo.area_id);
+                cmd.Parameters.AddWithValue("lab", _areaInfo.laboratorio_id);
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            _nuevoSustanciaId = null;
+            _nuevoSustanciaNombreComercial = null;
+            _nuevoSustanciaNombreQuimico = null;
+            _nuevoContenedorId = null;
+            _nuevoContenedorCantidad = null;
+            _nuevoSustanciaMsg = "Sustancia registrada.";
+            await LoadSustanciasAsync(_areaInfo.area_id);
+            await LoadDisponiblesAsync(_areaInfo.laboratorio_id, _areaInfo.area_id);
+        }
+
+        private async Task SubirDocumentoAsync()
+        {
+            if (_areaInfo is null) return;
+            if (string.IsNullOrWhiteSpace(_nuevoDocumentoTitulo))
+            {
+                _nuevoDocumentoMsg = "Ingresa un título para el documento.";
+                return;
+            }
+
+            var docId = $"doc_{Guid.NewGuid():N}".Substring(0, 12);
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+                INSERT INTO documentos (documento_id, titulo, url, archivo_local, notas, laboratorio_id)
+                VALUES (@id, @titulo, @url, @archivo, @notas, @lab)";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("id", docId);
+            cmd.Parameters.AddWithValue("titulo", _nuevoDocumentoTitulo!);
+            cmd.Parameters.AddWithValue("url", string.IsNullOrWhiteSpace(_nuevoDocumentoUrl) ? (object)DBNull.Value : _nuevoDocumentoUrl!);
+            cmd.Parameters.AddWithValue("archivo", string.IsNullOrWhiteSpace(_nuevoDocumentoArchivoLocal) ? (object)DBNull.Value : _nuevoDocumentoArchivoLocal!);
+            cmd.Parameters.AddWithValue("notas", string.IsNullOrWhiteSpace(_nuevoDocumentoNotas) ? (object)DBNull.Value : _nuevoDocumentoNotas!);
+            cmd.Parameters.AddWithValue("lab", _areaInfo.laboratorio_id);
+            await cmd.ExecuteNonQueryAsync();
+
+            _nuevoDocumentoTitulo = null;
+            _nuevoDocumentoUrl = null;
+            _nuevoDocumentoArchivoLocal = null;
+            _nuevoDocumentoNotas = null;
+            _nuevoDocumentoMsg = "Documento registrado.";
         }
 
         private void FitViewBoxToAreaWithAspect(AreaDraw a, decimal pad)
