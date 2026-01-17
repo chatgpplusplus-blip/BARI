@@ -2,6 +2,7 @@
 @page "/inventario-materiales/{SubcategoriaId}"
 @using Npgsql
 @using BARI_web.General_Services
+@using System.Globalization
 @inject NpgsqlDataSource DataSource
 @inject LaboratorioState LaboratorioState
 @inject NavigationManager Nav
@@ -19,6 +20,26 @@
     <LaboratorioSelector />
 </section>
 
+<section class="page-card" style="margin-top:1.5rem;">
+    <h3>Subir material</h3>
+    <div class="assign-row">
+        <select class="border p-1" @bind="_nuevoMaterialTipo">
+            <option value="vidrio">Vidrio</option>
+            <option value="consumible">Consumible</option>
+            <option value="montaje">Montaje</option>
+        </select>
+        <input class="border p-1" placeholder="Nombre" @bind="_nuevoMaterialNombre" />
+        <input class="border p-1" placeholder="Detalle (capacidad/cantidad)" @bind="_nuevoMaterialDetalle" />
+        <input class="border p-1" placeholder="Unidad ID (vidrio)" @bind="_nuevoMaterialUnidadId" />
+        <input class="border p-1" placeholder="Estado ID" @bind="_nuevoMaterialEstadoId" />
+        <input class="border p-1" placeholder="Posición" @bind="_nuevoMaterialPosicion" />
+        <button class="btn" @onclick="SubirMaterialAsync">Subir</button>
+        @if (!string.IsNullOrWhiteSpace(_nuevoMaterialMsg))
+        {
+            <span class="text-sm text-gray-500">@_nuevoMaterialMsg</span>
+        }
+    </div>
+</section>
 <section class="page-card" style="margin-top:1.5rem;">
     <div class="category-header">
         <div>
@@ -142,6 +163,13 @@
     private readonly List<MaterialRow> materiales = new();
     private string? subcategoriaNombre;
     private string? loadError;
+    private string _nuevoMaterialTipo = "vidrio";
+    private string? _nuevoMaterialNombre;
+    private string? _nuevoMaterialDetalle;
+    private string? _nuevoMaterialPosicion;
+    private string? _nuevoMaterialEstadoId;
+    private string? _nuevoMaterialUnidadId;
+    private string? _nuevoMaterialMsg;
 
     protected override void OnInitialized()
     {
@@ -159,6 +187,64 @@
     {
         await LoadMaterialesAsync();
         await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SubirMaterialAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_nuevoMaterialNombre))
+        {
+            _nuevoMaterialMsg = "Ingresa el nombre del material.";
+            return;
+        }
+
+        var materialId = $"mat_{Guid.NewGuid():N}".Substring(0, 12);
+        await using var conn = await DataSource.OpenConnectionAsync();
+        string sql;
+        var cmd = new NpgsqlCommand();
+        cmd.Connection = conn;
+        cmd.Parameters.AddWithValue("id", materialId);
+        cmd.Parameters.AddWithValue("nombre", _nuevoMaterialNombre!);
+        cmd.Parameters.AddWithValue("estado", string.IsNullOrWhiteSpace(_nuevoMaterialEstadoId) ? (object)DBNull.Value : _nuevoMaterialEstadoId!);
+        cmd.Parameters.AddWithValue("posicion", string.IsNullOrWhiteSpace(_nuevoMaterialPosicion) ? (object)DBNull.Value : _nuevoMaterialPosicion!);
+        cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+
+        if (_nuevoMaterialTipo == "consumible")
+        {
+            sql = @"
+                INSERT INTO materiales_consumible
+                (material_id, nombre, estado_id, cantidad, posicion, laboratorio_id)
+                VALUES (@id, @nombre, @estado, @cantidad, @posicion, @lab)";
+            var cantidad = int.TryParse(_nuevoMaterialDetalle, out var qty) ? qty : 0;
+            cmd.Parameters.AddWithValue("cantidad", cantidad);
+        }
+        else if (_nuevoMaterialTipo == "montaje")
+        {
+            sql = @"
+                INSERT INTO materiales_montaje
+                (material_id, nombre, estado_id, posicion, laboratorio_id)
+                VALUES (@id, @nombre, @estado, @posicion, @lab)";
+        }
+        else
+        {
+            sql = @"
+                INSERT INTO materiales_vidrio
+                (material_id, nombre, capacidad_num, unidad_id, estado_id, posicion, laboratorio_id)
+                VALUES (@id, @nombre, @capacidad, @unidad, @estado, @posicion, @lab)";
+            var capacidad = decimal.TryParse(_nuevoMaterialDetalle, NumberStyles.Any, CultureInfo.InvariantCulture, out var cap) ? cap : 0m;
+            cmd.Parameters.AddWithValue("capacidad", capacidad);
+            cmd.Parameters.AddWithValue("unidad", string.IsNullOrWhiteSpace(_nuevoMaterialUnidadId) ? (object)DBNull.Value : _nuevoMaterialUnidadId!);
+        }
+
+        cmd.CommandText = sql;
+        await cmd.ExecuteNonQueryAsync();
+
+        _nuevoMaterialNombre = null;
+        _nuevoMaterialDetalle = null;
+        _nuevoMaterialEstadoId = null;
+        _nuevoMaterialPosicion = null;
+        _nuevoMaterialUnidadId = null;
+        _nuevoMaterialMsg = "Material registrado.";
+        await LoadMaterialesAsync();
     }
 
     private static readonly string[] CategoriaPermitidas =

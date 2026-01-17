@@ -2,6 +2,7 @@
 @page "/inventario-equipo/{SubcategoriaId}"
 @using Npgsql
 @using BARI_web.General_Services
+@using System.Globalization
 @inject NpgsqlDataSource DataSource
 @inject LaboratorioState LaboratorioState
 @inject NavigationManager Nav
@@ -18,6 +19,23 @@
     <LaboratorioSelector />
 </section>
 
+<section class="page-card" style="margin-top:1.5rem;">
+    <h3>Subir equipo</h3>
+    <div class="assign-row">
+        <input class="border p-1" placeholder="Modelo ID" @bind="_nuevoEquipoModeloId" />
+        <input class="border p-1" placeholder="Serie" @bind="_nuevoEquipoSerie" />
+        <input class="border p-1" placeholder="Estado ID" @bind="_nuevoEquipoEstadoId" />
+        <input class="border p-1" placeholder="Posición" @bind="_nuevoEquipoPosicion" />
+        <label class="text-sm text-gray-600">
+            <input type="checkbox" @bind="_nuevoEquipoRequiereCalibracion" /> Requiere calibración
+        </label>
+        <button class="btn" @onclick="SubirEquipoAsync">Subir</button>
+        @if (!string.IsNullOrWhiteSpace(_nuevoEquipoMsg))
+        {
+            <span class="text-sm text-gray-500">@_nuevoEquipoMsg</span>
+        }
+    </div>
+</section>
 <section class="page-card" style="margin-top:1.5rem;">
     <div class="category-header">
         <div>
@@ -141,6 +159,12 @@
     private readonly List<EquipoRow> equipos = new();
     private string? subcategoriaNombre;
     private string? loadError;
+    private string? _nuevoEquipoModeloId;
+    private string? _nuevoEquipoSerie;
+    private string? _nuevoEquipoEstadoId;
+    private string? _nuevoEquipoPosicion;
+    private bool _nuevoEquipoRequiereCalibracion;
+    private string? _nuevoEquipoMsg;
 
     protected override void OnInitialized()
     {
@@ -158,6 +182,39 @@
     {
         await LoadEquiposAsync();
         await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SubirEquipoAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_nuevoEquipoModeloId) && string.IsNullOrWhiteSpace(_nuevoEquipoSerie))
+        {
+            _nuevoEquipoMsg = "Completa al menos modelo o serie.";
+            return;
+        }
+
+        var equipoId = $"eq_{Guid.NewGuid():N}".Substring(0, 12);
+        await using var conn = await DataSource.OpenConnectionAsync();
+        const string sql = @"
+            INSERT INTO equipos
+            (equipo_id, modelo_id, serie, estado_id, requiere_calibracion, laboratorio_id, posicion)
+            VALUES (@id, @modelo, @serie, @estado, @cal, @lab, @posicion)";
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("id", equipoId);
+        cmd.Parameters.AddWithValue("modelo", string.IsNullOrWhiteSpace(_nuevoEquipoModeloId) ? (object)DBNull.Value : _nuevoEquipoModeloId!);
+        cmd.Parameters.AddWithValue("serie", string.IsNullOrWhiteSpace(_nuevoEquipoSerie) ? (object)DBNull.Value : _nuevoEquipoSerie!);
+        cmd.Parameters.AddWithValue("estado", string.IsNullOrWhiteSpace(_nuevoEquipoEstadoId) ? (object)DBNull.Value : _nuevoEquipoEstadoId!);
+        cmd.Parameters.AddWithValue("cal", _nuevoEquipoRequiereCalibracion);
+        cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+        cmd.Parameters.AddWithValue("posicion", string.IsNullOrWhiteSpace(_nuevoEquipoPosicion) ? (object)DBNull.Value : _nuevoEquipoPosicion!);
+        await cmd.ExecuteNonQueryAsync();
+
+        _nuevoEquipoModeloId = null;
+        _nuevoEquipoSerie = null;
+        _nuevoEquipoEstadoId = null;
+        _nuevoEquipoPosicion = null;
+        _nuevoEquipoRequiereCalibracion = false;
+        _nuevoEquipoMsg = "Equipo registrado.";
+        await LoadEquiposAsync();
     }
 
     private static readonly string[] CategoriaPermitidas =
