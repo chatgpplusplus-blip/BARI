@@ -20,19 +20,21 @@
 </section>
 
 <section class="page-card" style="margin-top:1.5rem;">
-    <h3>Subir sustancia y contenedor</h3>
-    <div class="assign-row">
-        <input class="border p-1" placeholder="ID sustancia (opcional)" @bind="_nuevoSustanciaId" />
-        <input class="border p-1" placeholder="Nombre comercial" @bind="_nuevoSustanciaNombreComercial" />
-        <input class="border p-1" placeholder="Nombre químico" @bind="_nuevoSustanciaNombreQuimico" />
-        <input class="border p-1" placeholder="ID contenedor (opcional)" @bind="_nuevoContenedorId" />
-        <input class="border p-1" placeholder="Cantidad actual" @bind="_nuevoContenedorCantidad" />
-        <button class="btn" @onclick="SubirSustanciaAsync">Subir</button>
-        @if (!string.IsNullOrWhiteSpace(_nuevoSustanciaMsg))
-        {
-            <span class="text-sm text-gray-500">@_nuevoSustanciaMsg</span>
-        }
-    </div>
+    <details>
+        <summary style="cursor:pointer; font-weight:600;">Subir sustancia y contenedor</summary>
+        <div class="assign-row" style="margin-top:.75rem;">
+            <input class="border p-1" placeholder="ID sustancia (opcional)" @bind="_nuevoSustanciaId" />
+            <input class="border p-1" placeholder="Nombre comercial" @bind="_nuevoSustanciaNombreComercial" />
+            <input class="border p-1" placeholder="Nombre químico" @bind="_nuevoSustanciaNombreQuimico" />
+            <input class="border p-1" placeholder="ID contenedor (opcional)" @bind="_nuevoContenedorId" />
+            <input class="border p-1" placeholder="Cantidad actual" @bind="_nuevoContenedorCantidad" />
+            <button class="btn" @onclick="SubirSustanciaAsync">Subir</button>
+            @if (!string.IsNullOrWhiteSpace(_nuevoSustanciaMsg))
+            {
+                <span class="text-sm text-gray-500">@_nuevoSustanciaMsg</span>
+            }
+        </div>
+    </details>
 </section>
 
 <section class="page-card" style="margin-top:1.5rem;">
