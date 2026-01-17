@@ -21,17 +21,37 @@
 
 <section class="page-card" style="margin-top:1.5rem;">
     <details>
-        <summary style="cursor:pointer; font-weight:600;">Subir sustancia y contenedor</summary>
+        <summary style="cursor:pointer; font-weight:600;">Subir sustancia</summary>
         <div class="assign-row" style="margin-top:.75rem;">
             <input class="border p-1" placeholder="ID sustancia (opcional)" @bind="_nuevoSustanciaId" />
             <input class="border p-1" placeholder="Nombre comercial" @bind="_nuevoSustanciaNombreComercial" />
             <input class="border p-1" placeholder="Nombre químico" @bind="_nuevoSustanciaNombreQuimico" />
-            <input class="border p-1" placeholder="ID contenedor (opcional)" @bind="_nuevoContenedorId" />
-            <input class="border p-1" placeholder="Cantidad actual" @bind="_nuevoContenedorCantidad" />
-            <button class="btn" @onclick="SubirSustanciaAsync">Subir</button>
+            <button class="btn" @onclick="SubirSustanciaAsync">Subir sustancia</button>
             @if (!string.IsNullOrWhiteSpace(_nuevoSustanciaMsg))
             {
                 <span class="text-sm text-gray-500">@_nuevoSustanciaMsg</span>
+            }
+        </div>
+    </details>
+</section>
+
+<section class="page-card" style="margin-top:1rem;">
+    <details>
+        <summary style="cursor:pointer; font-weight:600;">Subir contenedor</summary>
+        <div class="assign-row" style="margin-top:.75rem;">
+            <input class="border p-1" placeholder="ID contenedor (opcional)" @bind="_nuevoContenedorId" />
+            <select class="border p-1" @bind="_nuevoContenedorSustanciaId">
+                <option value="">Selecciona sustancia</option>
+                @foreach (var opt in sustanciasLookup)
+                {
+                    <option value="@opt.Id">@opt.Nombre</option>
+                }
+            </select>
+            <input class="border p-1" placeholder="Cantidad actual" @bind="_nuevoContenedorCantidad" />
+            <button class="btn" @onclick="SubirContenedorAsync">Subir contenedor</button>
+            @if (!string.IsNullOrWhiteSpace(_nuevoContenedorMsg))
+            {
+                <span class="text-sm text-gray-500">@_nuevoContenedorMsg</span>
             }
         </div>
     </details>
@@ -160,8 +180,11 @@
     private string? _nuevoSustanciaNombreComercial;
     private string? _nuevoSustanciaNombreQuimico;
     private string? _nuevoContenedorId;
+    private string? _nuevoContenedorSustanciaId;
     private string? _nuevoContenedorCantidad;
     private string? _nuevoSustanciaMsg;
+    private string? _nuevoContenedorMsg;
+    private readonly List<SustanciaLookup> sustanciasLookup = new();
 
     protected override void OnInitialized()
     {
@@ -173,11 +196,13 @@
         loadError = null;
         await LoadCategoriasAsync();
         await LoadSustanciasAsync();
+        await LoadSustanciasLookupAsync();
     }
 
     private async void HandleLaboratorioChanged()
     {
         await LoadSustanciasAsync();
+        await LoadSustanciasLookupAsync();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -186,9 +211,6 @@
         var sustanciaId = string.IsNullOrWhiteSpace(_nuevoSustanciaId)
             ? $"sus_{Guid.NewGuid():N}".Substring(0, 12)
             : _nuevoSustanciaId!.Trim();
-        var contenedorId = string.IsNullOrWhiteSpace(_nuevoContenedorId)
-            ? $"cont_{Guid.NewGuid():N}".Substring(0, 12)
-            : _nuevoContenedorId!.Trim();
 
         await using var conn = await DataSource.OpenConnectionAsync();
         const string sqlSust = @"
@@ -204,26 +226,63 @@
             await cmd.ExecuteNonQueryAsync();
         }
 
-        const string sqlCont = @"
-            INSERT INTO contenedores (cont_id, sustancia_id, cantidad_reactivo_actual, laboratorio_id)
-            VALUES (@cont, @sus, @cantidad, @lab)";
-        await using (var cmd = new NpgsqlCommand(sqlCont, conn))
-        {
-            cmd.Parameters.AddWithValue("cont", contenedorId);
-            cmd.Parameters.AddWithValue("sus", sustanciaId);
-            var cantidad = decimal.TryParse(_nuevoContenedorCantidad, NumberStyles.Any, CultureInfo.InvariantCulture, out var qty) ? qty : 0m;
-            cmd.Parameters.AddWithValue("cantidad", cantidad);
-            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
-            await cmd.ExecuteNonQueryAsync();
-        }
-
         _nuevoSustanciaId = null;
         _nuevoSustanciaNombreComercial = null;
         _nuevoSustanciaNombreQuimico = null;
-        _nuevoContenedorId = null;
-        _nuevoContenedorCantidad = null;
         _nuevoSustanciaMsg = "Sustancia registrada.";
+        await LoadSustanciasLookupAsync();
     }
+
+    private async Task SubirContenedorAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_nuevoContenedorSustanciaId))
+        {
+            _nuevoContenedorMsg = "Selecciona una sustancia.";
+            return;
+        }
+
+        var contenedorId = string.IsNullOrWhiteSpace(_nuevoContenedorId)
+            ? $"cont_{Guid.NewGuid():N}".Substring(0, 12)
+            : _nuevoContenedorId!.Trim();
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+        const string sqlCont = @"
+            INSERT INTO contenedores (cont_id, sustancia_id, cantidad_reactivo_actual, laboratorio_id)
+            VALUES (@cont, @sus, @cantidad, @lab)";
+        await using var cmd = new NpgsqlCommand(sqlCont, conn);
+        cmd.Parameters.AddWithValue("cont", contenedorId);
+        cmd.Parameters.AddWithValue("sus", _nuevoContenedorSustanciaId!);
+        var cantidad = decimal.TryParse(_nuevoContenedorCantidad, NumberStyles.Any, CultureInfo.InvariantCulture, out var qty) ? qty : 0m;
+        cmd.Parameters.AddWithValue("cantidad", cantidad);
+        cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+        await cmd.ExecuteNonQueryAsync();
+
+        _nuevoContenedorId = null;
+        _nuevoContenedorSustanciaId = null;
+        _nuevoContenedorCantidad = null;
+        _nuevoContenedorMsg = "Contenedor registrado.";
+    }
+
+    private async Task LoadSustanciasLookupAsync()
+    {
+        sustanciasLookup.Clear();
+        await using var conn = await DataSource.OpenConnectionAsync();
+        const string sql = @"
+            SELECT sustancia_id,
+                   COALESCE(NULLIF(nombre_comercial, ''), NULLIF(nombre_quimico, ''), sustancia_id)
+            FROM sustancias
+            WHERE laboratorio_id = @lab
+            ORDER BY 2";
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            sustanciasLookup.Add(new SustanciaLookup(reader.GetString(0), reader.GetString(1)));
+        }
+    }
+
+    private sealed record SustanciaLookup(string Id, string Nombre);
 
     private static readonly string[] CategoriaPermitidas =
     [
