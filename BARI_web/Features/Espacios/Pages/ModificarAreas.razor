@@ -126,11 +126,12 @@ else
                                     {
                                         var pt = p.puntos[i];
                                         var isActive = _selectedVertexIndex == i;
+                                        var isEditing = _vertexEditMode && _vertexEditPolyId == p.poly_id && _vertexEditIndex == i;
                                         <circle cx="@S(pt.X)" cy="@S(pt.Y)"
                                                 r="@S(0.18m)"
-                                                fill="@(isActive ? "#f59e0b" : "#13a076")"
-                                                stroke="#0b6b50" stroke-width="@S(0.04m)"
-                                                style="cursor:grab"
+                                                fill="@(isEditing ? "#dc2626" : isActive ? "#f59e0b" : "#13a076")"
+                                                stroke="@(isEditing ? "#7f1d1d" : "#0b6b50")" stroke-width="@S(0.04m)"
+                                                style="cursor:@(isEditing ? "move" : "pointer")"
                                                 @onpointerdown:preventDefault="true"
                                                 @onpointerdown:stopPropagation="true"
                                                 @onpointerdown="(e)=>OnPointerDownVertex(e, p.poly_id, i)" />
@@ -274,6 +275,20 @@ else
                                     @onclick="EliminarVertice"
                                     disabled="@(_selectedVertexIndex < 0)">
                                 Eliminar vértice seleccionado
+                            </button>
+                        </div>
+                        <div class="col-span-2 mt-1 flex gap-2">
+                            <button type="button"
+                                    class="px-2 py-1 border rounded text-blue-700 border-blue-400"
+                                    @onclick="IniciarEdicionVertice"
+                                    disabled="@(_selectedVertexIndex < 0 || _vertexEditMode)">
+                                Editar vértice
+                            </button>
+                            <button type="button"
+                                    class="px-2 py-1 border rounded text-green-700 border-green-400"
+                                    @onclick="GuardarEdicionVertice"
+                                    disabled="@(!_vertexEditMode)">
+                                Guardar vértice
                             </button>
                         </div>
                     </div>
