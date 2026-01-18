@@ -269,12 +269,24 @@ else
                             <div class="text-gray-700">@_sel.puntos.Count</div>
                         </div>
 
-                        <div class="col-span-2 mt-1">
+                        <div class="col-span-2 mt-1 flex gap-2">
                             <button type="button"
-                                    class="px-2 py-1 border rounded text-red-700 border-red-400"
-                                    @onclick="EliminarVertice"
-                                    disabled="@(_selectedVertexIndex < 0)">
-                                Eliminar vértice seleccionado
+                                    class="px-2 py-1 border rounded text-blue-700 border-blue-400"
+                                    @onclick="IniciarEdicionVertice"
+                                    disabled="@(_vertexEditSelecting || _vertexEditActive)">
+                                Editar vértices
+                            </button>
+                            <button type="button"
+                                    class="px-2 py-1 border rounded text-amber-700 border-amber-400"
+                                    @onclick="ConfirmarEdicionVertices"
+                                    disabled="@(!_vertexEditSelecting || _vertexEditIndices.Count == 0)">
+                                OK
+                            </button>
+                            <button type="button"
+                                    class="px-2 py-1 border rounded text-green-700 border-green-400"
+                                    @onclick="GuardarEdicionVertice"
+                                    disabled="@(!_vertexEditActive)">
+                                Guardar vértices editados
                             </button>
                         </div>
                         <div class="col-span-2 mt-1 flex gap-2">

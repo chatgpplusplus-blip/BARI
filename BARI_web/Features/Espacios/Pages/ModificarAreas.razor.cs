@@ -129,6 +129,8 @@ namespace BARI_web.Features.Espacios.Pages
         private int _selectedVertexIndex = -1;
         private readonly HashSet<int> _vertexEditIndices = new();
         private string? _vertexEditPolyId;
+        private bool _vertexEditSelecting = false;
+        private bool _vertexEditActive = false;
         private bool HasVertexEditMode => _vertexEditIndices.Count > 0;
 
         // drag puerta/ventana
@@ -806,7 +808,7 @@ namespace BARI_web.Features.Espacios.Pages
         private void OnPointerDownMoveArea(PointerEventArgs e, string polyId)
         {
             _sel = _polys.First(p => p.poly_id == polyId); _selDoorId = null; _selWinId = null;
-            if (HasVertexEditMode && string.Equals(_vertexEditPolyId, polyId, StringComparison.OrdinalIgnoreCase))
+            if ((_vertexEditSelecting || _vertexEditActive) && string.Equals(_vertexEditPolyId, polyId, StringComparison.OrdinalIgnoreCase))
             {
                 _saveMsg = "Modo edición de vértices activo.";
                 StateHasChanged();
@@ -849,11 +851,23 @@ namespace BARI_web.Features.Espacios.Pages
 
                 if (_dragVertexIndex >= 0 && _dragVertexIndex < _sel.puntos.Count)
                 {
+                    var original = _beforeDragPoints[_dragVertexIndex];
                     var targetX = snapEnabled ? SnapValue(wx) : wx;
                     var targetY = snapEnabled ? SnapValue(wy) : wy;
-                    targetX = Clamp(0m, Wm, targetX);
-                    targetY = Clamp(0m, Hm, targetY);
-                    _sel.puntos[_dragVertexIndex] = new Point(targetX, targetY);
+                    var dx = targetX - original.X;
+                    var dy = targetY - original.Y;
+
+                    var selected = _vertexEditIndices.Count > 0 ? _vertexEditIndices : new HashSet<int> { _dragVertexIndex };
+                    var selectedPoints = selected.Select(idx => _beforeDragPoints[idx]).ToList();
+                    var (minX, minY, maxX, maxY) = BoundsOfPointList(selectedPoints);
+                    dx = Clamp(0m - minX, Wm - maxX, dx);
+                    dy = Clamp(0m - minY, Hm - maxY, dy);
+
+                    foreach (var idx in selected)
+                    {
+                        var pt = _beforeDragPoints[idx];
+                        _sel.puntos[idx] = new Point(pt.X + dx, pt.Y + dy);
+                    }
                     UpdateBoundsFromPolyPoints(_sel);
                 }
                 else
@@ -1676,7 +1690,26 @@ namespace BARI_web.Features.Espacios.Pages
             _selDoorId = null;
             _selWinId = null;
             _selectedVertexIndex = index;
-            if (!HasVertexEditMode || _vertexEditPolyId != polyId || !_vertexEditIndices.Contains(index))
+            if (_vertexEditSelecting)
+            {
+                if (_vertexEditPolyId != polyId)
+                {
+                    _vertexEditIndices.Clear();
+                    _vertexEditPolyId = polyId;
+                }
+                if (_vertexEditIndices.Contains(index))
+                {
+                    _vertexEditIndices.Remove(index);
+                }
+                else
+                {
+                    _vertexEditIndices.Add(index);
+                }
+                _saveMsg = "Selecciona vértices para editar y pulsa OK.";
+                StateHasChanged();
+                return;
+            }
+            if (!_vertexEditActive || _vertexEditPolyId != polyId || !_vertexEditIndices.Contains(index))
             {
                 _dragVertexIndex = -1;
                 _dragStart = null;
@@ -1721,18 +1754,35 @@ namespace BARI_web.Features.Espacios.Pages
             _saveMsg = "Eliminado";
         }
 
-        private void EliminarVertice()
+        private void IniciarEdicionVertice()
         {
-            if (_sel is null || _selectedVertexIndex < 0) return;
-            if (_sel.puntos.Count <= 3)
+            if (_sel is null) return;
+            if (!string.Equals(_vertexEditPolyId, _sel.poly_id, StringComparison.OrdinalIgnoreCase))
             {
-                _saveMsg = "El polígono debe tener al menos 3 vértices.";
-                return;
+                _vertexEditIndices.Clear();
             }
-            _sel.puntos.RemoveAt(_selectedVertexIndex);
-            _selectedVertexIndex = -1;
+            _vertexEditPolyId = _sel.poly_id;
+            _vertexEditSelecting = true;
+            _vertexEditActive = false;
+            _saveMsg = "Seleccione vértices para editar.";
+            StateHasChanged();
+        }
+
+        private void ConfirmarEdicionVertices()
+        {
+            if (!HasVertexEditMode) return;
+            _vertexEditSelecting = false;
+            _vertexEditActive = true;
+            _saveMsg = "Edición de vértices activa.";
+            StateHasChanged();
+        }
+
+        private void GuardarEdicionVertice()
+        {
+            if (!_vertexEditActive) return;
             ClearVertexEdit();
-            UpdateBoundsFromPolyPoints(_sel);
+            _saveMsg = "Vértices guardados.";
+            StateHasChanged();
         }
 
         private void IniciarEdicionVertice()
@@ -1864,6 +1914,8 @@ namespace BARI_web.Features.Espacios.Pages
         {
             _vertexEditPolyId = null;
             _vertexEditIndices.Clear();
+            _vertexEditSelecting = false;
+            _vertexEditActive = false;
             _dragVertexIndex = -1;
             _dragStart = null;
             _beforeDragPoints = null;
