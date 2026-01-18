@@ -1785,39 +1785,6 @@ namespace BARI_web.Features.Espacios.Pages
             StateHasChanged();
         }
 
-        private void IniciarEdicionVertice()
-        {
-            if (_sel is null || _selectedVertexIndex < 0) return;
-            if (!string.Equals(_vertexEditPolyId, _sel.poly_id, StringComparison.OrdinalIgnoreCase))
-            {
-                _vertexEditIndices.Clear();
-            }
-            _vertexEditPolyId = _sel.poly_id;
-            if (_vertexEditIndices.Contains(_selectedVertexIndex))
-            {
-                _saveMsg = "El vértice ya está en edición.";
-                StateHasChanged();
-                return;
-            }
-            if (_vertexEditIndices.Count >= 2)
-            {
-                _saveMsg = "Solo puedes editar 2 vértices a la vez.";
-                StateHasChanged();
-                return;
-            }
-            _vertexEditIndices.Add(_selectedVertexIndex);
-            _saveMsg = "Vértice en edición.";
-            StateHasChanged();
-        }
-
-        private void GuardarEdicionVertice()
-        {
-            if (!HasVertexEditMode) return;
-            ClearVertexEdit();
-            _saveMsg = "Vértices guardados.";
-            StateHasChanged();
-        }
-
         private async Task EliminarPuerta()
         {
             var doorId = SelDoor?.door_id;
