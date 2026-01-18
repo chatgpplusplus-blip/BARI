@@ -1690,21 +1690,7 @@ namespace BARI_web.Features.Espacios.Pages
             _selDoorId = null;
             _selWinId = null;
             _selectedVertexIndex = index;
-            if (_vertexEditSelecting)
-            {
-                _vertexEditPolyId ??= polyId;
-                if (_vertexEditIndices.Contains(index))
-                {
-                    _vertexEditIndices.Remove(index);
-                }
-                else
-                {
-                    _vertexEditIndices.Add(index);
-                }
-                _saveMsg = "Selecciona vértices para editar y pulsa OK.";
-                StateHasChanged();
-                return;
-            }
+            if (_vertexEditSelecting) return;
             if (!_vertexEditActive || _vertexEditPolyId != polyId || !_vertexEditIndices.Contains(index))
             {
                 _dragVertexIndex = -1;
@@ -1722,11 +1708,17 @@ namespace BARI_web.Features.Espacios.Pages
         private void OnVertexClick(string polyId, int index)
         {
             if (!_vertexEditSelecting) return;
-            if (_vertexEditPolyId != polyId)
+            if (_vertexEditPolyId is null)
             {
-                _vertexEditIndices.Clear();
                 _vertexEditPolyId = polyId;
             }
+            else if (_vertexEditPolyId != polyId)
+            {
+                _saveMsg = "Selecciona vértices solo en el polígono activo.";
+                StateHasChanged();
+                return;
+            }
+
             if (_vertexEditIndices.Contains(index))
             {
                 _vertexEditIndices.Remove(index);
