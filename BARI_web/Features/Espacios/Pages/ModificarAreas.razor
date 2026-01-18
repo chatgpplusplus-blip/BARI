@@ -126,7 +126,7 @@ else
                                     {
                                         var pt = p.puntos[i];
                                         var isActive = _selectedVertexIndex == i;
-                                        var isEditing = _vertexEditMode && _vertexEditPolyId == p.poly_id && _vertexEditIndex == i;
+                                        var isEditing = _vertexEditPolyId == p.poly_id && _vertexEditIndices.Contains(i);
                                         <circle cx="@S(pt.X)" cy="@S(pt.Y)"
                                                 r="@S(0.18m)"
                                                 fill="@(isEditing ? "#dc2626" : isActive ? "#f59e0b" : "#13a076")"
@@ -281,14 +281,14 @@ else
                             <button type="button"
                                     class="px-2 py-1 border rounded text-blue-700 border-blue-400"
                                     @onclick="IniciarEdicionVertice"
-                                    disabled="@(_selectedVertexIndex < 0 || _vertexEditMode)">
+                                    disabled="@(_selectedVertexIndex < 0 || (_vertexEditIndices.Count >= 2 && !_vertexEditIndices.Contains(_selectedVertexIndex)))">
                                 Editar vértice
                             </button>
                             <button type="button"
                                     class="px-2 py-1 border rounded text-green-700 border-green-400"
                                     @onclick="GuardarEdicionVertice"
-                                    disabled="@(!_vertexEditMode)">
-                                Guardar vértice
+                                    disabled="@(_vertexEditIndices.Count == 0)">
+                                Guardar vértices
                             </button>
                         </div>
                     </div>

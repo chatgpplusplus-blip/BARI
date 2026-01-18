@@ -127,9 +127,9 @@ namespace BARI_web.Features.Espacios.Pages
         private List<Point>? _beforeDragPoints;
         private int _dragVertexIndex = -1;
         private int _selectedVertexIndex = -1;
-        private bool _vertexEditMode = false;
+        private readonly HashSet<int> _vertexEditIndices = new();
         private string? _vertexEditPolyId;
-        private int _vertexEditIndex = -1;
+        private bool HasVertexEditMode => _vertexEditIndices.Count > 0;
 
         // drag puerta/ventana
         private Door? _dragDoor; private bool _resizeDoor = false;
@@ -806,6 +806,12 @@ namespace BARI_web.Features.Espacios.Pages
         private void OnPointerDownMoveArea(PointerEventArgs e, string polyId)
         {
             _sel = _polys.First(p => p.poly_id == polyId); _selDoorId = null; _selWinId = null;
+            if (HasVertexEditMode && string.Equals(_vertexEditPolyId, polyId, StringComparison.OrdinalIgnoreCase))
+            {
+                _saveMsg = "Modo edición de vértices activo.";
+                StateHasChanged();
+                return;
+            }
             _beforeDragPoly = _sel.Clone();
             _beforeDragPoints = _sel.puntos.Select(p => p).ToList();
             _activeHandle = Handle.None;
@@ -1670,7 +1676,7 @@ namespace BARI_web.Features.Espacios.Pages
             _selDoorId = null;
             _selWinId = null;
             _selectedVertexIndex = index;
-            if (!_vertexEditMode || _vertexEditPolyId != polyId || _vertexEditIndex != index)
+            if (!HasVertexEditMode || _vertexEditPolyId != polyId || !_vertexEditIndices.Contains(index))
             {
                 _dragVertexIndex = -1;
                 _dragStart = null;
@@ -1732,18 +1738,33 @@ namespace BARI_web.Features.Espacios.Pages
         private void IniciarEdicionVertice()
         {
             if (_sel is null || _selectedVertexIndex < 0) return;
-            _vertexEditMode = true;
+            if (!string.Equals(_vertexEditPolyId, _sel.poly_id, StringComparison.OrdinalIgnoreCase))
+            {
+                _vertexEditIndices.Clear();
+            }
             _vertexEditPolyId = _sel.poly_id;
-            _vertexEditIndex = _selectedVertexIndex;
+            if (_vertexEditIndices.Contains(_selectedVertexIndex))
+            {
+                _saveMsg = "El vértice ya está en edición.";
+                StateHasChanged();
+                return;
+            }
+            if (_vertexEditIndices.Count >= 2)
+            {
+                _saveMsg = "Solo puedes editar 2 vértices a la vez.";
+                StateHasChanged();
+                return;
+            }
+            _vertexEditIndices.Add(_selectedVertexIndex);
             _saveMsg = "Vértice en edición.";
             StateHasChanged();
         }
 
         private void GuardarEdicionVertice()
         {
-            if (!_vertexEditMode) return;
+            if (!HasVertexEditMode) return;
             ClearVertexEdit();
-            _saveMsg = "Vértice guardado.";
+            _saveMsg = "Vértices guardados.";
             StateHasChanged();
         }
 
@@ -1841,9 +1862,8 @@ namespace BARI_web.Features.Espacios.Pages
 
         private void ClearVertexEdit()
         {
-            _vertexEditMode = false;
             _vertexEditPolyId = null;
-            _vertexEditIndex = -1;
+            _vertexEditIndices.Clear();
             _dragVertexIndex = -1;
             _dragStart = null;
             _beforeDragPoints = null;
