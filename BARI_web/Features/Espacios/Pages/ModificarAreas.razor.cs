@@ -1719,6 +1719,26 @@ namespace BARI_web.Features.Espacios.Pages
             _dragStart = (wx, wy);
         }
 
+        private void OnVertexClick(string polyId, int index)
+        {
+            if (!_vertexEditSelecting) return;
+            if (_vertexEditPolyId != polyId)
+            {
+                _vertexEditIndices.Clear();
+                _vertexEditPolyId = polyId;
+            }
+            if (_vertexEditIndices.Contains(index))
+            {
+                _vertexEditIndices.Remove(index);
+            }
+            else
+            {
+                _vertexEditIndices.Add(index);
+            }
+            _saveMsg = "Selecciona vértices para editar y pulsa OK.";
+            StateHasChanged();
+        }
+
         private void Nuevo()
         {
             var id = $"poly_{Guid.NewGuid():N}".Substring(0, 11);
