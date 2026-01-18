@@ -854,19 +854,19 @@ namespace BARI_web.Features.Espacios.Pages
                     var original = _beforeDragPoints[_dragVertexIndex];
                     var targetX = snapEnabled ? SnapValue(wx) : wx;
                     var targetY = snapEnabled ? SnapValue(wy) : wy;
-                    var dx = targetX - original.X;
-                    var dy = targetY - original.Y;
+                    var deltaX = targetX - original.X;
+                    var deltaY = targetY - original.Y;
 
                     var selected = _vertexEditIndices.Count > 0 ? _vertexEditIndices : new HashSet<int> { _dragVertexIndex };
                     var selectedPoints = selected.Select(idx => _beforeDragPoints[idx]).ToList();
                     var (minX, minY, maxX, maxY) = BoundsOfPointList(selectedPoints);
-                    dx = Clamp(0m - minX, Wm - maxX, dx);
-                    dy = Clamp(0m - minY, Hm - maxY, dy);
+                    deltaX = Clamp(0m - minX, Wm - maxX, deltaX);
+                    deltaY = Clamp(0m - minY, Hm - maxY, deltaY);
 
                     foreach (var idx in selected)
                     {
                         var pt = _beforeDragPoints[idx];
-                        _sel.puntos[idx] = new Point(pt.X + dx, pt.Y + dy);
+                        _sel.puntos[idx] = new Point(pt.X + deltaX, pt.Y + deltaY);
                     }
                     UpdateBoundsFromPolyPoints(_sel);
                 }
