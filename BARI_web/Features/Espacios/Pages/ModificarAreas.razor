@@ -132,7 +132,6 @@ else
                                                 fill="@(isEditing ? "#dc2626" : isActive ? "#f59e0b" : "#13a076")"
                                                 stroke="@(isEditing ? "#7f1d1d" : "#0b6b50")" stroke-width="@S(0.04m)"
                                                 style="cursor:@(isEditing ? "move" : "pointer")"
-                                                @onpointerdown:preventDefault="true"
                                                 @onpointerdown:stopPropagation="true"
                                                 @onclick:stopPropagation="true"
                                                 @onclick="() => OnVertexClick(p.poly_id, i)"
@@ -294,7 +293,7 @@ else
                         @if (_vertexEditSelecting)
                         {
                             <div class="col-span-2 text-xs text-gray-600 mt-1">
-                                Seleccione vértices para editar.
+                                Seleccione vértices para editar. (@_vertexEditIndices.Count seleccionados)
                             </div>
                         }
                         else if (_vertexEditActive)
