@@ -289,6 +289,20 @@ else
                                 Guardar vértices editados
                             </button>
                         </div>
+                        <div class="col-span-2 mt-1 flex gap-2">
+                            <button type="button"
+                                    class="px-2 py-1 border rounded text-blue-700 border-blue-400"
+                                    @onclick="IniciarEdicionVertice"
+                                    disabled="@(_selectedVertexIndex < 0 || (_vertexEditIndices.Count >= 2 && !_vertexEditIndices.Contains(_selectedVertexIndex)))">
+                                Editar vértice
+                            </button>
+                            <button type="button"
+                                    class="px-2 py-1 border rounded text-green-700 border-green-400"
+                                    @onclick="GuardarEdicionVertice"
+                                    disabled="@(_vertexEditIndices.Count == 0)">
+                                Guardar vértices
+                            </button>
+                        </div>
                     </div>
                 }
                 else if (SelDoor is not null)
