@@ -1690,7 +1690,21 @@ namespace BARI_web.Features.Espacios.Pages
             _selDoorId = null;
             _selWinId = null;
             _selectedVertexIndex = index;
-            if (_vertexEditSelecting) return;
+            if (_vertexEditSelecting)
+            {
+                _vertexEditPolyId ??= polyId;
+                if (_vertexEditIndices.Contains(index))
+                {
+                    _vertexEditIndices.Remove(index);
+                }
+                else
+                {
+                    _vertexEditIndices.Add(index);
+                }
+                _saveMsg = "Selecciona vértices para editar y pulsa OK.";
+                StateHasChanged();
+                return;
+            }
             if (!_vertexEditActive || _vertexEditPolyId != polyId || !_vertexEditIndices.Contains(index))
             {
                 _dragVertexIndex = -1;
@@ -1759,10 +1773,7 @@ namespace BARI_web.Features.Espacios.Pages
         private void IniciarEdicionVertice()
         {
             if (_sel is null) return;
-            if (!string.Equals(_vertexEditPolyId, _sel.poly_id, StringComparison.OrdinalIgnoreCase))
-            {
-                _vertexEditIndices.Clear();
-            }
+            _vertexEditIndices.Clear();
             _vertexEditPolyId = _sel.poly_id;
             _vertexEditSelecting = true;
             _vertexEditActive = false;
