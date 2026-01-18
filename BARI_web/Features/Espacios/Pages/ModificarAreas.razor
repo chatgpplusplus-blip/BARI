@@ -132,7 +132,6 @@ else
                                                 fill="@(isEditing ? "#dc2626" : isActive ? "#f59e0b" : "#13a076")"
                                                 stroke="@(isEditing ? "#7f1d1d" : "#0b6b50")" stroke-width="@S(0.04m)"
                                                 style="cursor:@(isEditing ? "move" : "pointer")"
-                                                @onpointerdown:preventDefault="true"
                                                 @onpointerdown:stopPropagation="true"
                                                 @onclick:stopPropagation="true"
                                                 @onclick="() => OnVertexClick(p.poly_id, i)"
