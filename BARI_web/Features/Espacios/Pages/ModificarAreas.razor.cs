@@ -127,6 +127,11 @@ namespace BARI_web.Features.Espacios.Pages
         private List<Point>? _beforeDragPoints;
         private int _dragVertexIndex = -1;
         private int _selectedVertexIndex = -1;
+        private readonly HashSet<int> _vertexEditIndices = new();
+        private string? _vertexEditPolyId;
+        private bool _vertexEditSelecting = false;
+        private bool _vertexEditActive = false;
+        private bool HasVertexEditMode => _vertexEditIndices.Count > 0;
 
         // drag puerta/ventana
         private Door? _dragDoor; private bool _resizeDoor = false;
@@ -803,11 +808,18 @@ namespace BARI_web.Features.Espacios.Pages
         private void OnPointerDownMoveArea(PointerEventArgs e, string polyId)
         {
             _sel = _polys.First(p => p.poly_id == polyId); _selDoorId = null; _selWinId = null;
+            if ((_vertexEditSelecting || _vertexEditActive) && string.Equals(_vertexEditPolyId, polyId, StringComparison.OrdinalIgnoreCase))
+            {
+                _saveMsg = "Modo edición de vértices activo.";
+                StateHasChanged();
+                return;
+            }
             _beforeDragPoly = _sel.Clone();
             _beforeDragPoints = _sel.puntos.Select(p => p).ToList();
             _activeHandle = Handle.None;
             _dragVertexIndex = -1;
             _selectedVertexIndex = -1;
+            ClearVertexEdit();
             var (wx, wy) = ScreenToWorld(e.OffsetX, e.OffsetY); _dragStart = (wx, wy); StateHasChanged();
         }
         private void OnPointerDownResizeArea(PointerEventArgs e, Handle h)
@@ -839,11 +851,23 @@ namespace BARI_web.Features.Espacios.Pages
 
                 if (_dragVertexIndex >= 0 && _dragVertexIndex < _sel.puntos.Count)
                 {
+                    var original = _beforeDragPoints[_dragVertexIndex];
                     var targetX = snapEnabled ? SnapValue(wx) : wx;
                     var targetY = snapEnabled ? SnapValue(wy) : wy;
-                    targetX = Clamp(0m, Wm, targetX);
-                    targetY = Clamp(0m, Hm, targetY);
-                    _sel.puntos[_dragVertexIndex] = new Point(targetX, targetY);
+                    var deltaX = targetX - original.X;
+                    var deltaY = targetY - original.Y;
+
+                    var selected = _vertexEditIndices.Count > 0 ? _vertexEditIndices : new HashSet<int> { _dragVertexIndex };
+                    var selectedPoints = selected.Select(idx => _beforeDragPoints[idx]).ToList();
+                    var (minX, minY, maxX, maxY) = BoundsOfPointList(selectedPoints);
+                    deltaX = Clamp(0m - minX, Wm - maxX, deltaX);
+                    deltaY = Clamp(0m - minY, Hm - maxY, deltaY);
+
+                    foreach (var idx in selected)
+                    {
+                        var pt = _beforeDragPoints[idx];
+                        _sel.puntos[idx] = new Point(pt.X + deltaX, pt.Y + deltaY);
+                    }
                     UpdateBoundsFromPolyPoints(_sel);
                 }
                 else
@@ -903,10 +927,10 @@ namespace BARI_web.Features.Espacios.Pages
         }
 
         // ======== Handlers pointerdown (puertas / ventanas)
-        private void OnPointerDownMoveDoor(PointerEventArgs e, string id) { _dragDoor = _doors.First(d => d.door_id == id); _resizeDoor = false; _selDoorId = id; _selWinId = null; _sel = null; _showDoorWinPanels = true; }
-        private void OnPointerDownResizeDoor(PointerEventArgs e, string id) { _dragDoor = _doors.First(d => d.door_id == id); _resizeDoor = true; _selDoorId = id; _selWinId = null; _sel = null; _showDoorWinPanels = true; }
-        private void OnPointerDownMoveWin(PointerEventArgs e, string id) { _dragWin = _windows.First(w => w.win_id == id); _resizeWin = false; _selWinId = id; _selDoorId = null; _sel = null; _showDoorWinPanels = true; }
-        private void OnPointerDownResizeWin(PointerEventArgs e, string id) { _dragWin = _windows.First(w => w.win_id == id); _resizeWin = true; _selWinId = id; _selDoorId = null; _sel = null; _showDoorWinPanels = true; }
+        private void OnPointerDownMoveDoor(PointerEventArgs e, string id) { _dragDoor = _doors.First(d => d.door_id == id); _resizeDoor = false; _selDoorId = id; _selWinId = null; _sel = null; _showDoorWinPanels = true; ClearVertexEdit(); }
+        private void OnPointerDownResizeDoor(PointerEventArgs e, string id) { _dragDoor = _doors.First(d => d.door_id == id); _resizeDoor = true; _selDoorId = id; _selWinId = null; _sel = null; _showDoorWinPanels = true; ClearVertexEdit(); }
+        private void OnPointerDownMoveWin(PointerEventArgs e, string id) { _dragWin = _windows.First(w => w.win_id == id); _resizeWin = false; _selWinId = id; _selDoorId = null; _sel = null; _showDoorWinPanels = true; ClearVertexEdit(); }
+        private void OnPointerDownResizeWin(PointerEventArgs e, string id) { _dragWin = _windows.First(w => w.win_id == id); _resizeWin = true; _selWinId = id; _selDoorId = null; _sel = null; _showDoorWinPanels = true; ClearVertexEdit(); }
 
         // ======== Pan/Zoom
         private void OnPointerDownBackground(PointerEventArgs e)
@@ -1567,6 +1591,7 @@ namespace BARI_web.Features.Espacios.Pages
             _isDrawing = true;
             _selectedVertexIndex = -1;
             _dragVertexIndex = -1;
+            ClearVertexEdit();
         }
 
         private void CancelDrawing()
@@ -1664,11 +1689,46 @@ namespace BARI_web.Features.Espacios.Pages
             _sel = _polys.First(p => p.poly_id == polyId);
             _selDoorId = null;
             _selWinId = null;
+            _selectedVertexIndex = index;
+            if (_vertexEditSelecting) return;
+            if (!_vertexEditActive || _vertexEditPolyId != polyId || !_vertexEditIndices.Contains(index))
+            {
+                _dragVertexIndex = -1;
+                _dragStart = null;
+                _beforeDragPoints = null;
+                return;
+            }
+
             _beforeDragPoints = _sel.puntos.Select(p => p).ToList();
             _dragVertexIndex = index;
-            _selectedVertexIndex = index;
             var (wx, wy) = ScreenToWorld(e.OffsetX, e.OffsetY);
             _dragStart = (wx, wy);
+        }
+
+        private void OnVertexClick(string polyId, int index)
+        {
+            if (!_vertexEditSelecting) return;
+            if (_vertexEditPolyId is null)
+            {
+                _vertexEditPolyId = polyId;
+            }
+            else if (_vertexEditPolyId != polyId)
+            {
+                _saveMsg = "Selecciona vértices solo en el polígono activo.";
+                StateHasChanged();
+                return;
+            }
+
+            if (_vertexEditIndices.Contains(index))
+            {
+                _vertexEditIndices.Remove(index);
+            }
+            else
+            {
+                _vertexEditIndices.Add(index);
+            }
+            _saveMsg = "Selecciona vértices para editar y pulsa OK.";
+            StateHasChanged();
         }
 
         private void Nuevo()
@@ -1702,17 +1762,32 @@ namespace BARI_web.Features.Espacios.Pages
             _saveMsg = "Eliminado";
         }
 
-        private void EliminarVertice()
+        private void IniciarEdicionVertice()
         {
-            if (_sel is null || _selectedVertexIndex < 0) return;
-            if (_sel.puntos.Count <= 3)
-            {
-                _saveMsg = "El polígono debe tener al menos 3 vértices.";
-                return;
-            }
-            _sel.puntos.RemoveAt(_selectedVertexIndex);
-            _selectedVertexIndex = -1;
-            UpdateBoundsFromPolyPoints(_sel);
+            if (_sel is null) return;
+            _vertexEditIndices.Clear();
+            _vertexEditPolyId = _sel.poly_id;
+            _vertexEditSelecting = true;
+            _vertexEditActive = false;
+            _saveMsg = "Seleccione vértices para editar.";
+            StateHasChanged();
+        }
+
+        private void ConfirmarEdicionVertices()
+        {
+            if (!HasVertexEditMode) return;
+            _vertexEditSelecting = false;
+            _vertexEditActive = true;
+            _saveMsg = "Edición de vértices activa.";
+            StateHasChanged();
+        }
+
+        private void GuardarEdicionVertice()
+        {
+            if (!_vertexEditActive) return;
+            ClearVertexEdit();
+            _saveMsg = "Vértices guardados.";
+            StateHasChanged();
         }
 
         private async Task EliminarPuerta()
@@ -1805,7 +1880,18 @@ namespace BARI_web.Features.Espacios.Pages
         private static string S(decimal v) => v.ToString(CultureInfo.InvariantCulture);
         private static string S(double v) => v.ToString(CultureInfo.InvariantCulture);
         private static int? IntOrNull(string? s) => int.TryParse(s, out var n) ? n : null;
-        private void DeselectAll() { _sel = null; _selDoorId = null; _selWinId = null; _hoverId = null; _selectedVertexIndex = -1; StateHasChanged(); }
+        private void DeselectAll() { _sel = null; _selDoorId = null; _selWinId = null; _hoverId = null; _selectedVertexIndex = -1; ClearVertexEdit(); StateHasChanged(); }
+
+        private void ClearVertexEdit()
+        {
+            _vertexEditPolyId = null;
+            _vertexEditIndices.Clear();
+            _vertexEditSelecting = false;
+            _vertexEditActive = false;
+            _dragVertexIndex = -1;
+            _dragStart = null;
+            _beforeDragPoints = null;
+        }
 
         // ======================= MODO JUNTAR VÉRTICES =======================
         private bool _joinMode = false;
