@@ -126,11 +126,12 @@ else
                                     {
                                         var pt = p.puntos[i];
                                         var isActive = _selectedVertexIndex == i;
+                                        var isEditing = _vertexEditPolyId == p.poly_id && _vertexEditIndices.Contains(i);
                                         <circle cx="@S(pt.X)" cy="@S(pt.Y)"
                                                 r="@S(0.18m)"
-                                                fill="@(isActive ? "#f59e0b" : "#13a076")"
-                                                stroke="#0b6b50" stroke-width="@S(0.04m)"
-                                                style="cursor:grab"
+                                                fill="@(isEditing ? "#dc2626" : isActive ? "#f59e0b" : "#13a076")"
+                                                stroke="@(isEditing ? "#7f1d1d" : "#0b6b50")" stroke-width="@S(0.04m)"
+                                                style="cursor:@(isEditing ? "move" : "pointer")"
                                                 @onpointerdown:preventDefault="true"
                                                 @onpointerdown:stopPropagation="true"
                                                 @onpointerdown="(e)=>OnPointerDownVertex(e, p.poly_id, i)" />
@@ -268,14 +269,38 @@ else
                             <div class="text-gray-700">@_sel.puntos.Count</div>
                         </div>
 
-                        <div class="col-span-2 mt-1">
+                        <div class="col-span-2 mt-1 flex gap-2">
                             <button type="button"
-                                    class="px-2 py-1 border rounded text-red-700 border-red-400"
-                                    @onclick="EliminarVertice"
-                                    disabled="@(_selectedVertexIndex < 0)">
-                                Eliminar vértice seleccionado
+                                    class="px-2 py-1 border rounded text-blue-700 border-blue-400"
+                                    @onclick="IniciarEdicionVertice"
+                                    disabled="@(_vertexEditSelecting || _vertexEditActive)">
+                                Editar vértices
+                            </button>
+                            <button type="button"
+                                    class="px-2 py-1 border rounded text-amber-700 border-amber-400"
+                                    @onclick="ConfirmarEdicionVertices"
+                                    disabled="@(!_vertexEditSelecting || _vertexEditIndices.Count == 0)">
+                                OK
+                            </button>
+                            <button type="button"
+                                    class="px-2 py-1 border rounded text-green-700 border-green-400"
+                                    @onclick="GuardarEdicionVertice"
+                                    disabled="@(!_vertexEditActive)">
+                                Guardar vértices editados
                             </button>
                         </div>
+                        @if (_vertexEditSelecting)
+                        {
+                            <div class="col-span-2 text-xs text-gray-600 mt-1">
+                                Seleccione vértices para editar. (@_vertexEditIndices.Count seleccionados)
+                            </div>
+                        }
+                        else if (_vertexEditActive)
+                        {
+                            <div class="col-span-2 text-xs text-gray-600 mt-1">
+                                Mueve cualquier vértice rojo para deformar el área.
+                            </div>
+                        }
                     </div>
                 }
                 else if (SelDoor is not null)
