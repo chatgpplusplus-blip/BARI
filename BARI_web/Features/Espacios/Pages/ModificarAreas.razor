@@ -134,6 +134,8 @@ else
                                                 style="cursor:@(isEditing ? "move" : "pointer")"
                                                 @onpointerdown:preventDefault="true"
                                                 @onpointerdown:stopPropagation="true"
+                                                @onclick:stopPropagation="true"
+                                                @onclick="() => OnVertexClick(p.poly_id, i)"
                                                 @onpointerdown="(e)=>OnPointerDownVertex(e, p.poly_id, i)" />
                                     }
                                 }
