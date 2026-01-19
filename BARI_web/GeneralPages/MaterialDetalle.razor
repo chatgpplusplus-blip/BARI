@@ -24,40 +24,50 @@ else
             <p class="code">ID: @detalle.MaterialId · Tipo: @detalle.Tipo</p>
         </header>
 
-        <dl class="info">
-            <div>
-                <dt>Categoría</dt>
-                <dd>@detalle.Categoria</dd>
+        <div class="detail-body">
+            <div class="detail-main">
+                <dl class="info">
+                    <div>
+                        <dt>Categoría</dt>
+                        <dd>@detalle.Categoria</dd>
+                    </div>
+                    <div>
+                        <dt>Subcategoría</dt>
+                        <dd>@detalle.Subcategoria</dd>
+                    </div>
+                    <div>
+                        <dt>Capacidad</dt>
+                        <dd>@detalle.Capacidad</dd>
+                    </div>
+                    <div>
+                        <dt>Tipo</dt>
+                        <dd>@detalle.Tipo</dd>
+                    </div>
+                    <div>
+                        <dt>Marca</dt>
+                        <dd>@detalle.Marca</dd>
+                    </div>
+                    <div>
+                        <dt>Estado</dt>
+                        <dd>@detalle.Estado</dd>
+                    </div>
+                    <div>
+                        <dt>Cantidad</dt>
+                        <dd>@detalle.Cantidad</dd>
+                    </div>
+                    <div>
+                        <dt>Ubicación</dt>
+                        <dd>@detalle.Ubicacion</dd>
+                    </div>
+                </dl>
             </div>
-            <div>
-                <dt>Subcategoría</dt>
-                <dd>@detalle.Subcategoria</dd>
-            </div>
-            <div>
-                <dt>Capacidad</dt>
-                <dd>@detalle.Capacidad</dd>
-            </div>
-            <div>
-                <dt>Tipo</dt>
-                <dd>@detalle.Tipo</dd>
-            </div>
-            <div>
-                <dt>Marca</dt>
-                <dd>@detalle.Marca</dd>
-            </div>
-            <div>
-                <dt>Estado</dt>
-                <dd>@detalle.Estado</dd>
-            </div>
-            <div>
-                <dt>Cantidad</dt>
-                <dd>@detalle.Cantidad</dd>
-            </div>
-            <div>
-                <dt>Ubicación</dt>
-                <dd>@detalle.Ubicacion</dd>
-            </div>
-        </dl>
+            @if (!string.IsNullOrWhiteSpace(detalle.ImagenUrl))
+            {
+                <div class="detail-image">
+                    <img src="@ResolveImagenUrl(detalle.ImagenUrl)" alt="Imagen de @detalle.Nombre" />
+                </div>
+            }
+        </div>
 
         @if (!string.IsNullOrWhiteSpace(detalle.Observaciones))
         {
@@ -100,7 +110,8 @@ else
                            mv.posicion,
                            mv.laboratorio_id,
                            mv.observaciones,
-                           NULL::int AS cantidad,
+                           mv.cantidad,
+                           mv.imagen_url,
                            'Vidrio'::text AS tipo
                     FROM materiales_vidrio mv
                     UNION ALL
@@ -116,7 +127,8 @@ else
                            mm.posicion,
                            mm.laboratorio_id,
                            mm.observaciones,
-                           NULL::int AS cantidad,
+                           mm.cantidad,
+                           mm.imagen_url,
                            'Montaje'::text AS tipo
                     FROM materiales_montaje mm
                     UNION ALL
@@ -133,6 +145,7 @@ else
                            mc.laboratorio_id,
                            mc.observaciones,
                            mc.cantidad,
+                           mc.imagen_url,
                            'Consumible'::text AS tipo
                     FROM materiales_consumible mc
                 )
@@ -148,6 +161,7 @@ else
                        COALESCE(ms.nombre_meson, '') AS meson,
                        COALESCE(m.posicion, '') AS posicion,
                        COALESCE(m.observaciones, '') AS observaciones,
+                       COALESCE(m.imagen_url, '') AS imagen_url,
                        m.tipo
                 FROM materiales m
                 LEFT JOIN subcategorias sc ON sc.subcategoria_id = m.subcategoria_id
@@ -178,7 +192,8 @@ else
                     Cantidad = reader.GetString(7),
                     Ubicacion = BuildUbicacion(reader.GetString(8), reader.GetString(9), reader.GetString(10)),
                     Observaciones = reader.GetString(11),
-                    Tipo = reader.GetString(12)
+                    ImagenUrl = reader.GetString(12),
+                    Tipo = reader.GetString(13)
                 };
             }
             else
@@ -214,6 +229,17 @@ else
         public string Cantidad { get; set; } = "";
         public string Ubicacion { get; set; } = "";
         public string Observaciones { get; set; } = "";
+        public string ImagenUrl { get; set; } = "";
+    }
+
+    private static string ResolveImagenUrl(string url)
+    {
+        if (url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+        {
+            return url;
+        }
+
+        return url.StartsWith("/", StringComparison.OrdinalIgnoreCase) ? url : $"/{url}";
     }
 }
 
@@ -239,6 +265,28 @@ else
 
     .detail-card header h1 {
         margin: 0;
+    }
+
+    .detail-body {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(240px, 360px);
+        gap: 1.5rem;
+        align-items: start;
+        margin-top: 1rem;
+    }
+
+    .detail-image {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 0.75rem;
+        background: #f8fafc;
+    }
+
+    .detail-image img {
+        width: 100%;
+        height: auto;
+        border-radius: 8px;
+        display: block;
     }
 
     .detail-card .code {
