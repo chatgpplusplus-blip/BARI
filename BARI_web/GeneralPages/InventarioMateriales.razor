@@ -160,6 +160,24 @@
                                              fill="@AreaFill(selectedArea)"
                                              stroke="#111827" stroke-width="0.03" />
                                 }
+                                @foreach (var meson in _mesonVisuals.OrderBy(m => m.ZOrder))
+                                {
+                                    <g class="meson-visual" @onclick="@(() => SelectMeson(meson.MesonId))">
+                                        <rect x="@FormatSvg(meson.X)"
+                                              y="@FormatSvg(meson.Y)"
+                                              width="@FormatSvg(meson.Width)"
+                                              height="@FormatSvg(meson.Height)"
+                                              fill="@meson.Fill"
+                                              opacity="@FormatSvg(meson.Opacity)"
+                                              stroke="#1f2937" stroke-width="0.03" />
+                                        <svg:text x="@FormatSvg(meson.X + meson.Width / 2m)"
+                                                  y="@FormatSvg(meson.Y + meson.Height / 2m)"
+                                                  text-anchor="middle" dominant-baseline="middle"
+                                                  font-size="@FormatSvg(MesonLabelFontSize(meson))">
+                                            @meson.Label
+                                        </svg:text>
+                                    </g>
+                                }
                                 <svg:text class="area-label"
                                           x="@FormatSvg(selectedArea.CenterX)" y="@FormatSvg(selectedArea.CenterY)"
                                           text-anchor="middle" dominant-baseline="middle"
@@ -394,6 +412,7 @@
     private readonly List<SelectOption> _areaOptions = new();
     private readonly List<SelectOption> _mesonOptions = new();
     private readonly List<MesonSummary> _mesonSummaries = new();
+    private readonly List<MesonVisual> _mesonVisuals = new();
     private readonly List<CanvasView> _canvasViews = new();
     private readonly Dictionary<string, string> _plantasLookup = new(StringComparer.OrdinalIgnoreCase);
     private string? _currentPlantaId;
@@ -732,6 +751,7 @@
     {
         _mesonOptions.Clear();
         _mesonSummaries.Clear();
+        _mesonVisuals.Clear();
         if (string.IsNullOrWhiteSpace(_nuevoMaterialAreaId))
         {
             return;
@@ -778,6 +798,175 @@
                 reader.GetInt32(3)
             ));
         }
+
+        await LoadMesonVisualsAsync();
+    }
+
+    private async Task LoadMesonVisualsAsync()
+    {
+        _mesonVisuals.Clear();
+        if (string.IsNullOrWhiteSpace(_nuevoMaterialAreaId))
+        {
+            return;
+        }
+
+        var area = SelectedAreaForMap;
+        if (area is null)
+        {
+            return;
+        }
+
+        var mesonLabels = _mesonOptions
+            .GroupBy(m => m.Id, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().Label, StringComparer.OrdinalIgnoreCase);
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        if (await TableExistsAsync(conn, "poligonos_interiores"))
+        {
+            const string innerSql = @"
+                SELECT pi.poly_in_id,
+                       pi.area_poly_id,
+                       pi.eje_x_rel_m,
+                       pi.eje_y_rel_m,
+                       pi.ancho_m,
+                       pi.alto_m,
+                       pi.color_hex,
+                       pi.etiqueta,
+                       pi.opacidad_0_1,
+                       pi.offset_x_m,
+                       pi.offset_y_m,
+                       pi.meson_id,
+                       p.x_m,
+                       p.y_m
+                FROM poligonos_interiores pi
+                INNER JOIN poligonos p ON p.poly_id = pi.area_poly_id
+                WHERE p.area_id = @area";
+            await using (var cmd = new NpgsqlCommand(innerSql, conn))
+            {
+                cmd.Parameters.AddWithValue("area", _nuevoMaterialAreaId);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    var mesonId = reader.IsDBNull(11) ? null : reader.GetString(11);
+                    if (string.IsNullOrWhiteSpace(mesonId))
+                    {
+                        continue;
+                    }
+
+                    var label = reader.IsDBNull(7) ? null : reader.GetString(7);
+                    if (string.IsNullOrWhiteSpace(label) && mesonLabels.TryGetValue(mesonId, out var mesonLabel))
+                    {
+                        label = mesonLabel;
+                    }
+
+                    label ??= "MESON";
+
+                    var offsetX = reader.IsDBNull(9) ? 0m : reader.GetDecimal(9);
+                    var offsetY = reader.IsDBNull(10) ? 0m : reader.GetDecimal(10);
+                    var x = reader.GetDecimal(12) + reader.GetDecimal(2) + offsetX;
+                    var y = reader.GetDecimal(13) + reader.GetDecimal(3) + offsetY;
+                    var width = reader.GetDecimal(4);
+                    var height = reader.GetDecimal(5);
+                    var fill = reader.IsDBNull(6) ? "#4b5563" : reader.GetString(6);
+                    var opacity = reader.IsDBNull(8) ? 0.35m : reader.GetDecimal(8);
+
+                    _mesonVisuals.Add(new MesonVisual(
+                        mesonId,
+                        label,
+                        x,
+                        y,
+                        width,
+                        height,
+                        fill,
+                        opacity,
+                        0
+                    ));
+                }
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(area.CanvasId)
+            && await TableExistsAsync(conn, "bloques_int"))
+        {
+            const string blockSql = @"
+                SELECT bloque_id,
+                       meson_id,
+                       etiqueta,
+                       color_hex,
+                       z_order,
+                       pos_x,
+                       pos_y,
+                       ancho,
+                       alto,
+                       offset_x,
+                       offset_y
+                FROM bloques_int
+                WHERE canvas_id = @canvas
+                  AND meson_id IS NOT NULL";
+            await using var cmd = new NpgsqlCommand(blockSql, conn);
+            cmd.Parameters.AddWithValue("canvas", area.CanvasId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var mesonId = reader.IsDBNull(1) ? null : reader.GetString(1);
+                if (string.IsNullOrWhiteSpace(mesonId))
+                {
+                    continue;
+                }
+
+                var label = reader.IsDBNull(2) ? null : reader.GetString(2);
+                if (string.IsNullOrWhiteSpace(label) && mesonLabels.TryGetValue(mesonId, out var mesonLabel))
+                {
+                    label = mesonLabel;
+                }
+
+                label ??= "MESON";
+
+                var offsetX = reader.IsDBNull(9) ? 0m : reader.GetDecimal(9);
+                var offsetY = reader.IsDBNull(10) ? 0m : reader.GetDecimal(10);
+                var width = reader.GetDecimal(7);
+                var height = reader.GetDecimal(8);
+                var x = reader.GetDecimal(5);
+                var y = reader.GetDecimal(6);
+                if (offsetX != 0m || offsetY != 0m)
+                {
+                    x = area.CenterX + offsetX;
+                    y = area.CenterY + offsetY;
+                }
+
+                var withinX = x + width >= area.MinX && x <= area.MaxX;
+                var withinY = y + height >= area.MinY && y <= area.MaxY;
+                if (!withinX || !withinY)
+                {
+                    continue;
+                }
+
+                var fill = reader.IsDBNull(3) ? "#2563eb" : reader.GetString(3);
+                var zOrder = reader.IsDBNull(4) ? 0 : reader.GetInt32(4);
+
+                _mesonVisuals.Add(new MesonVisual(
+                    mesonId,
+                    label,
+                    x,
+                    y,
+                    width,
+                    height,
+                    fill,
+                    0.45m,
+                    zOrder
+                ));
+            }
+        }
+    }
+
+    private static async Task<bool> TableExistsAsync(NpgsqlConnection conn, string tableName)
+    {
+        const string sql = "SELECT to_regclass(@name)";
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("name", tableName);
+        var result = await cmd.ExecuteScalarAsync();
+        return result is not null && result is not DBNull;
     }
 
     private async Task LoadCanvasAreasAsync()
@@ -917,6 +1106,11 @@
         }
 
         EnsurePlantaSelection(areas);
+
+        if (!string.IsNullOrWhiteSpace(_nuevoMaterialAreaId))
+        {
+            await LoadMesonVisualsAsync();
+        }
     }
 
     private async Task LoadMaterialesAsync()
@@ -1054,6 +1248,7 @@
     private sealed record SubcategoriaRow(string Id, string Nombre);
     private sealed record SelectOption(string Id, string Label);
     private sealed record CanvasItem(string CanvasId, string Nombre, decimal Ancho, decimal Alto);
+    private sealed record MesonVisual(string MesonId, string Label, decimal X, decimal Y, decimal Width, decimal Height, string Fill, decimal Opacity, int ZOrder);
 
     private sealed class AreaItem
     {
@@ -1176,6 +1371,12 @@
     {
         var baseSize = Math.Min(area.Width, area.Height) * 0.18m;
         return ClampDecimal(baseSize, 0.18m, 0.55m);
+    }
+
+    private static decimal MesonLabelFontSize(MesonVisual meson)
+    {
+        var baseSize = Math.Min(meson.Width, meson.Height) * 0.45m;
+        return ClampDecimal(baseSize, 0.12m, 0.45m);
     }
 
     private static decimal ClampDecimal(decimal value, decimal min, decimal max)
@@ -1313,6 +1514,10 @@
         margin: 0;
         display: grid;
         gap: 0.35rem;
+    }
+
+    .meson-visual {
+        cursor: pointer;
     }
 
     .upload-card {
