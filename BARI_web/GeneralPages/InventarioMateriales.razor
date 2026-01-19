@@ -114,9 +114,19 @@
 
                                         if (!string.IsNullOrWhiteSpace(area.Nombre))
                                         {
-                                            <svg:text x="@area.CenterX" y="@area.CenterY"
+                                            var labelWidth = AreaLabelWidth(area);
+                                            var labelHeight = AreaLabelHeight(area);
+                                            var fontSize = AreaLabelFontSize(area);
+
+                                            <svg:rect x="@FormatSvg(area.CenterX - labelWidth / 2m)"
+                                                      y="@FormatSvg(area.CenterY - labelHeight / 2m)"
+                                                      width="@FormatSvg(labelWidth)"
+                                                      height="@FormatSvg(labelHeight)"
+                                                      fill="#ffffff" opacity="0.8" rx="0.15" ry="0.15" />
+                                            <svg:text class="area-label"
+                                                      x="@FormatSvg(area.CenterX)" y="@FormatSvg(area.CenterY)"
                                                       text-anchor="middle" dominant-baseline="middle"
-                                                      font-size="0.25" fill="#111827">
+                                                      font-size="@FormatSvg(fontSize)">
                                                 @area.Nombre
                                             </svg:text>
                                         }
@@ -137,21 +147,24 @@
                 </select>
                 <div class="visual-picker">
                     <div class="text-xs text-gray-500">Mesones del área seleccionada</div>
-                    @if (_mesonOptions.Count == 0)
+                    @if (_mesonSummaries.Count == 0)
                     {
                         <div class="text-xs text-gray-500">Sin mesones disponibles.</div>
                     }
                     else
                     {
                         <ul class="meson-list">
-                            @foreach (var meson in _mesonOptions)
+                            @foreach (var meson in _mesonSummaries)
                             {
                                 <li>
                                     <button type="button"
                                             class="btn link"
-                                            @onclick="@(() => SelectMeson(meson.Id))">
-                                        @meson.Label
+                                            @onclick="@(() => SelectMeson(meson.MesonId))">
+                                        @meson.Nombre
                                     </button>
+                                    <div class="text-xs text-gray-500">
+                                        Reactivos: @meson.ReactivosCount · Equipos: @meson.EquiposCount
+                                    </div>
                                 </li>
                             }
                         </ul>
@@ -358,6 +371,7 @@
     private readonly List<SelectOption> _subcategoriaOptions = new();
     private readonly List<SelectOption> _areaOptions = new();
     private readonly List<SelectOption> _mesonOptions = new();
+    private readonly List<MesonSummary> _mesonSummaries = new();
     private readonly List<CanvasView> _canvasViews = new();
     private readonly Dictionary<string, string> _plantasLookup = new(StringComparer.OrdinalIgnoreCase);
     private string? _currentPlantaId;
@@ -691,6 +705,7 @@
     private async Task LoadMesonesAsync()
     {
         _mesonOptions.Clear();
+        _mesonSummaries.Clear();
         if (string.IsNullOrWhiteSpace(_nuevoMaterialAreaId))
         {
             return;
@@ -698,18 +713,44 @@
 
         await using var conn = await DataSource.OpenConnectionAsync();
         const string mesonSql = @"
-            SELECT meson_id, nombre_meson
+            SELECT m.meson_id,
+                   m.nombre_meson,
+                   COALESCE(c.reactivos_count, 0) AS reactivos_count,
+                   COALESCE(e.equipos_count, 0) AS equipos_count
             FROM mesones
-            WHERE area_id = @area
-              AND laboratorio_id = @lab
-            ORDER BY nombre_meson";
+            m
+            LEFT JOIN (
+                SELECT meson_id, COUNT(*) AS reactivos_count
+                FROM contenedores
+                WHERE area_id = @area
+                  AND laboratorio_id = @lab
+                GROUP BY meson_id
+            ) c ON c.meson_id = m.meson_id
+            LEFT JOIN (
+                SELECT meson_id, COUNT(*) AS equipos_count
+                FROM equipos
+                WHERE area_id = @area
+                  AND laboratorio_id = @lab
+                GROUP BY meson_id
+            ) e ON e.meson_id = m.meson_id
+            WHERE m.area_id = @area
+              AND m.laboratorio_id = @lab
+            ORDER BY m.nombre_meson";
         await using var cmd = new NpgsqlCommand(mesonSql, conn);
         cmd.Parameters.AddWithValue("area", _nuevoMaterialAreaId);
         cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
-            _mesonOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+            var mesonId = reader.GetString(0);
+            var nombre = reader.GetString(1);
+            _mesonOptions.Add(new SelectOption(mesonId, nombre));
+            _mesonSummaries.Add(new MesonSummary(
+                mesonId,
+                nombre,
+                reader.GetInt32(2),
+                reader.GetInt32(3)
+            ));
         }
     }
 
@@ -848,6 +889,8 @@
 
             _canvasViews.Add(new CanvasView(canvas, viewAreas));
         }
+
+        EnsurePlantaSelection(areas);
     }
 
     private async Task LoadMaterialesAsync()
@@ -1003,6 +1046,8 @@
         public List<PolygonItem> Poligonos { get; } = new();
         public decimal CenterX { get; private set; }
         public decimal CenterY { get; private set; }
+        public decimal Width { get; private set; }
+        public decimal Height { get; private set; }
 
         public void CalculateBounds()
         {
@@ -1018,6 +1063,8 @@
             var maxY = points.Max(p => p.Y);
             CenterX = (minX + maxX) / 2m;
             CenterY = (minY + maxY) / 2m;
+            Width = Math.Max(0.2m, maxX - minX);
+            Height = Math.Max(0.2m, maxY - minY);
         }
     }
 
@@ -1041,6 +1088,7 @@
     private sealed record PointItem(decimal X, decimal Y);
 
     private sealed record CanvasView(CanvasItem Canvas, List<AreaItem> Areas);
+    private sealed record MesonSummary(string MesonId, string Nombre, int ReactivosCount, int EquiposCount);
 
     private sealed record MaterialRow(
         string MaterialId,
@@ -1075,6 +1123,34 @@
             $"{p.X.ToString(CultureInfo.InvariantCulture)},{p.Y.ToString(CultureInfo.InvariantCulture)}"));
     }
 
+    private static string FormatSvg(decimal value)
+    {
+        return value.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static decimal AreaLabelWidth(AreaItem area)
+    {
+        return Math.Max(0.6m, area.Width * 0.85m);
+    }
+
+    private static decimal AreaLabelHeight(AreaItem area)
+    {
+        return Math.Max(0.25m, area.Height * 0.25m);
+    }
+
+    private static decimal AreaLabelFontSize(AreaItem area)
+    {
+        var baseSize = Math.Min(area.Width, area.Height) * 0.18m;
+        return ClampDecimal(baseSize, 0.18m, 0.55m);
+    }
+
+    private static decimal ClampDecimal(decimal value, decimal min, decimal max)
+    {
+        if (value < min) return min;
+        if (value > max) return max;
+        return value;
+    }
+
     private string AreaFill(AreaItem area)
     {
         if (!string.IsNullOrWhiteSpace(_nuevoMaterialAreaId)
@@ -1100,6 +1176,25 @@
 
         return string.Equals(plantaId, _currentPlantaId, StringComparison.OrdinalIgnoreCase);
     }
+
+    private void EnsurePlantaSelection(List<AreaItem> areas)
+    {
+        if (areas.Count == 0)
+        {
+            _currentPlantaId = _plantasLookup.Keys.FirstOrDefault();
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_currentPlantaId)
+            && _plantasLookup.ContainsKey(_currentPlantaId)
+            && areas.Any(a => string.Equals(a.PlantaId, _currentPlantaId, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        var firstAreaPlanta = areas.FirstOrDefault(a => !string.IsNullOrWhiteSpace(a.PlantaId))?.PlantaId;
+        _currentPlantaId = firstAreaPlanta ?? _plantasLookup.Keys.FirstOrDefault();
+    }
 }
 
 <style>
@@ -1114,6 +1209,13 @@
         display: flex;
         gap: .75rem;
         align-items: center;
+    }
+
+    .area-label {
+        fill: #111827;
+        paint-order: stroke fill;
+        stroke: #ffffff;
+        stroke-width: 0.04;
     }
 
     .selector-split {
