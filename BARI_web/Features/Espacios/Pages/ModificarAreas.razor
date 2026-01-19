@@ -62,9 +62,7 @@ else
                         <!-- fondo -->
                         <rect x="0" y="0" width="@S(Wm)" height="@S(Hm)"
                               fill="white" stroke="#bbb" stroke-width="@S(0.03)"
-                              style="cursor:grab"
-                              @onpointerdown:preventDefault="true"
-                              @onpointerdown="(e)=>BeginPan(e)" />
+                              style="cursor:grab" />
 
                         <!-- grilla -->
                         @for (var x = 0m; x <= Wm; x += 1m)
@@ -120,7 +118,7 @@ else
                                     </g>
                                 }
 
-                                @if (isSel)
+                                @if (isSel && (_vertexEditSelecting || _vertexEditActive))
                                 {
                                     for (var i = 0; i < p.puntos.Count; i++)
                                     {
@@ -128,14 +126,14 @@ else
                                         var isActive = _selectedVertexIndex == i;
                                         var isEditing = _vertexEditPolyId == p.poly_id && _vertexEditIndices.Contains(i);
                                         <circle cx="@S(pt.X)" cy="@S(pt.Y)"
-                                                r="@S(0.18m)"
+                                                r="@S(VertexR())"
                                                 fill="@(isEditing ? "#dc2626" : isActive ? "#f59e0b" : "#13a076")"
-                                                stroke="@(isEditing ? "#7f1d1d" : "#0b6b50")" stroke-width="@S(0.04m)"
-                                                style="cursor:@(isEditing ? "move" : "pointer")"
+                                                stroke="@(isEditing ? "#7f1d1d" : "#0b6b50")"
+                                                stroke-width="@S(VertexStroke())"
+                                                vector-effect="non-scaling-stroke"
+                                                style="cursor:@((_vertexEditSelecting || _vertexEditActive) ? "pointer" : "default")"
+                                                @onpointerdown:preventDefault="true"
                                                 @onpointerdown:stopPropagation="true"
-                                                @onclick:preventDefault="true"
-                                                @onclick:stopPropagation="true"
-                                                @onclick="() => OnVertexClick(p.poly_id, i)"
                                                 @onpointerdown="(e)=>OnPointerDownVertex(e, p.poly_id, i)" />
                                     }
                                 }
@@ -151,9 +149,11 @@ else
                                 var pt = _draftPoints[i];
                                 var isFirst = i == 0;
                                 <circle cx="@S(pt.X)" cy="@S(pt.Y)"
-                                        r="@S(isFirst ? 0.28m : 0.18m)"
+                                        r="@S(DraftR(isFirst))"
                                         fill="@(isFirst ? "rgba(37,99,235,0.2)" : "rgba(37,99,235,0.12)")"
-                                        stroke="#2563eb" />
+                                        stroke="#2563eb"
+                                        stroke-width="@S(VertexStroke())"
+                                        vector-effect="non-scaling-stroke" />
                             }
                         }
 
