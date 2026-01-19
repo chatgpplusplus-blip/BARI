@@ -170,11 +170,11 @@
             <div class="upload-card">
                 <InputRadioGroup @bind-Value="_nuevoMaterialImagenModo" class="upload-options">
                     <label class="text-sm">
-                        <InputRadio Value="url" />
+                        <InputRadio Value="@("url")" />
                         Colocar un URL
                     </label>
                     <label class="text-sm">
-                        <InputRadio Value="archivo" />
+                        <InputRadio Value="@("archivo")" />
                         Subir archivo
                     </label>
                 </InputRadioGroup>
