@@ -78,6 +78,7 @@
                     <div class="visual-toolbar">
                         <label class="text-xs text-gray-500">Mapa de áreas</label>
                         <select class="border p-1 text-xs" value="@_currentPlantaId" @onchange="OnPlantaChanged">
+                            <option value="">Todas</option>
                             @foreach (var planta in _plantasLookup)
                             {
                                 <option value="@planta.Key">@planta.Value</option>
@@ -147,6 +148,27 @@
                 </select>
                 <div class="visual-picker">
                     <div class="text-xs text-gray-500">Mesones del área seleccionada</div>
+                    @if (SelectedAreaForMap is not null)
+                    {
+                        var selectedArea = SelectedAreaForMap;
+                        <div class="canvas-card">
+                            <div class="text-xs text-gray-500">@SelectedAreaLabel</div>
+                            <svg width="100%" height="100%" viewBox="@AreaViewBox(selectedArea)" preserveAspectRatio="xMidYMid meet">
+                                @foreach (var poly in selectedArea.Poligonos.OrderBy(p => p.ZOrder))
+                                {
+                                    <polygon points="@PointsString(poly)"
+                                             fill="@AreaFill(selectedArea)"
+                                             stroke="#111827" stroke-width="0.03" />
+                                }
+                                <svg:text class="area-label"
+                                          x="@FormatSvg(selectedArea.CenterX)" y="@FormatSvg(selectedArea.CenterY)"
+                                          text-anchor="middle" dominant-baseline="middle"
+                                          font-size="@FormatSvg(AreaLabelFontSize(selectedArea))">
+                                    @selectedArea.Nombre
+                                </svg:text>
+                            </svg>
+                        </div>
+                    }
                     @if (_mesonSummaries.Count == 0)
                     {
                         <div class="text-xs text-gray-500">Sin mesones disponibles.</div>
@@ -438,6 +460,10 @@
         _mesonOptions.FirstOrDefault(m => string.Equals(m.Id, _nuevoMaterialMesonId, StringComparison.OrdinalIgnoreCase))?.Label
         ?? _nuevoMaterialMesonId
         ?? "Mesón";
+
+    private AreaItem? SelectedAreaForMap =>
+        _canvasViews.SelectMany(v => v.Areas)
+            .FirstOrDefault(a => string.Equals(a.AreaId, _nuevoMaterialAreaId, StringComparison.OrdinalIgnoreCase));
 
     private void OnImagenModoChanged(ChangeEventArgs args)
     {
@@ -1048,6 +1074,10 @@
         public decimal CenterY { get; private set; }
         public decimal Width { get; private set; }
         public decimal Height { get; private set; }
+        public decimal MinX { get; private set; }
+        public decimal MinY { get; private set; }
+        public decimal MaxX { get; private set; }
+        public decimal MaxY { get; private set; }
 
         public void CalculateBounds()
         {
@@ -1061,6 +1091,10 @@
             var maxX = points.Max(p => p.X);
             var minY = points.Min(p => p.Y);
             var maxY = points.Max(p => p.Y);
+            MinX = minX;
+            MaxX = maxX;
+            MinY = minY;
+            MaxY = maxY;
             CenterX = (minX + maxX) / 2m;
             CenterY = (minY + maxY) / 2m;
             Width = Math.Max(0.2m, maxX - minX);
@@ -1151,6 +1185,16 @@
         return value;
     }
 
+    private static string AreaViewBox(AreaItem area)
+    {
+        var padding = 0.4m;
+        var minX = area.MinX - padding;
+        var minY = area.MinY - padding;
+        var width = Math.Max(1m, area.Width + padding * 2m);
+        var height = Math.Max(1m, area.Height + padding * 2m);
+        return $"{FormatSvg(minX)} {FormatSvg(minY)} {FormatSvg(width)} {FormatSvg(height)}";
+    }
+
     private string AreaFill(AreaItem area)
     {
         if (!string.IsNullOrWhiteSpace(_nuevoMaterialAreaId)
@@ -1185,6 +1229,13 @@
             return;
         }
 
+        var firstAreaPlanta = areas.FirstOrDefault(a => !string.IsNullOrWhiteSpace(a.PlantaId))?.PlantaId;
+        if (string.IsNullOrWhiteSpace(firstAreaPlanta))
+        {
+            _currentPlantaId = null;
+            return;
+        }
+
         if (!string.IsNullOrWhiteSpace(_currentPlantaId)
             && _plantasLookup.ContainsKey(_currentPlantaId)
             && areas.Any(a => string.Equals(a.PlantaId, _currentPlantaId, StringComparison.OrdinalIgnoreCase)))
@@ -1192,7 +1243,6 @@
             return;
         }
 
-        var firstAreaPlanta = areas.FirstOrDefault(a => !string.IsNullOrWhiteSpace(a.PlantaId))?.PlantaId;
         _currentPlantaId = firstAreaPlanta ?? _plantasLookup.Keys.FirstOrDefault();
     }
 }
