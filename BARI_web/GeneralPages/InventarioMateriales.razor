@@ -168,16 +168,24 @@
             <input class="border p-1" placeholder="Posición (ej. al fondo, en el medio)" @bind="_nuevoMaterialPosicion" />
             <input class="border p-1" placeholder="Descripción" @bind="_nuevoMaterialDescripcion" />
             <div class="upload-card">
-                <InputRadioGroup @bind-Value="_nuevoMaterialImagenModo" class="upload-options">
+                <div class="upload-options">
                     <label class="text-sm">
-                        <InputRadio Value="@("url")" />
+                        <input type="radio"
+                               name="imagenModo"
+                               value="url"
+                               checked="@(_nuevoMaterialImagenModo == "url")"
+                               @onchange="OnImagenModoChanged" />
                         Colocar un URL
                     </label>
                     <label class="text-sm">
-                        <InputRadio Value="@("archivo")" />
+                        <input type="radio"
+                               name="imagenModo"
+                               value="archivo"
+                               checked="@(_nuevoMaterialImagenModo == "archivo")"
+                               @onchange="OnImagenModoChanged" />
                         Subir archivo
                     </label>
-                </InputRadioGroup>
+                </div>
                 @if (_nuevoMaterialImagenModo == "url")
                 {
                     <input class="border p-1" placeholder="Imagen URL (o ruta relativa)" @bind="_nuevoMaterialImagenUrl" />
@@ -416,6 +424,15 @@
         _mesonOptions.FirstOrDefault(m => string.Equals(m.Id, _nuevoMaterialMesonId, StringComparison.OrdinalIgnoreCase))?.Label
         ?? _nuevoMaterialMesonId
         ?? "Mesón";
+
+    private void OnImagenModoChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            _nuevoMaterialImagenModo = value;
+        }
+    }
 
     private async Task OnImagenArchivoSeleccionado(InputFileChangeEventArgs args)
     {
