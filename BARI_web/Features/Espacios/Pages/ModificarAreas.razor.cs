@@ -1732,19 +1732,51 @@ namespace BARI_web.Features.Espacios.Pages
             _selDoorId = null;
             _selWinId = null;
             _selectedVertexIndex = index;
-            if (_vertexEditSelecting) return;
-            if (!_vertexEditActive || _vertexEditPolyId != polyId || !_vertexEditIndices.Contains(index))
+
+            if (_vertexEditSelecting)
             {
-                _dragVertexIndex = -1;
-                _dragStart = null;
-                _beforeDragPoints = null;
+                _vertexEditPolyId ??= polyId;
+
+                if (!string.Equals(_vertexEditPolyId, polyId, StringComparison.OrdinalIgnoreCase))
+                {
+                    _saveMsg = "Selecciona vértices solo en el polígono activo.";
+                    StateHasChanged();
+                    return;
+                }
+
+                if (_vertexEditIndices.Contains(index)) _vertexEditIndices.Remove(index);
+                else _vertexEditIndices.Add(index);
+
+                _saveMsg = "Selecciona vértices para editar y pulsa OK.";
+                StateHasChanged();
                 return;
             }
 
-            _beforeDragPoints = _sel.puntos.Select(p => p).ToList();
-            _dragVertexIndex = index;
-            var (wx, wy) = ScreenToWorld(e.OffsetX, e.OffsetY);
-            _dragStart = (wx, wy);
+            if (_vertexEditActive)
+            {
+                if (!string.Equals(_vertexEditPolyId ?? "", polyId, StringComparison.OrdinalIgnoreCase))
+                {
+                    _saveMsg = "Edición de vértices activa en otro polígono.";
+                    StateHasChanged();
+                    return;
+                }
+
+                if (_vertexEditIndices.Count == 0 || !_vertexEditIndices.Contains(index))
+                {
+                    _vertexEditIndices.Clear();
+                    _vertexEditIndices.Add(index);
+                }
+
+                _beforeDragPoints = _sel.puntos.Select(p => p).ToList();
+                var (wx, wy) = ScreenToWorld(e.OffsetX, e.OffsetY);
+                _dragStart = (wx, wy);
+                _dragVertexIndex = index;
+
+                StateHasChanged();
+                return;
+            }
+
+            StateHasChanged();
         }
 
         private void OnVertexClick(string polyId, int index)
@@ -1905,7 +1937,7 @@ namespace BARI_web.Features.Espacios.Pages
         }
 
         // ===== utils
-        private double PxPerM() { const double nominalSvgPx = 1000.0; return nominalSvgPx / (double)Wm; }
+        private double PxPerM() { const double nominalSvgPx = 1150.0; return nominalSvgPx / (double)Wm; }
         private decimal PxToWorld(double px) => (decimal)(px / (PxPerM() * _zoom));
         private decimal VertexR() => PxToWorld(5);
         private decimal VertexStroke() => PxToWorld(1.5);

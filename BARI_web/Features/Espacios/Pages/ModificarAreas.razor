@@ -62,9 +62,7 @@ else
                         <!-- fondo -->
                         <rect x="0" y="0" width="@S(Wm)" height="@S(Hm)"
                               fill="white" stroke="#bbb" stroke-width="@S(0.03)"
-                              style="cursor:grab"
-                              @onpointerdown:preventDefault="true"
-                              @onpointerdown="(e)=>BeginPan(e)" />
+                              style="cursor:grab" />
 
                         <!-- grilla -->
                         @for (var x = 0m; x <= Wm; x += 1m)
@@ -133,11 +131,9 @@ else
                                                 stroke="@(isEditing ? "#7f1d1d" : "#0b6b50")"
                                                 stroke-width="@S(VertexStroke())"
                                                 vector-effect="non-scaling-stroke"
-                                                style="cursor:@(isEditing ? "move" : "pointer")"
+                                                style="cursor:@((_vertexEditSelecting || _vertexEditActive) ? "pointer" : "default")"
+                                                @onpointerdown:preventDefault="true"
                                                 @onpointerdown:stopPropagation="true"
-                                                @onclick:preventDefault="true"
-                                                @onclick:stopPropagation="true"
-                                                @onclick="() => OnVertexClick(p.poly_id, i)"
                                                 @onpointerdown="(e)=>OnPointerDownVertex(e, p.poly_id, i)" />
                                     }
                                 }
