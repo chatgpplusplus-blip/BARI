@@ -89,11 +89,15 @@
             <div class="upload-card">
                 <div class="upload-options">
                     <label class="text-sm">
-                        <input type="radio" name="imagenModo" value="url" @bind="_nuevoMaterialImagenModo" />
+                        <input type="radio" name="imagenModo"
+                               checked="@(_nuevoMaterialImagenModo == "url")"
+                               @onchange="@(() => _nuevoMaterialImagenModo = "url")" />
                         Colocar un URL
                     </label>
                     <label class="text-sm">
-                        <input type="radio" name="imagenModo" value="archivo" @bind="_nuevoMaterialImagenModo" />
+                        <input type="radio" name="imagenModo"
+                               checked="@(_nuevoMaterialImagenModo == "archivo")"
+                               @onchange="@(() => _nuevoMaterialImagenModo = "archivo")" />
                         Subir archivo
                     </label>
                 </div>
