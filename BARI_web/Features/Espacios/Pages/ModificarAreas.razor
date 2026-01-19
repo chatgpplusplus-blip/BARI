@@ -133,6 +133,7 @@ else
                                                 stroke="@(isEditing ? "#7f1d1d" : "#0b6b50")" stroke-width="@S(0.04m)"
                                                 style="cursor:@(isEditing ? "move" : "pointer")"
                                                 @onpointerdown:stopPropagation="true"
+                                                @onclick:preventDefault="true"
                                                 @onclick:stopPropagation="true"
                                                 @onclick="() => OnVertexClick(p.poly_id, i)"
                                                 @onpointerdown="(e)=>OnPointerDownVertex(e, p.poly_id, i)" />
