@@ -763,8 +763,8 @@
                    m.nombre_meson,
                    COALESCE(c.reactivos_count, 0) AS reactivos_count,
                    COALESCE(e.equipos_count, 0) AS equipos_count
-            FROM mesones
-            m
+            FROM mesones m
+            INNER JOIN areas a ON a.area_id = m.area_id
             LEFT JOIN (
                 SELECT meson_id, COUNT(*) AS reactivos_count
                 FROM contenedores
@@ -780,7 +780,7 @@
                 GROUP BY meson_id
             ) e ON e.meson_id = m.meson_id
             WHERE m.area_id = @area
-              AND m.laboratorio_id = @lab
+              AND a.laboratorio_id = @lab
             ORDER BY m.nombre_meson";
         await using var cmd = new NpgsqlCommand(mesonSql, conn);
         cmd.Parameters.AddWithValue("area", _nuevoMaterialAreaId);
