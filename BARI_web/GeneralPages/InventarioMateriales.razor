@@ -3,9 +3,12 @@
 @using Npgsql
 @using BARI_web.General_Services
 @using System.Globalization
+@using System.IO
+@using Microsoft.AspNetCore.Components.Forms
 @inject NpgsqlDataSource DataSource
 @inject LaboratorioState LaboratorioState
 @inject NavigationManager Nav
+@inject IWebHostEnvironment HostEnvironment
 @implements IDisposable
 
 <PageTitle>Inventario de Materiales</PageTitle>
@@ -30,17 +33,210 @@
                 <option value="montaje">Montaje</option>
             </select>
             <input class="border p-1" placeholder="Nombre" @bind="_nuevoMaterialNombre" />
-            <input class="border p-1" placeholder="Detalle (capacidad/cantidad)" @bind="_nuevoMaterialDetalle" />
-            <input class="border p-1" placeholder="Unidad ID (vidrio)" @bind="_nuevoMaterialUnidadId" />
-            <input class="border p-1" placeholder="Estado ID" @bind="_nuevoMaterialEstadoId" />
-            <input class="border p-1" placeholder="Marca ID" @bind="_nuevoMaterialMarcaId" />
-            <input class="border p-1" placeholder="Subcategoría ID" @bind="_nuevoMaterialSubcategoriaId" />
-            <input class="border p-1" placeholder="Área ID (opcional)" @bind="_nuevoMaterialAreaId" />
-            <input class="border p-1" placeholder="Mesón ID (opcional)" @bind="_nuevoMaterialMesonId" />
+            @if (_nuevoMaterialTipo == "vidrio")
+            {
+                <input class="border p-1" placeholder="Capacidad (número)" type="number" step="any" @bind="_nuevoMaterialDetalle" />
+                <select class="border p-1" @bind="_nuevoMaterialUnidadId">
+                    <option value="">Unidad (vidrio)</option>
+                    @foreach (var unidad in _unidadOptions)
+                    {
+                        <option value="@unidad.Id">@unidad.Label</option>
+                    }
+                </select>
+            }
+            <input class="border p-1" placeholder="Cantidad" type="number" step="any" @bind="_nuevoMaterialCantidad" />
+            <select class="border p-1" @bind="_nuevoMaterialEstadoId">
+                <option value="">Estado</option>
+                @foreach (var estado in _estadoOptions)
+                {
+                    <option value="@estado.Id">@estado.Label</option>
+                }
+            </select>
+            <select class="border p-1" @bind="_nuevoMaterialMarcaId">
+                <option value="">Marca</option>
+                @foreach (var marca in _marcaOptions)
+                {
+                    <option value="@marca.Id">@marca.Label</option>
+                }
+            </select>
+            <select class="border p-1" @bind="_nuevoMaterialSubcategoriaId">
+                <option value="">Subcategoría</option>
+                @foreach (var subcategoria in _subcategoriaOptions)
+                {
+                    <option value="@subcategoria.Id">@subcategoria.Label</option>
+                }
+            </select>
+            <div class="selector-split">
+                <select class="border p-1" value="@_nuevoMaterialAreaId" @onchange="OnAreaChanged">
+                    <option value="">Área</option>
+                    @foreach (var area in _areaOptions)
+                    {
+                        <option value="@area.Id">@area.Label</option>
+                    }
+                </select>
+                <div class="visual-picker">
+                    <div class="visual-toolbar">
+                        <label class="text-xs text-gray-500">Mapa de áreas</label>
+                        <select class="border p-1 text-xs" value="@_currentPlantaId" @onchange="OnPlantaChanged">
+                            <option value="">Todas</option>
+                            @foreach (var planta in _plantasLookup)
+                            {
+                                <option value="@planta.Key">@planta.Value</option>
+                            }
+                        </select>
+                    </div>
+                    @if (_canvasViews.Count == 0)
+                    {
+                        <div class="text-xs text-gray-500">Sin mapas disponibles.</div>
+                    }
+                    else
+                    {
+                        @foreach (var view in _canvasViews)
+                        {
+                            var areasPorPlanta = view.Areas.Where(a => IsAreaInCurrentPlanta(a.PlantaId)).ToList();
+                            if (areasPorPlanta.Count == 0)
+                            {
+                                continue;
+                            }
+
+                            <div class="canvas-card">
+                                <div class="text-xs text-gray-500">@view.Canvas.Nombre</div>
+                                <svg width="100%" height="100%" viewBox="0 0 @view.Canvas.Ancho @view.Canvas.Alto" preserveAspectRatio="xMidYMid meet">
+                                    @foreach (var area in areasPorPlanta)
+                                    {
+                                        foreach (var poly in area.Poligonos.OrderBy(p => p.ZOrder))
+                                        {
+                                            <polygon points="@PointsString(poly)"
+                                                     fill="@AreaFill(area)"
+                                                     stroke="#111827" stroke-width="0.03"
+                                                     style="cursor:pointer"
+                                                     @onclick="@(() => SelectAreaFromVisual(area.AreaId))" />
+                                        }
+
+                                        if (!string.IsNullOrWhiteSpace(area.Nombre))
+                                        {
+                                            var labelWidth = AreaLabelWidth(area);
+                                            var labelHeight = AreaLabelHeight(area);
+                                            var fontSize = AreaLabelFontSize(area);
+
+                                            <svg:rect x="@FormatSvg(area.CenterX - labelWidth / 2m)"
+                                                      y="@FormatSvg(area.CenterY - labelHeight / 2m)"
+                                                      width="@FormatSvg(labelWidth)"
+                                                      height="@FormatSvg(labelHeight)"
+                                                      fill="#ffffff" opacity="0.8" rx="0.15" ry="0.15" />
+                                            <svg:text class="area-label"
+                                                      x="@FormatSvg(area.CenterX)" y="@FormatSvg(area.CenterY)"
+                                                      text-anchor="middle" dominant-baseline="middle"
+                                                      font-size="@FormatSvg(fontSize)">
+                                                @area.Nombre
+                                            </svg:text>
+                                        }
+                                    }
+                                </svg>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+            <div class="selector-split">
+                <select class="border p-1" @bind="_nuevoMaterialMesonId" disabled="@string.IsNullOrWhiteSpace(_nuevoMaterialAreaId)">
+                    <option value="">Mesón</option>
+                    @foreach (var meson in _mesonOptions)
+                    {
+                        <option value="@meson.Id">@meson.Label</option>
+                    }
+                </select>
+                <div class="visual-picker">
+                    <div class="text-xs text-gray-500">Mesones del área seleccionada</div>
+                    @if (SelectedAreaForMap is not null)
+                    {
+                        var selectedArea = SelectedAreaForMap;
+                        <div class="canvas-card">
+                            <div class="text-xs text-gray-500">@SelectedAreaLabel</div>
+                            <svg width="100%" height="100%" viewBox="@AreaViewBox(selectedArea)" preserveAspectRatio="xMidYMid meet">
+                                @foreach (var poly in selectedArea.Poligonos.OrderBy(p => p.ZOrder))
+                                {
+                                    <polygon points="@PointsString(poly)"
+                                             fill="@AreaFill(selectedArea)"
+                                             stroke="#111827" stroke-width="0.03" />
+                                }
+                                <svg:text class="area-label"
+                                          x="@FormatSvg(selectedArea.CenterX)" y="@FormatSvg(selectedArea.CenterY)"
+                                          text-anchor="middle" dominant-baseline="middle"
+                                          font-size="@FormatSvg(AreaLabelFontSize(selectedArea))">
+                                    @selectedArea.Nombre
+                                </svg:text>
+                            </svg>
+                        </div>
+                    }
+                    @if (_mesonSummaries.Count == 0)
+                    {
+                        <div class="text-xs text-gray-500">Sin mesones disponibles.</div>
+                    }
+                    else
+                    {
+                        <ul class="meson-list">
+                            @foreach (var meson in _mesonSummaries)
+                            {
+                                <li>
+                                    <button type="button"
+                                            class="btn link"
+                                            @onclick="@(() => SelectMeson(meson.MesonId))">
+                                        @meson.Nombre
+                                    </button>
+                                    <div class="text-xs text-gray-500">
+                                        Reactivos: @meson.ReactivosCount · Equipos: @meson.EquiposCount
+                                    </div>
+                                </li>
+                            }
+                        </ul>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(_nuevoMaterialMesonId))
+                    {
+                        <div class="text-xs text-gray-500">
+                            Seleccionado: @SelectedAreaLabel · @SelectedMesonLabel
+                        </div>
+                    }
+                </div>
+            </div>
             <input class="border p-1" placeholder="Nivel" @bind="_nuevoMaterialNivel" />
-            <input class="border p-1" placeholder="Posición" @bind="_nuevoMaterialPosicion" />
+            <input class="border p-1" placeholder="Posición (ej. al fondo, en el medio)" @bind="_nuevoMaterialPosicion" />
             <input class="border p-1" placeholder="Descripción" @bind="_nuevoMaterialDescripcion" />
-            <input class="border p-1" placeholder="Imagen URL" @bind="_nuevoMaterialImagenUrl" />
+            <div class="upload-card">
+                <div class="upload-options">
+                    <label class="text-sm">
+                        <input type="radio"
+                               name="imagenModo"
+                               value="url"
+                               checked="@(_nuevoMaterialImagenModo == "url")"
+                               @onchange="OnImagenModoChanged" />
+                        Colocar un URL
+                    </label>
+                    <label class="text-sm">
+                        <input type="radio"
+                               name="imagenModo"
+                               value="archivo"
+                               checked="@(_nuevoMaterialImagenModo == "archivo")"
+                               @onchange="OnImagenModoChanged" />
+                        Subir archivo
+                    </label>
+                </div>
+                @if (_nuevoMaterialImagenModo == "url")
+                {
+                    <input class="border p-1" placeholder="Imagen URL (o ruta relativa)" @bind="_nuevoMaterialImagenUrl" />
+                }
+                else
+                {
+                    <label class="upload-drop">
+                        <InputFile OnChange="OnImagenArchivoSeleccionado" accept="image/png,image/jpeg,image/jpg,image/webp" />
+                        <span>Arrastra una imagen o haz clic para buscar</span>
+                    </label>
+                    @if (!string.IsNullOrWhiteSpace(_nuevoMaterialImagenArchivo))
+                    {
+                        <div class="text-xs text-gray-500">Archivo: @_nuevoMaterialImagenArchivo</div>
+                    }
+                }
+            </div>
             <input class="border p-1" placeholder="Observaciones" @bind="_nuevoMaterialObservaciones" />
             <button class="btn" @onclick="SubirMaterialAsync">Subir</button>
             @if (!string.IsNullOrWhiteSpace(_nuevoMaterialMsg))
@@ -176,6 +372,7 @@
     private string _nuevoMaterialTipo = "vidrio";
     private string? _nuevoMaterialNombre;
     private string? _nuevoMaterialDetalle;
+    private string? _nuevoMaterialCantidad;
     private string? _nuevoMaterialPosicion;
     private string? _nuevoMaterialEstadoId;
     private string? _nuevoMaterialUnidadId;
@@ -186,8 +383,20 @@
     private string? _nuevoMaterialNivel;
     private string? _nuevoMaterialDescripcion;
     private string? _nuevoMaterialImagenUrl;
+    private string _nuevoMaterialImagenModo = "url";
+    private string? _nuevoMaterialImagenArchivo;
     private string? _nuevoMaterialObservaciones;
     private string? _nuevoMaterialMsg;
+    private readonly List<SelectOption> _estadoOptions = new();
+    private readonly List<SelectOption> _unidadOptions = new();
+    private readonly List<SelectOption> _marcaOptions = new();
+    private readonly List<SelectOption> _subcategoriaOptions = new();
+    private readonly List<SelectOption> _areaOptions = new();
+    private readonly List<SelectOption> _mesonOptions = new();
+    private readonly List<MesonSummary> _mesonSummaries = new();
+    private readonly List<CanvasView> _canvasViews = new();
+    private readonly Dictionary<string, string> _plantasLookup = new(StringComparer.OrdinalIgnoreCase);
+    private string? _currentPlantaId;
 
     protected override void OnInitialized()
     {
@@ -198,13 +407,94 @@
     {
         loadError = null;
         await LoadCategoriasAsync();
+        await LoadLookupsAsync();
+        await LoadCanvasAreasAsync();
         await LoadMaterialesAsync();
     }
 
     private async void HandleLaboratorioChanged()
     {
         await LoadMaterialesAsync();
+        await LoadLookupsAsync();
+        await LoadCanvasAreasAsync();
         await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnAreaChanged(ChangeEventArgs args)
+    {
+        _nuevoMaterialAreaId = args.Value?.ToString();
+        _nuevoMaterialMesonId = null;
+        await LoadMesonesAsync();
+    }
+
+    private async Task OnPlantaChanged(ChangeEventArgs args)
+    {
+        _currentPlantaId = args.Value?.ToString();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SelectAreaFromVisual(string? areaId)
+    {
+        if (string.IsNullOrWhiteSpace(areaId))
+        {
+            return;
+        }
+
+        _nuevoMaterialAreaId = areaId;
+        _nuevoMaterialMesonId = null;
+        await LoadMesonesAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void SelectMeson(string mesonId)
+    {
+        _nuevoMaterialMesonId = mesonId;
+    }
+
+    private string SelectedAreaLabel =>
+        _areaOptions.FirstOrDefault(a => string.Equals(a.Id, _nuevoMaterialAreaId, StringComparison.OrdinalIgnoreCase))?.Label
+        ?? _nuevoMaterialAreaId
+        ?? "Área";
+
+    private string SelectedMesonLabel =>
+        _mesonOptions.FirstOrDefault(m => string.Equals(m.Id, _nuevoMaterialMesonId, StringComparison.OrdinalIgnoreCase))?.Label
+        ?? _nuevoMaterialMesonId
+        ?? "Mesón";
+
+    private AreaItem? SelectedAreaForMap =>
+        _canvasViews.SelectMany(v => v.Areas)
+            .FirstOrDefault(a => string.Equals(a.AreaId, _nuevoMaterialAreaId, StringComparison.OrdinalIgnoreCase));
+
+    private void OnImagenModoChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            _nuevoMaterialImagenModo = value;
+        }
+    }
+
+    private async Task OnImagenArchivoSeleccionado(InputFileChangeEventArgs args)
+    {
+        if (args.FileCount == 0)
+        {
+            return;
+        }
+
+        var file = args.File;
+        var extension = Path.GetExtension(file.Name);
+        var fileName = $"material_{Guid.NewGuid():N}{extension}";
+        var relativePath = Path.Combine("uploads", "materiales", fileName).Replace("\\", "/");
+        var absolutePath = Path.Combine(HostEnvironment.WebRootPath, relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(absolutePath)!);
+
+        await using var stream = file.OpenReadStream(5 * 1024 * 1024);
+        await using var fileStream = File.Create(absolutePath);
+        await stream.CopyToAsync(fileStream);
+
+        _nuevoMaterialImagenUrl = $"/{relativePath}";
+        _nuevoMaterialImagenArchivo = file.Name;
+        _nuevoMaterialMsg = $"Imagen cargada: {file.Name}";
     }
 
     private async Task SubirMaterialAsync()
@@ -212,6 +502,18 @@
         if (string.IsNullOrWhiteSpace(_nuevoMaterialNombre))
         {
             _nuevoMaterialMsg = "Ingresa el nombre del material.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_nuevoMaterialAreaId))
+        {
+            _nuevoMaterialMsg = "Selecciona un área para el material.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_nuevoMaterialMesonId))
+        {
+            _nuevoMaterialMsg = "Selecciona un mesón asociado al área.";
             return;
         }
 
@@ -229,6 +531,7 @@
         cmd.Parameters.AddWithValue("area", string.IsNullOrWhiteSpace(_nuevoMaterialAreaId) ? (object)DBNull.Value : _nuevoMaterialAreaId!);
         cmd.Parameters.AddWithValue("meson", string.IsNullOrWhiteSpace(_nuevoMaterialMesonId) ? (object)DBNull.Value : _nuevoMaterialMesonId!);
         cmd.Parameters.AddWithValue("nivel", ParseIntOrNull(_nuevoMaterialNivel));
+        cmd.Parameters.AddWithValue("cantidad", ParseDecimalOrNull(_nuevoMaterialCantidad));
         cmd.Parameters.AddWithValue("descripcion", string.IsNullOrWhiteSpace(_nuevoMaterialDescripcion) ? (object)DBNull.Value : _nuevoMaterialDescripcion!);
         cmd.Parameters.AddWithValue("imagen", string.IsNullOrWhiteSpace(_nuevoMaterialImagenUrl) ? (object)DBNull.Value : _nuevoMaterialImagenUrl!);
         cmd.Parameters.AddWithValue("obs", string.IsNullOrWhiteSpace(_nuevoMaterialObservaciones) ? (object)DBNull.Value : _nuevoMaterialObservaciones!);
@@ -242,25 +545,23 @@
                  laboratorio_id, descripcion, imagen_url, observaciones)
                 VALUES (@id, @nombre, @subcat, @marca, @estado, @cantidad, @area, @meson, @nivel, @posicion,
                         @lab, @descripcion, @imagen, @obs)";
-            var cantidad = int.TryParse(_nuevoMaterialDetalle, out var qty) ? qty : 0;
-            cmd.Parameters.AddWithValue("cantidad", cantidad);
         }
         else if (_nuevoMaterialTipo == "montaje")
         {
             sql = @"
                 INSERT INTO materiales_montaje
-                (material_id, nombre, subcategoria_id, marca_id, estado_id, area_id, meson_id, nivel, posicion,
+                (material_id, nombre, subcategoria_id, marca_id, estado_id, cantidad, area_id, meson_id, nivel, posicion,
                  laboratorio_id, descripcion, imagen_url, observaciones)
-                VALUES (@id, @nombre, @subcat, @marca, @estado, @area, @meson, @nivel, @posicion,
+                VALUES (@id, @nombre, @subcat, @marca, @estado, @cantidad, @area, @meson, @nivel, @posicion,
                         @lab, @descripcion, @imagen, @obs)";
         }
         else
         {
             sql = @"
                 INSERT INTO materiales_vidrio
-                (material_id, nombre, subcategoria_id, capacidad_num, unidad_id, marca_id, estado_id, area_id, meson_id,
+                (material_id, nombre, subcategoria_id, capacidad_num, unidad_id, marca_id, estado_id, cantidad, area_id, meson_id,
                  nivel, posicion, laboratorio_id, descripcion, imagen_url, observaciones)
-                VALUES (@id, @nombre, @subcat, @capacidad, @unidad, @marca, @estado, @area, @meson,
+                VALUES (@id, @nombre, @subcat, @capacidad, @unidad, @marca, @estado, @cantidad, @area, @meson,
                         @nivel, @posicion, @lab, @descripcion, @imagen, @obs)";
             cmd.Parameters.AddWithValue("capacidad", ParseDecimalOrNull(_nuevoMaterialDetalle));
             cmd.Parameters.AddWithValue("unidad", string.IsNullOrWhiteSpace(_nuevoMaterialUnidadId) ? (object)DBNull.Value : _nuevoMaterialUnidadId!);
@@ -271,6 +572,7 @@
 
         _nuevoMaterialNombre = null;
         _nuevoMaterialDetalle = null;
+        _nuevoMaterialCantidad = null;
         _nuevoMaterialEstadoId = null;
         _nuevoMaterialPosicion = null;
         _nuevoMaterialUnidadId = null;
@@ -281,6 +583,8 @@
         _nuevoMaterialNivel = null;
         _nuevoMaterialDescripcion = null;
         _nuevoMaterialImagenUrl = null;
+        _nuevoMaterialImagenModo = "url";
+        _nuevoMaterialImagenArchivo = null;
         _nuevoMaterialObservaciones = null;
         _nuevoMaterialMsg = "Material registrado.";
         await LoadMaterialesAsync();
@@ -351,6 +655,270 @@
         }
     }
 
+    private async Task LoadLookupsAsync()
+    {
+        _estadoOptions.Clear();
+        _unidadOptions.Clear();
+        _marcaOptions.Clear();
+        _subcategoriaOptions.Clear();
+        _areaOptions.Clear();
+        _mesonOptions.Clear();
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        await using (var cmd = new NpgsqlCommand("SELECT estado_id, nombre FROM estados_activo ORDER BY nombre", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                _estadoOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+            }
+        }
+
+        await using (var cmd = new NpgsqlCommand("SELECT unidad_id, nombre, simbolo FROM unidades ORDER BY nombre", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                _unidadOptions.Add(new SelectOption(reader.GetString(0), $"{reader.GetString(1)} ({reader.GetString(2)})"));
+            }
+        }
+
+        await using (var cmd = new NpgsqlCommand("SELECT marca_id, nombre FROM marcas ORDER BY nombre", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                _marcaOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+            }
+        }
+
+        const string subcategoriaSql = @"
+            SELECT s.subcategoria_id, s.nombre, c.nombre
+            FROM subcategorias s
+            INNER JOIN categorias c ON c.categoria_id = s.categoria_id
+            WHERE c.nombre = ANY(@categorias)
+            ORDER BY c.nombre, s.nombre";
+        await using (var cmd = new NpgsqlCommand(subcategoriaSql, conn))
+        {
+            cmd.Parameters.AddWithValue("categorias", CategoriaPermitidas);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var label = $"{reader.GetString(2)} · {reader.GetString(1)}";
+                _subcategoriaOptions.Add(new SelectOption(reader.GetString(0), label));
+            }
+        }
+
+        const string areaSql = @"
+            SELECT area_id, nombre_areas
+            FROM areas
+            WHERE laboratorio_id = @lab
+            ORDER BY nombre_areas";
+        await using (var cmd = new NpgsqlCommand(areaSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                _areaOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+            }
+        }
+
+        await LoadMesonesAsync();
+    }
+
+    private async Task LoadMesonesAsync()
+    {
+        _mesonOptions.Clear();
+        _mesonSummaries.Clear();
+        if (string.IsNullOrWhiteSpace(_nuevoMaterialAreaId))
+        {
+            return;
+        }
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+        const string mesonSql = @"
+            SELECT m.meson_id,
+                   m.nombre_meson,
+                   COALESCE(c.reactivos_count, 0) AS reactivos_count,
+                   COALESCE(e.equipos_count, 0) AS equipos_count
+            FROM mesones
+            m
+            LEFT JOIN (
+                SELECT meson_id, COUNT(*) AS reactivos_count
+                FROM contenedores
+                WHERE area_id = @area
+                  AND laboratorio_id = @lab
+                GROUP BY meson_id
+            ) c ON c.meson_id = m.meson_id
+            LEFT JOIN (
+                SELECT meson_id, COUNT(*) AS equipos_count
+                FROM equipos
+                WHERE area_id = @area
+                  AND laboratorio_id = @lab
+                GROUP BY meson_id
+            ) e ON e.meson_id = m.meson_id
+            WHERE m.area_id = @area
+              AND m.laboratorio_id = @lab
+            ORDER BY m.nombre_meson";
+        await using var cmd = new NpgsqlCommand(mesonSql, conn);
+        cmd.Parameters.AddWithValue("area", _nuevoMaterialAreaId);
+        cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var mesonId = reader.GetString(0);
+            var nombre = reader.GetString(1);
+            _mesonOptions.Add(new SelectOption(mesonId, nombre));
+            _mesonSummaries.Add(new MesonSummary(
+                mesonId,
+                nombre,
+                reader.GetInt32(2),
+                reader.GetInt32(3)
+            ));
+        }
+    }
+
+    private async Task LoadCanvasAreasAsync()
+    {
+        _canvasViews.Clear();
+        _plantasLookup.Clear();
+        var previousPlantaId = _currentPlantaId;
+        _currentPlantaId = null;
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        await using (var cmd = new NpgsqlCommand("SELECT planta_id, nombre FROM plantas ORDER BY nombre", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                _plantasLookup[reader.GetString(0)] = reader.GetString(1);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(previousPlantaId) && _plantasLookup.ContainsKey(previousPlantaId))
+        {
+            _currentPlantaId = previousPlantaId;
+        }
+        else
+        {
+            _currentPlantaId = _plantasLookup.Keys.FirstOrDefault();
+        }
+
+        const string canvasSql = @"
+            SELECT canvas_id, nombre, ancho_m, alto_m
+            FROM canvas_lab
+            WHERE laboratorio_id = @lab
+            ORDER BY nombre";
+        var canvases = new List<CanvasItem>();
+        await using (var cmd = new NpgsqlCommand(canvasSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                canvases.Add(new CanvasItem(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.GetDecimal(2),
+                    reader.GetDecimal(3)
+                ));
+            }
+        }
+
+        const string areaSql = @"
+            SELECT area_id, nombre_areas, planta_id, canvas_id
+            FROM areas
+            WHERE laboratorio_id = @lab
+            ORDER BY nombre_areas";
+        var areas = new List<AreaItem>();
+        await using (var cmd = new NpgsqlCommand(areaSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                areas.Add(new AreaItem(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetString(2),
+                    reader.IsDBNull(3) ? null : reader.GetString(3)
+                ));
+            }
+        }
+
+        const string polySql = @"
+            SELECT poly_id, area_id, color_hex, z_order
+            FROM poligonos
+            WHERE area_id IS NOT NULL
+            ORDER BY z_order, poly_id";
+        var polys = new Dictionary<string, PolygonItem>();
+        await using (var cmd = new NpgsqlCommand(polySql, conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                var polyId = reader.GetString(0);
+                polys[polyId] = new PolygonItem(
+                    polyId,
+                    reader.IsDBNull(1) ? null : reader.GetString(1),
+                    reader.IsDBNull(2) ? "#cbd5f5" : reader.GetString(2),
+                    reader.GetInt32(3)
+                );
+            }
+        }
+
+        const string pointsSql = @"
+            SELECT poly_id, orden, x_m, y_m
+            FROM poligonos_puntos
+            ORDER BY poly_id, orden";
+        await using (var cmd = new NpgsqlCommand(pointsSql, conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                var polyId = reader.GetString(0);
+                if (!polys.TryGetValue(polyId, out var poly))
+                {
+                    continue;
+                }
+
+                poly.Points.Add(new PointItem(reader.GetDecimal(2), reader.GetDecimal(3)));
+            }
+        }
+
+        var areasById = areas.ToDictionary(a => a.AreaId, StringComparer.OrdinalIgnoreCase);
+        foreach (var area in areas)
+        {
+            var areaPolys = polys.Values.Where(p => string.Equals(p.AreaId, area.AreaId, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (areaPolys.Count == 0)
+            {
+                continue;
+            }
+
+            area.Poligonos.AddRange(areaPolys);
+            area.CalculateBounds();
+        }
+
+        foreach (var canvas in canvases)
+        {
+            var viewAreas = areasById.Values
+                .Where(a => string.Equals(a.CanvasId, canvas.CanvasId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (viewAreas.Count == 0)
+            {
+                continue;
+            }
+
+            _canvasViews.Add(new CanvasView(canvas, viewAreas));
+        }
+
+        EnsurePlantaSelection(areas);
+    }
+
     private async Task LoadMaterialesAsync()
     {
         materiales.Clear();
@@ -382,11 +950,11 @@
                            mv.nombre,
                            mv.subcategoria_id,
                            mv.estado_id,
+                           mv.cantidad,
                            mv.area_id,
                            mv.meson_id,
                            mv.posicion,
                            mv.laboratorio_id,
-                           NULL::int AS cantidad,
                            'Vidrio'::text AS tipo
                     FROM materiales_vidrio mv
                     UNION ALL
@@ -394,11 +962,11 @@
                            mm.nombre,
                            mm.subcategoria_id,
                            mm.estado_id,
+                           mm.cantidad,
                            mm.area_id,
                            mm.meson_id,
                            mm.posicion,
                            mm.laboratorio_id,
-                           NULL::int AS cantidad,
                            'Montaje'::text AS tipo
                     FROM materiales_montaje mm
                     UNION ALL
@@ -406,11 +974,11 @@
                            mc.nombre,
                            mc.subcategoria_id,
                            mc.estado_id,
+                           mc.cantidad,
                            mc.area_id,
                            mc.meson_id,
                            mc.posicion,
                            mc.laboratorio_id,
-                           mc.cantidad,
                            'Consumible'::text AS tipo
                     FROM materiales_consumible mc
                 )
@@ -484,6 +1052,77 @@
     }
 
     private sealed record SubcategoriaRow(string Id, string Nombre);
+    private sealed record SelectOption(string Id, string Label);
+    private sealed record CanvasItem(string CanvasId, string Nombre, decimal Ancho, decimal Alto);
+
+    private sealed class AreaItem
+    {
+        public AreaItem(string areaId, string nombre, string? plantaId, string? canvasId)
+        {
+            AreaId = areaId;
+            Nombre = nombre;
+            PlantaId = plantaId;
+            CanvasId = canvasId;
+        }
+
+        public string AreaId { get; }
+        public string Nombre { get; }
+        public string? PlantaId { get; }
+        public string? CanvasId { get; }
+        public List<PolygonItem> Poligonos { get; } = new();
+        public decimal CenterX { get; private set; }
+        public decimal CenterY { get; private set; }
+        public decimal Width { get; private set; }
+        public decimal Height { get; private set; }
+        public decimal MinX { get; private set; }
+        public decimal MinY { get; private set; }
+        public decimal MaxX { get; private set; }
+        public decimal MaxY { get; private set; }
+
+        public void CalculateBounds()
+        {
+            var points = Poligonos.SelectMany(p => p.Points).ToList();
+            if (points.Count == 0)
+            {
+                return;
+            }
+
+            var minX = points.Min(p => p.X);
+            var maxX = points.Max(p => p.X);
+            var minY = points.Min(p => p.Y);
+            var maxY = points.Max(p => p.Y);
+            MinX = minX;
+            MaxX = maxX;
+            MinY = minY;
+            MaxY = maxY;
+            CenterX = (minX + maxX) / 2m;
+            CenterY = (minY + maxY) / 2m;
+            Width = Math.Max(0.2m, maxX - minX);
+            Height = Math.Max(0.2m, maxY - minY);
+        }
+    }
+
+    private sealed class PolygonItem
+    {
+        public PolygonItem(string polyId, string? areaId, string colorHex, int zOrder)
+        {
+            PolyId = polyId;
+            AreaId = areaId;
+            ColorHex = colorHex;
+            ZOrder = zOrder;
+        }
+
+        public string PolyId { get; }
+        public string? AreaId { get; }
+        public string ColorHex { get; }
+        public int ZOrder { get; }
+        public List<PointItem> Points { get; } = new();
+    }
+
+    private sealed record PointItem(decimal X, decimal Y);
+
+    private sealed record CanvasView(CanvasItem Canvas, List<AreaItem> Areas);
+    private sealed record MesonSummary(string MesonId, string Nombre, int ReactivosCount, int EquiposCount);
 
     private sealed record MaterialRow(
         string MaterialId,
@@ -511,6 +1150,101 @@
     {
         LaboratorioState.OnChange -= HandleLaboratorioChanged;
     }
+
+    private static string PointsString(PolygonItem poly)
+    {
+        return string.Join(" ", poly.Points.Select(p =>
+            $"{p.X.ToString(CultureInfo.InvariantCulture)},{p.Y.ToString(CultureInfo.InvariantCulture)}"));
+    }
+
+    private static string FormatSvg(decimal value)
+    {
+        return value.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static decimal AreaLabelWidth(AreaItem area)
+    {
+        return Math.Max(0.6m, area.Width * 0.85m);
+    }
+
+    private static decimal AreaLabelHeight(AreaItem area)
+    {
+        return Math.Max(0.25m, area.Height * 0.25m);
+    }
+
+    private static decimal AreaLabelFontSize(AreaItem area)
+    {
+        var baseSize = Math.Min(area.Width, area.Height) * 0.18m;
+        return ClampDecimal(baseSize, 0.18m, 0.55m);
+    }
+
+    private static decimal ClampDecimal(decimal value, decimal min, decimal max)
+    {
+        if (value < min) return min;
+        if (value > max) return max;
+        return value;
+    }
+
+    private static string AreaViewBox(AreaItem area)
+    {
+        var padding = 0.4m;
+        var minX = area.MinX - padding;
+        var minY = area.MinY - padding;
+        var width = Math.Max(1m, area.Width + padding * 2m);
+        var height = Math.Max(1m, area.Height + padding * 2m);
+        return $"{FormatSvg(minX)} {FormatSvg(minY)} {FormatSvg(width)} {FormatSvg(height)}";
+    }
+
+    private string AreaFill(AreaItem area)
+    {
+        if (!string.IsNullOrWhiteSpace(_nuevoMaterialAreaId)
+            && string.Equals(_nuevoMaterialAreaId, area.AreaId, StringComparison.OrdinalIgnoreCase))
+        {
+            return "#93c5fd";
+        }
+
+        return area.Poligonos.FirstOrDefault()?.ColorHex ?? "#cbd5f5";
+    }
+
+    private bool IsAreaInCurrentPlanta(string? plantaId)
+    {
+        if (string.IsNullOrWhiteSpace(_currentPlantaId))
+        {
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(plantaId))
+        {
+            return false;
+        }
+
+        return string.Equals(plantaId, _currentPlantaId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void EnsurePlantaSelection(List<AreaItem> areas)
+    {
+        if (areas.Count == 0)
+        {
+            _currentPlantaId = _plantasLookup.Keys.FirstOrDefault();
+            return;
+        }
+
+        var firstAreaPlanta = areas.FirstOrDefault(a => !string.IsNullOrWhiteSpace(a.PlantaId))?.PlantaId;
+        if (string.IsNullOrWhiteSpace(firstAreaPlanta))
+        {
+            _currentPlantaId = null;
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_currentPlantaId)
+            && _plantasLookup.ContainsKey(_currentPlantaId)
+            && areas.Any(a => string.Equals(a.PlantaId, _currentPlantaId, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        _currentPlantaId = firstAreaPlanta ?? _plantasLookup.Keys.FirstOrDefault();
+    }
 }
 
 <style>
@@ -525,6 +1259,95 @@
         display: flex;
         gap: .75rem;
         align-items: center;
+    }
+
+    .area-label {
+        fill: #111827;
+        paint-order: stroke fill;
+        stroke: #ffffff;
+        stroke-width: 0.04;
+    }
+
+    .selector-split {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        align-items: flex-start;
+    }
+
+    .visual-picker {
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        padding: 0.5rem;
+        background: #fff;
+        min-width: 240px;
+        display: grid;
+        gap: 0.5rem;
+    }
+
+    .visual-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        justify-content: space-between;
+    }
+
+    .canvas-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        padding: 0.5rem;
+        background: #f8fafc;
+        display: grid;
+        gap: 0.35rem;
+    }
+
+    .canvas-card svg {
+        width: 100%;
+        height: 180px;
+        background: #fff;
+    }
+
+    .meson-list {
+        list-style: none;
+        padding-left: 0;
+        margin: 0;
+        display: grid;
+        gap: 0.35rem;
+    }
+
+    .upload-card {
+        border: 1px dashed #d1d5db;
+        padding: 0.6rem;
+        border-radius: 0.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        min-width: 220px;
+    }
+
+    .upload-options {
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+    }
+
+    .upload-drop {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.6rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        color: #6b7280;
+        cursor: pointer;
+    }
+
+    .upload-drop input[type="file"] {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        cursor: pointer;
     }
 
     .category-select {
