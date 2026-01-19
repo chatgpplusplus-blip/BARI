@@ -114,11 +114,11 @@
 
                                         if (!string.IsNullOrWhiteSpace(area.Nombre))
                                         {
-                                            <text x="@area.CenterX" y="@area.CenterY"
-                                                  text-anchor="middle" dominant-baseline="middle"
-                                                  font-size="0.25" fill="#111827">
+                                            <svg:text x="@area.CenterX" y="@area.CenterY"
+                                                      text-anchor="middle" dominant-baseline="middle"
+                                                      font-size="0.25" fill="#111827">
                                                 @area.Nombre
-                                            </text>
+                                            </svg:text>
                                         }
                                     }
                                 </svg>
@@ -168,16 +168,16 @@
             <input class="border p-1" placeholder="Posición (ej. al fondo, en el medio)" @bind="_nuevoMaterialPosicion" />
             <input class="border p-1" placeholder="Descripción" @bind="_nuevoMaterialDescripcion" />
             <div class="upload-card">
-                <div class="upload-options">
+                <InputRadioGroup @bind-Value="_nuevoMaterialImagenModo" class="upload-options">
                     <label class="text-sm">
-                        <input type="radio" name="imagenModo" value="url" @bind-value="_nuevoMaterialImagenModo" />
+                        <InputRadio Value="url" />
                         Colocar un URL
                     </label>
                     <label class="text-sm">
-                        <input type="radio" name="imagenModo" value="archivo" @bind-value="_nuevoMaterialImagenModo" />
+                        <InputRadio Value="archivo" />
                         Subir archivo
                     </label>
-                </div>
+                </InputRadioGroup>
                 @if (_nuevoMaterialImagenModo == "url")
                 {
                     <input class="border p-1" placeholder="Imagen URL (o ruta relativa)" @bind="_nuevoMaterialImagenUrl" />
