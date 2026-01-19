@@ -822,68 +822,72 @@
 
         await using var conn = await DataSource.OpenConnectionAsync();
 
-        const string innerSql = @"
-            SELECT pi.poly_in_id,
-                   pi.area_poly_id,
-                   pi.eje_x_rel_m,
-                   pi.eje_y_rel_m,
-                   pi.ancho_m,
-                   pi.alto_m,
-                   pi.color_hex,
-                   pi.etiqueta,
-                   pi.opacidad_0_1,
-                   pi.offset_x_m,
-                   pi.offset_y_m,
-                   pi.meson_id,
-                   p.x_m,
-                   p.y_m
-            FROM poligonos_interiores pi
-            INNER JOIN poligonos p ON p.poly_id = pi.area_poly_id
-            WHERE p.area_id = @area";
-        await using (var cmd = new NpgsqlCommand(innerSql, conn))
+        if (await TableExistsAsync(conn, "poligonos_interiores"))
         {
-            cmd.Parameters.AddWithValue("area", _nuevoMaterialAreaId);
-            await using var reader = await cmd.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
+            const string innerSql = @"
+                SELECT pi.poly_in_id,
+                       pi.area_poly_id,
+                       pi.eje_x_rel_m,
+                       pi.eje_y_rel_m,
+                       pi.ancho_m,
+                       pi.alto_m,
+                       pi.color_hex,
+                       pi.etiqueta,
+                       pi.opacidad_0_1,
+                       pi.offset_x_m,
+                       pi.offset_y_m,
+                       pi.meson_id,
+                       p.x_m,
+                       p.y_m
+                FROM poligonos_interiores pi
+                INNER JOIN poligonos p ON p.poly_id = pi.area_poly_id
+                WHERE p.area_id = @area";
+            await using (var cmd = new NpgsqlCommand(innerSql, conn))
             {
-                var mesonId = reader.IsDBNull(11) ? null : reader.GetString(11);
-                if (string.IsNullOrWhiteSpace(mesonId))
+                cmd.Parameters.AddWithValue("area", _nuevoMaterialAreaId);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
                 {
-                    continue;
+                    var mesonId = reader.IsDBNull(11) ? null : reader.GetString(11);
+                    if (string.IsNullOrWhiteSpace(mesonId))
+                    {
+                        continue;
+                    }
+
+                    var label = reader.IsDBNull(7) ? null : reader.GetString(7);
+                    if (string.IsNullOrWhiteSpace(label) && mesonLabels.TryGetValue(mesonId, out var mesonLabel))
+                    {
+                        label = mesonLabel;
+                    }
+
+                    label ??= "MESON";
+
+                    var offsetX = reader.IsDBNull(9) ? 0m : reader.GetDecimal(9);
+                    var offsetY = reader.IsDBNull(10) ? 0m : reader.GetDecimal(10);
+                    var x = reader.GetDecimal(12) + reader.GetDecimal(2) + offsetX;
+                    var y = reader.GetDecimal(13) + reader.GetDecimal(3) + offsetY;
+                    var width = reader.GetDecimal(4);
+                    var height = reader.GetDecimal(5);
+                    var fill = reader.IsDBNull(6) ? "#4b5563" : reader.GetString(6);
+                    var opacity = reader.IsDBNull(8) ? 0.35m : reader.GetDecimal(8);
+
+                    _mesonVisuals.Add(new MesonVisual(
+                        mesonId,
+                        label,
+                        x,
+                        y,
+                        width,
+                        height,
+                        fill,
+                        opacity,
+                        0
+                    ));
                 }
-
-                var label = reader.IsDBNull(7) ? null : reader.GetString(7);
-                if (string.IsNullOrWhiteSpace(label) && mesonLabels.TryGetValue(mesonId, out var mesonLabel))
-                {
-                    label = mesonLabel;
-                }
-
-                label ??= "MESON";
-
-                var offsetX = reader.IsDBNull(9) ? 0m : reader.GetDecimal(9);
-                var offsetY = reader.IsDBNull(10) ? 0m : reader.GetDecimal(10);
-                var x = reader.GetDecimal(12) + reader.GetDecimal(2) + offsetX;
-                var y = reader.GetDecimal(13) + reader.GetDecimal(3) + offsetY;
-                var width = reader.GetDecimal(4);
-                var height = reader.GetDecimal(5);
-                var fill = reader.IsDBNull(6) ? "#4b5563" : reader.GetString(6);
-                var opacity = reader.IsDBNull(8) ? 0.35m : reader.GetDecimal(8);
-
-                _mesonVisuals.Add(new MesonVisual(
-                    mesonId,
-                    label,
-                    x,
-                    y,
-                    width,
-                    height,
-                    fill,
-                    opacity,
-                    0
-                ));
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(area.CanvasId))
+        if (!string.IsNullOrWhiteSpace(area.CanvasId)
+            && await TableExistsAsync(conn, "bloques_int"))
         {
             const string blockSql = @"
                 SELECT bloque_id,
@@ -954,6 +958,15 @@
                 ));
             }
         }
+    }
+
+    private static async Task<bool> TableExistsAsync(NpgsqlConnection conn, string tableName)
+    {
+        const string sql = "SELECT to_regclass(@name)";
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("name", tableName);
+        var result = await cmd.ExecuteScalarAsync();
+        return result is not null && result is not DBNull;
     }
 
     private async Task LoadCanvasAreasAsync()
