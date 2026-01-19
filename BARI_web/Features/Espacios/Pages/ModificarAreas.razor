@@ -1,61 +1,99 @@
-﻿@page "/modificarareas"
+﻿
+@page "/modificarareas"
 @namespace BARI_web.Features.Espacios.Pages
+@using Microsoft.AspNetCore.Components
 
-<h4 class="text-2xl mb-2">Modificar áreas</h4>
+<div class="ma-page">
 
-<!-- Barra superior: selector de PLANTA fuera del lienzo -->
-<div class="flex items-center gap-2 mb-3">
-    <label class="text-sm text-gray-700">Canvas:</label>
-    <select class="border p-1 text-sm"
-            value="@(_currentCanvasId ?? "")"
-            @onchange="async (e)=> await OnChangeCanvas(e.Value?.ToString())">
-        @foreach (var kv in _canvasLookup)
+    <!-- Header -->
+    <div class="ma-header">
+        <div class="ma-header-left">
+            <h4 class="ma-title">Modificar áreas</h4>
+            <div class="ma-subtitle">Canvas / Plantas / Polígonos / Puertas / Ventanas</div>
+        </div>
+
+        <div class="ma-header-right">
+            @if (!string.IsNullOrWhiteSpace(_saveMsg))
+            {
+                <span class="ma-pill">@_saveMsg</span>
+            }
+        </div>
+    </div>
+
+    <!-- Top toolbar -->
+    <div class="ma-card ma-toolbar">
+        <div class="ma-toolbar-row">
+            <div class="ma-field">
+                <label class="ma-label">Canvas</label>
+                <select class="ma-input"
+                        value="@(_currentCanvasId ?? "")"
+                        @onchange="async (e)=> await OnChangeCanvas(e.Value?.ToString())">
+                    @foreach (var kv in _canvasLookup)
+                    {
+                        <option value="@kv.Key">@kv.Value</option>
+                    }
+                </select>
+            </div>
+
+            <div class="ma-field">
+                <label class="ma-label">Planta</label>
+                <select class="ma-input"
+                        value="@(_currentPlantaId ?? "")"
+                        @onchange="(e)=>OnChangePlanta(e.Value?.ToString())">
+                    @foreach (var kv in _plantasLookup)
+                    {
+                        <option value="@kv.Key">@kv.Value</option>
+                    }
+                </select>
+            </div>
+
+            <div class="ma-spacer"></div>
+
+            <div class="ma-actions">
+                <button type="button" class="btn ma-btn" @onclick="StartDrawing" disabled="@_isDrawing">
+                    Dibujar polígono
+                </button>
+                <button type="button" class="btn ma-btn ma-btn-muted" @onclick="CancelDrawing" disabled="@(!_isDrawing)">
+                    Cancelar dibujo
+                </button>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_drawMsg))
         {
-            <option value="@kv.Key">@kv.Value</option>
+            <div class="ma-toolbar-row ma-hint">
+                <span class="ma-hint-text">@_drawMsg</span>
+            </div>
         }
-    </select>
-    <label class="text-sm text-gray-700">Planta:</label>
-    <select class="border p-1 text-sm"
-            value="@(_currentPlantaId ?? "")"
-            @onchange="(e)=>OnChangePlanta(e.Value?.ToString())">
-        @foreach (var kv in _plantasLookup)
-        {
-            <option value="@kv.Key">@kv.Value</option>
-        }
-    </select>
-    <button type="button" class="btn" @onclick="StartDrawing" disabled="@_isDrawing">Dibujar polígono</button>
-    <button type="button" class="btn" @onclick="CancelDrawing" disabled="@(!_isDrawing)">Cancelar dibujo</button>
-</div>
-@if (!string.IsNullOrWhiteSpace(_drawMsg))
-{
-    <p class="text-sm text-gray-600 mb-2">@_drawMsg</p>
-}
+    </div>
 
-@if (_canvas is null)
-{
-    <p>Cargando…</p>
-}
-else
-{
-    <div>
-
+    @if (_canvas is null)
+    {
+        <div class="ma-card">
+            <p>Cargando…</p>
+        </div>
+    }
+    else
+    {
         <!-- ===== Layout principal: Lienzo (izq) + Panel (der) ===== -->
-        <div class="editor-layout">
+        <div class="editor-layout ma-editor-layout">
+
             <!-- Columna izquierda: lienzo -->
-            <div class="canvas-host">
-                <div class="canvas-box" style="--ar:@AspectRatioString();width:1150px;">
+            <div class="canvas-host ma-canvas-host">
+                <div class="canvas-box ma-canvas-box" style="--ar:@AspectRatioString();width:1150px;">
 
                     <!-- Controles de Zoom -->
-                    <div style="position:absolute; right:10px; top:10px; display:flex; gap:.4rem;" @onclick:stopPropagation="true">
-                        <button class="zoom-btn" title="Zoom in" @onclick="ZoomIn">+</button>
-                        <button class="zoom-btn" title="Zoom out" @onclick="ZoomOut">−</button>
+                    <div class="ma-zoom" @onclick:stopPropagation="true">
+                        <button type="button" class="zoom-btn ma-zoom-btn" title="Zoom in" @onclick="ZoomIn">+</button>
+                        <button type="button" class="zoom-btn ma-zoom-btn" title="Zoom out" @onclick="ZoomOut">−</button>
                     </div>
-
 
                     <svg @ref="_svgRef" width="100%" height="100%"
                          viewBox="@ViewBox()" preserveAspectRatio="xMidYMid meet"
                          @onpointermove="OnPointerMove"
-                         @onpointerup="OnPointerUp" @onpointerleave="OnPointerUp"
+                         @onpointerup="OnPointerUp"
+                         @onpointerleave="OnPointerUp"
+                         @onpointercancel="OnPointerUp"
                          @onwheel="OnWheel" @onwheel:preventDefault="true"
                          @onpointerdown="OnPointerDownBackground">
 
@@ -84,7 +122,6 @@ else
                             }
                         </defs>
 
-
                         <!-- Áreas -->
                         @foreach (var p in _polys.Where(IsVisible).OrderBy(pp => pp.z_order))
                         {
@@ -97,6 +134,7 @@ else
 
                             <g @onmouseover="() => _hoverId = p.poly_id"
                                @onmouseout="() => _hoverId = null">
+
                                 <polygon points="@PointsStringForPoly(p)"
                                          fill="@AreaColor(p)"
                                          opacity="@(isHover && !isSel ? "0.92" : "1")"
@@ -118,13 +156,27 @@ else
                                     </g>
                                 }
 
+                                @* === Pickers para JUNTAR VÉRTICES (esquinas del bounding box) === *@
+                                @if (_joinMode)
+                                {
+                                    @VertexPicker(p, p.x_m, p.y_m, Handle.NW)
+                                    @VertexPicker(p, p.x_m + p.ancho_m, p.y_m, Handle.NE)
+                                    @VertexPicker(p, p.x_m, p.y_m + p.alto_m, Handle.SW)
+                                    @VertexPicker(p, p.x_m + p.ancho_m, p.y_m + p.alto_m, Handle.SE)
+                                }
+
+                                @* === VÉRTICES (edición) === *@
                                 @if (isSel && (_vertexEditSelecting || _vertexEditActive))
                                 {
                                     for (var i = 0; i < p.puntos.Count; i++)
                                     {
-                                        var pt = p.puntos[i];
-                                        var isActive = _selectedVertexIndex == i;
-                                        var isEditing = _vertexEditPolyId == p.poly_id && _vertexEditIndices.Contains(i);
+                                        // ✅ FIX CRÍTICO: copiar el índice local para evitar bug de closure del "for"
+                                        var idx = i;
+
+                                        var pt = p.puntos[idx];
+                                        var isActive = _selectedVertexIndex == idx;
+                                        var isEditing = _vertexEditPolyId == p.poly_id && _vertexEditIndices.Contains(idx);
+
                                         <circle cx="@S(pt.X)" cy="@S(pt.Y)"
                                                 r="@S(VertexR())"
                                                 fill="@(isEditing ? "#dc2626" : isActive ? "#f59e0b" : "#13a076")"
@@ -134,20 +186,34 @@ else
                                                 style="cursor:@((_vertexEditSelecting || _vertexEditActive) ? "pointer" : "default")"
                                                 @onpointerdown:preventDefault="true"
                                                 @onpointerdown:stopPropagation="true"
-                                                @onpointerdown="(e)=>OnPointerDownVertex(e, p.poly_id, i)" />
+                                                @onpointerdown="(e)=>OnPointerDownVertex(e, p.poly_id, idx)" />
                                     }
                                 }
                             </g>
                         }
 
+                        @* =========================
+                           DIBUJO: polilínea + puntos
+                           + preview del tramo actual al cursor
+                           ========================= *@
                         @if (_isDrawing && _draftPoints.Count > 0)
                         {
                             <polyline points="@PointsStringFromPoints(_draftPoints)"
                                       fill="none" stroke="#2563eb" stroke-width="@S(0.06m)" />
+
+                            @* Preview del tramo actual (último punto -> cursor) *@
+                            @if (_cursorWorld is not null)
+                            {
+                                <line x1="@S(_draftPoints[^1].X)" y1="@S(_draftPoints[^1].Y)"
+                                      x2="@S(_cursorWorld.Value.x)" y2="@S(_cursorWorld.Value.y)"
+                                      stroke="#2563eb" stroke-dasharray="0.12 0.12" stroke-width="@S(0.04m)" />
+                            }
+
                             @for (var i = 0; i < _draftPoints.Count; i++)
                             {
                                 var pt = _draftPoints[i];
                                 var isFirst = i == 0;
+
                                 <circle cx="@S(pt.X)" cy="@S(pt.Y)"
                                         r="@S(DraftR(isFirst))"
                                         fill="@(isFirst ? "rgba(37,99,235,0.2)" : "rgba(37,99,235,0.12)")"
@@ -161,6 +227,7 @@ else
                         @foreach (var d in _doors.Where(IsDoorVisible))
                         {
                             var col = "#13A076"; var thick = 0.10m;
+
                             <g @onclick="() => { _selDoorId = d.door_id; _selWinId = null; _sel = null; _showDoorWinPanels = true; StateHasChanged(); }">
                                 <line x1="@S(d.x_m)" y1="@S(d.y_m)"
                                       x2="@S(DoorEndX(d))" y2="@S(DoorEndY(d))"
@@ -169,6 +236,7 @@ else
                                       @onpointerdown:preventDefault="true"
                                       @onpointerdown:stopPropagation="true"
                                       @onpointerdown="(e)=>OnPointerDownMoveDoor(e, d.door_id)" />
+
                                 <rect x="@S(DoorEndX(d)-0.15m)" y="@S(DoorEndY(d)-0.15m)" width="@S(0.3m)" height="@S(0.3m)"
                                       fill="#13A076" stroke="#0b6b50" stroke-width="@S(0.03m)"
                                       style="cursor:ns-resize"
@@ -181,7 +249,9 @@ else
                         <!-- Ventanas (CELESTE) -->
                         @foreach (var w in _windows.Where(IsWinVisible))
                         {
-                            var col = "#66CCFF"; var thick = 0.05m;
+                            var col = "#66CCFF";
+                            var thick = 0.10m;  // ✅ igual que puerta (mejor para manipular)
+
                             <g @onclick="() => { _selWinId = w.win_id; _selDoorId = null; _sel = null; _showDoorWinPanels = true; StateHasChanged(); }">
                                 <line x1="@S(w.x_m)" y1="@S(w.y_m)"
                                       x2="@S(WinEndX(w))" y2="@S(WinEndY(w))"
@@ -190,7 +260,8 @@ else
                                       @onpointerdown:preventDefault="true"
                                       @onpointerdown:stopPropagation="true"
                                       @onpointerdown="(e)=>OnPointerDownMoveWin(e, w.win_id)" />
-                                <rect x="@S(WinEndX(w)-0.12m)" y="@S(WinEndY(w)-0.12m)" width="@S(0.24m)" height="@S(0.24m)"
+
+                                <rect x="@S(WinEndX(w)-0.15m)" y="@S(WinEndY(w)-0.15m)" width="@S(0.3m)" height="@S(0.3m)"
                                       fill="#66CCFF" stroke="#2e7aa3" stroke-width="@S(0.03m)"
                                       style="cursor:ns-resize"
                                       @onpointerdown:preventDefault="true"
@@ -199,19 +270,60 @@ else
                             </g>
                         }
 
+
                         @if (_polys.Count == 0)
                         {
                             @((MarkupString)$"<text x=\"{S(1m)}\" y=\"{S(1.5m)}\" font-size=\"{S(0.8)}\" fill=\"#999\">No hay polígonos cargados.</text>")
                         }
                     </svg>
 
-                    <!-- Botonera fija (abajo-derecha del lienzo) -->
-                    <div class="floating-card" style="position:absolute; right:10px; bottom:10px;" @onclick:stopPropagation="true">
-                        <div>
-                            <button class="px-2 py-1 border rounded" @onclick="NuevaPuerta">+ Puerta</button>
-                            <button class="px-2 py-1 border rounded ml-1" @onclick="NuevaVentana">+ Ventana</button>
-                            <label class="ml-2 text-sm">Área</label>
-                            <select class="border p-1 text-sm"
+                    @if (_isDrawing && _draftPoints.Count > 0)
+                    {
+                        <div class="draw-hud-center">
+                            <div class="draw-hud-row">
+                                <span class="k">ΔX</span> <span class="v">@S(_drawDx) m</span>
+                                <span class="sep">|</span>
+                                <span class="k">ΔY</span> <span class="v">@S(_drawDy) m</span>
+                            </div>
+                            <div class="draw-hud-row">
+                                <span class="k">Dist</span> <span class="v">@S(_drawDist) m</span>
+                                <span class="sep">|</span>
+                                <span class="k">Origen</span>
+                                <span class="v">@S(_draftPoints[^1].X), @S(_draftPoints[^1].Y)</span>
+                            </div>
+                            <div class="draw-hud-hint">
+                                (Desde el último vértice)
+                            </div>
+                        </div>
+                    }
+
+                    @* =========================
+                       HUD: coordenadas + medidas
+                       ========================= *@
+                    <div class="ma-hud" @onclick:stopPropagation="true">
+                        @if (_cursorWorld is not null)
+                        {
+                            <div><b>X</b>: @S(Math.Round(_cursorWorld.Value.x, 3)) m</div>
+                            <div><b>Y</b>: @S(Math.Round(_cursorWorld.Value.y, 3)) m</div>
+                        }
+                        @if (_isDrawing && _draftPoints.Count > 0)
+                        {
+                            <div class="ma-hud-sep"></div>
+                            <div><b>Tramo</b>: @S(Math.Round(_draftLiveLen, 3)) m</div>
+                            <div><b>Total</b>: @S(Math.Round(_draftTotalLen, 3)) m</div>
+                            <div class="ma-hud-note">Shift = libre | Snap = @(_snapToGrid ? "ON" : "OFF")</div>
+                        }
+                    </div>
+
+
+                    <!-- Botonera flotante -->
+                    <div class="floating-card ma-floating-card" style="position:absolute; right:10px; bottom:10px;" @onclick:stopPropagation="true">
+                        <div class="ma-floating-row">
+                            <button type="button" class="px-2 py-1 border rounded ma-mini-btn" @onclick="NuevaPuerta">+ Puerta</button>
+                            <button type="button" class="px-2 py-1 border rounded ma-mini-btn ml-1" @onclick="NuevaVentana">+ Ventana</button>
+
+                            <label class="ml-2 text-sm ma-inline-label">Área</label>
+                            <select class="border p-1 text-sm ma-mini-select"
                                     value="@(_drawAreaId ?? "")"
                                     @onchange="(e)=> OnDrawAreaChange(e.Value?.ToString())">
                                 <option value="">Selecciona un área</option>
@@ -220,302 +332,325 @@ else
                                     <option value="@kv.Key">@kv.Value</option>
                                 }
                             </select>
-                            <label class="ml-2 text-sm">
+
+                            <label class="ml-2 text-sm ma-check">
                                 <input type="checkbox" checked="@_drawAxisXOnly" @onchange="OnToggleDrawX" /> Fijar X
                             </label>
-                            <label class="ml-2 text-sm">
+                            <label class="ml-2 text-sm ma-check">
                                 <input type="checkbox" checked="@_drawAxisYOnly" @onchange="OnToggleDrawY" /> Fijar Y
                             </label>
-                            <label class="ml-2 text-sm">
+
+                            <label class="ml-2 text-sm ma-check">
                                 <input type="checkbox" checked="@_snapToGrid" @onchange="(e)=> { _snapToGrid = e.Value is bool b && b; }" />
                                 Snap
                             </label>
-                            <label class="ml-1 text-sm text-gray-600">
+
+                            <label class="ml-1 text-sm text-gray-600 ma-inline-label">
                                 Paso (m)
-                                <input class="border ml-1 p-0.5" style="width:4.5rem"
+                                <input class="border ml-1 p-0.5 ma-mini-input" style="width:4.5rem"
                                        value="@S(_gridStep)"
                                        @oninput="(e)=> { _gridStep = Math.Clamp(ParseFlexible(e.Value), 0.05m, 2.0m); }" />
                                 <span class="ml-1 text-xs">(Shift = libre)</span>
                             </label>
-
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Columna derecha: panel lateral (en la franja blanca) -->
-            <aside class="prop-panel" @onclick:stopPropagation="true">
+            <!-- Columna derecha: panel lateral -->
+            <aside class="prop-panel ma-prop-panel" @onclick:stopPropagation="true">
+
                 @if (_sel is not null)
                 {
-                    <h4 class="font-semibold mb-2">Propiedades del área</h4>
-                    <div class="grid grid-cols-2 gap-2 text-sm">
-                        <div class="col-span-2">
-                            <label class="block text-xs text-gray-600 mb-1">Área</label>
-                            <select class="border p-1 w-full" value="@(_sel.area_id ?? "")"
-                                    @onchange="(e)=> OnSelectedAreaChange(e.Value?.ToString())">
-                                @foreach (var kv in AreasOfCurrentPlanta())
-                                {
-                                    <option value="@kv.Key">@kv.Value</option>
-                                }
-                            </select>
-                        </div>
+                    <div class="ma-panel-section">
+                        <div class="ma-panel-title">Propiedades del área</div>
 
-                        <div class="col-span-2">
-                            <label class="block text-xs text-gray-600 mb-1">Color</label>
-                            <input style="width:100%" class="border p-1" value="@(_sel.color_hex ?? "#E6E6E6")"
-                                   @oninput="(e)=>{ _sel.color_hex = e.Value?.ToString(); }">
-                        </div>
-
-                        <div class="col-span-2">
-                            <label class="block text-xs text-gray-600 mb-1">Vértices</label>
-                            <div class="text-gray-700">@_sel.puntos.Count</div>
-                        </div>
-
-                        <div class="col-span-2 mt-1 flex gap-2">
-                            <button type="button"
-                                    class="px-2 py-1 border rounded text-blue-700 border-blue-400"
-                                    @onclick="IniciarEdicionVertice"
-                                    disabled="@(_vertexEditSelecting || _vertexEditActive)">
-                                Editar vértices
-                            </button>
-                            <button type="button"
-                                    class="px-2 py-1 border rounded text-amber-700 border-amber-400"
-                                    @onclick="ConfirmarEdicionVertices"
-                                    disabled="@(!_vertexEditSelecting || _vertexEditIndices.Count == 0)">
-                                OK
-                            </button>
-                            <button type="button"
-                                    class="px-2 py-1 border rounded text-green-700 border-green-400"
-                                    @onclick="GuardarEdicionVertice"
-                                    disabled="@(!_vertexEditActive)">
-                                Guardar vértices editados
-                            </button>
-                        </div>
-                        @if (_vertexEditSelecting)
-                        {
-                            <div class="col-span-2 text-xs text-gray-600 mt-1">
-                                Seleccione vértices para editar. (@_vertexEditIndices.Count seleccionados)
+                        <div class="grid grid-cols-2 gap-2 text-sm">
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Área</label>
+                                <select class="border p-1 w-full" value="@(_sel.area_id ?? "")"
+                                        @onchange="(e)=> OnSelectedAreaChange(e.Value?.ToString())">
+                                    @foreach (var kv in AreasOfCurrentPlanta())
+                                    {
+                                        <option value="@kv.Key">@kv.Value</option>
+                                    }
+                                </select>
                             </div>
-                        }
-                        else if (_vertexEditActive)
-                        {
-                            <div class="col-span-2 text-xs text-gray-600 mt-1">
-                                Mueve cualquier vértice rojo para deformar el área.
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Color</label>
+                                <input style="width:100%" class="border p-1" value="@(_sel.color_hex ?? "#E6E6E6")"
+                                       @oninput="(e)=>{ _sel.color_hex = e.Value?.ToString(); }">
                             </div>
-                        }
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Vértices</label>
+                                <div class="text-gray-700">@_sel.puntos.Count</div>
+                            </div>
+
+                            <div class="col-span-2 mt-1 flex gap-2 flex-wrap">
+                                <button type="button"
+                                        class="px-2 py-1 border rounded text-blue-700 border-blue-400"
+                                        @onclick="IniciarEdicionVertice"
+                                        disabled="@(_vertexEditSelecting || _vertexEditActive)">
+                                    Editar vértices
+                                </button>
+                                <button type="button"
+                                        class="px-2 py-1 border rounded text-amber-700 border-amber-400"
+                                        @onclick="ConfirmarEdicionVertices"
+                                        disabled="@(!_vertexEditSelecting || _vertexEditIndices.Count == 0)">
+                                    OK
+                                </button>
+                                <button type="button"
+                                        class="px-2 py-1 border rounded text-green-700 border-green-400"
+                                        @onclick="GuardarEdicionVertice"
+                                        disabled="@(!_vertexEditActive)">
+                                    Guardar vértices editados
+                                </button>
+                            </div>
+
+                            @if (_vertexEditSelecting)
+                            {
+                                <div class="col-span-2 text-xs text-gray-600 mt-1">
+                                    Seleccione vértices para editar. (@_vertexEditIndices.Count seleccionados)
+                                </div>
+                            }
+                            else if (_vertexEditActive)
+                            {
+                                <div class="col-span-2 text-xs text-gray-600 mt-1">
+                                    Mueve cualquier vértice rojo para deformar el área.
+                                </div>
+                            }
+                        </div>
                     </div>
                 }
                 else if (SelDoor is not null)
                 {
-                    <h4 class="font-semibold mb-2">Propiedades de la puerta</h4>
-                    <div class="grid grid-cols-2 gap-2 text-sm">
-                        <div class="col-span-2">
-                            <label class="block text-xs text-gray-600 mb-1">Área A (borde donde está)</label>
-                            <select class="border p-1 w-full" value="@(SelDoor.area_id_a ?? "")"
-                                    @onchange="(e)=>{ SelDoor.area_id_a = e.Value?.ToString(); StateHasChanged(); }">
-                                @foreach (var kv in _areasLookup)
-                                {
-                                    <option value="@kv.Key">@kv.Value</option>
-                                }
-                            </select>
-                        </div>
+                    <div class="ma-panel-section">
+                        <div class="ma-panel-title">Propiedades de la puerta</div>
 
-                        <div class="col-span-2">
-                            <label class="block text-xs text-gray-600 mb-1">Área B (vecina)</label>
-                            <input class="border p-1 w-full" value="@(_areasLookup.TryGetValue(SelDoor.area_id_b ?? "", out var nb) ? nb : "(auto)")" disabled />
-                        </div>
+                        <div class="grid grid-cols-2 gap-2 text-sm">
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Área A (borde donde está)</label>
+                                <select class="border p-1 w-full" value="@(SelDoor.area_id_a ?? "")"
+                                        @onchange="(e)=>{ SelDoor.area_id_a = e.Value?.ToString(); StateHasChanged(); }">
+                                    @foreach (var kv in _areasLookup)
+                                    {
+                                        <option value="@kv.Key">@kv.Value</option>
+                                    }
+                                </select>
+                            </div>
 
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Orientación</label>
-                            <select class="border p-1 w-full" value="@SelDoor.orientacion"
-                                    @onchange='(e)=>{ SelDoor.orientacion = e.Value?.ToString() ?? "E"; StateHasChanged(); }'>
-                                <option>N</option>
-                                <option>S</option>
-                                <option>E</option>
-                                <option>W</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Largo (m)</label>
-                            <input class="border p-1 w-full" value="@S(SelDoor.largo_m)"
-                                   @oninput="(e)=>{ SelDoor.largo_m = Math.Max(0.4m, ParseFlexible(e.Value)); StateHasChanged(); }" />
-                        </div>
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Área B (vecina)</label>
+                                <input class="border p-1 w-full" value="@(_areasLookup.TryGetValue(SelDoor.area_id_b ?? "", out var nb) ? nb : "(auto)")" disabled />
+                            </div>
 
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">X</label>
-                            <input class="border p-1 w-full" value="@S(SelDoor.x_m)"
-                                   @oninput="(e)=>{ SelDoor.x_m = ParseFlexible(e.Value); StateHasChanged(); }" />
-                        </div>
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Y</label>
-                            <input class="border p-1 w-full" value="@S(SelDoor.y_m)"
-                                   @oninput="(e)=>{ SelDoor.y_m = ParseFlexible(e.Value); StateHasChanged(); }" />
-                        </div>
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Orientación</label>
+                                <select class="border p-1 w-full" value="@SelDoor.orientacion"
+                                        @onchange='(e)=>{ SelDoor.orientacion = e.Value?.ToString() ?? "E"; StateHasChanged(); }'>
+                                    <option>N</option>
+                                    <option>S</option>
+                                    <option>E</option>
+                                    <option>W</option>
+                                </select>
+                            </div>
 
-                        <div class="col-span-2">
-                            <label class="block text-xs text-gray-600 mb-1">Z order (no se guarda)</label>
-                            <input class="border p-1 w-full" value="@SelDoor.z_order"
-                                   @oninput="(e)=>{ SelDoor.z_order = int.TryParse(e.Value?.ToString(), out var n) ? n : 0; StateHasChanged(); }" />
-                        </div>
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Largo (m)</label>
+                                <input class="border p-1 w-full" value="@S(SelDoor.largo_m)"
+                                       @oninput="(e)=>{ SelDoor.largo_m = Math.Max(0.4m, ParseFlexible(e.Value)); StateHasChanged(); }" />
+                            </div>
 
-                        <div class="col-span-2 mt-1">
-                            <button type="button"
-                                    class="px-2 py-1 border rounded text-red-700 border-red-400"
-                                    @onclick:preventDefault="true"
-                                    @onclick="EliminarPuerta">
-                                Eliminar puerta
-                            </button>
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">X</label>
+                                <input class="border p-1 w-full" value="@S(SelDoor.x_m)"
+                                       @oninput="(e)=>{ SelDoor.x_m = ParseFlexible(e.Value); StateHasChanged(); }" />
+                            </div>
+
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Y</label>
+                                <input class="border p-1 w-full" value="@S(SelDoor.y_m)"
+                                       @oninput="(e)=>{ SelDoor.y_m = ParseFlexible(e.Value); StateHasChanged(); }" />
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Z order (no se guarda)</label>
+                                <input class="border p-1 w-full" value="@SelDoor.z_order"
+                                       @oninput="(e)=>{ SelDoor.z_order = int.TryParse(e.Value?.ToString(), out var n) ? n : 0; StateHasChanged(); }" />
+                            </div>
+
+                            <div class="col-span-2 mt-1">
+                                <button type="button"
+                                        class="px-2 py-1 border rounded text-red-700 border-red-400"
+                                        @onclick:preventDefault="true"
+                                        @onclick="EliminarPuerta">
+                                    Eliminar puerta
+                                </button>
+                            </div>
                         </div>
                     </div>
                 }
                 else if (SelWin is not null)
                 {
-                    <h4 class="font-semibold mb-2">Propiedades de la ventana</h4>
+                    <div class="ma-panel-section">
+                        <div class="ma-panel-title">Propiedades de la ventana</div>
 
-                    <div class="grid grid-cols-2 gap-2 text-sm">
-                        <!-- Área A = área del borde donde está apoyada la ventana -->
-                        <div class="col-span-2">
-                            <label class="block text-xs text-gray-600 mb-1">Área A (borde donde está)</label>
-                            <select class="border p-1 w-full" value="@(SelWin.area_id_a ?? "")"
-                                    @onchange="(e)=>{ var v = e.Value?.ToString(); SelWin.area_id_a = string.IsNullOrWhiteSpace(v) ? null : v; StateHasChanged(); }">
-                                @foreach (var kv in _areasLookup)
-                                {
-                                    <option value="@kv.Key">@kv.Value</option>
-                                }
-                            </select>
-                        </div>
+                        <div class="grid grid-cols-2 gap-2 text-sm">
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Área A (borde donde está)</label>
+                                <select class="border p-1 w-full" value="@(SelWin.area_id_a ?? "")"
+                                        @onchange="(e)=>{ var v = e.Value?.ToString(); SelWin.area_id_a = string.IsNullOrWhiteSpace(v) ? null : v; StateHasChanged(); }">
+                                    @foreach (var kv in _areasLookup)
+                                    {
+                                        <option value="@kv.Key">@kv.Value</option>
+                                    }
+                                </select>
+                            </div>
 
-                        <!-- Área B = área vecina al otro lado del muro; vacío = exterior -->
-                        <div class="col-span-2">
-                            <label class="block text-xs text-gray-600 mb-1">Área B (vecina / exterior)</label>
-                            <select class="border p-1 w-full" value="@(SelWin.area_id_b ?? "")"
-                                    @onchange="(e)=>{ var v = e.Value?.ToString(); SelWin.area_id_b = string.IsNullOrWhiteSpace(v) ? null : v; StateHasChanged(); }">
-                                <option value="">— Exterior —</option>
-                                @foreach (var kv in _areasLookup)
-                                {
-                                    <option value="@kv.Key">@kv.Value</option>
-                                }
-                            </select>
-                            <small class="text-xs text-gray-500">
-                                @(SelWin.area_id_b is null ? "Esta ventana da al exterior." : "Esta ventana comunica dos áreas.")
-                            </small>
-                        </div>
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Área B (vecina / exterior)</label>
+                                <select class="border p-1 w-full" value="@(SelWin.area_id_b ?? "")"
+                                        @onchange="(e)=>{ var v = e.Value?.ToString(); SelWin.area_id_b = string.IsNullOrWhiteSpace(v) ? null : v; StateHasChanged(); }">
+                                    <option value="">— Exterior —</option>
+                                    @foreach (var kv in _areasLookup)
+                                    {
+                                        <option value="@kv.Key">@kv.Value</option>
+                                    }
+                                </select>
+                                <small class="text-xs text-gray-500">
+                                    @(SelWin.area_id_b is null ? "Esta ventana da al exterior." : "Esta ventana comunica dos áreas.")
+                                </small>
+                            </div>
 
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Orientación</label>
-                            <select class="border p-1 w-full" value="@SelWin.orientacion"
-                                    @onchange='(e)=>{ SelWin.orientacion = e.Value?.ToString() ?? "E"; StateHasChanged(); }'>
-                                <option>N</option>
-                                <option>S</option>
-                                <option>E</option>
-                                <option>W</option>
-                            </select>
-                        </div>
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Orientación</label>
+                                <select class="border p-1 w-full" value="@SelWin.orientacion"
+                                        @onchange='(e)=>{ SelWin.orientacion = e.Value?.ToString() ?? "E"; StateHasChanged(); }'>
+                                    <option>N</option>
+                                    <option>S</option>
+                                    <option>E</option>
+                                    <option>W</option>
+                                </select>
+                            </div>
 
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Largo (m)</label>
-                            <input class="border p-1 w-full" value="@S(SelWin.largo_m)"
-                                   @oninput="(e)=>{ SelWin.largo_m = Math.Max(0.4m, ParseFlexible(e.Value)); StateHasChanged(); }" />
-                        </div>
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Largo (m)</label>
+                                <input class="border p-1 w-full" value="@S(SelWin.largo_m)"
+                                       @oninput="(e)=>{ SelWin.largo_m = Math.Max(0.4m, ParseFlexible(e.Value)); StateHasChanged(); }" />
+                            </div>
 
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">X</label>
-                            <input class="border p-1 w-full" value="@S(SelWin.x_m)"
-                                   @oninput="(e)=>{ SelWin.x_m = ParseFlexible(e.Value); StateHasChanged(); }" />
-                        </div>
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">X</label>
+                                <input class="border p-1 w-full" value="@S(SelWin.x_m)"
+                                       @oninput="(e)=>{ SelWin.x_m = ParseFlexible(e.Value); StateHasChanged(); }" />
+                            </div>
 
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Y</label>
-                            <input class="border p-1 w-full" value="@S(SelWin.y_m)"
-                                   @oninput="(e)=>{ SelWin.y_m = ParseFlexible(e.Value); StateHasChanged(); }" />
-                        </div>
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Y</label>
+                                <input class="border p-1 w-full" value="@S(SelWin.y_m)"
+                                       @oninput="(e)=>{ SelWin.y_m = ParseFlexible(e.Value); StateHasChanged(); }" />
+                            </div>
 
-                        <div class="col-span-2">
-                            <label class="block text-xs text-gray-600 mb-1">Z order (no se guarda)</label>
-                            <input class="border p-1 w-full" value="@SelWin.z_order"
-                                   @oninput="(e)=>{ SelWin.z_order = int.TryParse(e.Value?.ToString(), out var n) ? n : 0; StateHasChanged(); }" />
-                        </div>
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Z order (no se guarda)</label>
+                                <input class="border p-1 w-full" value="@SelWin.z_order"
+                                       @oninput="(e)=>{ SelWin.z_order = int.TryParse(e.Value?.ToString(), out var n) ? n : 0; StateHasChanged(); }" />
+                            </div>
 
-                        <div class="col-span-2 mt-1">
-                            <button type="button"
-                                    class="px-2 py-1 border rounded text-red-700 border-red-400"
-                                    @onclick:preventDefault="true"
-                                    @onclick="EliminarVentana">
-                                Eliminar ventana
-                            </button>
+                            <div class="col-span-2 mt-1">
+                                <button type="button"
+                                        class="px-2 py-1 border rounded text-red-700 border-red-400"
+                                        @onclick:preventDefault="true"
+                                        @onclick="EliminarVentana">
+                                    Eliminar ventana
+                                </button>
+                            </div>
                         </div>
                     </div>
                 }
                 else
                 {
-                    <div class="text-sm text-gray-600">Selecciona un elemento</div>
-                    <div class="text-sm text-gray-600">para ver sus propiedades</div>
-                }
-
-                @* === META DEL ÁREA (planta, altura, área total, anotaciones) === *@
-                @if (_sel?.area_id is not null && _areasMeta.TryGetValue(_sel.area_id!, out var meta))
-                {
-                    <hr class="my-3" />
-                    <h4 class="font-semibold mb-2">Datos del área seleccionada</h4>
-
-                    <div class="grid grid-cols-2 gap-2 text-sm">
-                        <div class="col-span-2">
-                            <label class="block text-xs text-gray-600 mb-1">Planta</label>
-                            <select class="border p-1 w-full" value="@(meta.planta_id ?? "")"
-                                    @onchange="(e)=>{ meta.planta_id = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? null : e.Value!.ToString(); StateHasChanged(); }">
-                                <option value="">— (sin planta) —</option>
-                                @foreach (var kv in _plantasLookup)
-                                {
-                                    <option value="@kv.Key">@kv.Value</option>
-                                }
-                            </select>
-                        </div>
-
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Altura (m)</label>
-                            <input class="border p-1 w-full" value="@S(meta.altura_m ?? 0m)"
-                                   @oninput="(e)=>{ meta.altura_m = ParseFlexible(e.Value); StateHasChanged(); }" />
-                        </div>
-
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Área total (m²)</label>
-                            <input class="border p-1 w-full" value="@S(CalcAreaTotalM2(_sel.area_id!))" disabled />
-                        </div>
-
-                        <div class="col-span-2">
-                            <label class="block text-xs text-gray-600 mb-1">Anotaciones</label>
-
-        <textarea class="border p-1 w-full" rows="3"
-                  @oninput='(e)=>{ meta.anotaciones = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? " SIN MODIFICACIONES" : e.Value!.ToString()!; }'>@meta.anotaciones</textarea>
-
-                        </div>
+                    <div class="ma-panel-section">
+                        <div class="ma-panel-title">Propiedades</div>
+                        <div class="text-sm text-gray-600">Selecciona un elemento para ver sus propiedades.</div>
                     </div>
                 }
 
+                @* === META DEL ÁREA === *@
+                @if (_sel?.area_id is not null && _areasMeta.TryGetValue(_sel.area_id!, out var meta))
+                {
+                    <div class="ma-divider"></div>
 
+                    <div class="ma-panel-section">
+                        <div class="ma-panel-title">Datos del área seleccionada</div>
+
+                        <div class="grid grid-cols-2 gap-2 text-sm">
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Planta</label>
+                                <select class="border p-1 w-full" value="@(meta.planta_id ?? "")"
+                                        @onchange="(e)=>{ meta.planta_id = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? null : e.Value!.ToString(); StateHasChanged(); }">
+                                    <option value="">— (sin planta) —</option>
+                                    @foreach (var kv in _plantasLookup)
+                                    {
+                                        <option value="@kv.Key">@kv.Value</option>
+                                    }
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Altura (m)</label>
+                                <input class="border p-1 w-full" value="@S(meta.altura_m ?? 0m)"
+                                       @oninput="(e)=>{ meta.altura_m = ParseFlexible(e.Value); StateHasChanged(); }" />
+                            </div>
+
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Área total (m²)</label>
+                                <input class="border p-1 w-full" value="@S(CalcAreaTotalM2(_sel.area_id!))" disabled />
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Anotaciones</label>
+                                <textarea class="border p-1 w-full" rows="3"
+                                          @oninput='(e)=>{ meta.anotaciones = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? "SIN MODIFICACIONES" : e.Value!.ToString()!; }'>@meta.anotaciones</textarea>
+                            </div>
+                        </div>
+                    </div>
+                }
             </aside>
         </div>
-        <!-- /Layout principal -->
-        <!-- ===== Acciones (debajo del canvas) ===== -->
-        <div class="mt-3 p-3 border rounded-md bg-white">
-            <h4 class="font-semibold mb-2">Acciones de áreas</h4>
-            <div class="flex items-center gap-2">
 
-                <button class="px-3 py-1 border rounded" @onclick="Guardar" disabled="@_saving">
-                    @(_saving ? "Guardando..." : "Guardar")
-                </button>
-                <button class="px-3 py-1 border rounded" @onclick="Nuevo" disabled="@_saving">Nuevo</button>
-                <button class="px-3 py-1 border rounded" @onclick="Eliminar" disabled="@(_sel is null || _saving)">Eliminar</button>
-                <span class="text-sm text-gray-500">@_saveMsg</span>
-            </div>
-            <div class="mt-3 border-t pt-3">
-                <h5 class="font-semibold mb-2">Crear nueva área</h5>
+        <!-- ===== Acciones ===== -->
+        <div class="ma-card ma-actions-card">
+            <div class="ma-section">
+                <div class="ma-section-title">Acciones de áreas</div>
+
                 <div class="flex items-center gap-2 flex-wrap">
-                    <input class="border p-1 text-sm" style="min-width:200px"
+                    <button type="button" class="px-3 py-1 border rounded ma-mini-btn" @onclick="Guardar" disabled="@_saving">
+                        @(_saving ? "Guardando..." : "Guardar")
+                    </button>
+                    <button type="button" class="px-3 py-1 border rounded ma-mini-btn" @onclick="Nuevo" disabled="@_saving">Nuevo</button>
+                    <button type="button" class="px-3 py-1 border rounded ma-mini-btn" @onclick="Eliminar" disabled="@(_sel is null || _saving)">Eliminar</button>
+
+                    <button type="button" class="px-3 py-1 border rounded ma-mini-btn" @onclick="AlinearTodo" disabled="@_saving">Alinear todo</button>
+
+                    <span class="text-sm text-gray-500">@_saveMsg</span>
+                </div>
+            </div>
+
+            <div class="ma-divider"></div>
+
+            <div class="ma-section">
+                <div class="ma-section-title">Crear nueva área</div>
+
+                <div class="flex items-center gap-2 flex-wrap">
+                    <input class="border p-1 text-sm ma-mini-input" style="min-width:200px"
                            placeholder="Nombre del área"
                            value="@_newAreaName"
                            @oninput="(e)=> _newAreaName = e.Value?.ToString() ?? string.Empty" />
-                    <select class="border p-1 text-sm"
+
+                    <select class="border p-1 text-sm ma-mini-select"
                             value="@(_newAreaPlantaId ?? "")"
                             @onchange="(e)=> _newAreaPlantaId = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? null : e.Value!.ToString()">
                         <option value="">— Planta —</option>
@@ -524,67 +659,297 @@ else
                             <option value="@kv.Key">@kv.Value</option>
                         }
                     </select>
-                    <button class="px-3 py-1 border rounded"
+
+                    <button type="button" class="px-3 py-1 border rounded ma-mini-btn"
                             @onclick="CrearAreaAsync"
                             disabled="@_creatingArea">
                         @(_creatingArea ? "Creando..." : "Crear área")
                     </button>
+
                     @if (!string.IsNullOrWhiteSpace(_newAreaMsg))
                     {
                         <span class="text-sm text-gray-500">@_newAreaMsg</span>
                     }
                 </div>
             </div>
-            <div class="text-sm mt-2">
-                <b>Juntar vértices (A → B):</b> activa el modo, haz click en <b>A</b> (se mueve) y luego en <b>B</b> (objetivo).
-                Si mover A chocara, se intentará encoger A para encajar, sin salirse ni superponerse.
-                @if (_joinMode)
-                {
-                    <button class="px-2 py-1 border rounded ml-2" @onclick="CancelJoin">Cancelar juntar</button>
-                }
+
+            <div class="ma-divider"></div>
+
+            <div class="ma-section">
+                <div class="ma-section-title">Juntar vértices (A → B)</div>
+
+                <div class="flex items-center gap-3 flex-wrap">
+                    <button type="button" class="px-3 py-1 border rounded ma-mini-btn"
+                            @onclick="ToggleJoinMode"
+                            disabled="@_saving">
+                        @(_joinMode ? "Salir de juntar" : "Activar juntar")
+                    </button>
+
+                    <label class="text-sm ma-check">
+                        <input type="checkbox" checked="@_joinAxisXOnly" @onchange="OnToggleJoinX" />
+                        Solo X
+                    </label>
+                    <label class="text-sm ma-check">
+                        <input type="checkbox" checked="@_joinAxisYOnly" @onchange="OnToggleJoinY" />
+                        Solo Y
+                    </label>
+
+                    @if (_joinMode)
+                    {
+                        <button type="button" class="px-2 py-1 border rounded ma-mini-btn" @onclick="CancelJoin">Cancelar</button>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(_joinMsg))
+                    {
+                        <span class="text-sm text-gray-600">@_joinMsg</span>
+                    }
+                </div>
+
+                <div class="text-sm mt-2 text-gray-700">
+                    Activa el modo, luego haz click en un <b>punto de esquina</b> (A, se mueve) y después en otro (B, objetivo).
+                    Si mover A chocara, se intentará encoger A para encajar sin superponerse ni salirse.
+                </div>
             </div>
-            <div class="flex items-center gap-2">
-
-                <button class="px-3 py-1 border rounded" @onclick="Guardar" disabled="@_saving">
-                    @(_saving ? "Guardando..." : "Guardar")
-                </button>
-                <button class="px-3 py-1 border rounded" @onclick="Nuevo" disabled="@_saving">Nuevo</button>
-                <button class="px-3 py-1 border rounded" @onclick="Eliminar" disabled="@(_sel is null || _saving)">Eliminar</button>
-
-                <!-- NUEVO -->
-                <button class="px-3 py-1 border rounded" @onclick="AlinearTodo" disabled="@_saving">Alinear todo</button>
-
-                <span class="text-sm text-gray-500">@_saveMsg</span>
-            </div>
-
         </div>
-    </div>
-}
+    }
+</div>
 
 <style>
-    /* ===== Layout de dos columnas: lienzo a la izquierda, panel a la derecha ===== */
+    /* ===========================
+           Estilos locales (prefijo ma-)
+           Evita afectar otras páginas
+           =========================== */
+
+    .ma-page {
+        padding: 10px 12px;
+        background: transparent;
+    }
+
+    .ma-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 12px;
+        margin-bottom: 10px;
+    }
+
+    .ma-title {
+        font-size: 1.35rem;
+        font-weight: 700;
+        margin: 0;
+        line-height: 1.2;
+    }
+
+    .ma-subtitle {
+        font-size: 0.85rem;
+        color: #6b7280;
+        margin-top: 2px;
+    }
+
+    .ma-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border: 1px solid #e5e7eb;
+        border-radius: 999px;
+        background: #fff;
+        font-size: 0.85rem;
+        color: #374151;
+        max-width: 520px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .ma-card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 12px;
+        box-shadow: 0 1px 0 rgba(0,0,0,0.02);
+    }
+
+    .ma-toolbar {
+        margin-bottom: 12px;
+    }
+
+    .ma-toolbar-row {
+        display: flex;
+        align-items: end;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+
+    .ma-field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 220px;
+    }
+
+    .ma-label {
+        font-size: 0.8rem;
+        color: #6b7280;
+    }
+
+    .ma-input {
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        padding: 6px 8px;
+        font-size: 0.9rem;
+        background: #fff;
+    }
+
+    .ma-spacer {
+        flex: 1 1 auto;
+    }
+
+    .ma-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .ma-btn {
+        border-radius: 10px;
+        padding: 6px 10px;
+    }
+
+    .ma-btn-muted {
+        opacity: 0.9;
+    }
+
+    .ma-hint {
+        margin-top: 8px;
+    }
+
+    .ma-hint-text {
+        font-size: 0.9rem;
+        color: #4b5563;
+    }
+
+    /* ===== Layout principal ===== */
+    .ma-editor-layout {
+        margin-top: 6px;
+    }
+
     .editor-layout {
         display: grid;
-        grid-template-columns: minmax(0, 1150px) 420px; /* 1150px = ancho canvas; 420px = panel */
+        grid-template-columns: minmax(0, 1150px) 420px;
         gap: 16px;
         align-items: start;
     }
 
-    /* El host del canvas puede scrollear si es más alto que la ventana */
     .canvas-host {
         overflow: auto;
     }
 
-    /* Panel lateral fijo en la franja blanca */
+    .ma-canvas-box {
+        position: relative;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+        overflow: hidden;
+    }
+
+    /* Overlay zoom */
+    .ma-zoom {
+        position: absolute;
+        right: 10px;
+        top: 10px;
+        display: flex;
+        gap: .4rem;
+        z-index: 5;
+    }
+
+    .ma-zoom-btn {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        border: 1px solid #d1d5db;
+        background: #fff;
+        font-weight: 700;
+        box-shadow: 0 1px 0 rgba(0,0,0,0.03);
+    }
+
+        .ma-zoom-btn:hover {
+            background: #f9fafb;
+        }
+
+    /* Floating card */
+    .ma-floating-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: rgba(255,255,255,0.92);
+        backdrop-filter: blur(6px);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+        padding: 10px;
+        z-index: 6;
+        max-width: calc(100% - 20px);
+    }
+
+    .ma-floating-row {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .ma-mini-btn {
+        background: #fff;
+    }
+
+        .ma-mini-btn:hover {
+            background: #f9fafb;
+        }
+
+    .ma-mini-select {
+        border-radius: 8px;
+    }
+
+    .ma-mini-input {
+        border-radius: 8px;
+    }
+
+    .ma-inline-label {
+        color: #374151;
+    }
+
+    .ma-check {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        user-select: none;
+    }
+
+    /* Panel lateral */
     .prop-panel {
         position: sticky;
-        top: 80px; /* ajusta según tu header/navbar */
+        top: 80px;
         max-height: calc(100vh - 100px);
         overflow: auto;
         background: #fff;
-        border: 1px solid #e5e7eb; /* gris claro */
-        border-radius: 8px;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
         padding: 12px;
+        box-shadow: 0 1px 0 rgba(0,0,0,0.02);
+    }
+
+    .ma-panel-section {
+        padding: 6px 2px;
+    }
+
+    .ma-panel-title {
+        font-weight: 700;
+        margin-bottom: 8px;
+        color: #111827;
+    }
+
+    .ma-divider {
+        height: 1px;
+        background: #e5e7eb;
+        margin: 12px 0;
     }
 
     .area-label {
@@ -595,5 +960,61 @@ else
     svg text {
         user-select: none;
     }
-   
+
+    /* Bottom actions card */
+    .ma-actions-card {
+        margin-top: 12px;
+    }
+
+    .ma-section-title {
+        font-weight: 700;
+        margin-bottom: 8px;
+        color: #111827;
+    }
+
+    /* ===== HUD (coordenadas + medidas) ===== */
+    .ma-hud {
+        position: absolute;
+        left: 10px;
+        top: 10px; /* ✅ arriba */
+        bottom: auto; /* ✅ desactiva abajo */
+        z-index: 7;
+        background: rgba(255,255,255,0.92);
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        padding: 8px 10px;
+        font-size: 12px;
+        line-height: 1.25rem;
+        color: #111827;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+        min-width: 150px;
+        pointer-events: none;
+    }
+
+
+    .ma-hud-sep {
+        height: 1px;
+        background: #e5e7eb;
+        margin: 6px 0;
+    }
+
+    .ma-hud-note {
+        font-size: 11px;
+        color: #6b7280;
+        margin-top: 4px;
+    }
+
+    /* Responsive: si la pantalla es chica, baja el panel */
+    @@media (max-width: 1400px) {
+        .editor-layout {
+            grid-template-columns: 1fr;
+        }
+
+        .prop-panel {
+            position: relative;
+            top: auto;
+            max-height: none;
+        }
+    }
 </style>
+```

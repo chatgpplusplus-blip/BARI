@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using BARI_web.General_Services.DataBaseConnection;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.JSInterop;
 using Npgsql;
 
 namespace BARI_web.Features.Espacios.Pages
@@ -16,6 +17,38 @@ namespace BARI_web.Features.Espacios.Pages
         [Inject] private NavigationManager Nav { get; set; } = default!;
         [Inject] private PgCrud Pg { get; set; } = default!;
         [Inject] private NpgsqlDataSource DataSource { get; set; } = default!;
+        [Inject] private IJSRuntime JS { get; set; } = default!;
+
+        // snapshot para mover features pegadas al mover polígono (evita acumulación)
+        private Dictionary<string, (decimal x, decimal y)>? _beforeDragDoorXY;
+        private Dictionary<string, (decimal x, decimal y)>? _beforeDragWinXY;
+
+        // Puertas pegadas a otras
+        private IEnumerable<Door> DoorsOfPoly(Poly p)
+        {
+            if (p.area_id is null) return Enumerable.Empty<Door>();
+            return _doors.Where(d => string.Equals(d.area_id_a ?? "", p.area_id ?? "", StringComparison.OrdinalIgnoreCase)
+                                     && IsDoorVisible(d));
+        }
+
+        private IEnumerable<Win> WinsOfPoly(Poly p)
+        {
+            if (p.area_id is null) return Enumerable.Empty<Win>();
+            return _windows.Where(w => string.Equals(w.area_id_a ?? "", p.area_id ?? "", StringComparison.OrdinalIgnoreCase)
+                                       && IsWinVisible(w));
+        }
+
+        private static void TranslateDoor(Door d, decimal dx, decimal dy)
+        {
+            d.x_m += dx;
+            d.y_m += dy;
+        }
+
+        private static void TranslateWin(Win w, decimal dx, decimal dy)
+        {
+            w.x_m += dx;
+            w.y_m += dy;
+        }
 
         // ===== exclusión de botones (checkboxes "Solo X / Solo Y")
         private bool _joinAxisXOnly = false;
@@ -34,6 +67,7 @@ namespace BARI_web.Features.Espacios.Pages
         // Convierte string vacío o espacios a DBNull.Value para DB
         private static object DbNullIfEmpty(string? s)
             => string.IsNullOrWhiteSpace(s) ? (object)DBNull.Value : s;
+
         // Valida un FK string contra un diccionario lookup; si no existe o viene vacío → null
         private string? SanitizeFk(string? id, IReadOnlyDictionary<string, string> valid)
         {
@@ -62,6 +96,7 @@ namespace BARI_web.Features.Espacios.Pages
             public Poly Clone() => (Poly)MemberwiseClone();
             public (decimal L, decimal T, decimal R, decimal B) Bounds() => (x_m, y_m, x_m + ancho_m, y_m + alto_m);
         }
+
         private class Door
         {
             public string door_id { get; set; } = "";
@@ -70,16 +105,21 @@ namespace BARI_web.Features.Espacios.Pages
             public string? area_id_b { get; set; }
             public decimal x_m { get; set; }
             public decimal y_m { get; set; }
+            public decimal x2_m { get; set; }     // x2
+            public decimal y2_m { get; set; }     // y2
             public string orientacion { get; set; } = "E";
             public decimal largo_m { get; set; } = 1.0m;
             public int z_order { get; set; } // UI only (no persist)
         }
+
         private class Win
         {
+            public decimal x2_m { get; set; }     // x2
+            public decimal y2_m { get; set; }     // y2
             public string win_id { get; set; } = "";
             public string canvas_id { get; set; } = "";
-            public string? area_id_a { get; set; }   // <-- igual que puerta
-            public string? area_id_b { get; set; }   // <-- igual que puerta (vecina o null si exterior)
+            public string? area_id_a { get; set; }
+            public string? area_id_b { get; set; }
             public decimal x_m { get; set; }
             public decimal y_m { get; set; }
             public string orientacion { get; set; } = "E";
@@ -143,6 +183,10 @@ namespace BARI_web.Features.Espacios.Pages
         private (double x, double y)? _panStart;
         private bool _panMoved = false;
 
+        private (decimal x, decimal y)? _cursorWorld = null;
+        private decimal _draftLiveLen = 0m;
+        private decimal _draftTotalLen = 0m;
+
         // dibujo
         private decimal Wm => _canvas?.ancho_m ?? 20m;
         private decimal Hm => _canvas?.alto_m ?? 10m;
@@ -157,6 +201,25 @@ namespace BARI_web.Features.Espacios.Pages
         private string? _newAreaMsg;
         private bool _creatingArea = false;
 
+        //nuevo HUD
+        private decimal _drawDx = 0m;
+        private decimal _drawDy = 0m;
+        private decimal _drawDist = 0m;
+
+
+        // ===== SVG metrics (ClientX/ClientY -> coords dentro del SVG)
+        private struct SvgRect
+        {
+            public double Left { get; set; }
+            public double Top { get; set; }
+            public double Width { get; set; }
+            public double Height { get; set; }
+        }
+
+        private SvgRect _svgRect;
+        private bool _svgRectReady = false;
+        private long? _capturedPointerId = null;
+
         private string ViewBox()
         {
             var vw = (double)Wm / _zoom; var vh = (double)Hm / _zoom;
@@ -164,6 +227,7 @@ namespace BARI_web.Features.Espacios.Pages
             _panX = Clamp(0m, maxX, _panX); _panY = Clamp(0m, maxY, _panY);
             return $"{S((double)_panX)} {S((double)_panY)} {S(vw)} {S(vh)}";
         }
+
         private string AspectRatioString() { var ar = (double)Wm / (double)Hm; return $"{ar:0.###} / 1"; }
 
         private (double size, bool show) LabelFontSizeAndVisibility(Poly p, string label)
@@ -180,7 +244,9 @@ namespace BARI_web.Features.Espacios.Pages
             bool show = fs >= 0.25 && (double)availW >= 0.5 && (double)availH >= 0.4;
             return (fs, show);
         }
+
         private string AreaLabel(Poly p) => p.etiqueta ?? (_areasLookup.TryGetValue(p.area_id ?? "", out var v) ? v : "SIN ÁREA");
+
         private string AreaColor(Poly p)
         {
             if (!string.IsNullOrWhiteSpace(p.color_hex)) return p.color_hex!;
@@ -628,7 +694,7 @@ namespace BARI_web.Features.Espacios.Pages
         private static bool BoundsOverlap(IReadOnlyList<Point> a, IReadOnlyList<Point> b)
         {
             if (a.Count == 0 || b.Count == 0) return false;
-                var (aMinX, aMinY, aMaxX, aMaxY) = BoundsOfPointList(a);
+            var (aMinX, aMinY, aMaxX, aMaxY) = BoundsOfPointList(a);
             var (bMinX, bMinY, bMaxX, bMaxY) = BoundsOfPointList(b);
             return aMinX < bMaxX && aMaxX > bMinX && aMinY < bMaxY && aMaxY > bMinY;
         }
@@ -650,6 +716,180 @@ namespace BARI_web.Features.Espacios.Pages
             if (PointInPolygon(a[0], b)) return true;
             if (PointInPolygon(b[0], a)) return true;
             return false;
+        }
+        // ==================== Snap REAL a borde de polígono (segmentos) ====================
+
+        // Distancia al segmento + proyección (t en [0..1])
+        private static (decimal dist2, decimal projX, decimal projY, decimal t) ProjectPointToSegment(Point p, Point a, Point b)
+        {
+            var abx = b.X - a.X;
+            var aby = b.Y - a.Y;
+            var apx = p.X - a.X;
+            var apy = p.Y - a.Y;
+
+            var ab2 = abx * abx + aby * aby;
+            if (ab2 <= 0.0000001m)
+                return ((p.X - a.X) * (p.X - a.X) + (p.Y - a.Y) * (p.Y - a.Y), a.X, a.Y, 0m);
+
+            var t = (apx * abx + apy * aby) / ab2;
+            if (t < 0m) t = 0m;
+            if (t > 1m) t = 1m;
+
+            var x = a.X + abx * t;
+            var y = a.Y + aby * t;
+            var dx = p.X - x;
+            var dy = p.Y - y;
+            return (dx * dx + dy * dy, x, y, t);
+        }
+
+        private static decimal SegLen(Point a, Point b)
+        {
+            var dx = a.X - b.X;
+            var dy = a.Y - b.Y;
+            return (decimal)Math.Sqrt((double)(dx * dx + dy * dy));
+        }
+
+        // Encuentra el segmento de borde más cercano a un punto (px,py) en TODOS los polígonos visibles.
+        // Devuelve: polígono, segmento [i -> i+1], punto proyectado, longitud del segmento, normalizada t.
+        private Poly? FindNearestPolygonSegment(
+            decimal px, decimal py,
+            out int segIndex,
+            out decimal sx, out decimal sy,
+            out decimal segLen,
+            (string polyId, int segIndex)? prefer = null,
+            IEnumerable<Poly>? candidates = null)
+        {
+            var p = new Point(px, py);
+            var polys = candidates ?? VisiblePolys();
+
+            Poly? bestPoly = null;
+            segIndex = -1;
+            sx = sy = segLen = 0m;
+            double bestCost = double.MaxValue;
+
+            foreach (var poly in polys)
+            {
+                var pts = poly.puntos;
+                if (pts is null || pts.Count < 2) continue;
+
+                for (int i = 0; i < pts.Count; i++)
+                {
+                    var a = pts[i];
+                    var b = pts[(i + 1) % pts.Count];
+                    var len = SegLen(a, b);
+                    if (len <= 0.0001m) continue;
+
+                    var proj = ProjectPointToSegment(p, a, b);
+
+                    // Evitar “enganchar” exactamente en las esquinas
+                    // CORNER_GUARD está en metros: conviértelo a porcentaje del segmento
+                    var guardT = CORNER_GUARD / Math.Max(len, 0.0001m);
+                    var tClamped = proj.t;
+                    if (tClamped < guardT) tClamped = guardT;
+                    if (tClamped > 1m - guardT) tClamped = 1m - guardT;
+
+                    // recalcular proyección con tClamped
+                    var abx = b.X - a.X;
+                    var aby = b.Y - a.Y;
+                    var x = a.X + abx * tClamped;
+                    var y = a.Y + aby * tClamped;
+                    var dx = p.X - x;
+                    var dy = p.Y - y;
+
+                    var dist2 = (double)(dx * dx + dy * dy);
+                    var cost = dist2;
+
+                    // preferencia: si veníamos de ese segmento, favorece
+                    if (prefer is not null && prefer.Value.polyId == poly.poly_id && prefer.Value.segIndex == i)
+                        cost *= 0.35;
+
+                    if (cost < bestCost)
+                    {
+                        bestCost = cost;
+                        bestPoly = poly;
+                        segIndex = i;
+                        sx = x; sy = y;
+                        segLen = len;
+                    }
+                }
+            }
+
+            return bestPoly;
+        }
+
+        // Determina si dos segmentos (colineales) comparten borde (para deducir area_b)
+        private static decimal SegmentOverlap1D(decimal a1, decimal a2, decimal b1, decimal b2)
+        {
+            if (a2 < a1) (a1, a2) = (a2, a1);
+            if (b2 < b1) (b1, b2) = (b2, b1);
+            var lo = Math.Max(a1, b1);
+            var hi = Math.Min(a2, b2);
+            return Math.Max(0m, hi - lo);
+        }
+
+        // Vecino por borde REAL: busca otro polígono que comparta el MISMO segmento (o colineal y solapado)
+        private Poly? FindNeighbourSharingSegment(Poly a, int aSegIndex, decimal x1, decimal y1, decimal x2, decimal y2)
+        {
+            var aPts = a.puntos;
+            var aA = aPts[aSegIndex];
+            var aB = aPts[(aSegIndex + 1) % aPts.Count];
+
+            // Vector del segmento
+            var ax = aB.X - aA.X;
+            var ay = aB.Y - aA.Y;
+
+            foreach (var b in VisiblePolys())
+            {
+                if (b.poly_id == a.poly_id) continue;
+                var pts = b.puntos;
+                if (pts.Count < 2) continue;
+
+                for (int j = 0; j < pts.Count; j++)
+                {
+                    var bA = pts[j];
+                    var bB = pts[(j + 1) % pts.Count];
+
+                    var bx = bB.X - bA.X;
+                    var by = bB.Y - bA.Y;
+
+                    // Colinealidad aproximada: cross(ax,ay,bx,by) ~ 0 y además bA está en la misma recta
+                    var cross = ax * by - ay * bx;
+                    if (Math.Abs((double)cross) > (double)EDGE_EPS) continue;
+
+                    // comprobar que bA está cerca de la recta del segmento de A: cross(aA,aB,bA) ~ 0
+                    var cross2 = (aB.X - aA.X) * (bA.Y - aA.Y) - (aB.Y - aA.Y) * (bA.X - aA.X);
+                    if (Math.Abs((double)cross2) > (double)EDGE_EPS) continue;
+
+                    // ahora medir solape del tramo puerta/ventana con ese segmento (1D sobre el eje dominante)
+                    bool horizontalish = Math.Abs((double)ax) >= Math.Abs((double)ay);
+
+                    if (horizontalish)
+                    {
+                        var ov = SegmentOverlap1D(x1, x2, Math.Min(bA.X, bB.X), Math.Max(bA.X, bB.X));
+                        if (ov >= MIN_OVERLAP_FOR_NEIGHBOUR) return b;
+                    }
+                    else
+                    {
+                        var ov = SegmentOverlap1D(y1, y2, Math.Min(bA.Y, bB.Y), Math.Max(bA.Y, bB.Y));
+                        if (ov >= MIN_OVERLAP_FOR_NEIGHBOUR) return b;
+                    }
+                }
+            }
+            return null;
+        }
+
+        // Calcula (x2,y2) desde (x1,y1) siguiendo el segmento (dirección) con un largo dado
+        private static (decimal x2, decimal y2) ExtendAlongSegment(Point a, Point b, decimal x1, decimal y1, decimal len)
+        {
+            var dx = b.X - a.X;
+            var dy = b.Y - a.Y;
+            var segLen = (decimal)Math.Sqrt((double)(dx * dx + dy * dy));
+            if (segLen <= 0.0001m) return (x1, y1);
+
+            var ux = dx / segLen;
+            var uy = dy / segLen;
+
+            return (x1 + ux * len, y1 + uy * len);
         }
 
         private static bool SegmentsIntersect(Point p1, Point p2, Point q1, Point q2)
@@ -692,10 +932,62 @@ namespace BARI_web.Features.Espacios.Pages
             return inside;
         }
 
-        // ======== Conversión pantalla->mundo
-        private (decimal x, decimal y) ScreenToWorld(double offsetX, double offsetY)
-            => (_panX + (decimal)(offsetX / (PxPerM() * _zoom)),
-                _panY + (decimal)(offsetY / (PxPerM() * _zoom)));
+        // ======== Conversión pantalla->mundo (usa rect real del SVG + ClientX/ClientY)
+        private double PxPerM()
+        {
+            var wPx = (_svgRectReady && _svgRect.Width > 0) ? _svgRect.Width : 1150.0;
+            return wPx / (double)Wm;
+        }
+
+        private (decimal x, decimal y) ClientToWorld(double clientX, double clientY)
+        {
+            var wPx = (_svgRectReady && _svgRect.Width > 0) ? _svgRect.Width : 1150.0;
+            var hPx = (_svgRectReady && _svgRect.Height > 0) ? _svgRect.Height : (1150.0 * ((double)Hm / (double)Wm));
+
+            var localX = clientX - (_svgRectReady ? _svgRect.Left : 0);
+            var localY = clientY - (_svgRectReady ? _svgRect.Top : 0);
+
+            // viewBox actual (lo mismo que ViewBox())
+            var vbX = (double)_panX;
+            var vbY = (double)_panY;
+            var vbW = (double)Wm / _zoom;
+            var vbH = (double)Hm / _zoom;
+
+            // preserveAspectRatio="xMidYMid meet"
+            var scale = Math.Min(wPx / vbW, hPx / vbH);
+            var offX = (wPx - vbW * scale) / 2.0; // xMid
+            var offY = (hPx - vbH * scale) / 2.0; // yMid
+
+            var sx = (localX - offX) / scale;
+            var sy = (localY - offY) / scale;
+
+            return ((decimal)(vbX + sx), (decimal)(vbY + sy));
+        }
+
+
+        private async Task EnsureSvgRectAsync()
+        {
+            _svgRect = await JS.InvokeAsync<SvgRect>("bariSvg.getRect", _svgRef);
+            _svgRectReady = _svgRect.Width > 0 && _svgRect.Height > 0;
+        }
+
+        private async Task CapturePointerAsync(PointerEventArgs e)
+        {
+            if (_capturedPointerId == e.PointerId) return;
+            _capturedPointerId = e.PointerId;
+            await JS.InvokeVoidAsync("bariSvg.capturePointer", _svgRef, e.PointerId);
+        }
+
+        private async Task ReleasePointerAsync()
+        {
+            if (_capturedPointerId is null) return;
+            try
+            {
+                await JS.InvokeVoidAsync("bariSvg.releasePointer", _svgRef, _capturedPointerId.Value);
+            }
+            catch { }
+            _capturedPointerId = null;
+        }
 
         // ===== Anti-túnel
         const decimal EPS = 0.001m;
@@ -815,28 +1107,52 @@ namespace BARI_web.Features.Espacios.Pages
             return Math.Max(0.1m, newH);
         }
 
-        // ======== Drag áreas
-        private void OnPointerDownMoveArea(PointerEventArgs e, string polyId)
+        // ======== Drag áreas (async + ClientToWorld + pointer capture)
+        private async Task OnPointerDownMoveArea(PointerEventArgs e, string polyId)
         {
-            _sel = _polys.First(p => p.poly_id == polyId); _selDoorId = null; _selWinId = null;
-            if ((_vertexEditSelecting || _vertexEditActive) && string.Equals(_vertexEditPolyId, polyId, StringComparison.OrdinalIgnoreCase))
+            await EnsureSvgRectAsync();
+            await CapturePointerAsync(e);
+
+            _sel = _polys.First(p => p.poly_id == polyId);
+            _selDoorId = null;
+            _selWinId = null;
+
+            if ((_vertexEditSelecting || _vertexEditActive) &&
+                string.Equals(_vertexEditPolyId, polyId, StringComparison.OrdinalIgnoreCase))
             {
                 _saveMsg = "Modo edición de vértices activo.";
                 StateHasChanged();
                 return;
             }
+
+            // ✅ FIX 1: limpiar edición ANTES de preparar el drag (si no, te borraba _beforeDragPoints/_dragStart)
+            ClearVertexEdit();
+
             _beforeDragPoly = _sel.Clone();
             _beforeDragPoints = _sel.puntos.Select(p => p).ToList();
             _activeHandle = Handle.None;
             _dragVertexIndex = -1;
             _selectedVertexIndex = -1;
-            ClearVertexEdit();
-            var (wx, wy) = ScreenToWorld(e.OffsetX, e.OffsetY); _dragStart = (wx, wy); StateHasChanged();
+            // ✅ guardar posiciones iniciales de puertas/ventanas pegadas a esta área
+            _beforeDragDoorXY = DoorsOfPoly(_sel).ToDictionary(d => d.door_id, d => (d.x_m, d.y_m));
+            _beforeDragWinXY = WinsOfPoly(_sel).ToDictionary(w => w.win_id, w => (w.x_m, w.y_m));
+
+            var (wx, wy) = ClientToWorld(e.ClientX, e.ClientY);
+            _dragStart = (wx, wy);
+            StateHasChanged();
         }
-        private void OnPointerDownResizeArea(PointerEventArgs e, Handle h)
+
+        private async Task OnPointerDownResizeArea(PointerEventArgs e, Handle h)
         {
-            if (_sel is null) return; _selDoorId = null; _selWinId = null; _beforeDragPoly = _sel.Clone(); _activeHandle = h;
-            var (wx, wy) = ScreenToWorld(e.OffsetX, e.OffsetY); _dragStart = (wx, wy); StateHasChanged();
+            if (_sel is null) return;
+
+            await EnsureSvgRectAsync();
+            await CapturePointerAsync(e);
+
+            _selDoorId = null; _selWinId = null; _beforeDragPoly = _sel.Clone(); _activeHandle = h;
+            var (wx, wy) = ClientToWorld(e.ClientX, e.ClientY);
+            _dragStart = (wx, wy);
+            StateHasChanged();
         }
 
         private void OnPointerMove(PointerEventArgs e)
@@ -844,24 +1160,74 @@ namespace BARI_web.Features.Espacios.Pages
             // PAN
             if (_panStart is not null && _dragStart is null && _dragDoor is null && _dragWin is null)
             {
-                var (sx, sy) = _panStart.Value; var dxPx = e.OffsetX - sx; var dyPx = e.OffsetY - sy;
+                var (sx, sy) = _panStart.Value;
+                var dxPx = e.ClientX - sx;
+                var dyPx = e.ClientY - sy;
+
                 if (!_panMoved && (Math.Abs(dxPx) > 3 || Math.Abs(dyPx) > 3)) _panMoved = true;
-                _panStart = (e.OffsetX, e.OffsetY);
-                var metersX = (decimal)(dxPx / (PxPerM() * _zoom)); var metersY = (decimal)(dyPx / (PxPerM() * _zoom));
+
+                _panStart = (e.ClientX, e.ClientY);
+
+                var metersX = (decimal)(dxPx / (PxPerM() * _zoom));
+                var metersY = (decimal)(dyPx / (PxPerM() * _zoom));
+
                 var vw = (decimal)((double)Wm / _zoom); var vh = (decimal)((double)Hm / _zoom);
-                _panX = Clamp(0m, Wm - vw, _panX - metersX); _panY = Clamp(0m, Hm - vh, _panY - metersY); StateHasChanged();
+                _panX = Clamp(0m, Wm - vw, _panX - metersX);
+                _panY = Clamp(0m, Hm - vh, _panY - metersY);
+                StateHasChanged();
             }
+
+            // HUD cursor world coords
+            var (cx, cy) = ClientToWorld(e.ClientX, e.ClientY);
+            _cursorWorld = (cx, cy);
+
+            // Si estás dibujando, calcular longitud del tramo actual y total
+            if (_isDrawing && _draftPoints.Count > 0)
+            {
+                var last = _draftPoints[^1];
+                var cur = new Point(cx, cy);
+
+                _drawDx = cx - last.X;
+                _drawDy = cy - last.Y;
+                _drawDist = DistanceBetweenPoints(last, cur);
+
+                _draftLiveLen = _drawDist;
+
+                decimal total = 0m;
+                for (int i = 1; i < _draftPoints.Count; i++)
+                    total += DistanceBetweenPoints(_draftPoints[i - 1], _draftPoints[i]);
+
+                _draftTotalLen = total + _draftLiveLen;
+            }
+            else
+            {
+                _draftLiveLen = 0m;
+                _draftTotalLen = 0m;
+
+                _drawDx = 0m;
+                _drawDy = 0m;
+                _drawDist = 0m;
+            }
+
+
 
             // ÁREAS
             if (_dragStart is not null && _sel is not null && _beforeDragPoints is not null)
             {
-                var (wx, wy) = ScreenToWorld(e.OffsetX, e.OffsetY);
+                var (wx, wy) = ClientToWorld(e.ClientX, e.ClientY);
                 var dx = wx - _dragStart.Value.x;
                 var dy = wy - _dragStart.Value.y;
                 var snapEnabled = _snapToGrid && !e.ShiftKey;
 
-                if (_dragVertexIndex >= 0 && _dragVertexIndex < _sel.puntos.Count)
+                // ✅ FIX 2: si estamos en drag de vértice (>=0) pero el índice llega mal, NO mover todo el polígono.
+                if (_dragVertexIndex >= 0)
                 {
+                    if (_dragVertexIndex >= _sel.puntos.Count)
+                    {
+                        // índice inválido -> ignorar movimiento (evita “arrastra todo” por error)
+                        return;
+                    }
+
                     var curX = snapEnabled ? SnapValue(wx) : wx;
                     var curY = snapEnabled ? SnapValue(wy) : wy;
                     var deltaX = curX - _dragStart!.Value.x;
@@ -919,23 +1285,63 @@ namespace BARI_web.Features.Espacios.Pages
                     var minDx = 0m - minX;
                     var maxDy = Hm - maxY;
                     var minDy = 0m - minY;
+
                     dx = Clamp(minDx, maxDx, dx);
                     dy = Clamp(minDy, maxDy, dy);
+
                     if (snapEnabled)
                     {
                         dx = SnapValue(dx);
                         dy = SnapValue(dy);
                     }
-                    _sel.puntos = _beforeDragPoints.Select(pt => new Point(pt.X + dx, pt.Y + dy)).ToList();
+                    // ✅ mover polígono con colisión en vivo (sweep X luego Y)
+                    var pts0 = _beforeDragPoints;
+
+                    // 1) mover en X lo máximo posible sin solapar
+                    var fx = MaxFactorNoOverlap(_sel.poly_id, pts0, dx, 0m);
+                    var dx2 = dx * fx;
+                    var ptsX = pts0.Select(p => new Point(p.X + dx2, p.Y)).ToList();
+
+                    // 2) mover en Y lo máximo posible sin solapar (ya con X aplicado)
+                    var fy = MaxFactorNoOverlap(_sel.poly_id, ptsX, 0m, dy);
+                    var dy2 = dy * fy;
+
+                    // aplicar
+                    _sel.puntos = ptsX.Select(p => new Point(p.X, p.Y + dy2)).ToList();
                     UpdateBoundsFromPolyPoints(_sel);
+
+                    // ✅ mover también puertas/ventanas “pegadas” usando dx2/dy2 (no dx/dy)
+                    if (_beforeDragDoorXY is not null)
+                    {
+                        foreach (var d in DoorsOfPoly(_sel))
+                            if (_beforeDragDoorXY.TryGetValue(d.door_id, out var b))
+                            {
+                                d.x_m = b.x + dx2;
+                                d.y_m = b.y + dy2;
+                            }
+                    }
+
+                    if (_beforeDragWinXY is not null)
+                    {
+                        foreach (var w in WinsOfPoly(_sel))
+                            if (_beforeDragWinXY.TryGetValue(w.win_id, out var b))
+                            {
+                                w.x_m = b.x + dx2;
+                                w.y_m = b.y + dy2;
+                            }
+                    }
+
+
                 }
+
+
                 StateHasChanged();
             }
 
             // PUERTAS
             if (_dragDoor is not null)
             {
-                var (x, y) = ScreenToWorld(e.OffsetX, e.OffsetY);
+                var (x, y) = ClientToWorld(e.ClientX, e.ClientY);
                 if (_resizeDoor) ResizeFeatureAlongEdge(_dragDoor, x, y);
                 else MoveFeatureToEdge(_dragDoor, x, y);
                 StateHasChanged();
@@ -944,14 +1350,14 @@ namespace BARI_web.Features.Espacios.Pages
             // VENTANAS
             if (_dragWin is not null)
             {
-                var (x, y) = ScreenToWorld(e.OffsetX, e.OffsetY);
+                var (x, y) = ClientToWorld(e.ClientX, e.ClientY);
                 if (_resizeWin) ResizeFeatureAlongEdge(_dragWin, x, y);
                 else MoveFeatureToEdge(_dragWin, x, y);
                 StateHasChanged();
             }
         }
 
-        private void OnPointerUp(PointerEventArgs e)
+        private async Task OnPointerUp(PointerEventArgs e)
         {
             if (_sel is not null && _beforeDragPoints is not null && (_dragVertexIndex >= 0 || _dragStart is not null))
             {
@@ -962,21 +1368,66 @@ namespace BARI_web.Features.Espacios.Pages
                     _saveMsg = "El polígono no puede solaparse con otra área.";
                 }
             }
+
             _dragStart = null; _beforeDragPoly = null; _activeHandle = Handle.None;
             _beforeDragPoints = null; _dragVertexIndex = -1;
             _dragDoor = null; _resizeDoor = false; _dragWin = null; _resizeWin = false;
-            if (_panStart is not null && !_panMoved) DeselectAll(); _panStart = null;
+            _beforeDragDoorXY = null;
+            _beforeDragWinXY = null;
+
+
+            // ✅ FIX 3: si estás editando vértices, NO deseleccionar por un click corto en background
+            if (_panStart is not null && !_panMoved && !_vertexEditSelecting && !_vertexEditActive)
+                DeselectAll();
+
+            _panStart = null;
+
+            await ReleasePointerAsync();
         }
 
         // ======== Handlers pointerdown (puertas / ventanas)
-        private void OnPointerDownMoveDoor(PointerEventArgs e, string id) { _dragDoor = _doors.First(d => d.door_id == id); _resizeDoor = false; _selDoorId = id; _selWinId = null; _sel = null; _showDoorWinPanels = true; ClearVertexEdit(); }
-        private void OnPointerDownResizeDoor(PointerEventArgs e, string id) { _dragDoor = _doors.First(d => d.door_id == id); _resizeDoor = true; _selDoorId = id; _selWinId = null; _sel = null; _showDoorWinPanels = true; ClearVertexEdit(); }
-        private void OnPointerDownMoveWin(PointerEventArgs e, string id) { _dragWin = _windows.First(w => w.win_id == id); _resizeWin = false; _selWinId = id; _selDoorId = null; _sel = null; _showDoorWinPanels = true; ClearVertexEdit(); }
-        private void OnPointerDownResizeWin(PointerEventArgs e, string id) { _dragWin = _windows.First(w => w.win_id == id); _resizeWin = true; _selWinId = id; _selDoorId = null; _sel = null; _showDoorWinPanels = true; ClearVertexEdit(); }
+        private async Task OnPointerDownMoveDoor(PointerEventArgs e, string id)
+        {
+            await EnsureSvgRectAsync();
+            await CapturePointerAsync(e);
+
+            _dragDoor = _doors.First(d => d.door_id == id); _resizeDoor = false;
+            _selDoorId = id; _selWinId = null; _sel = null; _showDoorWinPanels = true; ClearVertexEdit();
+        }
+
+        private async Task OnPointerDownResizeDoor(PointerEventArgs e, string id)
+        {
+            await EnsureSvgRectAsync();
+            await CapturePointerAsync(e);
+
+            _dragDoor = _doors.First(d => d.door_id == id); _resizeDoor = true;
+            _selDoorId = id; _selWinId = null; _sel = null; _showDoorWinPanels = true; ClearVertexEdit();
+        }
+
+        private async Task OnPointerDownMoveWin(PointerEventArgs e, string id)
+        {
+            await EnsureSvgRectAsync();
+            await CapturePointerAsync(e);
+
+            _dragWin = _windows.First(w => w.win_id == id); _resizeWin = false;
+            _selWinId = id; _selDoorId = null; _sel = null; _showDoorWinPanels = true; ClearVertexEdit();
+        }
+
+        private async Task OnPointerDownResizeWin(PointerEventArgs e, string id)
+        {
+            await EnsureSvgRectAsync();
+            await CapturePointerAsync(e);
+
+            _dragWin = _windows.First(w => w.win_id == id); _resizeWin = true;
+            _selWinId = id; _selDoorId = null; _sel = null; _showDoorWinPanels = true; ClearVertexEdit();
+        }
 
         // ======== Pan/Zoom
-        private void OnPointerDownBackground(PointerEventArgs e)
+        private async Task OnPointerDownBackground(PointerEventArgs e)
         {
+            await EnsureSvgRectAsync();
+            await CapturePointerAsync(e);
+
             if (_isDrawing)
             {
                 AddDraftPoint(e);
@@ -984,7 +1435,9 @@ namespace BARI_web.Features.Espacios.Pages
             }
             BeginPan(e);
         }
-        private void BeginPan(PointerEventArgs e) { _panStart = (e.OffsetX, e.OffsetY); _panMoved = false; }
+
+        private void BeginPan(PointerEventArgs e) { _panStart = (e.ClientX, e.ClientY); _panMoved = false; }
+
         private void OnWheel(WheelEventArgs e) { var delta = Math.Sign(e.DeltaY); var factor = (delta < 0) ? 1.1 : (1 / 1.1); _zoom = Math.Clamp(_zoom * factor, 0.3, 6.0); CenterView(); }
         private void ZoomIn() { _zoom = Math.Clamp(_zoom * 1.1, 0.3, 6.0); CenterView(); }
         private void ZoomOut() { _zoom = Math.Clamp(_zoom / 1.1, 0.3, 6.0); CenterView(); }
@@ -993,6 +1446,8 @@ namespace BARI_web.Features.Espacios.Pages
         private static decimal ClampBetween(decimal a, decimal b, decimal v) => v < a ? a : (v > b ? b : v);
         private readonly Dictionary<string, (string orient, string areaId)> _lastEdgeForDoor = new();
         private readonly Dictionary<string, (string orient, string areaId)> _lastEdgeForWin = new();
+        private readonly Dictionary<string, (string polyId, int segIndex)> _lastSegForDoor = new();
+        private readonly Dictionary<string, (string polyId, int segIndex)> _lastSegForWin = new();
 
         // ==================== NUEVAS VERSIONES (snap real a segmento) ====================
 
@@ -1094,7 +1549,7 @@ namespace BARI_web.Features.Espacios.Pages
 
             Poly? best = null; decimal bestOverlap = 0;
 
-            foreach (var b in VisiblePolys()) // << SOLO visibles
+            foreach (var b in VisiblePolys())
             {
                 if (b.poly_id == a.poly_id) continue;
                 var (l, t, r, bb) = b.Bounds();
@@ -1167,37 +1622,47 @@ namespace BARI_web.Features.Espacios.Pages
         // ======= Puertas (mover/redimensionar sobre borde)
         private void MoveFeatureToEdge(Door d, decimal px, decimal py)
         {
-            (string orient, string areaId)? prefer = null;
-            if (_lastEdgeForDoor.TryGetValue(d.door_id, out var prev)) prefer = prev;
+            (string polyId, int segIndex)? prefer = null;
+            if (_lastSegForDoor.TryGetValue(d.door_id, out var prev)) prefer = prev;
 
-            var a = FindNearestPolyEdge(px, py, out var axis, out var sx, out var sy, out var segA, out var segB, prefer, VisiblePolys());
-            if (a is null) return;
+            var poly = FindNearestPolygonSegment(px, py, out var segIdx, out var sx, out var sy, out var segLen, prefer, VisiblePolys());
+            if (poly is null || segIdx < 0) return;
 
-            var maxLen = EdgeMaxLen(a, axis);
+            // limitar largo al segmento - 2*corner_guard
+            var maxLen = Math.Max(0.4m, segLen - 2 * CORNER_GUARD);
             d.largo_m = Clamp(0.4m, maxLen, d.largo_m);
 
-            if (axis == "E")
-            {
-                var minX = (segA + CORNER_GUARD);
-                var maxX = (segB - CORNER_GUARD - d.largo_m);
-                d.x_m = Clamp(minX, maxX, sx);
-                d.y_m = sy;
-                d.orientacion = "E";
-            }
-            else
-            {
-                var minY = (segA + CORNER_GUARD);
-                var maxY = (segB - CORNER_GUARD - d.largo_m);
-                d.y_m = Clamp(minY, maxY, sy);
-                d.x_m = sx;
-                d.orientacion = "N";
-            }
+            // Punto inicio: (sx,sy) debe dejar espacio para largo sobre el segmento
+            var a = poly.puntos[segIdx];
+            var b = poly.puntos[(segIdx + 1) % poly.puntos.Count];
 
-            var other = FindSharedEdgeNeighbour(a, axis, d.x_m, d.y_m, d.largo_m);
-            d.area_id_a = a.area_id;
-            d.area_id_b = other?.area_id;
+            // Ajustar inicio para que (inicio + len) no pase de b (guardando esquina)
+            // Convertimos a "t" y recortamos para que quede [guard .. 1-guard-lenFrac]
+            var lenFrac = d.largo_m / Math.Max(segLen, 0.0001m);
+            var guardFrac = CORNER_GUARD / Math.Max(segLen, 0.0001m);
+            var t = ProjectPointToSegment(new Point(px, py), a, b).t;
+            t = Clamp(guardFrac, 1m - guardFrac - lenFrac, t);
 
-            _lastEdgeForDoor[d.door_id] = (axis, d.area_id_a ?? "");
+            var x1 = a.X + (b.X - a.X) * t;
+            var y1 = a.Y + (b.Y - a.Y) * t;
+
+            // Fin
+            var (x2, y2) = ExtendAlongSegment(a, b, x1, y1, d.largo_m);
+            d.x2_m = x2;
+            d.y2_m = y2;
+
+            d.x_m = x1;
+            d.y_m = y1;
+
+            // Orientación “visual” (solo para DB legacy)
+            d.orientacion = (Math.Abs((double)(b.X - a.X)) >= Math.Abs((double)(b.Y - a.Y))) ? "E" : "N";
+
+            // Área A/B
+            d.area_id_a = poly.area_id;
+            var neigh = FindNeighbourSharingSegment(poly, segIdx, x1, y1, x2, y2);
+            d.area_id_b = neigh?.area_id;
+
+            _lastSegForDoor[d.door_id] = (poly.poly_id, segIdx);
         }
 
         private void ResizeFeatureAlongEdge(Door d, decimal px, decimal py)
@@ -1234,65 +1699,76 @@ namespace BARI_web.Features.Espacios.Pages
         // ======= Ventanas (mover/redimensionar sobre borde)
         private void MoveFeatureToEdge(Win w, decimal px, decimal py)
         {
-            (string orient, string areaId)? prefer = null;
-            if (_lastEdgeForWin.TryGetValue(w.win_id, out var prev)) prefer = prev;
+            (string polyId, int segIndex)? prefer = null;
+            if (_lastSegForWin.TryGetValue(w.win_id, out var prev)) prefer = prev;
 
-            var a = FindNearestPolyEdge(px, py, out var axis, out var sx, out var sy, out var segA, out var segB, prefer);
-            if (a is null) return;
+            var poly = FindNearestPolygonSegment(px, py, out var segIdx, out var sx, out var sy, out var segLen, prefer, VisiblePolys());
+            if (poly is null || segIdx < 0) return;
 
-            var maxLen = EdgeMaxLen(a, axis);
+            var maxLen = Math.Max(0.4m, segLen - 2 * CORNER_GUARD);
             w.largo_m = Clamp(0.4m, maxLen, w.largo_m);
 
-            if (axis == "E")
-            {
-                var minX = segA + CORNER_GUARD;
-                var maxX = segB - CORNER_GUARD - w.largo_m;
-                w.x_m = Clamp(minX, maxX, sx);
-                w.y_m = sy;
-                w.orientacion = "E";
-            }
-            else
-            {
-                var minY = segA + CORNER_GUARD;
-                var maxY = segB - CORNER_GUARD - w.largo_m;
-                w.y_m = Clamp(minY, maxY, sy);
-                w.x_m = sx;
-                w.orientacion = "N";
-            }
+            var a = poly.puntos[segIdx];
+            var b = poly.puntos[(segIdx + 1) % poly.puntos.Count];
 
-            var other = FindSharedEdgeNeighbour(a, axis, w.x_m, w.y_m, w.largo_m);
-            w.area_id_a = a.area_id;
-            w.area_id_b = other?.area_id;
+            var lenFrac = w.largo_m / Math.Max(segLen, 0.0001m);
+            var guardFrac = CORNER_GUARD / Math.Max(segLen, 0.0001m);
 
-            _lastEdgeForWin[w.win_id] = (axis, w.area_id_a ?? "");
+            var t = ProjectPointToSegment(new Point(px, py), a, b).t;
+            t = Clamp(guardFrac, 1m - guardFrac - lenFrac, t);
+
+            var x1 = a.X + (b.X - a.X) * t;
+            var y1 = a.Y + (b.Y - a.Y) * t;
+
+            var (x2, y2) = ExtendAlongSegment(a, b, x1, y1, w.largo_m);
+            w.x2_m = x2;
+            w.y2_m = y2;
+
+            w.x_m = x1;
+            w.y_m = y1;
+            w.orientacion = (Math.Abs((double)(b.X - a.X)) >= Math.Abs((double)(b.Y - a.Y))) ? "E" : "N";
+
+            w.area_id_a = poly.area_id;
+            var neigh = FindNeighbourSharingSegment(poly, segIdx, x1, y1, x2, y2);
+            w.area_id_b = neigh?.area_id;
+
+            _lastSegForWin[w.win_id] = (poly.poly_id, segIdx);
         }
+
 
         private void ResizeFeatureAlongEdge(Win w, decimal px, decimal py)
         {
-            var a = PolyByArea(w.area_id_a);
-            if (a is null) return;
+            if (string.IsNullOrWhiteSpace(w.area_id_a)) return;
 
-            var axis = (w.orientacion == "E" || w.orientacion == "W") ? "E" : "N";
-            var maxLen = EdgeMaxLen(a, axis);
+            (string polyId, int segIndex)? prefer = null;
+            if (_lastSegForWin.TryGetValue(w.win_id, out var prev)) prefer = prev;
 
-            if (axis == "E")
-            {
-                var newLen = px - w.x_m;
-                w.largo_m = Clamp(0.4m, maxLen, Math.Abs(newLen));
-                var (L, _, R, _) = a.Bounds();
-                w.x_m = Clamp(L + CORNER_GUARD, R - CORNER_GUARD - w.largo_m, w.x_m);
-            }
-            else
-            {
-                var newLen = py - w.y_m;
-                w.largo_m = Clamp(0.4m, maxLen, Math.Abs(newLen));
-                var (_, T, _, B) = a.Bounds();
-                w.y_m = Clamp(T + CORNER_GUARD, B - CORNER_GUARD - w.largo_m, w.y_m);
-            }
+            var poly = FindNearestPolygonSegment(w.x_m, w.y_m, out var segIdx, out _, out _, out var segLen, prefer, VisiblePolys());
+            if (poly is null || segIdx < 0) return;
 
-            var other = FindSharedEdgeNeighbour(a, axis, w.x_m, w.y_m, w.largo_m);
-            w.area_id_b = other?.area_id;
+            var a = poly.puntos[segIdx];
+            var b = poly.puntos[(segIdx + 1) % poly.puntos.Count];
+
+            var maxLen = Math.Max(0.4m, segLen - 2 * CORNER_GUARD);
+
+            var proj = ProjectPointToSegment(new Point(px, py), a, b);
+            var startProj = ProjectPointToSegment(new Point(w.x_m, w.y_m), a, b);
+
+            var newLen = Math.Abs((proj.t - startProj.t) * segLen);
+            w.largo_m = Clamp(0.4m, maxLen, newLen);
+
+            var (x2, y2) = ExtendAlongSegment(a, b, w.x_m, w.y_m, w.largo_m);
+            w.x2_m = x2;
+            w.y2_m = y2;
+
+            w.orientacion = (Math.Abs((double)(b.X - a.X)) >= Math.Abs((double)(b.Y - a.Y))) ? "E" : "N";
+
+            var neigh = FindNeighbourSharingSegment(poly, segIdx, w.x_m, w.y_m, x2, y2);
+            w.area_id_b = neigh?.area_id;
+
+            _lastSegForWin[w.win_id] = (poly.poly_id, segIdx);
         }
+
 
         // ===== guardar / nuevo / eliminar
         private async Task Guardar()
@@ -1634,6 +2110,7 @@ namespace BARI_web.Features.Espacios.Pages
             _selectedVertexIndex = -1;
             _dragVertexIndex = -1;
             ClearVertexEdit();
+
         }
 
         private void CancelDrawing()
@@ -1641,6 +2118,25 @@ namespace BARI_web.Features.Espacios.Pages
             _draftPoints.Clear();
             _drawMsg = null;
             _isDrawing = false;
+        }
+        private bool SegmentHitsAnyPoly(Point a, Point b)
+        {
+            foreach (var o in VisiblePolys())
+            {
+                if (!BoundsOverlap(new[] { a, b }, o.puntos)) continue;
+
+                // si intersecta algún borde
+                for (int i = 0; i < o.puntos.Count; i++)
+                {
+                    var c = o.puntos[i];
+                    var d = o.puntos[(i + 1) % o.puntos.Count];
+                    if (SegmentsIntersect(a, b, c, d)) return true;
+                }
+
+                // o si el punto final cae dentro
+                if (PointInPolygon(b, o.puntos)) return true;
+            }
+            return false;
         }
 
         private void AddDraftPoint(PointerEventArgs e)
@@ -1656,7 +2152,7 @@ namespace BARI_web.Features.Espacios.Pages
                 return;
             }
 
-            var (wx, wy) = ScreenToWorld(e.OffsetX, e.OffsetY);
+            var (wx, wy) = ClientToWorld(e.ClientX, e.ClientY);
             var snapEnabled = _snapToGrid && !e.ShiftKey;
             var x = snapEnabled ? SnapValue(wx) : wx;
             var y = snapEnabled ? SnapValue(wy) : wy;
@@ -1674,6 +2170,15 @@ namespace BARI_web.Features.Espacios.Pages
             {
                 FinalizeDraftPolygon();
                 return;
+            }
+            if (_draftPoints.Count > 0)
+            {
+                var last = _draftPoints[^1];
+                if (SegmentHitsAnyPoly(last, point))
+                {
+                    _drawMsg = "Colisión: ese tramo entra o cruza otra área. Acércate al borde.";
+                    return;
+                }
             }
 
             _draftPoints.Add(point);
@@ -1726,8 +2231,11 @@ namespace BARI_web.Features.Espacios.Pages
             _isDrawing = false;
         }
 
-        private void OnPointerDownVertex(PointerEventArgs e, string polyId, int index)
+        private async Task OnPointerDownVertex(PointerEventArgs e, string polyId, int index)
         {
+            await EnsureSvgRectAsync();
+            await CapturePointerAsync(e);
+
             _sel = _polys.First(p => p.poly_id == polyId);
             _selDoorId = null;
             _selWinId = null;
@@ -1768,7 +2276,7 @@ namespace BARI_web.Features.Espacios.Pages
                 }
 
                 _beforeDragPoints = _sel.puntos.Select(p => p).ToList();
-                var (wx, wy) = ScreenToWorld(e.OffsetX, e.OffsetY);
+                var (wx, wy) = ClientToWorld(e.ClientX, e.ClientY);
                 _dragStart = (wx, wy);
                 _dragVertexIndex = index;
 
@@ -1937,11 +2445,20 @@ namespace BARI_web.Features.Espacios.Pages
         }
 
         // ===== utils
-        private double PxPerM() { const double nominalSvgPx = 1150.0; return nominalSvgPx / (double)Wm; }
-        private decimal PxToWorld(double px) => (decimal)(px / (PxPerM() * _zoom));
+        private double SvgScale()
+        {
+            var wPx = (_svgRectReady && _svgRect.Width > 0) ? _svgRect.Width : 1150.0;
+            var hPx = (_svgRectReady && _svgRect.Height > 0) ? _svgRect.Height : (1150.0 * ((double)Hm / (double)Wm));
+            var vbW = (double)Wm / _zoom;
+            var vbH = (double)Hm / _zoom;
+            return Math.Min(wPx / vbW, hPx / vbH);
+        }
+
+        private decimal PxToWorld(double px) => (decimal)(px / SvgScale());
         private decimal VertexR() => PxToWorld(5);
         private decimal VertexStroke() => PxToWorld(1.5);
         private decimal DraftR(bool first) => PxToWorld(first ? 7 : 5);
+
         private static decimal ParseFlexible(object? v)
         {
             var s = (v?.ToString() ?? "").Trim();
@@ -1951,6 +2468,7 @@ namespace BARI_web.Features.Espacios.Pages
             else s = s.Replace(",", ".");
             return decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : 0m;
         }
+
         private static decimal Dec(string s) => decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : 0m;
         private static int Int(string s) => int.TryParse(s, out var n) ? n : 0;
         private static string? NullIfEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s;
@@ -1958,6 +2476,7 @@ namespace BARI_web.Features.Espacios.Pages
         private static string S(decimal v) => v.ToString(CultureInfo.InvariantCulture);
         private static string S(double v) => v.ToString(CultureInfo.InvariantCulture);
         private static int? IntOrNull(string? s) => int.TryParse(s, out var n) ? n : null;
+
         private void DeselectAll() { _sel = null; _selDoorId = null; _selWinId = null; _hoverId = null; _selectedVertexIndex = -1; ClearVertexEdit(); StateHasChanged(); }
 
         private void ClearVertexEdit()
@@ -1996,6 +2515,7 @@ namespace BARI_web.Features.Espacios.Pages
             Handle.SE => (p.x_m + p.ancho_m, p.y_m + p.alto_m),
             _ => (p.x_m, p.y_m)
         };
+
         private static bool Nearly(decimal a, decimal b, double eps = 1e-6) => Math.Abs((double)(a - b)) < eps;
 
         private void TryJoinAtoB()
@@ -2066,6 +2586,25 @@ namespace BARI_web.Features.Espacios.Pages
                 default: return false;
             }
         }
+
+        private decimal MaxFactorNoOverlap(string polyId, IReadOnlyList<Point> basePts, decimal dx, decimal dy)
+        {
+            if (dx == 0m && dy == 0m) return 0m;
+
+            var full = basePts.Select(p => new Point(p.X + dx, p.Y + dy)).ToList();
+            if (!OverlapsAnyPoints(polyId, full)) return 1m;
+
+            decimal lo = 0m, hi = 1m;
+            for (int it = 0; it < 12; it++)
+            {
+                var mid = (lo + hi) / 2m;
+                var test = basePts.Select(p => new Point(p.X + dx * mid, p.Y + dy * mid)).ToList();
+                if (OverlapsAnyPoints(polyId, test)) hi = mid;
+                else lo = mid;
+            }
+            return lo;
+        }
+
         private bool StretchCornerToY(Poly p, Handle fixedCorner, decimal ty)
         {
             var baseTop = p.y_m; var baseBottom = p.y_m + p.alto_m;
@@ -2106,7 +2645,7 @@ namespace BARI_web.Features.Espacios.Pages
             const int MAX_ITERS = 24;
             for (int k = 0; k < MAX_ITERS; k++)
             {
-                var overlapWith = VisiblePolys().FirstOrDefault(o => o.poly_id != p.poly_id && RectOverlap(p, o)); // << visibles
+                var overlapWith = VisiblePolys().FirstOrDefault(o => o.poly_id != p.poly_id && RectOverlap(p, o));
                 if (overlapWith is null) return true;
                 var (L1, T1, R1, B1) = p.Bounds(); var (L2, T2, R2, B2) = overlapWith.Bounds();
                 var oL = Math.Max(L1, L2); var oT = Math.Max(T1, T2); var oR = Math.Min(R1, R2); var oB = Math.Min(B1, B2);
@@ -2261,17 +2800,16 @@ namespace BARI_web.Features.Espacios.Pages
 
         private async Task NormalizeAndPersistDoorsAndWindowsAsync(decimal roundMm)
         {
+
             try
             {
                 // --- Puertas SOLO de la planta activa ---
                 Pg.UseSheet("puertas");
-                foreach (var d in _doors.Where(IsDoorVisible))  // << antes: foreach (var d in _doors)
+                foreach (var d in _doors.Where(IsDoorVisible))
                 {
                     (string orient, string areaId)? prefer = null;
                     if (_lastEdgeForDoor.TryGetValue(d.door_id, out var prev)) prefer = prev;
 
-                    // IMPORTANTE: FindNearestPolyEdge ya usa VisiblePolys() por defecto,
-                    // así que nunca va a “pescar” bordes de otras plantas.
                     var poly = FindNearestPolyEdge(d.x_m, d.y_m, out var axis, out var sx, out var sy, out var segA, out var segB, prefer);
                     if (poly is not null)
                     {
@@ -2305,7 +2843,7 @@ namespace BARI_web.Features.Espacios.Pages
                     d.area_id_a = SanitizeFk(d.area_id_a, _areasLookup);
                     d.area_id_b = SanitizeFk(d.area_id_b, _areasLookup);
 
-                    // Persistir (igual que antes)...
+                    // Persistir...
                     decimal x2 = d.x_m, y2 = d.y_m;
                     switch (d.orientacion)
                     {
@@ -2334,7 +2872,7 @@ namespace BARI_web.Features.Espacios.Pages
 
                 // --- Ventanas SOLO de la planta activa ---
                 Pg.UseSheet("ventanas");
-                foreach (var w in _windows.Where(IsWinVisible))  // << antes: foreach (var w in _windows)
+                foreach (var w in _windows.Where(IsWinVisible))
                 {
                     (string orient, string areaId)? prefer = null;
                     if (_lastEdgeForWin.TryGetValue(w.win_id, out var prev)) prefer = prev;
@@ -2372,7 +2910,7 @@ namespace BARI_web.Features.Espacios.Pages
                     w.area_id_a = SanitizeFk(w.area_id_a, _areasLookup);
                     w.area_id_b = SanitizeFk(w.area_id_b, _areasLookup);
 
-                    // Persistir (igual que antes)...
+                    // Persistir...
                     decimal x2 = w.x_m, y2 = w.y_m;
                     switch (w.orientacion)
                     {
@@ -2405,7 +2943,6 @@ namespace BARI_web.Features.Espacios.Pages
             }
         }
 
-
         // Lookup de plantas y meta por área
         private Dictionary<string, string> _plantasLookup = new(StringComparer.OrdinalIgnoreCase);
 
@@ -2418,6 +2955,7 @@ namespace BARI_web.Features.Espacios.Pages
             public decimal? altura_m { get; set; }
             public string anotaciones { get; set; } = "SIN MODIFICACIONES";
         }
+
         private readonly Dictionary<string, AreaMeta> _areasMeta = new(StringComparer.OrdinalIgnoreCase);
 
         //CALCULAR AREA TOTAL
@@ -2485,7 +3023,6 @@ namespace BARI_web.Features.Espacios.Pages
             return true;
         }
 
-        // ¿Un área pertenece a la planta actual?
         private bool IsAreaInCurrentPlanta(string? areaId)
             => !string.IsNullOrWhiteSpace(areaId)
                && _areasMeta.TryGetValue(areaId!, out var meta)
@@ -2507,7 +3044,6 @@ namespace BARI_web.Features.Espacios.Pages
                    string.Equals(meta.planta_id ?? "", _currentPlantaId ?? "", StringComparison.OrdinalIgnoreCase)
                    && string.Equals(meta.canvas_id ?? "", _canvas?.canvas_id ?? "", StringComparison.OrdinalIgnoreCase));
 
-        // Área por defecto en la planta activa
         private string? DefaultAreaIdForCurrentPlanta()
         {
             if (IsAreaInCurrentPlanta(_sel?.area_id)) return _sel!.area_id;
@@ -2630,3 +3166,4 @@ namespace BARI_web.Features.Espacios.Pages
         }
     }
 }
+
