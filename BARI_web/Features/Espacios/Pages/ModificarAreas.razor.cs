@@ -614,6 +614,17 @@ namespace BARI_web.Features.Espacios.Pages
             return false;
         }
 
+        private bool OverlapsAnyPoints(string polyId, IReadOnlyList<Point> points)
+        {
+            foreach (var other in VisiblePolys())
+            {
+                if (other.poly_id == polyId) continue;
+                if (!BoundsOverlap(points, other.puntos)) continue;
+                if (PolygonsOverlap(points, other.puntos)) return true;
+            }
+            return false;
+        }
+
         private static bool BoundsOverlap(IReadOnlyList<Point> a, IReadOnlyList<Point> b)
         {
             if (a.Count == 0 || b.Count == 0) return false;
@@ -851,11 +862,10 @@ namespace BARI_web.Features.Espacios.Pages
 
                 if (_dragVertexIndex >= 0 && _dragVertexIndex < _sel.puntos.Count)
                 {
-                    var original = _beforeDragPoints[_dragVertexIndex];
-                    var targetX = snapEnabled ? SnapValue(wx) : wx;
-                    var targetY = snapEnabled ? SnapValue(wy) : wy;
-                    var deltaX = targetX - original.X;
-                    var deltaY = targetY - original.Y;
+                    var curX = snapEnabled ? SnapValue(wx) : wx;
+                    var curY = snapEnabled ? SnapValue(wy) : wy;
+                    var deltaX = curX - _dragStart!.Value.x;
+                    var deltaY = curY - _dragStart!.Value.y;
 
                     var selected = _vertexEditIndices.Count > 0 ? _vertexEditIndices : new HashSet<int> { _dragVertexIndex };
                     var selectedPoints = selected.Select(idx => _beforeDragPoints[idx]).ToList();
@@ -863,10 +873,42 @@ namespace BARI_web.Features.Espacios.Pages
                     deltaX = Clamp(0m - minX, Wm - maxX, deltaX);
                     deltaY = Clamp(0m - minY, Hm - maxY, deltaY);
 
+                    var candidate = _beforeDragPoints.Select(p => p).ToList();
                     foreach (var idx in selected)
                     {
                         var pt = _beforeDragPoints[idx];
-                        _sel.puntos[idx] = new Point(pt.X + deltaX, pt.Y + deltaY);
+                        candidate[idx] = new Point(pt.X + deltaX, pt.Y + deltaY);
+                    }
+
+                    if (OverlapsAnyPoints(_sel.poly_id, candidate))
+                    {
+                        decimal lo = 0m, hi = 1m;
+                        for (int it = 0; it < 10; it++)
+                        {
+                            var mid = (lo + hi) / 2m;
+                            var test = _beforeDragPoints.Select(p => p).ToList();
+                            foreach (var idx in selected)
+                            {
+                                var pt = _beforeDragPoints[idx];
+                                test[idx] = new Point(pt.X + deltaX * mid, pt.Y + deltaY * mid);
+                            }
+                            if (OverlapsAnyPoints(_sel.poly_id, test)) hi = mid;
+                            else lo = mid;
+                        }
+
+                        foreach (var idx in selected)
+                        {
+                            var pt = _beforeDragPoints[idx];
+                            _sel.puntos[idx] = new Point(pt.X + deltaX * lo, pt.Y + deltaY * lo);
+                        }
+                    }
+                    else
+                    {
+                        foreach (var idx in selected)
+                        {
+                            var pt = _beforeDragPoints[idx];
+                            _sel.puntos[idx] = new Point(pt.X + deltaX, pt.Y + deltaY);
+                        }
                     }
                     UpdateBoundsFromPolyPoints(_sel);
                 }
@@ -1864,6 +1906,10 @@ namespace BARI_web.Features.Espacios.Pages
 
         // ===== utils
         private double PxPerM() { const double nominalSvgPx = 1000.0; return nominalSvgPx / (double)Wm; }
+        private decimal PxToWorld(double px) => (decimal)(px / (PxPerM() * _zoom));
+        private decimal VertexR() => PxToWorld(5);
+        private decimal VertexStroke() => PxToWorld(1.5);
+        private decimal DraftR(bool first) => PxToWorld(first ? 7 : 5);
         private static decimal ParseFlexible(object? v)
         {
             var s = (v?.ToString() ?? "").Trim();
