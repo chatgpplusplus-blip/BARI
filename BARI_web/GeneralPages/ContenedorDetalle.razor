@@ -1,0 +1,342 @@
+﻿@page "/inventario-sustancias/contenedor/{ContenedorId}"
+@using Npgsql
+@using BARI_web.General_Services
+@inject NpgsqlDataSource DataSource
+@inject LaboratorioState LaboratorioState
+
+<PageTitle>@(detalle is null ? "Contenedor" : detalle.Id)</PageTitle>
+
+@if (!string.IsNullOrWhiteSpace(loadError))
+{
+    <p class="error-note">No se pudo cargar el contenedor: @loadError</p>
+}
+else if (detalle is null)
+{
+    <p><em>Cargando…</em></p>
+}
+else
+{
+    <a class="back" href="/inventario-sustancias">← Volver a sustancias</a>
+
+    <section class="detail-card">
+        <header>
+            <h1>Contenedor @detalle.Id</h1>
+            <p class="code">Reactivo: @detalle.Reactivo</p>
+        </header>
+
+        <div class="detail-body">
+            <div class="detail-main">
+                <dl class="info">
+                    <div>
+                        <dt>Reactivo</dt>
+                        <dd>@detalle.Reactivo</dd>
+                    </div>
+                    <div>
+                        <dt>Marca</dt>
+                        <dd>@detalle.Marca</dd>
+                    </div>
+                    <div>
+                        <dt>Densidad</dt>
+                        <dd>@detalle.Densidad</dd>
+                    </div>
+                    <div>
+                        <dt>Proveedor</dt>
+                        <dd>@detalle.Proveedor</dd>
+                    </div>
+                    <div>
+                        <dt>Cantidad nominal</dt>
+                        <dd>@detalle.CantidadNominal</dd>
+                    </div>
+                    <div>
+                        <dt>Cantidad actual</dt>
+                        <dd>@detalle.CantidadActual</dd>
+                    </div>
+                    <div>
+                        <dt>Condición</dt>
+                        <dd>@detalle.Condicion</dd>
+                    </div>
+                    <div>
+                        <dt>Ubicación</dt>
+                        <dd>@detalle.Ubicacion</dd>
+                    </div>
+                    <div>
+                        <dt>Fecha de compra</dt>
+                        <dd>@detalle.FechaCompra</dd>
+                    </div>
+                    <div>
+                        <dt>Fecha de recepción</dt>
+                        <dd>@detalle.FechaRecepcion</dd>
+                    </div>
+                    <div>
+                        <dt>Fecha de apertura</dt>
+                        <dd>@detalle.FechaApertura</dd>
+                    </div>
+                    <div>
+                        <dt>Fecha de vencimiento</dt>
+                        <dd>@detalle.FechaVencimiento</dd>
+                    </div>
+                    <div>
+                        <dt>Envase</dt>
+                        <dd>@detalle.Envase</dd>
+                    </div>
+                    <div>
+                        <dt>QR</dt>
+                        <dd>@detalle.Qr</dd>
+                    </div>
+                </dl>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(detalle.ImagenUrl))
+            {
+                <div class="detail-image">
+                    <img src="@ResolveImagenUrl(detalle.ImagenUrl)" alt="Imagen del contenedor @detalle.Id" />
+                </div>
+            }
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(detalle.Observaciones))
+        {
+            <div class="notes">
+                <strong>Observaciones</strong>
+                <p>@detalle.Observaciones</p>
+            </div>
+        }
+    </section>
+}
+
+@code {
+    [Parameter] public string? ContenedorId { get; set; }
+
+    private ContenedorInfo? detalle;
+    private string? loadError;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ContenedorId))
+        {
+            loadError = "No se especificó el ID del contenedor.";
+            return;
+        }
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+                SELECT c.cont_id,
+                       COALESCE(NULLIF(s.nombre_comercial, ''),
+                                NULLIF(s.nombre_quimico, ''),
+                                s.sustancia_id) AS reactivo,
+                       COALESCE(ma.nombre, '—') AS marca,
+                       c.densidad_g_ml,
+                       c.fecha_compra,
+                       c.fecha_recepcion,
+                       c.fecha_apertura,
+                       c.fecha_vencimiento,
+                       COALESCE(c.proveedor, '—') AS proveedor,
+                       c.cantidad_reactivo_nominal,
+                       c.cantidad_reactivo_actual,
+                       COALESCE(u.simbolo, '') AS unidad,
+                       COALESCE(cond.nombre, '—') AS condicion,
+                       COALESCE(a.nombre_areas, '') AS area,
+                       COALESCE(m.nombre_meson, '') AS meson,
+                       COALESCE(c.posicion, '') AS posicion,
+                       COALESCE(c.color_envase, '') AS color_envase,
+                       c.masa_envase_vacio_g,
+                       c.masa_tapa_g,
+                       COALESCE(c.qr, '—') AS qr,
+                       COALESCE(c.observaciones, '') AS observaciones,
+                       COALESCE(c.imagen_url, '') AS imagen_url
+                FROM contenedores c
+                INNER JOIN sustancias s ON s.sustancia_id = c.sustancia_id
+                LEFT JOIN marcas ma ON ma.marca_id = c.marca_id
+                LEFT JOIN unidades u ON u.unidad_id = c.unidad_id
+                LEFT JOIN condiciones cond ON cond.condicion_id = c.condicion_id
+                LEFT JOIN areas a ON a.area_id = c.area_id
+                LEFT JOIN mesones m ON m.meson_id = c.meson_id
+                WHERE c.cont_id = @id
+                  AND c.laboratorio_id = @laboratorio
+                ";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("id", ContenedorId);
+            cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
+            {
+                var unidad = reader.GetString(11);
+                var cantidadNominal = FormatCantidad(reader, 9, unidad);
+                var cantidadActual = FormatCantidad(reader, 10, unidad);
+                detalle = new ContenedorInfo
+                {
+                    Id = reader.GetString(0),
+                    Reactivo = reader.GetString(1),
+                    Marca = reader.GetString(2),
+                    Densidad = reader.IsDBNull(3) ? "—" : $"{reader.GetDecimal(3)} g/mL",
+                    FechaCompra = FormatDate(reader, 4),
+                    FechaRecepcion = FormatDate(reader, 5),
+                    FechaApertura = FormatDate(reader, 6),
+                    FechaVencimiento = FormatDate(reader, 7),
+                    Proveedor = reader.GetString(8),
+                    CantidadNominal = cantidadNominal,
+                    CantidadActual = cantidadActual,
+                    Condicion = reader.GetString(12),
+                    Ubicacion = BuildUbicacion(reader.GetString(13), reader.GetString(14), reader.GetString(15)),
+                    Envase = BuildEnvase(reader, 16, 17, 18),
+                    Qr = reader.GetString(19),
+                    Observaciones = reader.GetString(20),
+                    ImagenUrl = reader.GetString(21)
+                };
+            }
+            else
+            {
+                loadError = "No se encontró el contenedor solicitado.";
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+    }
+
+    private static string FormatCantidad(NpgsqlDataReader reader, int index, string unidad)
+    {
+        if (reader.IsDBNull(index)) return "—";
+        var cantidad = reader.GetDecimal(index);
+        return $"{cantidad} {unidad}".Trim();
+    }
+
+    private static string FormatDate(NpgsqlDataReader reader, int index)
+    {
+        return reader.IsDBNull(index) ? "—" : reader.GetDateTime(index).ToString("dd/MM/yyyy");
+    }
+
+    private static string BuildEnvase(NpgsqlDataReader reader, int colorIndex, int envaseIndex, int tapaIndex)
+    {
+        var color = reader.GetString(colorIndex);
+        var envase = reader.IsDBNull(envaseIndex) ? "" : $"{reader.GetDecimal(envaseIndex)} g";
+        var tapa = reader.IsDBNull(tapaIndex) ? "" : $"{reader.GetDecimal(tapaIndex)} g";
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(color)) parts.Add(color);
+        if (!string.IsNullOrWhiteSpace(envase)) parts.Add($"envase {envase}");
+        if (!string.IsNullOrWhiteSpace(tapa)) parts.Add($"tapa {tapa}");
+        return parts.Count == 0 ? "—" : string.Join(" · ", parts);
+    }
+
+    private static string BuildUbicacion(string area, string meson, string posicion)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(area)) parts.Add(area);
+        if (!string.IsNullOrWhiteSpace(meson)) parts.Add(meson);
+        if (!string.IsNullOrWhiteSpace(posicion)) parts.Add(posicion);
+        return parts.Count == 0 ? "Sin ubicación" : string.Join(" · ", parts);
+    }
+
+    private static string ResolveImagenUrl(string url)
+    {
+        if (url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+        {
+            return url;
+        }
+
+        return url.StartsWith("/", StringComparison.OrdinalIgnoreCase) ? url : $"/{url}";
+    }
+
+    private sealed class ContenedorInfo
+    {
+        public string Id { get; set; } = "";
+        public string Reactivo { get; set; } = "";
+        public string Marca { get; set; } = "";
+        public string Densidad { get; set; } = "";
+        public string Proveedor { get; set; } = "";
+        public string CantidadNominal { get; set; } = "";
+        public string CantidadActual { get; set; } = "";
+        public string Condicion { get; set; } = "";
+        public string Ubicacion { get; set; } = "";
+        public string FechaCompra { get; set; } = "";
+        public string FechaRecepcion { get; set; } = "";
+        public string FechaApertura { get; set; } = "";
+        public string FechaVencimiento { get; set; } = "";
+        public string Envase { get; set; } = "";
+        public string Qr { get; set; } = "";
+        public string Observaciones { get; set; } = "";
+        public string ImagenUrl { get; set; } = "";
+    }
+}
+
+<style>
+    .back {
+        display: inline-block;
+        margin: .5rem 0 1rem;
+        color: #0b5ed7;
+        text-decoration: none;
+    }
+
+    .back:hover {
+        text-decoration: underline;
+    }
+
+    .detail-card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 16px;
+        padding: 1.25rem 1.5rem;
+        box-shadow: 0 10px 22px rgba(15, 23, 42, 0.05);
+    }
+
+    .detail-card header h1 {
+        margin: 0;
+    }
+
+    .detail-body {
+        display: grid;
+        grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+        gap: 1.5rem;
+        margin-top: 1rem;
+    }
+
+    .detail-main .info {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 0.75rem 1.5rem;
+    }
+
+    .detail-main dt {
+        font-size: 0.8rem;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .detail-main dd {
+        margin: 0.25rem 0 0;
+        font-weight: 500;
+        color: #111827;
+    }
+
+    .detail-image img {
+        width: 100%;
+        border-radius: 12px;
+        border: 1px solid #e5e7eb;
+        object-fit: cover;
+    }
+
+    .notes {
+        margin-top: 1rem;
+        background: #f8fafc;
+        border-radius: 12px;
+        padding: 1rem;
+    }
+
+    .notes p {
+        margin: 0.5rem 0 0;
+    }
+
+    .code {
+        color: #64748b;
+        font-size: 0.9rem;
+    }
+
+    @media (max-width: 900px) {
+        .detail-body {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>

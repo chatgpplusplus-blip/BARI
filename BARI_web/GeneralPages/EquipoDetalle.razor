@@ -102,7 +102,7 @@ else
                        COALESCE(e.observaciones, '') AS observaciones
                 FROM equipos e
                 JOIN modelos_equipo me ON me.modelo_id = e.modelo_id
-                LEFT JOIN subcategorias sc ON sc.subcategoria_id = me.subcategoria_id
+                LEFT JOIN subcategorias sc ON sc.subcategoria_id = e.subcategoria_id
                 LEFT JOIN categorias c ON c.categoria_id = sc.categoria_id
                 LEFT JOIN marcas ma ON ma.marca_id = me.marca_id
                 LEFT JOIN estados_activo ea ON ea.estado_id = e.estado_id
