@@ -27,7 +27,12 @@
     <details>
         <summary style="cursor:pointer; font-weight:600;">Subir material</summary>
 
-        <div class="assign-row" style="margin-top:.75rem;">
+        <div class="form-header">
+            <h4>Registro rápido de material</h4>
+            <p class="form-hint">Completa los campos principales y ubica el material en el mapa para registrar el mesón asociado.</p>
+        </div>
+
+        <div class="assign-row form-grid">
             <select class="border p-1" @bind="_nuevoMaterialTipo">
                 <option value="vidrio">Vidrio</option>
                 <option value="consumible">Consumible</option>
@@ -74,7 +79,7 @@
                 }
             </select>
 
-            <div class="selector-split">
+            <div class="selector-split full-span">
                 @* NET6: NO @bind:after. Usamos value + onchange seguro *@
                 <select class="border p-1"
                         value="@_nuevoMaterialAreaId"
@@ -169,7 +174,7 @@
                 </div>
             </div>
 
-            <div class="selector-split">
+            <div class="selector-split full-span">
                 <select class="border p-1"
                         value="@_nuevoMaterialMesonId"
                         @onchange="OnMesonChanged"
@@ -278,7 +283,7 @@
             <input class="border p-1" placeholder="Posición (ej. al fondo, en el medio)" @bind="_nuevoMaterialPosicion" />
             <input class="border p-1" placeholder="Descripción" @bind="_nuevoMaterialDescripcion" />
 
-            <div class="upload-card">
+            <div class="upload-card full-span">
                 <div class="upload-options">
                     <label class="text-sm">
                         <input type="radio"
@@ -317,12 +322,14 @@
 
             <input class="border p-1" placeholder="Observaciones" @bind="_nuevoMaterialObservaciones" />
 
-            <button class="btn" @onclick="SubirMaterialAsync">Subir</button>
+            <div class="form-actions full-span">
+                <button class="btn primary" @onclick="SubirMaterialAsync">Subir material</button>
+                @if (!string.IsNullOrWhiteSpace(_nuevoMaterialMsg))
+                {
+                    <span class="text-sm text-gray-500">@_nuevoMaterialMsg</span>
+                }
+            </div>
 
-            @if (!string.IsNullOrWhiteSpace(_nuevoMaterialMsg))
-            {
-                <span class="text-sm text-gray-500">@_nuevoMaterialMsg</span>
-            }
         </div>
     </details>
 </section>
@@ -449,6 +456,56 @@
         gap: .75rem;
         align-items: flex-start;
         flex-wrap: wrap;
+    }
+
+    .form-header {
+        margin-top: 0.75rem;
+        margin-bottom: 0.75rem;
+    }
+
+        .form-header h4 {
+            margin: 0 0 0.25rem 0;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+    .form-hint {
+        margin: 0;
+        color: #64748b;
+        font-size: 0.95rem;
+    }
+
+    .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 0.75rem;
+        align-items: start;
+    }
+
+    .full-span {
+        grid-column: 1 / -1;
+    }
+
+    .form-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-top: 0.25rem;
+    }
+
+    .btn.primary {
+        background: #2563eb;
+        color: #fff;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 0.5rem;
+        font-weight: 600;
+        box-shadow: 0 6px 12px rgba(37, 99, 235, 0.18);
+    }
+
+    .btn.primary:hover {
+        background: #1d4ed8;
     }
 
     .visual-picker {
