@@ -279,7 +279,7 @@
 
         await using var conn = await DataSource.OpenConnectionAsync();
 
-        await using (var cmd = new NpgsqlCommand("SELECT categoria_id, nombre FROM categorias ORDER BY nombre", conn))
+        await using (var cmd = new NpgsqlCommand("SELECT categoria_id, nombre FROM categorias WHERE nombre = 'Documentación' ORDER BY nombre", conn))
         await using (var reader = await cmd.ExecuteReaderAsync())
             while (await reader.ReadAsync())
                 _categoriaOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
@@ -288,6 +288,7 @@
             SELECT s.subcategoria_id, s.nombre, c.nombre
             FROM subcategorias s
             INNER JOIN categorias c ON c.categoria_id = s.categoria_id
+            WHERE c.nombre = 'Documentación'
             ORDER BY c.nombre, s.nombre";
         await using (var cmd = new NpgsqlCommand(subcategoriaSql, conn))
         await using (var reader = await cmd.ExecuteReaderAsync())

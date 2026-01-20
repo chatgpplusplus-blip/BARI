@@ -651,11 +651,9 @@
         const string modeloSql = @"
             SELECT me.modelo_id,
                    me.nombre_modelo,
-                   COALESCE(m.nombre, '') AS marca,
-                   COALESCE(sc.nombre, '') AS subcategoria
+                   COALESCE(m.nombre, '') AS marca
             FROM modelos_equipo me
             LEFT JOIN marcas m ON m.marca_id = me.marca_id
-            LEFT JOIN subcategorias sc ON sc.subcategoria_id = me.subcategoria_id
             ORDER BY me.nombre_modelo";
         await using (var cmd = new NpgsqlCommand(modeloSql, conn))
         await using (var reader = await cmd.ExecuteReaderAsync())
@@ -664,10 +662,8 @@
             {
                 var modelo = reader.GetString(1);
                 var marca = reader.GetString(2);
-                var subcategoria = reader.GetString(3);
                 var labelParts = new List<string> { modelo };
                 if (!string.IsNullOrWhiteSpace(marca)) labelParts.Add(marca);
-                if (!string.IsNullOrWhiteSpace(subcategoria)) labelParts.Add(subcategoria);
                 _modeloOptions.Add(new SelectOption(reader.GetString(0), string.Join(" · ", labelParts)));
             }
         }
