@@ -238,8 +238,8 @@
 
             <input class="border p-1" placeholder="Nivel" @bind="_nuevoEquipoNivel" />
             <input class="border p-1" placeholder="Posición (ej. extremo derecho)" @bind="_nuevoEquipoPosicion" />
-            <InputDate class="border p-1" @bind-Value="_nuevoEquipoFechaCompra" />
-            <InputDate class="border p-1" @bind-Value="_nuevoEquipoGarantiaHasta" />
+            <input class="border p-1" type="date" @bind-value="_nuevoEquipoFechaCompra" @bind-value:format="yyyy-MM-dd" />
+            <input class="border p-1" type="date" @bind-value="_nuevoEquipoGarantiaHasta" @bind-value:format="yyyy-MM-dd" />
             <input class="border p-1" placeholder="Observaciones" @bind="_nuevoEquipoObservaciones" />
 
             <div class="upload-card">

@@ -111,10 +111,10 @@
             </select>
             <input class="border p-1" placeholder="Densidad g/mL" @bind="_nuevoContenedorDensidad" />
             <input class="border p-1" placeholder="Proveedor" @bind="_nuevoContenedorProveedor" />
-            <InputDate class="border p-1" @bind-Value="_nuevoContenedorFechaCompra" />
-            <InputDate class="border p-1" @bind-Value="_nuevoContenedorFechaRecepcion" />
-            <InputDate class="border p-1" @bind-Value="_nuevoContenedorFechaVencimiento" />
-            <InputDate class="border p-1" @bind-Value="_nuevoContenedorFechaApertura" />
+            <input class="border p-1" type="date" @bind-value="_nuevoContenedorFechaCompra" @bind-value:format="yyyy-MM-dd" />
+            <input class="border p-1" type="date" @bind-value="_nuevoContenedorFechaRecepcion" @bind-value:format="yyyy-MM-dd" />
+            <input class="border p-1" type="date" @bind-value="_nuevoContenedorFechaVencimiento" @bind-value:format="yyyy-MM-dd" />
+            <input class="border p-1" type="date" @bind-value="_nuevoContenedorFechaApertura" @bind-value:format="yyyy-MM-dd" />
             <input class="border p-1" placeholder="Masa envase vacío (g)" @bind="_nuevoContenedorMasaEnvase" />
             <input class="border p-1" placeholder="Masa tapa (g)" @bind="_nuevoContenedorMasaTapa" />
             <input class="border p-1" placeholder="Color envase" @bind="_nuevoContenedorColor" />
