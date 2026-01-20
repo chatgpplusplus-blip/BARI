@@ -1,6 +1,7 @@
 ﻿@page "/inventario-sustancias/contenedor/{ContenedorId}"
 @using Npgsql
 @using BARI_web.General_Services
+@using System.Globalization
 @inject NpgsqlDataSource DataSource
 @inject LaboratorioState LaboratorioState
 
@@ -24,6 +25,16 @@ else
             <p class="code">Reactivo: @detalle.Reactivo</p>
         </header>
 
+        <div class="detail-actions">
+            <button class="btn" @onclick="EnableEdit">Editar item</button>
+            <button class="btn primary" disabled="@(!isEditing)" @onclick="GuardarAsync">Subir actualización</button>
+            <button class="btn" disabled="@(!isEditing)" @onclick="CancelarEdicion">Cancelar</button>
+            @if (!string.IsNullOrWhiteSpace(editMsg))
+            {
+                <span class="text-sm text-gray-500">@editMsg</span>
+            }
+        </div>
+
         <div class="detail-body">
             <div class="detail-main">
                 <dl class="info">
@@ -33,59 +44,224 @@ else
                     </div>
                     <div>
                         <dt>Marca</dt>
-                        <dd>@detalle.Marca</dd>
+                        <dd>
+                            @if (isEditing)
+                            {
+                                <select class="border p-1" @bind="_editMarcaId">
+                                    <option value="">Sin marca</option>
+                                    @foreach (var opt in _marcaOptions)
+                                    {
+                                        <option value="@opt.Id">@opt.Label</option>
+                                    }
+                                </select>
+                            }
+                            else
+                            {
+                                @detalle.Marca
+                            }
+                        </dd>
                     </div>
                     <div>
                         <dt>Densidad</dt>
-                        <dd>@detalle.Densidad</dd>
+                        <dd>
+                            @if (isEditing)
+                            {
+                                <input class="border p-1" @bind="_editDensidad" />
+                            }
+                            else
+                            {
+                                @detalle.Densidad
+                            }
+                        </dd>
                     </div>
                     <div>
                         <dt>Proveedor</dt>
-                        <dd>@detalle.Proveedor</dd>
+                        <dd>
+                            @if (isEditing)
+                            {
+                                <input class="border p-1" @bind="_editProveedor" />
+                            }
+                            else
+                            {
+                                @detalle.Proveedor
+                            }
+                        </dd>
                     </div>
                     <div>
                         <dt>Cantidad nominal</dt>
-                        <dd>@detalle.CantidadNominal</dd>
+                        <dd>
+                            @if (isEditing)
+                            {
+                                <div class="edit-grid">
+                                    <input class="border p-1" @bind="_editCantidadNominal" />
+                                    <select class="border p-1" @bind="_editUnidadId">
+                                        <option value="">Unidad</option>
+                                        @foreach (var opt in _unidadOptions)
+                                        {
+                                            <option value="@opt.Id">@opt.Label</option>
+                                        }
+                                    </select>
+                                </div>
+                            }
+                            else
+                            {
+                                @detalle.CantidadNominal
+                            }
+                        </dd>
                     </div>
                     <div>
                         <dt>Cantidad actual</dt>
-                        <dd>@detalle.CantidadActual</dd>
+                        <dd>
+                            @if (isEditing)
+                            {
+                                <input class="border p-1" @bind="_editCantidadActual" />
+                            }
+                            else
+                            {
+                                @detalle.CantidadActual
+                            }
+                        </dd>
                     </div>
                     <div>
                         <dt>Condición</dt>
-                        <dd>@detalle.Condicion</dd>
+                        <dd>
+                            @if (isEditing)
+                            {
+                                <select class="border p-1" @bind="_editCondicionId">
+                                    <option value="">Sin condición</option>
+                                    @foreach (var opt in _condicionOptions)
+                                    {
+                                        <option value="@opt.Id">@opt.Label</option>
+                                    }
+                                </select>
+                            }
+                            else
+                            {
+                                @detalle.Condicion
+                            }
+                        </dd>
                     </div>
                     <div>
                         <dt>Ubicación</dt>
-                        <dd>@detalle.Ubicacion</dd>
+                        <dd>
+                            @if (isEditing)
+                            {
+                                <div class="edit-grid">
+                                    <select class="border p-1" @bind="_editAreaId" @onchange="OnAreaChanged">
+                                        <option value="">Sin área</option>
+                                        @foreach (var opt in _areaOptions)
+                                        {
+                                            <option value="@opt.Id">@opt.Label</option>
+                                        }
+                                    </select>
+                                    <select class="border p-1" @bind="_editMesonId">
+                                        <option value="">Sin mesón</option>
+                                        @foreach (var opt in _mesonOptions)
+                                        {
+                                            <option value="@opt.Id">@opt.Label</option>
+                                        }
+                                    </select>
+                                    <input class="border p-1" placeholder="Posición" @bind="_editPosicion" />
+                                </div>
+                            }
+                            else
+                            {
+                                @detalle.Ubicacion
+                            }
+                        </dd>
                     </div>
                     <div>
                         <dt>Fecha de compra</dt>
-                        <dd>@detalle.FechaCompra</dd>
+                        <dd>
+                            @if (isEditing)
+                            {
+                                <input class="border p-1" type="date" @bind-value="_editFechaCompra" @bind-value:format="yyyy-MM-dd" />
+                            }
+                            else
+                            {
+                                @detalle.FechaCompra
+                            }
+                        </dd>
                     </div>
                     <div>
                         <dt>Fecha de recepción</dt>
-                        <dd>@detalle.FechaRecepcion</dd>
+                        <dd>
+                            @if (isEditing)
+                            {
+                                <input class="border p-1" type="date" @bind-value="_editFechaRecepcion" @bind-value:format="yyyy-MM-dd" />
+                            }
+                            else
+                            {
+                                @detalle.FechaRecepcion
+                            }
+                        </dd>
                     </div>
                     <div>
                         <dt>Fecha de apertura</dt>
-                        <dd>@detalle.FechaApertura</dd>
+                        <dd>
+                            @if (isEditing)
+                            {
+                                <input class="border p-1" type="date" @bind-value="_editFechaApertura" @bind-value:format="yyyy-MM-dd" />
+                            }
+                            else
+                            {
+                                @detalle.FechaApertura
+                            }
+                        </dd>
                     </div>
                     <div>
                         <dt>Fecha de vencimiento</dt>
-                        <dd>@detalle.FechaVencimiento</dd>
+                        <dd>
+                            @if (isEditing)
+                            {
+                                <input class="border p-1" type="date" @bind-value="_editFechaVencimiento" @bind-value:format="yyyy-MM-dd" />
+                            }
+                            else
+                            {
+                                @detalle.FechaVencimiento
+                            }
+                        </dd>
                     </div>
                     <div>
                         <dt>Envase</dt>
-                        <dd>@detalle.Envase</dd>
+                        <dd>
+                            @if (isEditing)
+                            {
+                                <div class="edit-grid">
+                                    <input class="border p-1" placeholder="Color" @bind="_editColorEnvase" />
+                                    <input class="border p-1" placeholder="Masa envase (g)" @bind="_editMasaEnvase" />
+                                    <input class="border p-1" placeholder="Masa tapa (g)" @bind="_editMasaTapa" />
+                                </div>
+                            }
+                            else
+                            {
+                                @detalle.Envase
+                            }
+                        </dd>
                     </div>
                     <div>
                         <dt>QR</dt>
-                        <dd>@detalle.Qr</dd>
+                        <dd>
+                            @if (isEditing)
+                            {
+                                <input class="border p-1" @bind="_editQr" />
+                            }
+                            else
+                            {
+                                @detalle.Qr
+                            }
+                        </dd>
                     </div>
                 </dl>
             </div>
-            @if (!string.IsNullOrWhiteSpace(detalle.ImagenUrl))
+            @if (isEditing)
+            {
+                <div class="detail-image">
+                    <label class="text-sm text-gray-600">Imagen URL</label>
+                    <input class="border p-1" @bind="_editImagenUrl" />
+                </div>
+            }
+            else if (!string.IsNullOrWhiteSpace(detalle.ImagenUrl))
             {
                 <div class="detail-image">
                     <img src="@ResolveImagenUrl(detalle.ImagenUrl)" alt="Imagen del contenedor @detalle.Id" />
@@ -93,13 +269,21 @@ else
             }
         </div>
 
-        @if (!string.IsNullOrWhiteSpace(detalle.Observaciones))
-        {
-            <div class="notes">
-                <strong>Observaciones</strong>
+        <div class="notes">
+            <strong>Observaciones</strong>
+            @if (isEditing)
+            {
+                <textarea class="border p-1" rows="3" @bind="_editObservaciones"></textarea>
+            }
+            else if (!string.IsNullOrWhiteSpace(detalle.Observaciones))
+            {
                 <p>@detalle.Observaciones</p>
-            </div>
-        }
+            }
+            else
+            {
+                <p>—</p>
+            }
+        </div>
     </section>
 }
 
@@ -108,6 +292,35 @@ else
 
     private ContenedorInfo? detalle;
     private string? loadError;
+    private string? editMsg;
+    private bool isEditing;
+
+    private readonly List<SelectOption> _marcaOptions = new();
+    private readonly List<SelectOption> _unidadOptions = new();
+    private readonly List<SelectOption> _condicionOptions = new();
+    private readonly List<SelectOption> _areaOptions = new();
+    private readonly List<SelectOption> _mesonOptions = new();
+
+    private string? _editMarcaId;
+    private string? _editDensidad;
+    private string? _editProveedor;
+    private string? _editCantidadNominal;
+    private string? _editCantidadActual;
+    private string? _editUnidadId;
+    private string? _editCondicionId;
+    private string? _editAreaId;
+    private string? _editMesonId;
+    private string? _editPosicion;
+    private DateTime? _editFechaCompra;
+    private DateTime? _editFechaRecepcion;
+    private DateTime? _editFechaApertura;
+    private DateTime? _editFechaVencimiento;
+    private string? _editColorEnvase;
+    private string? _editMasaEnvase;
+    private string? _editMasaTapa;
+    private string? _editQr;
+    private string? _editObservaciones;
+    private string? _editImagenUrl;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -144,7 +357,12 @@ else
                        c.masa_tapa_g,
                        COALESCE(c.qr, '—') AS qr,
                        COALESCE(c.observaciones, '') AS observaciones,
-                       COALESCE(c.imagen_url, '') AS imagen_url
+                       COALESCE(c.imagen_url, '') AS imagen_url,
+                       c.marca_id,
+                       c.unidad_id,
+                       c.condicion_id,
+                       c.area_id,
+                       c.meson_id
                 FROM contenedores c
                 INNER JOIN sustancias s ON s.sustancia_id = c.sustancia_id
                 LEFT JOIN marcas ma ON ma.marca_id = c.marca_id
@@ -182,7 +400,20 @@ else
                     Envase = BuildEnvase(reader, 16, 17, 18),
                     Qr = reader.GetString(19),
                     Observaciones = reader.GetString(20),
-                    ImagenUrl = reader.GetString(21)
+                    ImagenUrl = reader.GetString(21),
+                    MarcaId = reader.IsDBNull(22) ? null : reader.GetString(22),
+                    UnidadId = reader.IsDBNull(23) ? null : reader.GetString(23),
+                    CondicionId = reader.IsDBNull(24) ? null : reader.GetString(24),
+                    AreaId = reader.IsDBNull(25) ? null : reader.GetString(25),
+                    MesonId = reader.IsDBNull(26) ? null : reader.GetString(26),
+                    Posicion = reader.GetString(15),
+                    FechaCompraRaw = ReadDate(reader, 4),
+                    FechaRecepcionRaw = ReadDate(reader, 5),
+                    FechaAperturaRaw = ReadDate(reader, 6),
+                    FechaVencimientoRaw = ReadDate(reader, 7),
+                    ColorEnvase = reader.IsDBNull(16) ? null : reader.GetString(16),
+                    MasaEnvaseRaw = reader.IsDBNull(17) ? null : reader.GetDecimal(17).ToString(CultureInfo.InvariantCulture),
+                    MasaTapaRaw = reader.IsDBNull(18) ? null : reader.GetDecimal(18).ToString(CultureInfo.InvariantCulture)
                 };
             }
             else
@@ -194,6 +425,192 @@ else
         {
             loadError = ex.Message;
         }
+
+        if (detalle is not null)
+        {
+            ResetEditState();
+            await LoadLookupsAsync();
+        }
+    }
+
+    private async Task LoadLookupsAsync()
+    {
+        _marcaOptions.Clear();
+        _unidadOptions.Clear();
+        _condicionOptions.Clear();
+        _areaOptions.Clear();
+        _mesonOptions.Clear();
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+        await using (var cmd = new NpgsqlCommand("SELECT marca_id, nombre FROM marcas ORDER BY nombre", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+                _marcaOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+        }
+
+        await using (var cmd = new NpgsqlCommand("SELECT unidad_id, nombre, simbolo FROM unidades ORDER BY nombre", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+                _unidadOptions.Add(new SelectOption(reader.GetString(0), $"{reader.GetString(1)} ({reader.GetString(2)})"));
+        }
+
+        await using (var cmd = new NpgsqlCommand("SELECT condicion_id, nombre FROM condiciones ORDER BY nombre", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+                _condicionOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+        }
+
+        const string areaSql = @"
+            SELECT area_id, nombre_areas
+            FROM areas
+            WHERE laboratorio_id = @lab
+            ORDER BY nombre_areas";
+        await using (var cmd = new NpgsqlCommand(areaSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                _areaOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+        }
+
+        await LoadMesonesAsync();
+    }
+
+    private async Task LoadMesonesAsync()
+    {
+        _mesonOptions.Clear();
+
+        if (string.IsNullOrWhiteSpace(_editAreaId))
+            return;
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+        const string mesonSql = @"
+            SELECT meson_id, nombre_meson
+            FROM mesones
+            WHERE area_id = @area
+            ORDER BY nombre_meson";
+        await using var cmd = new NpgsqlCommand(mesonSql, conn);
+        cmd.Parameters.AddWithValue("area", _editAreaId);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            _mesonOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+    }
+
+    private async Task OnAreaChanged(ChangeEventArgs args)
+    {
+        _editAreaId = args.Value?.ToString();
+        _editMesonId = null;
+        await LoadMesonesAsync();
+    }
+
+    private void EnableEdit()
+    {
+        if (detalle is null) return;
+        isEditing = true;
+        editMsg = null;
+    }
+
+    private void CancelarEdicion()
+    {
+        if (detalle is null) return;
+        ResetEditState();
+        editMsg = "Edición cancelada.";
+    }
+
+    private void ResetEditState()
+    {
+        if (detalle is null) return;
+        isEditing = false;
+        _editMarcaId = detalle.MarcaId;
+        _editDensidad = detalle.Densidad == "—" ? null : detalle.Densidad.Replace(" g/mL", "");
+        _editProveedor = detalle.Proveedor == "—" ? null : detalle.Proveedor;
+        _editCantidadNominal = ExtractCantidad(detalle.CantidadNominal);
+        _editCantidadActual = ExtractCantidad(detalle.CantidadActual);
+        _editUnidadId = detalle.UnidadId;
+        _editCondicionId = detalle.CondicionId;
+        _editAreaId = detalle.AreaId;
+        _editMesonId = detalle.MesonId;
+        _editPosicion = detalle.Posicion;
+        _editFechaCompra = detalle.FechaCompraRaw;
+        _editFechaRecepcion = detalle.FechaRecepcionRaw;
+        _editFechaApertura = detalle.FechaAperturaRaw;
+        _editFechaVencimiento = detalle.FechaVencimientoRaw;
+        _editColorEnvase = detalle.ColorEnvase;
+        _editMasaEnvase = detalle.MasaEnvaseRaw;
+        _editMasaTapa = detalle.MasaTapaRaw;
+        _editQr = detalle.Qr == "—" ? null : detalle.Qr;
+        _editObservaciones = string.IsNullOrWhiteSpace(detalle.Observaciones) || detalle.Observaciones == "—" ? null : detalle.Observaciones;
+        _editImagenUrl = detalle.ImagenUrl;
+    }
+
+    private async Task GuardarAsync()
+    {
+        if (detalle is null) return;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+                UPDATE contenedores
+                SET marca_id = @marca,
+                    densidad_g_ml = @densidad,
+                    proveedor = @proveedor,
+                    fecha_compra = @fcompra,
+                    fecha_recepcion = @frecep,
+                    fecha_apertura = @fapertura,
+                    fecha_vencimiento = @fvenc,
+                    cantidad_reactivo_nominal = @nominal,
+                    cantidad_reactivo_actual = @actual,
+                    unidad_id = @unidad,
+                    condicion_id = @condicion,
+                    area_id = @area,
+                    meson_id = @meson,
+                    posicion = @posicion,
+                    color_envase = @color,
+                    masa_envase_vacio_g = @menvase,
+                    masa_tapa_g = @mtapa,
+                    qr = @qr,
+                    observaciones = @obs,
+                    imagen_url = @img
+                WHERE cont_id = @id
+                  AND laboratorio_id = @lab";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("marca", string.IsNullOrWhiteSpace(_editMarcaId) ? (object)DBNull.Value : _editMarcaId!);
+            cmd.Parameters.AddWithValue("densidad", ParseDecimalOrNull(_editDensidad));
+            cmd.Parameters.AddWithValue("proveedor", string.IsNullOrWhiteSpace(_editProveedor) ? (object)DBNull.Value : _editProveedor!);
+            cmd.Parameters.AddWithValue("fcompra", ParseDateOrNull(_editFechaCompra));
+            cmd.Parameters.AddWithValue("frecep", ParseDateOrNull(_editFechaRecepcion));
+            cmd.Parameters.AddWithValue("fapertura", ParseDateOrNull(_editFechaApertura));
+            cmd.Parameters.AddWithValue("fvenc", ParseDateOrNull(_editFechaVencimiento));
+            cmd.Parameters.AddWithValue("nominal", ParseDecimalOrNull(_editCantidadNominal));
+            cmd.Parameters.AddWithValue("actual", ParseDecimalOrNull(_editCantidadActual));
+            cmd.Parameters.AddWithValue("unidad", string.IsNullOrWhiteSpace(_editUnidadId) ? (object)DBNull.Value : _editUnidadId!);
+            cmd.Parameters.AddWithValue("condicion", string.IsNullOrWhiteSpace(_editCondicionId) ? (object)DBNull.Value : _editCondicionId!);
+            cmd.Parameters.AddWithValue("area", string.IsNullOrWhiteSpace(_editAreaId) ? (object)DBNull.Value : _editAreaId!);
+            cmd.Parameters.AddWithValue("meson", string.IsNullOrWhiteSpace(_editMesonId) ? (object)DBNull.Value : _editMesonId!);
+            cmd.Parameters.AddWithValue("posicion", string.IsNullOrWhiteSpace(_editPosicion) ? (object)DBNull.Value : _editPosicion!);
+            cmd.Parameters.AddWithValue("color", string.IsNullOrWhiteSpace(_editColorEnvase) ? (object)DBNull.Value : _editColorEnvase!);
+            cmd.Parameters.AddWithValue("menvase", ParseDecimalOrNull(_editMasaEnvase));
+            cmd.Parameters.AddWithValue("mtapa", ParseDecimalOrNull(_editMasaTapa));
+            cmd.Parameters.AddWithValue("qr", string.IsNullOrWhiteSpace(_editQr) ? (object)DBNull.Value : _editQr!);
+            cmd.Parameters.AddWithValue("obs", string.IsNullOrWhiteSpace(_editObservaciones) ? (object)DBNull.Value : _editObservaciones!);
+            cmd.Parameters.AddWithValue("img", string.IsNullOrWhiteSpace(_editImagenUrl) ? (object)DBNull.Value : _editImagenUrl!);
+            cmd.Parameters.AddWithValue("id", detalle.Id);
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+        catch (Exception ex)
+        {
+            editMsg = $"No se pudo guardar: {ex.Message}";
+            return;
+        }
+
+        editMsg = "Actualización guardada.";
+        isEditing = false;
+        await OnParametersSetAsync();
     }
 
     private static string FormatCantidad(NpgsqlDataReader reader, int index, string unidad)
@@ -206,6 +623,11 @@ else
     private static string FormatDate(NpgsqlDataReader reader, int index)
     {
         return reader.IsDBNull(index) ? "—" : reader.GetDateTime(index).ToString("dd/MM/yyyy");
+    }
+
+    private static DateTime? ReadDate(NpgsqlDataReader reader, int index)
+    {
+        return reader.IsDBNull(index) ? null : reader.GetDateTime(index);
     }
 
     private static string BuildEnvase(NpgsqlDataReader reader, int colorIndex, int envaseIndex, int tapaIndex)
@@ -258,7 +680,39 @@ else
         public string Qr { get; set; } = "";
         public string Observaciones { get; set; } = "";
         public string ImagenUrl { get; set; } = "";
+        public string? MarcaId { get; set; }
+        public string? UnidadId { get; set; }
+        public string? CondicionId { get; set; }
+        public string? AreaId { get; set; }
+        public string? MesonId { get; set; }
+        public string? Posicion { get; set; }
+        public DateTime? FechaCompraRaw { get; set; }
+        public DateTime? FechaRecepcionRaw { get; set; }
+        public DateTime? FechaAperturaRaw { get; set; }
+        public DateTime? FechaVencimientoRaw { get; set; }
+        public string? ColorEnvase { get; set; }
+        public string? MasaEnvaseRaw { get; set; }
+        public string? MasaTapaRaw { get; set; }
     }
+
+    private static object ParseDecimalOrNull(string? value)
+    {
+        return decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : DBNull.Value;
+    }
+
+    private static object ParseDateOrNull(DateTime? value) =>
+        value ?? (object)DBNull.Value;
+
+    private static string? ExtractCantidad(string cantidad)
+    {
+        if (string.IsNullOrWhiteSpace(cantidad) || cantidad == "—") return null;
+        var parts = cantidad.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length > 0 ? parts[0] : cantidad;
+    }
+
+    private sealed record SelectOption(string Id, string Label);
 }
 
 <style>
@@ -283,6 +737,14 @@ else
 
     .detail-card header h1 {
         margin: 0;
+    }
+
+    .detail-actions {
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+        margin: 1rem 0;
+        flex-wrap: wrap;
     }
 
     .detail-body {
@@ -323,6 +785,15 @@ else
         background: #f8fafc;
         border-radius: 12px;
         padding: 1rem;
+    }
+
+    .notes textarea {
+        width: 100%;
+    }
+
+    .edit-grid {
+        display: grid;
+        gap: 0.5rem;
     }
 
     .notes p {
