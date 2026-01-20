@@ -279,11 +279,10 @@
                                               y="@FormatSvg(meson.Y)"
                                               width="@FormatSvg(meson.Width)"
                                               height="@FormatSvg(meson.Height)"
-                                              rx="0.05"
                                               fill="@MesonFill(meson)"
-                                              fill-opacity="@MesonOpacity(meson)"
+                                              opacity="@FormatSvg(MesonOpacity(meson))"
                                               stroke="@MesonStroke(meson)"
-                                              stroke-width="@MesonStrokeWidth(meson)" />
+                                              stroke-width="@FormatSvg(MesonStrokeWidth(meson))" />
                                         <svg:text x="@FormatSvg(meson.X + meson.Width / 2m)"
                                                   y="@FormatSvg(meson.Y + meson.Height / 2m)"
                                                   text-anchor="middle"
