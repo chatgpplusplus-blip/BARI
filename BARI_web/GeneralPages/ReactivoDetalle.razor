@@ -20,40 +20,114 @@ else
 
     <section class="reactivo-card">
         <header>
-            <h1>@reactivo.Nombre</h1>
+            <h1>
+                @if (isEditing)
+                {
+                    <input class="border p-1" @bind="_editNombreComercial" placeholder="Nombre comercial" />
+                }
+                else
+                {
+                    @reactivo.Nombre
+                }
+            </h1>
             <p class="code">@reactivo.Id</p>
         </header>
+
+        <div class="detail-actions">
+            <button class="btn" @onclick="EnableEdit">Editar item</button>
+            <button class="btn primary" disabled="@(!isEditing)" @onclick="GuardarAsync">Subir actualización</button>
+            <button class="btn" disabled="@(!isEditing)" @onclick="CancelarEdicion">Cancelar</button>
+            @if (!string.IsNullOrWhiteSpace(editMsg))
+            {
+                <span class="text-sm text-gray-500">@editMsg</span>
+            }
+        </div>
 
         <dl class="info">
             <div>
                 <dt>Nombre comercial</dt>
-                <dd>@(string.IsNullOrWhiteSpace(reactivo.NombreComercial) ? "—" : reactivo.NombreComercial)</dd>
+                <dd>
+                    @if (isEditing)
+                    {
+                        <input class="border p-1" @bind="_editNombreComercial" />
+                    }
+                    else
+                    {
+                        @(string.IsNullOrWhiteSpace(reactivo.NombreComercial) ? "—" : reactivo.NombreComercial)
+                    }
+                </dd>
             </div>
             <div>
                 <dt>Nombre químico</dt>
-                <dd>@(string.IsNullOrWhiteSpace(reactivo.NombreQuimico) ? "—" : reactivo.NombreQuimico)</dd>
+                <dd>
+                    @if (isEditing)
+                    {
+                        <input class="border p-1" @bind="_editNombreQuimico" />
+                    }
+                    else
+                    {
+                        @(string.IsNullOrWhiteSpace(reactivo.NombreQuimico) ? "—" : reactivo.NombreQuimico)
+                    }
+                </dd>
             </div>
             <div>
                 <dt>CAS</dt>
-                <dd>@(string.IsNullOrWhiteSpace(reactivo.Cas) ? "—" : reactivo.Cas)</dd>
+                <dd>
+                    @if (isEditing)
+                    {
+                        <input class="border p-1" @bind="_editCas" />
+                    }
+                    else
+                    {
+                        @(string.IsNullOrWhiteSpace(reactivo.Cas) ? "—" : reactivo.Cas)
+                    }
+                </dd>
             </div>
             <div>
                 <dt>Forma física</dt>
-                <dd>@(string.IsNullOrWhiteSpace(reactivo.FormaFisica) ? "—" : reactivo.FormaFisica)</dd>
+                <dd>
+                    @if (isEditing)
+                    {
+                        <input class="border p-1" @bind="_editFormaFisica" />
+                    }
+                    else
+                    {
+                        @(string.IsNullOrWhiteSpace(reactivo.FormaFisica) ? "—" : reactivo.FormaFisica)
+                    }
+                </dd>
             </div>
             <div>
                 <dt>Sustancia controlada</dt>
-                <dd>@(reactivo.SustanciaControlada ? "Sí" : "No")</dd>
+                <dd>
+                    @if (isEditing)
+                    {
+                        <label class="text-sm text-gray-600">
+                            <input type="checkbox" @bind="_editControlada" /> Sustancia controlada
+                        </label>
+                    }
+                    else
+                    {
+                        @(reactivo.SustanciaControlada ? "Sí" : "No")
+                    }
+                </dd>
             </div>
         </dl>
 
-        @if (!string.IsNullOrWhiteSpace(reactivo.Observaciones))
-        {
-            <div class="notes">
-                <strong>Observaciones</strong>
+        <div class="notes">
+            <strong>Observaciones</strong>
+            @if (isEditing)
+            {
+                <textarea class="border p-1" rows="3" @bind="_editObservaciones"></textarea>
+            }
+            else if (!string.IsNullOrWhiteSpace(reactivo.Observaciones))
+            {
                 <p>@reactivo.Observaciones</p>
-            </div>
-        }
+            }
+            else
+            {
+                <p>—</p>
+            }
+        </div>
 
         <section class="contenedores">
             <h2>Contenedores</h2>
@@ -81,7 +155,11 @@ else
                             @foreach (var cont in contenedores)
                             {
                                 <tr>
-                                    <td>@cont.Id</td>
+                                    <td>
+                                        <NavLink href="@($"/inventario-sustancias/contenedor/{cont.Id}")">
+                                            @cont.Id
+                                        </NavLink>
+                                    </td>
                                     <td>@cont.Cantidad</td>
                                     <td>@cont.Condicion</td>
                                     <td>@cont.Proveedor</td>
@@ -104,6 +182,15 @@ else
     private ReactivoInfo? reactivo;
     private readonly List<ContenedorInfo> contenedores = new();
     private string? loadError;
+    private string? editMsg;
+    private bool isEditing;
+
+    private string? _editNombreComercial;
+    private string? _editNombreQuimico;
+    private string? _editCas;
+    private string? _editFormaFisica;
+    private bool _editControlada;
+    private string? _editObservaciones;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -200,6 +287,76 @@ else
         {
             loadError = ex.Message;
         }
+
+        if (reactivo is not null)
+        {
+            ResetEditState();
+        }
+    }
+
+    private void EnableEdit()
+    {
+        if (reactivo is null) return;
+        isEditing = true;
+        editMsg = null;
+    }
+
+    private void CancelarEdicion()
+    {
+        if (reactivo is null) return;
+        ResetEditState();
+        editMsg = "Edición cancelada.";
+    }
+
+    private void ResetEditState()
+    {
+        if (reactivo is null) return;
+        isEditing = false;
+        _editNombreComercial = reactivo.NombreComercial;
+        _editNombreQuimico = reactivo.NombreQuimico;
+        _editCas = reactivo.Cas;
+        _editFormaFisica = reactivo.FormaFisica;
+        _editControlada = reactivo.SustanciaControlada;
+        _editObservaciones = reactivo.Observaciones;
+    }
+
+    private async Task GuardarAsync()
+    {
+        if (reactivo is null) return;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+                UPDATE sustancias
+                SET nombre_comercial = @comercial,
+                    nombre_quimico = @quimico,
+                    cas = @cas,
+                    forma_fisica = @forma,
+                    sustancia_controlada = @controlada,
+                    observaciones = @obs
+                WHERE sustancia_id = @id
+                  AND laboratorio_id = @lab";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("comercial", string.IsNullOrWhiteSpace(_editNombreComercial) ? (object)DBNull.Value : _editNombreComercial!);
+            cmd.Parameters.AddWithValue("quimico", string.IsNullOrWhiteSpace(_editNombreQuimico) ? (object)DBNull.Value : _editNombreQuimico!);
+            cmd.Parameters.AddWithValue("cas", string.IsNullOrWhiteSpace(_editCas) ? (object)DBNull.Value : _editCas!);
+            cmd.Parameters.AddWithValue("forma", string.IsNullOrWhiteSpace(_editFormaFisica) ? (object)DBNull.Value : _editFormaFisica!);
+            cmd.Parameters.AddWithValue("controlada", _editControlada);
+            cmd.Parameters.AddWithValue("obs", string.IsNullOrWhiteSpace(_editObservaciones) ? (object)DBNull.Value : _editObservaciones!);
+            cmd.Parameters.AddWithValue("id", reactivo.Id);
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+        catch (Exception ex)
+        {
+            editMsg = $"No se pudo guardar: {ex.Message}";
+            return;
+        }
+
+        editMsg = "Actualización guardada.";
+        isEditing = false;
+        await OnParametersSetAsync();
     }
 
     private sealed class ReactivoInfo
@@ -250,6 +407,14 @@ else
         margin: 0;
     }
 
+    .detail-actions {
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+        margin: 1rem 0;
+        flex-wrap: wrap;
+    }
+
     .reactivo-card .code {
         margin: .2rem 0 0;
         color: #64748b;
@@ -285,6 +450,10 @@ else
         border-radius: 12px;
         padding: .85rem 1rem;
         color: #334155;
+    }
+
+    .notes textarea {
+        width: 100%;
     }
 
     .notes p {

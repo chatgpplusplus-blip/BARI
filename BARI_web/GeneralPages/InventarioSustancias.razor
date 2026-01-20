@@ -44,6 +44,51 @@
             </select>
             <input class="border p-1" placeholder="Descripción" @bind="_nuevoSustanciaDescripcion" />
 
+            <div class="full-span">
+                <label class="field-label">Pictogramas GHS</label>
+                <div class="chip-grid">
+                    @foreach (var ghs in _ghsOptions)
+                    {
+                        <label class="chip">
+                            <input type="checkbox"
+                                   checked="@_nuevoSustanciaGhsIds.Contains(ghs.Id)"
+                                   @onchange="@((ChangeEventArgs args) => ToggleGhs(ghs.Id, args))" />
+                            <span>@ghs.Label</span>
+                        </label>
+                    }
+                </div>
+            </div>
+
+            <div class="full-span">
+                <label class="field-label">H codes</label>
+                <div class="chip-grid">
+                    @foreach (var hcode in _hCodeOptions)
+                    {
+                        <label class="chip">
+                            <input type="checkbox"
+                                   checked="@_nuevoSustanciaHIds.Contains(hcode.Id)"
+                                   @onchange="@((ChangeEventArgs args) => ToggleHCode(hcode.Id, args))" />
+                            <span>@hcode.Label</span>
+                        </label>
+                    }
+                </div>
+            </div>
+
+            <div class="full-span">
+                <label class="field-label">P codes</label>
+                <div class="chip-grid">
+                    @foreach (var pcode in _pCodeOptions)
+                    {
+                        <label class="chip">
+                            <input type="checkbox"
+                                   checked="@_nuevoSustanciaPIds.Contains(pcode.Id)"
+                                   @onchange="@((ChangeEventArgs args) => TogglePCode(pcode.Id, args))" />
+                            <span>@pcode.Label</span>
+                        </label>
+                    }
+                </div>
+            </div>
+
             <div class="upload-card full-span">
                 <div class="upload-options">
                     <label class="text-sm">
@@ -121,10 +166,22 @@
             </select>
             <input class="border p-1" placeholder="Densidad g/mL" @bind="_nuevoContenedorDensidad" />
             <input class="border p-1" placeholder="Proveedor" @bind="_nuevoContenedorProveedor" />
-            <input class="border p-1" type="date" @bind-value="_nuevoContenedorFechaCompra" @bind-value:format="yyyy-MM-dd" />
-            <input class="border p-1" type="date" @bind-value="_nuevoContenedorFechaRecepcion" @bind-value:format="yyyy-MM-dd" />
-            <input class="border p-1" type="date" @bind-value="_nuevoContenedorFechaVencimiento" @bind-value:format="yyyy-MM-dd" />
-            <input class="border p-1" type="date" @bind-value="_nuevoContenedorFechaApertura" @bind-value:format="yyyy-MM-dd" />
+            <div class="field-stack">
+                <label class="field-label">Fecha de compra</label>
+                <input class="border p-1" type="date" @bind-value="_nuevoContenedorFechaCompra" @bind-value:format="yyyy-MM-dd" />
+            </div>
+            <div class="field-stack">
+                <label class="field-label">Fecha de recepción</label>
+                <input class="border p-1" type="date" @bind-value="_nuevoContenedorFechaRecepcion" @bind-value:format="yyyy-MM-dd" />
+            </div>
+            <div class="field-stack">
+                <label class="field-label">Fecha de vencimiento</label>
+                <input class="border p-1" type="date" @bind-value="_nuevoContenedorFechaVencimiento" @bind-value:format="yyyy-MM-dd" />
+            </div>
+            <div class="field-stack">
+                <label class="field-label">Fecha de apertura</label>
+                <input class="border p-1" type="date" @bind-value="_nuevoContenedorFechaApertura" @bind-value:format="yyyy-MM-dd" />
+            </div>
             <input class="border p-1" placeholder="Masa envase vacío (g)" @bind="_nuevoContenedorMasaEnvase" />
             <input class="border p-1" placeholder="Masa tapa (g)" @bind="_nuevoContenedorMasaTapa" />
             <input class="border p-1" placeholder="Color envase" @bind="_nuevoContenedorColor" />
@@ -503,13 +560,69 @@
     }
 </section>
 
+<section class="page-card" style="margin-top:1.5rem;">
+    <div class="materials-header">
+        <h3>Contenedores registrados</h3>
+        <span class="badge">@contenedores.Count contenedores</span>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(contenedoresLoadError))
+    {
+        <p class="error-note">No se pudieron cargar contenedores: @contenedoresLoadError</p>
+    }
+    else if (contenedores.Count == 0)
+    {
+        <div class="empty">
+            No hay contenedores registrados para este laboratorio.
+        </div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Reactivo</th>
+                        <th>Cantidad</th>
+                        <th>Condición</th>
+                        <th>Ubicación</th>
+                        <th>Apertura</th>
+                        <th>Vencimiento</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var contenedor in contenedores)
+                    {
+                        <tr>
+                            <td>
+                                <NavLink href="@($"/inventario-sustancias/contenedor/{contenedor.Id}")">
+                                    @contenedor.Id
+                                </NavLink>
+                            </td>
+                            <td>@contenedor.Reactivo</td>
+                            <td>@contenedor.Cantidad</td>
+                            <td>@contenedor.Condicion</td>
+                            <td>@contenedor.Ubicacion</td>
+                            <td>@contenedor.FechaApertura</td>
+                            <td>@contenedor.FechaVencimiento</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
 @code {
     [Parameter] public string? SubcategoriaId { get; set; }
 
     private readonly List<CategoriaRow> categorias = new();
     private readonly List<SustanciaRow> sustancias = new();
+    private readonly List<ContenedorRow> contenedores = new();
     private string? subcategoriaNombre;
     private string? loadError;
+    private string? contenedoresLoadError;
     private string? _nuevoSustanciaId;
     private string? _nuevoSustanciaNombreComercial;
     private string? _nuevoSustanciaNombreQuimico;
@@ -557,6 +670,13 @@
     private readonly List<SelectOption> _condicionOptions = new();
     private readonly List<SelectOption> _areaOptions = new();
     private readonly List<SelectOption> _mesonOptions = new();
+    private readonly List<SelectOption> _ghsOptions = new();
+    private readonly List<SelectOption> _hCodeOptions = new();
+    private readonly List<SelectOption> _pCodeOptions = new();
+
+    private readonly HashSet<string> _nuevoSustanciaGhsIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _nuevoSustanciaHIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _nuevoSustanciaPIds = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly List<MesonSummary> _mesonSummaries = new();
     private readonly List<MesonVisual> _mesonVisuals = new();
@@ -573,10 +693,12 @@
     protected override async Task OnParametersSetAsync()
     {
         loadError = null;
+        contenedoresLoadError = null;
         await LoadCategoriasAsync();
         await LoadLookupsAsync();
         await LoadCanvasAreasAsync();
         await LoadSustanciasAsync();
+        await LoadContenedoresAsync();
         await LoadSustanciasLookupAsync();
     }
 
@@ -592,9 +714,11 @@
         _plantasLookup.Clear();
         _currentPlantaId = null;
 
+        contenedoresLoadError = null;
         await LoadLookupsAsync();
         await LoadCanvasAreasAsync();
         await LoadSustanciasAsync();
+        await LoadContenedoresAsync();
         await LoadSustanciasLookupAsync();
         await InvokeAsync(StateHasChanged);
     }
@@ -737,6 +861,7 @@
             : _nuevoSustanciaId!.Trim();
 
         await using var conn = await DataSource.OpenConnectionAsync();
+        await using var tx = await conn.BeginTransactionAsync();
         const string sqlSust = @"
             INSERT INTO sustancias
             (sustancia_id, nombre_comercial, nombre_quimico, cas, forma_fisica, sustancia_controlada,
@@ -744,7 +869,7 @@
             VALUES (@id, @comercial, @quimico, @cas, @forma, @controlada,
                     @subcat, @descripcion, @imagen, @obs, @lab)
             ON CONFLICT (sustancia_id) DO NOTHING";
-        await using (var cmd = new NpgsqlCommand(sqlSust, conn))
+        await using (var cmd = new NpgsqlCommand(sqlSust, conn, tx))
         {
             cmd.Parameters.AddWithValue("id", sustanciaId);
             cmd.Parameters.AddWithValue("comercial", string.IsNullOrWhiteSpace(_nuevoSustanciaNombreComercial) ? (object)DBNull.Value : _nuevoSustanciaNombreComercial!);
@@ -760,6 +885,12 @@
             await cmd.ExecuteNonQueryAsync();
         }
 
+        await InsertGhsAsync(conn, tx, sustanciaId);
+        await InsertHCodesAsync(conn, tx, sustanciaId);
+        await InsertPCodesAsync(conn, tx, sustanciaId);
+
+        await tx.CommitAsync();
+
         _nuevoSustanciaId = null;
         _nuevoSustanciaNombreComercial = null;
         _nuevoSustanciaNombreQuimico = null;
@@ -772,8 +903,78 @@
         _nuevoSustanciaImagenArchivo = null;
         _nuevoSustanciaObservaciones = null;
         _nuevoSustanciaControlada = false;
+        _nuevoSustanciaGhsIds.Clear();
+        _nuevoSustanciaHIds.Clear();
+        _nuevoSustanciaPIds.Clear();
         _nuevoSustanciaMsg = "Sustancia registrada.";
         await LoadSustanciasLookupAsync();
+    }
+
+    private async Task InsertGhsAsync(NpgsqlConnection conn, NpgsqlTransaction tx, string sustanciaId)
+    {
+        if (_nuevoSustanciaGhsIds.Count == 0) return;
+        const string sql = @"
+            INSERT INTO sustancias_pictogramas (sustancia_id, ghs_id)
+            VALUES (@id, @ghs)
+            ON CONFLICT DO NOTHING";
+        foreach (var ghs in _nuevoSustanciaGhsIds)
+        {
+            await using var cmd = new NpgsqlCommand(sql, conn, tx);
+            cmd.Parameters.AddWithValue("id", sustanciaId);
+            cmd.Parameters.AddWithValue("ghs", ghs);
+            await cmd.ExecuteNonQueryAsync();
+        }
+    }
+
+    private async Task InsertHCodesAsync(NpgsqlConnection conn, NpgsqlTransaction tx, string sustanciaId)
+    {
+        if (_nuevoSustanciaHIds.Count == 0) return;
+        const string sql = @"
+            INSERT INTO sustancias_h (sustancia_id, h_id)
+            VALUES (@id, @code)
+            ON CONFLICT DO NOTHING";
+        foreach (var h in _nuevoSustanciaHIds)
+        {
+            await using var cmd = new NpgsqlCommand(sql, conn, tx);
+            cmd.Parameters.AddWithValue("id", sustanciaId);
+            cmd.Parameters.AddWithValue("code", h);
+            await cmd.ExecuteNonQueryAsync();
+        }
+    }
+
+    private async Task InsertPCodesAsync(NpgsqlConnection conn, NpgsqlTransaction tx, string sustanciaId)
+    {
+        if (_nuevoSustanciaPIds.Count == 0) return;
+        const string sql = @"
+            INSERT INTO sustancias_p (sustancia_id, p_id)
+            VALUES (@id, @code)
+            ON CONFLICT DO NOTHING";
+        foreach (var p in _nuevoSustanciaPIds)
+        {
+            await using var cmd = new NpgsqlCommand(sql, conn, tx);
+            cmd.Parameters.AddWithValue("id", sustanciaId);
+            cmd.Parameters.AddWithValue("code", p);
+            await cmd.ExecuteNonQueryAsync();
+        }
+    }
+
+    private void ToggleGhs(string id, ChangeEventArgs args) => ToggleItem(_nuevoSustanciaGhsIds, id, args);
+    private void ToggleHCode(string id, ChangeEventArgs args) => ToggleItem(_nuevoSustanciaHIds, id, args);
+    private void TogglePCode(string id, ChangeEventArgs args) => ToggleItem(_nuevoSustanciaPIds, id, args);
+
+    private static void ToggleItem(ISet<string> list, string id, ChangeEventArgs args)
+    {
+        var isChecked = args.Value switch
+        {
+            bool value => value,
+            string value => bool.TryParse(value, out var parsed) && parsed,
+            _ => false
+        };
+
+        if (isChecked)
+            list.Add(id);
+        else
+            list.Remove(id);
     }
 
     private async Task SubirContenedorAsync()
@@ -867,6 +1068,7 @@
         _mesonSummaries.Clear();
         _mesonVisuals.Clear();
         _nuevoContenedorMsg = "Contenedor registrado.";
+        await LoadContenedoresAsync();
     }
 
     private async Task LoadLookupsAsync()
@@ -876,6 +1078,9 @@
         _unidadOptions.Clear();
         _condicionOptions.Clear();
         _areaOptions.Clear();
+        _ghsOptions.Clear();
+        _hCodeOptions.Clear();
+        _pCodeOptions.Clear();
 
         await using var conn = await DataSource.OpenConnectionAsync();
 
@@ -910,6 +1115,21 @@
         await using (var reader = await cmd.ExecuteReaderAsync())
             while (await reader.ReadAsync())
                 _condicionOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+
+        await using (var cmd = new NpgsqlCommand("SELECT ghs_id, descripcion FROM ghs_pictogramas ORDER BY ghs_id", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+            while (await reader.ReadAsync())
+                _ghsOptions.Add(new SelectOption(reader.GetString(0), $"{reader.GetString(0)} · {reader.GetString(1)}"));
+
+        await using (var cmd = new NpgsqlCommand("SELECT h_id, descripcion FROM h_codes ORDER BY h_id", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+            while (await reader.ReadAsync())
+                _hCodeOptions.Add(new SelectOption(reader.GetString(0), $"{reader.GetString(0)} · {reader.GetString(1)}"));
+
+        await using (var cmd = new NpgsqlCommand("SELECT p_id, descripcion FROM p_codes ORDER BY p_id", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+            while (await reader.ReadAsync())
+                _pCodeOptions.Add(new SelectOption(reader.GetString(0), $"{reader.GetString(0)} · {reader.GetString(1)}"));
 
         const string areaSql = @"
             SELECT area_id, nombre_areas
@@ -1446,6 +1666,64 @@
         }
     }
 
+    private async Task LoadContenedoresAsync()
+    {
+        contenedores.Clear();
+        contenedoresLoadError = null;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+                SELECT c.cont_id,
+                       COALESCE(NULLIF(s.nombre_comercial, ''),
+                                NULLIF(s.nombre_quimico, ''),
+                                s.sustancia_id) AS nombre,
+                       COALESCE(c.cantidad_reactivo_actual, c.cantidad_reactivo_nominal, 0) AS cantidad,
+                       COALESCE(u.simbolo, '') AS unidad,
+                       COALESCE(cond.nombre, '') AS condicion,
+                       COALESCE(a.nombre_areas, '') AS area,
+                       COALESCE(m.nombre_meson, '') AS meson,
+                       COALESCE(c.posicion, '') AS posicion,
+                       c.fecha_apertura,
+                       c.fecha_vencimiento
+                FROM contenedores c
+                INNER JOIN sustancias s ON s.sustancia_id = c.sustancia_id
+                LEFT JOIN unidades u ON u.unidad_id = c.unidad_id
+                LEFT JOIN condiciones cond ON cond.condicion_id = c.condicion_id
+                LEFT JOIN areas a ON a.area_id = c.area_id
+                LEFT JOIN mesones m ON m.meson_id = c.meson_id
+                WHERE c.laboratorio_id = @laboratorio
+                  AND (@subcategoria IS NULL OR s.subcategoria_id = @subcategoria)
+                ORDER BY nombre, c.cont_id
+                ";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
+            cmd.Parameters.AddWithValue("subcategoria", string.IsNullOrWhiteSpace(SubcategoriaId) ? (object)DBNull.Value : SubcategoriaId!);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var cantidad = reader.GetDecimal(2);
+                var unidad = reader.GetString(3);
+                var fechaApertura = reader.IsDBNull(8) ? "—" : reader.GetDateTime(8).ToString("dd/MM/yyyy");
+                var fechaVencimiento = reader.IsDBNull(9) ? "—" : reader.GetDateTime(9).ToString("dd/MM/yyyy");
+                contenedores.Add(new ContenedorRow(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    $"{cantidad} {unidad}".Trim(),
+                    string.IsNullOrWhiteSpace(reader.GetString(4)) ? "—" : reader.GetString(4),
+                    BuildUbicacion(reader.GetString(5), reader.GetString(6), reader.GetString(7)),
+                    fechaApertura,
+                    fechaVencimiento
+                ));
+            }
+        }
+        catch (Exception ex)
+        {
+            contenedoresLoadError = ex.Message;
+        }
+    }
+
     private static string BuildUbicacion(string area, string meson, string posicion)
     {
         var parts = new List<string>();
@@ -1546,6 +1824,15 @@
         string Categoria,
         string Subcategoria,
         string Ubicacion);
+
+    private sealed record ContenedorRow(
+        string Id,
+        string Reactivo,
+        string Cantidad,
+        string Condicion,
+        string Ubicacion,
+        string FechaApertura,
+        string FechaVencimiento);
 
     private static string PointsString(PolygonItem poly) =>
         string.Join(" ", poly.Points.Select(p => $"{p.X.ToString(CultureInfo.InvariantCulture)},{p.Y.ToString(CultureInfo.InvariantCulture)}"));
@@ -1728,6 +2015,41 @@
         grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
         gap: 0.75rem;
         align-items: start;
+    }
+
+    .field-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .field-label {
+        font-size: 0.75rem;
+        color: #64748b;
+    }
+
+    .field-stack input,
+    .field-stack select {
+        width: 100%;
+    }
+
+    .chip-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        padding: 0.35rem 0;
+    }
+
+    .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        background: #f8fafc;
+        border: 1px solid #e5e7eb;
+        padding: 0.2rem 0.6rem;
+        border-radius: 999px;
+        font-size: 0.8rem;
+        color: #0f172a;
     }
 
     .full-span {

@@ -1,6 +1,7 @@
 ﻿@page "/inventario-materiales/item/{MaterialId}"
 @using Npgsql
 @using BARI_web.General_Services
+@using System.Globalization
 @inject NpgsqlDataSource DataSource
 @inject LaboratorioState LaboratorioState
 
@@ -20,9 +21,28 @@ else
 
     <section class="detail-card">
         <header>
-            <h1>@detalle.Nombre</h1>
+            <h1>
+                @if (isEditing)
+                {
+                    <input class="border p-1" @bind="_editNombre" />
+                }
+                else
+                {
+                    @detalle.Nombre
+                }
+            </h1>
             <p class="code">ID: @detalle.MaterialId · Tipo: @detalle.Tipo</p>
         </header>
+
+        <div class="detail-actions">
+            <button class="btn" @onclick="EnableEdit">Editar item</button>
+            <button class="btn primary" disabled="@(!isEditing)" @onclick="GuardarAsync">Subir actualización</button>
+            <button class="btn" disabled="@(!isEditing)" @onclick="CancelarEdicion">Cancelar</button>
+            @if (!string.IsNullOrWhiteSpace(editMsg))
+            {
+                <span class="text-sm text-gray-500">@editMsg</span>
+            }
+        </div>
 
         <div class="detail-body">
             <div class="detail-main">
@@ -33,11 +53,44 @@ else
                     </div>
                     <div>
                         <dt>Subcategoría</dt>
-                        <dd>@detalle.Subcategoria</dd>
+                        <dd>
+                            @if (isEditing)
+                            {
+                                <select class="border p-1" @bind="_editSubcategoriaId">
+                                    <option value="">Sin subcategoría</option>
+                                    @foreach (var opt in _subcategoriaOptions)
+                                    {
+                                        <option value="@opt.Id">@opt.Label</option>
+                                    }
+                                </select>
+                            }
+                            else
+                            {
+                                @detalle.Subcategoria
+                            }
+                        </dd>
                     </div>
                     <div>
                         <dt>Capacidad</dt>
-                        <dd>@detalle.Capacidad</dd>
+                        <dd>
+                            @if (isEditing && detalle.Tipo == "Vidrio")
+                            {
+                                <div class="edit-grid">
+                                    <input class="border p-1" placeholder="Capacidad" @bind="_editCapacidad" />
+                                    <select class="border p-1" @bind="_editUnidadId">
+                                        <option value="">Unidad</option>
+                                        @foreach (var opt in _unidadOptions)
+                                        {
+                                            <option value="@opt.Id">@opt.Label</option>
+                                        }
+                                    </select>
+                                </div>
+                            }
+                            else
+                            {
+                                @detalle.Capacidad
+                            }
+                        </dd>
                     </div>
                     <div>
                         <dt>Tipo</dt>
@@ -45,23 +98,94 @@ else
                     </div>
                     <div>
                         <dt>Marca</dt>
-                        <dd>@detalle.Marca</dd>
+                        <dd>
+                            @if (isEditing)
+                            {
+                                <select class="border p-1" @bind="_editMarcaId">
+                                    <option value="">Sin marca</option>
+                                    @foreach (var opt in _marcaOptions)
+                                    {
+                                        <option value="@opt.Id">@opt.Label</option>
+                                    }
+                                </select>
+                            }
+                            else
+                            {
+                                @detalle.Marca
+                            }
+                        </dd>
                     </div>
                     <div>
                         <dt>Estado</dt>
-                        <dd>@detalle.Estado</dd>
+                        <dd>
+                            @if (isEditing)
+                            {
+                                <select class="border p-1" @bind="_editEstadoId">
+                                    <option value="">Sin estado</option>
+                                    @foreach (var opt in _estadoOptions)
+                                    {
+                                        <option value="@opt.Id">@opt.Label</option>
+                                    }
+                                </select>
+                            }
+                            else
+                            {
+                                @detalle.Estado
+                            }
+                        </dd>
                     </div>
                     <div>
                         <dt>Cantidad</dt>
-                        <dd>@detalle.Cantidad</dd>
+                        <dd>
+                            @if (isEditing)
+                            {
+                                <input class="border p-1" @bind="_editCantidad" />
+                            }
+                            else
+                            {
+                                @detalle.Cantidad
+                            }
+                        </dd>
                     </div>
                     <div>
                         <dt>Ubicación</dt>
-                        <dd>@detalle.Ubicacion</dd>
+                        <dd>
+                            @if (isEditing)
+                            {
+                                <div class="edit-grid">
+                                    <select class="border p-1" @bind="_editAreaId" @onchange="OnAreaChanged">
+                                        <option value="">Sin área</option>
+                                        @foreach (var opt in _areaOptions)
+                                        {
+                                            <option value="@opt.Id">@opt.Label</option>
+                                        }
+                                    </select>
+                                    <select class="border p-1" @bind="_editMesonId">
+                                        <option value="">Sin mesón</option>
+                                        @foreach (var opt in _mesonOptions)
+                                        {
+                                            <option value="@opt.Id">@opt.Label</option>
+                                        }
+                                    </select>
+                                    <input class="border p-1" placeholder="Posición" @bind="_editPosicion" />
+                                </div>
+                            }
+                            else
+                            {
+                                @detalle.Ubicacion
+                            }
+                        </dd>
                     </div>
                 </dl>
             </div>
-            @if (!string.IsNullOrWhiteSpace(detalle.ImagenUrl))
+            @if (isEditing)
+            {
+                <div class="detail-image">
+                    <label class="text-sm text-gray-600">Imagen URL</label>
+                    <input class="border p-1" @bind="_editImagenUrl" />
+                </div>
+            }
+            else if (!string.IsNullOrWhiteSpace(detalle.ImagenUrl))
             {
                 <div class="detail-image">
                     <img src="@ResolveImagenUrl(detalle.ImagenUrl)" alt="Imagen de @detalle.Nombre" />
@@ -69,13 +193,21 @@ else
             }
         </div>
 
-        @if (!string.IsNullOrWhiteSpace(detalle.Observaciones))
-        {
-            <div class="notes">
-                <strong>Observaciones</strong>
+        <div class="notes">
+            <strong>Observaciones</strong>
+            @if (isEditing)
+            {
+                <textarea class="border p-1" rows="3" @bind="_editObservaciones"></textarea>
+            }
+            else if (!string.IsNullOrWhiteSpace(detalle.Observaciones))
+            {
                 <p>@detalle.Observaciones</p>
-            </div>
-        }
+            }
+            else
+            {
+                <p>—</p>
+            }
+        </div>
     </section>
 }
 
@@ -84,6 +216,28 @@ else
 
     private MaterialInfo? detalle;
     private string? loadError;
+    private string? editMsg;
+    private bool isEditing;
+
+    private readonly List<SelectOption> _subcategoriaOptions = new();
+    private readonly List<SelectOption> _marcaOptions = new();
+    private readonly List<SelectOption> _estadoOptions = new();
+    private readonly List<SelectOption> _unidadOptions = new();
+    private readonly List<SelectOption> _areaOptions = new();
+    private readonly List<SelectOption> _mesonOptions = new();
+
+    private string? _editNombre;
+    private string? _editSubcategoriaId;
+    private string? _editMarcaId;
+    private string? _editEstadoId;
+    private string? _editUnidadId;
+    private string? _editCapacidad;
+    private string? _editCantidad;
+    private string? _editAreaId;
+    private string? _editMesonId;
+    private string? _editPosicion;
+    private string? _editObservaciones;
+    private string? _editImagenUrl;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -162,7 +316,15 @@ else
                        COALESCE(m.posicion, '') AS posicion,
                        COALESCE(m.observaciones, '') AS observaciones,
                        COALESCE(m.imagen_url, '') AS imagen_url,
-                       m.tipo
+                       m.tipo,
+                       m.subcategoria_id,
+                       m.marca_id,
+                       m.estado_id,
+                       m.unidad_id,
+                       m.capacidad_num,
+                       m.cantidad,
+                       m.area_id,
+                       m.meson_id
                 FROM materiales m
                 LEFT JOIN subcategorias sc ON sc.subcategoria_id = m.subcategoria_id
                 LEFT JOIN categorias c ON c.categoria_id = sc.categoria_id
@@ -193,7 +355,16 @@ else
                     Ubicacion = BuildUbicacion(reader.GetString(8), reader.GetString(9), reader.GetString(10)),
                     Observaciones = reader.GetString(11),
                     ImagenUrl = reader.GetString(12),
-                    Tipo = reader.GetString(13)
+                    Tipo = reader.GetString(13),
+                    SubcategoriaId = reader.IsDBNull(14) ? null : reader.GetString(14),
+                    MarcaId = reader.IsDBNull(15) ? null : reader.GetString(15),
+                    EstadoId = reader.IsDBNull(16) ? null : reader.GetString(16),
+                    UnidadId = reader.IsDBNull(17) ? null : reader.GetString(17),
+                    CapacidadNum = reader.IsDBNull(18) ? (decimal?)null : reader.GetDecimal(18),
+                    CantidadNum = reader.IsDBNull(19) ? (decimal?)null : reader.GetDecimal(19),
+                    AreaId = reader.IsDBNull(20) ? null : reader.GetString(20),
+                    MesonId = reader.IsDBNull(21) ? null : reader.GetString(21),
+                    Posicion = reader.GetString(10)
                 };
             }
             else
@@ -205,6 +376,207 @@ else
         {
             loadError = ex.Message;
         }
+
+        if (detalle is not null)
+        {
+            ResetEditState();
+            await LoadLookupsAsync();
+        }
+    }
+
+    private async Task LoadLookupsAsync()
+    {
+        _subcategoriaOptions.Clear();
+        _marcaOptions.Clear();
+        _estadoOptions.Clear();
+        _unidadOptions.Clear();
+        _areaOptions.Clear();
+        _mesonOptions.Clear();
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+        await using (var cmd = new NpgsqlCommand("SELECT subcategoria_id, nombre FROM subcategorias ORDER BY nombre", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+                _subcategoriaOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+        }
+
+        await using (var cmd = new NpgsqlCommand("SELECT marca_id, nombre FROM marcas ORDER BY nombre", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+                _marcaOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+        }
+
+        await using (var cmd = new NpgsqlCommand("SELECT estado_id, nombre FROM estados_activo ORDER BY nombre", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+                _estadoOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+        }
+
+        await using (var cmd = new NpgsqlCommand("SELECT unidad_id, nombre, simbolo FROM unidades ORDER BY nombre", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+                _unidadOptions.Add(new SelectOption(reader.GetString(0), $"{reader.GetString(1)} ({reader.GetString(2)})"));
+        }
+
+        const string areaSql = @"
+            SELECT area_id, nombre_areas
+            FROM areas
+            WHERE laboratorio_id = @lab
+            ORDER BY nombre_areas";
+        await using (var cmd = new NpgsqlCommand(areaSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                _areaOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+        }
+
+        await LoadMesonesAsync();
+    }
+
+    private async Task LoadMesonesAsync()
+    {
+        _mesonOptions.Clear();
+
+        if (string.IsNullOrWhiteSpace(_editAreaId))
+            return;
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+        const string mesonSql = @"
+            SELECT meson_id, nombre_meson
+            FROM mesones
+            WHERE area_id = @area
+            ORDER BY nombre_meson";
+        await using var cmd = new NpgsqlCommand(mesonSql, conn);
+        cmd.Parameters.AddWithValue("area", _editAreaId);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            _mesonOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+    }
+
+    private async Task OnAreaChanged(ChangeEventArgs args)
+    {
+        _editAreaId = args.Value?.ToString();
+        _editMesonId = null;
+        await LoadMesonesAsync();
+    }
+
+    private void EnableEdit()
+    {
+        if (detalle is null) return;
+        isEditing = true;
+        editMsg = null;
+    }
+
+    private void CancelarEdicion()
+    {
+        if (detalle is null) return;
+        ResetEditState();
+        editMsg = "Edición cancelada.";
+    }
+
+    private void ResetEditState()
+    {
+        if (detalle is null) return;
+        isEditing = false;
+        _editNombre = detalle.Nombre;
+        _editSubcategoriaId = detalle.SubcategoriaId;
+        _editMarcaId = detalle.MarcaId;
+        _editEstadoId = detalle.EstadoId;
+        _editUnidadId = detalle.UnidadId;
+        _editCapacidad = detalle.CapacidadNum?.ToString(CultureInfo.InvariantCulture);
+        _editCantidad = detalle.CantidadNum?.ToString(CultureInfo.InvariantCulture);
+        _editAreaId = detalle.AreaId;
+        _editMesonId = detalle.MesonId;
+        _editPosicion = detalle.Posicion;
+        _editObservaciones = string.IsNullOrWhiteSpace(detalle.Observaciones) || detalle.Observaciones == "—" ? null : detalle.Observaciones;
+        _editImagenUrl = detalle.ImagenUrl;
+    }
+
+    private async Task GuardarAsync()
+    {
+        if (detalle is null) return;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            var sql = detalle.Tipo switch
+            {
+                "Vidrio" => @"
+                    UPDATE materiales_vidrio
+                    SET nombre = @nombre,
+                        subcategoria_id = @subcategoria,
+                        capacidad_num = @capacidad,
+                        unidad_id = @unidad,
+                        marca_id = @marca,
+                        estado_id = @estado,
+                        area_id = @area,
+                        meson_id = @meson,
+                        posicion = @posicion,
+                        cantidad = @cantidad,
+                        observaciones = @obs,
+                        imagen_url = @img
+                    WHERE material_id = @id
+                      AND laboratorio_id = @lab",
+                "Montaje" => @"
+                    UPDATE materiales_montaje
+                    SET nombre = @nombre,
+                        subcategoria_id = @subcategoria,
+                        marca_id = @marca,
+                        estado_id = @estado,
+                        area_id = @area,
+                        meson_id = @meson,
+                        posicion = @posicion,
+                        cantidad = @cantidad,
+                        observaciones = @obs,
+                        imagen_url = @img
+                    WHERE material_id = @id
+                      AND laboratorio_id = @lab",
+                _ => @"
+                    UPDATE materiales_consumible
+                    SET nombre = @nombre,
+                        subcategoria_id = @subcategoria,
+                        marca_id = @marca,
+                        estado_id = @estado,
+                        area_id = @area,
+                        meson_id = @meson,
+                        posicion = @posicion,
+                        cantidad = @cantidad,
+                        observaciones = @obs,
+                        imagen_url = @img
+                    WHERE material_id = @id
+                      AND laboratorio_id = @lab"
+            };
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("nombre", string.IsNullOrWhiteSpace(_editNombre) ? (object)DBNull.Value : _editNombre!);
+            cmd.Parameters.AddWithValue("subcategoria", string.IsNullOrWhiteSpace(_editSubcategoriaId) ? (object)DBNull.Value : _editSubcategoriaId!);
+            cmd.Parameters.AddWithValue("capacidad", ParseDecimalOrNull(_editCapacidad));
+            cmd.Parameters.AddWithValue("unidad", string.IsNullOrWhiteSpace(_editUnidadId) ? (object)DBNull.Value : _editUnidadId!);
+            cmd.Parameters.AddWithValue("marca", string.IsNullOrWhiteSpace(_editMarcaId) ? (object)DBNull.Value : _editMarcaId!);
+            cmd.Parameters.AddWithValue("estado", string.IsNullOrWhiteSpace(_editEstadoId) ? (object)DBNull.Value : _editEstadoId!);
+            cmd.Parameters.AddWithValue("area", string.IsNullOrWhiteSpace(_editAreaId) ? (object)DBNull.Value : _editAreaId!);
+            cmd.Parameters.AddWithValue("meson", string.IsNullOrWhiteSpace(_editMesonId) ? (object)DBNull.Value : _editMesonId!);
+            cmd.Parameters.AddWithValue("posicion", string.IsNullOrWhiteSpace(_editPosicion) ? (object)DBNull.Value : _editPosicion!);
+            cmd.Parameters.AddWithValue("cantidad", ParseDecimalOrNull(_editCantidad));
+            cmd.Parameters.AddWithValue("obs", string.IsNullOrWhiteSpace(_editObservaciones) ? (object)DBNull.Value : _editObservaciones!);
+            cmd.Parameters.AddWithValue("img", string.IsNullOrWhiteSpace(_editImagenUrl) ? (object)DBNull.Value : _editImagenUrl!);
+            cmd.Parameters.AddWithValue("id", detalle.MaterialId);
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+        catch (Exception ex)
+        {
+            editMsg = $"No se pudo guardar: {ex.Message}";
+            return;
+        }
+
+        editMsg = "Actualización guardada.";
+        isEditing = false;
+        await OnParametersSetAsync();
     }
 
     private static string BuildUbicacion(string area, string meson, string posicion)
@@ -230,7 +602,25 @@ else
         public string Ubicacion { get; set; } = "";
         public string Observaciones { get; set; } = "";
         public string ImagenUrl { get; set; } = "";
+        public string? SubcategoriaId { get; set; }
+        public string? MarcaId { get; set; }
+        public string? EstadoId { get; set; }
+        public string? UnidadId { get; set; }
+        public decimal? CapacidadNum { get; set; }
+        public decimal? CantidadNum { get; set; }
+        public string? AreaId { get; set; }
+        public string? MesonId { get; set; }
+        public string? Posicion { get; set; }
     }
+
+    private static object ParseDecimalOrNull(string? value)
+    {
+        return decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : DBNull.Value;
+    }
+
+    private sealed record SelectOption(string Id, string Label);
 
     private static string ResolveImagenUrl(string url)
     {
@@ -265,6 +655,14 @@ else
 
     .detail-card header h1 {
         margin: 0;
+    }
+
+    .detail-actions {
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+        margin: 1rem 0;
+        flex-wrap: wrap;
     }
 
     .detail-body {
@@ -318,6 +716,15 @@ else
         border-radius: 12px;
         background: #f8fafc;
         border: 1px solid #e2e8f0;
+    }
+
+    .notes textarea {
+        width: 100%;
+    }
+
+    .edit-grid {
+        display: grid;
+        gap: 0.5rem;
     }
 
     .error-note { color:#b91c1c; margin-top:0.75rem; }

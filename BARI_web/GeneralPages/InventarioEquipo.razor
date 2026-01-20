@@ -249,8 +249,14 @@
 
             <input class="border p-1" placeholder="Nivel" @bind="_nuevoEquipoNivel" />
             <input class="border p-1" placeholder="Posición (ej. extremo derecho)" @bind="_nuevoEquipoPosicion" />
-            <input class="border p-1" type="date" @bind-value="_nuevoEquipoFechaCompra" @bind-value:format="yyyy-MM-dd" />
-            <input class="border p-1" type="date" @bind-value="_nuevoEquipoGarantiaHasta" @bind-value:format="yyyy-MM-dd" />
+            <div class="field-stack">
+                <label class="field-label">Fecha de compra</label>
+                <input class="border p-1" type="date" @bind-value="_nuevoEquipoFechaCompra" @bind-value:format="yyyy-MM-dd" />
+            </div>
+            <div class="field-stack">
+                <label class="field-label">Garantía hasta</label>
+                <input class="border p-1" type="date" @bind-value="_nuevoEquipoGarantiaHasta" @bind-value:format="yyyy-MM-dd" />
+            </div>
             <input class="border p-1" placeholder="Observaciones" @bind="_nuevoEquipoObservaciones" />
 
             <div class="upload-card full-span">
@@ -691,11 +697,13 @@
         const string subcategoriaSql = @"
             SELECT s.subcategoria_id, s.nombre
             FROM subcategorias s
-            WHERE s.categoria_id = 'equipo-instumento'
+            INNER JOIN categorias c ON c.categoria_id = s.categoria_id
+            WHERE c.nombre = ANY(@categorias)
             ORDER BY s.nombre";
         await using (var cmd = new NpgsqlCommand(subcategoriaSql, conn))
-        await using (var reader = await cmd.ExecuteReaderAsync())
         {
+            cmd.Parameters.AddWithValue("categorias", CategoriaPermitidas);
+            await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
                 _subcategoriaOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
         }
@@ -1176,7 +1184,7 @@
                        cal.proxima_fecha
                 FROM equipos e
                 JOIN modelos_equipo me ON me.modelo_id = e.modelo_id
-                LEFT JOIN subcategorias sc_sel ON sc_sel.subcategoria_id = COALESCE(e.subcategoria_id, me.subcategoria_id)
+                LEFT JOIN subcategorias sc_sel ON sc_sel.subcategoria_id = e.subcategoria_id
                 LEFT JOIN categorias c ON c.categoria_id = sc_sel.categoria_id
                 LEFT JOIN estados_activo ea ON ea.estado_id = e.estado_id
                 LEFT JOIN areas a ON a.area_id = e.area_id
@@ -1187,7 +1195,7 @@
                     FROM calibraciones
                     GROUP BY equipo_id
                 ) cal ON cal.equipo_id = e.equipo_id
-                WHERE sc_sel.subcategoria_id = @subcategoria
+                WHERE e.subcategoria_id = @subcategoria
                   AND e.laboratorio_id = @laboratorio
                   AND c.nombre = ANY(@categorias)
                 ORDER BY equipo_nombre, e.equipo_id
@@ -1513,6 +1521,22 @@
         grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
         gap: 0.75rem;
         align-items: start;
+    }
+
+    .field-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .field-label {
+        font-size: 0.75rem;
+        color: #64748b;
+    }
+
+    .field-stack input,
+    .field-stack select {
+        width: 100%;
     }
 
     .full-span {
