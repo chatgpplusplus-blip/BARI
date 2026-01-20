@@ -30,11 +30,19 @@
             <p class="form-hint">Selecciona el modelo, estado y ubicación. El mapa te ayuda a elegir área y mesón con precisión.</p>
         </div>
         <div class="assign-row form-grid">
+            <input class="border p-1" placeholder="Nombre del equipo" @bind="_nuevoEquipoNombre" />
             <select class="border p-1" @bind="_nuevoEquipoModeloId">
                 <option value="">Modelo del equipo</option>
                 @foreach (var modelo in _modeloOptions)
                 {
                     <option value="@modelo.Id">@modelo.Label</option>
+                }
+            </select>
+            <select class="border p-1" @bind="_nuevoEquipoSubcategoriaId">
+                <option value="">Subcategoría</option>
+                @foreach (var subcategoria in _subcategoriaOptions)
+                {
+                    <option value="@subcategoria.Id">@subcategoria.Label</option>
                 }
             </select>
             <input class="border p-1" placeholder="Serie" @bind="_nuevoEquipoSerie" />
@@ -418,6 +426,7 @@
     private readonly List<EquipoRow> equipos = new();
     private string? subcategoriaNombre;
     private string? loadError;
+    private string? _nuevoEquipoNombre;
     private string? _nuevoEquipoModeloId;
     private string? _nuevoEquipoSerie;
     private string? _nuevoEquipoEstadoId;
@@ -425,7 +434,7 @@
     private string? _nuevoEquipoMesonId;
     private string? _nuevoEquipoNivel;
     private string? _nuevoEquipoPosicion;
-    private string? _nuevoEquipoPolyId;
+    private string? _nuevoEquipoSubcategoriaId;
     private DateTime? _nuevoEquipoFechaCompra;
     private DateTime? _nuevoEquipoGarantiaHasta;
     private string? _nuevoEquipoObservaciones;
@@ -437,6 +446,7 @@
 
     private readonly List<SelectOption> _modeloOptions = new();
     private readonly List<SelectOption> _estadoOptions = new();
+    private readonly List<SelectOption> _subcategoriaOptions = new();
     private readonly List<SelectOption> _areaOptions = new();
     private readonly List<SelectOption> _mesonOptions = new();
 
@@ -597,14 +607,16 @@
         await using var conn = await DataSource.OpenConnectionAsync();
         const string sql = @"
             INSERT INTO equipos
-            (equipo_id, modelo_id, serie, estado_id, area_id, meson_id, nivel, posicion,
-             canvas_id, poly_id, fecha_compra, garantia_hasta, requiere_calibracion,
+            (equipo_id, nombre, modelo_id, subcategoria_id, serie, estado_id, area_id, meson_id, nivel, posicion,
+             canvas_id, fecha_compra, garantia_hasta, requiere_calibracion,
              laboratorio_id, observaciones, imagen_url)
-            VALUES (@id, @modelo, @serie, @estado, @area, @meson, @nivel, @posicion,
-                    @canvas, @poly, @fcompra, @fgarantia, @cal, @lab, @obs, @img)";
+            VALUES (@id, @nombre, @modelo, @subcat, @serie, @estado, @area, @meson, @nivel, @posicion,
+                    @canvas, @fcompra, @fgarantia, @cal, @lab, @obs, @img)";
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("id", equipoId);
+        cmd.Parameters.AddWithValue("nombre", string.IsNullOrWhiteSpace(_nuevoEquipoNombre) ? (object)DBNull.Value : _nuevoEquipoNombre!);
         cmd.Parameters.AddWithValue("modelo", string.IsNullOrWhiteSpace(_nuevoEquipoModeloId) ? (object)DBNull.Value : _nuevoEquipoModeloId!);
+        cmd.Parameters.AddWithValue("subcat", string.IsNullOrWhiteSpace(_nuevoEquipoSubcategoriaId) ? (object)DBNull.Value : _nuevoEquipoSubcategoriaId!);
         cmd.Parameters.AddWithValue("serie", string.IsNullOrWhiteSpace(_nuevoEquipoSerie) ? (object)DBNull.Value : _nuevoEquipoSerie!);
         cmd.Parameters.AddWithValue("estado", string.IsNullOrWhiteSpace(_nuevoEquipoEstadoId) ? (object)DBNull.Value : _nuevoEquipoEstadoId!);
         cmd.Parameters.AddWithValue("area", string.IsNullOrWhiteSpace(_nuevoEquipoAreaId) ? (object)DBNull.Value : _nuevoEquipoAreaId!);
@@ -614,13 +626,13 @@
         cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
         cmd.Parameters.AddWithValue("posicion", string.IsNullOrWhiteSpace(_nuevoEquipoPosicion) ? (object)DBNull.Value : _nuevoEquipoPosicion!);
         cmd.Parameters.AddWithValue("canvas", string.IsNullOrWhiteSpace(canvasId) ? (object)DBNull.Value : canvasId);
-        cmd.Parameters.AddWithValue("poly", string.IsNullOrWhiteSpace(_nuevoEquipoPolyId) ? (object)DBNull.Value : _nuevoEquipoPolyId!);
         cmd.Parameters.AddWithValue("fcompra", ParseDateOrNull(_nuevoEquipoFechaCompra));
         cmd.Parameters.AddWithValue("fgarantia", ParseDateOrNull(_nuevoEquipoGarantiaHasta));
         cmd.Parameters.AddWithValue("obs", string.IsNullOrWhiteSpace(_nuevoEquipoObservaciones) ? (object)DBNull.Value : _nuevoEquipoObservaciones!);
         cmd.Parameters.AddWithValue("img", string.IsNullOrWhiteSpace(_nuevoEquipoImagenUrl) ? (object)DBNull.Value : _nuevoEquipoImagenUrl!);
         await cmd.ExecuteNonQueryAsync();
 
+        _nuevoEquipoNombre = null;
         _nuevoEquipoModeloId = null;
         _nuevoEquipoSerie = null;
         _nuevoEquipoEstadoId = null;
@@ -628,7 +640,7 @@
         _nuevoEquipoMesonId = null;
         _nuevoEquipoNivel = null;
         _nuevoEquipoPosicion = null;
-        _nuevoEquipoPolyId = null;
+        _nuevoEquipoSubcategoriaId = null;
         _nuevoEquipoFechaCompra = null;
         _nuevoEquipoGarantiaHasta = null;
         _nuevoEquipoObservaciones = null;
@@ -644,6 +656,7 @@
     {
         _modeloOptions.Clear();
         _estadoOptions.Clear();
+        _subcategoriaOptions.Clear();
         _areaOptions.Clear();
 
         await using var conn = await DataSource.OpenConnectionAsync();
@@ -673,6 +686,18 @@
         {
             while (await reader.ReadAsync())
                 _estadoOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+        }
+
+        const string subcategoriaSql = @"
+            SELECT s.subcategoria_id, s.nombre
+            FROM subcategorias s
+            WHERE s.categoria_id = 'equipo-instumento'
+            ORDER BY s.nombre";
+        await using (var cmd = new NpgsqlCommand(subcategoriaSql, conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+                _subcategoriaOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
         }
 
         const string areaSql = @"
@@ -1140,9 +1165,9 @@
             const string sql = @"
                 SELECT e.equipo_id,
                        COALESCE(me.nombre_modelo, '') AS modelo,
-                       COALESCE(me.nombre_modelo, '') AS equipo_nombre,
+                       COALESCE(NULLIF(e.nombre, ''), me.nombre_modelo, '') AS equipo_nombre,
                        COALESCE(c.nombre, '') AS categoria,
-                       COALESCE(sc.nombre, '') AS subcategoria,
+                       COALESCE(sc_sel.nombre, '') AS subcategoria,
                        COALESCE(ea.nombre, 'Sin estado') AS estado,
                        COALESCE(a.nombre_areas, '') AS area,
                        COALESCE(m.nombre_meson, '') AS meson,
@@ -1151,8 +1176,8 @@
                        cal.proxima_fecha
                 FROM equipos e
                 JOIN modelos_equipo me ON me.modelo_id = e.modelo_id
-                LEFT JOIN subcategorias sc ON sc.subcategoria_id = me.subcategoria_id
-                LEFT JOIN categorias c ON c.categoria_id = sc.categoria_id
+                LEFT JOIN subcategorias sc_sel ON sc_sel.subcategoria_id = COALESCE(e.subcategoria_id, me.subcategoria_id)
+                LEFT JOIN categorias c ON c.categoria_id = sc_sel.categoria_id
                 LEFT JOIN estados_activo ea ON ea.estado_id = e.estado_id
                 LEFT JOIN areas a ON a.area_id = e.area_id
                 LEFT JOIN mesones m ON m.meson_id = e.meson_id
@@ -1162,10 +1187,10 @@
                     FROM calibraciones
                     GROUP BY equipo_id
                 ) cal ON cal.equipo_id = e.equipo_id
-                WHERE me.subcategoria_id = @subcategoria
+                WHERE sc_sel.subcategoria_id = @subcategoria
                   AND e.laboratorio_id = @laboratorio
                   AND c.nombre = ANY(@categorias)
-                ORDER BY me.nombre_modelo, e.equipo_id
+                ORDER BY equipo_nombre, e.equipo_id
                 ";
             await using var cmd = new NpgsqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("subcategoria", SubcategoriaId);
