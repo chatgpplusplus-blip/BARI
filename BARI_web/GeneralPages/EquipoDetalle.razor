@@ -20,9 +20,28 @@ else
 
     <section class="detail-card">
         <header>
-            <h1>@detalle.Nombre</h1>
+            <h1>
+                @if (isEditing)
+                {
+                    <input class="border p-1" @bind="_editNombre" />
+                }
+                else
+                {
+                    @detalle.Nombre
+                }
+            </h1>
             <p class="code">ID: @detalle.EquipoId · Modelo: @detalle.Modelo</p>
         </header>
+
+        <div class="detail-actions">
+            <button class="btn" @onclick="EnableEdit">Editar item</button>
+            <button class="btn primary" disabled="@(!isEditing)" @onclick="GuardarAsync">Subir actualización</button>
+            <button class="btn" disabled="@(!isEditing)" @onclick="CancelarEdicion">Cancelar</button>
+            @if (!string.IsNullOrWhiteSpace(editMsg))
+            {
+                <span class="text-sm text-gray-500">@editMsg</span>
+            }
+        </div>
 
         <dl class="info">
             <div>
@@ -31,7 +50,22 @@ else
             </div>
             <div>
                 <dt>Subcategoría</dt>
-                <dd>@detalle.Subcategoria</dd>
+                <dd>
+                    @if (isEditing)
+                    {
+                        <select class="border p-1" @bind="_editSubcategoriaId">
+                            <option value="">Sin subcategoría</option>
+                            @foreach (var opt in _subcategoriaOptions)
+                            {
+                                <option value="@opt.Id">@opt.Label</option>
+                            }
+                        </select>
+                    }
+                    else
+                    {
+                        @detalle.Subcategoria
+                    }
+                </dd>
             </div>
             <div>
                 <dt>Marca</dt>
@@ -39,15 +73,64 @@ else
             </div>
             <div>
                 <dt>Serie</dt>
-                <dd>@detalle.Serie</dd>
+                <dd>
+                    @if (isEditing)
+                    {
+                        <input class="border p-1" @bind="_editSerie" />
+                    }
+                    else
+                    {
+                        @detalle.Serie
+                    }
+                </dd>
             </div>
             <div>
                 <dt>Estado</dt>
-                <dd>@detalle.Estado</dd>
+                <dd>
+                    @if (isEditing)
+                    {
+                        <select class="border p-1" @bind="_editEstadoId">
+                            <option value="">Sin estado</option>
+                            @foreach (var opt in _estadoOptions)
+                            {
+                                <option value="@opt.Id">@opt.Label</option>
+                            }
+                        </select>
+                    }
+                    else
+                    {
+                        @detalle.Estado
+                    }
+                </dd>
             </div>
             <div>
                 <dt>Ubicación</dt>
-                <dd>@detalle.Ubicacion</dd>
+                <dd>
+                    @if (isEditing)
+                    {
+                        <div class="edit-grid">
+                            <select class="border p-1" @bind="_editAreaId" @onchange="OnAreaChanged">
+                                <option value="">Sin área</option>
+                                @foreach (var opt in _areaOptions)
+                                {
+                                    <option value="@opt.Id">@opt.Label</option>
+                                }
+                            </select>
+                            <select class="border p-1" @bind="_editMesonId">
+                                <option value="">Sin mesón</option>
+                                @foreach (var opt in _mesonOptions)
+                                {
+                                    <option value="@opt.Id">@opt.Label</option>
+                                }
+                            </select>
+                            <input class="border p-1" placeholder="Posición" @bind="_editPosicion" />
+                        </div>
+                    }
+                    else
+                    {
+                        @detalle.Ubicacion
+                    }
+                </dd>
             </div>
             <div>
                 <dt>Calibración</dt>
@@ -55,17 +138,36 @@ else
             </div>
             <div>
                 <dt>Requiere calibración</dt>
-                <dd>@(detalle.RequiereCalibracion ? "Sí" : "No")</dd>
+                <dd>
+                    @if (isEditing)
+                    {
+                        <label class="text-sm text-gray-600">
+                            <input type="checkbox" @bind="_editRequiereCalibracion" /> Requiere calibración
+                        </label>
+                    }
+                    else
+                    {
+                        @(detalle.RequiereCalibracion ? "Sí" : "No")
+                    }
+                </dd>
             </div>
         </dl>
 
-        @if (!string.IsNullOrWhiteSpace(detalle.Observaciones))
-        {
-            <div class="notes">
-                <strong>Observaciones</strong>
+        <div class="notes">
+            <strong>Observaciones</strong>
+            @if (isEditing)
+            {
+                <textarea class="border p-1" rows="3" @bind="_editObservaciones"></textarea>
+            }
+            else if (!string.IsNullOrWhiteSpace(detalle.Observaciones))
+            {
                 <p>@detalle.Observaciones</p>
-            </div>
-        }
+            }
+            else
+            {
+                <p>—</p>
+            }
+        </div>
     </section>
 }
 
@@ -74,6 +176,28 @@ else
 
     private EquipoInfo? detalle;
     private string? loadError;
+    private string? editMsg;
+    private bool isEditing;
+
+    private readonly List<SelectOption> _subcategoriaOptions = new();
+    private readonly List<SelectOption> _estadoOptions = new();
+    private readonly List<SelectOption> _areaOptions = new();
+    private readonly List<SelectOption> _mesonOptions = new();
+
+    private string? _editNombre;
+    private string? _editSerie;
+    private string? _editEstadoId;
+    private string? _editSubcategoriaId;
+    private string? _editAreaId;
+    private string? _editMesonId;
+    private string? _editPosicion;
+    private bool _editRequiereCalibracion;
+    private string? _editObservaciones;
+
+    private static readonly string[] CategoriaPermitidas =
+    [
+        "Equipo/Instrumento"
+    ];
 
     protected override async Task OnParametersSetAsync()
     {
@@ -88,6 +212,7 @@ else
             await using var conn = await DataSource.OpenConnectionAsync();
             const string sql = @"
                 SELECT e.equipo_id,
+                       COALESCE(NULLIF(e.nombre, ''), me.nombre_modelo, '') AS equipo_nombre,
                        COALESCE(me.nombre_modelo, '') AS modelo,
                        COALESCE(c.nombre, '') AS categoria,
                        COALESCE(sc.nombre, '') AS subcategoria,
@@ -99,10 +224,14 @@ else
                        COALESCE(e.posicion, '') AS posicion,
                        e.requiere_calibracion,
                        cal.proxima_fecha,
-                       COALESCE(e.observaciones, '') AS observaciones
+                       COALESCE(e.observaciones, '') AS observaciones,
+                       e.subcategoria_id,
+                       e.estado_id,
+                       e.area_id,
+                       e.meson_id
                 FROM equipos e
                 JOIN modelos_equipo me ON me.modelo_id = e.modelo_id
-                LEFT JOIN subcategorias sc ON sc.subcategoria_id = me.subcategoria_id
+                LEFT JOIN subcategorias sc ON sc.subcategoria_id = e.subcategoria_id
                 LEFT JOIN categorias c ON c.categoria_id = sc.categoria_id
                 LEFT JOIN marcas ma ON ma.marca_id = me.marca_id
                 LEFT JOIN estados_activo ea ON ea.estado_id = e.estado_id
@@ -123,22 +252,27 @@ else
             await using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync())
             {
-                var requiereCalibracion = reader.GetBoolean(10);
-                var proxima = reader.IsDBNull(11) ? (DateTime?)null : reader.GetDateTime(11);
+                var requiereCalibracion = reader.GetBoolean(11);
+                var proxima = reader.IsDBNull(12) ? (DateTime?)null : reader.GetDateTime(12);
                 detalle = new EquipoInfo
                 {
                     EquipoId = reader.GetString(0),
                     Nombre = reader.GetString(1),
-                    Modelo = reader.GetString(1),
-                    Categoria = reader.GetString(2),
-                    Subcategoria = reader.GetString(3),
-                    Marca = reader.GetString(4),
-                    Serie = reader.GetString(5),
-                    Estado = reader.GetString(6),
-                    Ubicacion = BuildUbicacion(reader.GetString(7), reader.GetString(8), reader.GetString(9)),
+                    Modelo = reader.GetString(2),
+                    Categoria = reader.GetString(3),
+                    Subcategoria = reader.GetString(4),
+                    Marca = reader.GetString(5),
+                    Serie = reader.GetString(6),
+                    Estado = reader.GetString(7),
+                    Ubicacion = BuildUbicacion(reader.GetString(8), reader.GetString(9), reader.GetString(10)),
                     RequiereCalibracion = requiereCalibracion,
                     Calibracion = BuildCalibracion(requiereCalibracion, proxima),
-                    Observaciones = reader.GetString(12)
+                    Observaciones = reader.GetString(13),
+                    SubcategoriaId = reader.IsDBNull(14) ? null : reader.GetString(14),
+                    EstadoId = reader.IsDBNull(15) ? null : reader.GetString(15),
+                    AreaId = reader.IsDBNull(16) ? null : reader.GetString(16),
+                    MesonId = reader.IsDBNull(17) ? null : reader.GetString(17),
+                    Posicion = reader.GetString(10)
                 };
             }
             else
@@ -150,6 +284,166 @@ else
         {
             loadError = ex.Message;
         }
+
+        if (detalle is not null)
+        {
+            ResetEditState();
+            await LoadLookupsAsync();
+        }
+    }
+
+    private async Task LoadLookupsAsync()
+    {
+        _subcategoriaOptions.Clear();
+        _estadoOptions.Clear();
+        _areaOptions.Clear();
+        _mesonOptions.Clear();
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+        const string subcategoriaSql = @"
+            SELECT s.subcategoria_id, s.nombre
+            FROM subcategorias s
+            INNER JOIN categorias c ON c.categoria_id = s.categoria_id
+            WHERE c.nombre = ANY(@categorias)
+            ORDER BY s.nombre";
+        await using (var cmd = new NpgsqlCommand(subcategoriaSql, conn))
+        {
+            cmd.Parameters.AddWithValue("categorias", CategoriaPermitidas);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                _subcategoriaOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+            }
+        }
+
+        await using (var cmd = new NpgsqlCommand("SELECT estado_id, nombre FROM estados_activo ORDER BY nombre", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                _estadoOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+            }
+        }
+
+        const string areaSql = @"
+            SELECT area_id, nombre_areas
+            FROM areas
+            WHERE laboratorio_id = @lab
+            ORDER BY nombre_areas";
+        await using (var cmd = new NpgsqlCommand(areaSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                _areaOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+            }
+        }
+
+        await LoadMesonesAsync();
+    }
+
+    private async Task LoadMesonesAsync()
+    {
+        _mesonOptions.Clear();
+
+        if (string.IsNullOrWhiteSpace(_editAreaId))
+            return;
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+        const string mesonSql = @"
+            SELECT meson_id, nombre_meson
+            FROM mesones
+            WHERE area_id = @area
+            ORDER BY nombre_meson";
+        await using var cmd = new NpgsqlCommand(mesonSql, conn);
+        cmd.Parameters.AddWithValue("area", _editAreaId);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            _mesonOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+        }
+    }
+
+    private async Task OnAreaChanged(ChangeEventArgs args)
+    {
+        _editAreaId = args.Value?.ToString();
+        _editMesonId = null;
+        await LoadMesonesAsync();
+    }
+
+    private void EnableEdit()
+    {
+        if (detalle is null) return;
+        isEditing = true;
+        editMsg = null;
+    }
+
+    private void CancelarEdicion()
+    {
+        if (detalle is null) return;
+        ResetEditState();
+        editMsg = "Edición cancelada.";
+    }
+
+    private void ResetEditState()
+    {
+        if (detalle is null) return;
+        isEditing = false;
+        _editNombre = detalle.Nombre;
+        _editSerie = detalle.Serie == "—" ? null : detalle.Serie;
+        _editEstadoId = detalle.EstadoId;
+        _editSubcategoriaId = detalle.SubcategoriaId;
+        _editAreaId = detalle.AreaId;
+        _editMesonId = detalle.MesonId;
+        _editPosicion = detalle.Posicion;
+        _editRequiereCalibracion = detalle.RequiereCalibracion;
+        _editObservaciones = detalle.Observaciones == "—" ? null : detalle.Observaciones;
+    }
+
+    private async Task GuardarAsync()
+    {
+        if (detalle is null) return;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+                UPDATE equipos
+                SET nombre = @nombre,
+                    serie = @serie,
+                    estado_id = @estado,
+                    subcategoria_id = @subcategoria,
+                    area_id = @area,
+                    meson_id = @meson,
+                    posicion = @posicion,
+                    requiere_calibracion = @requiere,
+                    observaciones = @obs
+                WHERE equipo_id = @id
+                  AND laboratorio_id = @lab";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("nombre", string.IsNullOrWhiteSpace(_editNombre) ? (object)DBNull.Value : _editNombre!);
+            cmd.Parameters.AddWithValue("serie", string.IsNullOrWhiteSpace(_editSerie) ? (object)DBNull.Value : _editSerie!);
+            cmd.Parameters.AddWithValue("estado", string.IsNullOrWhiteSpace(_editEstadoId) ? (object)DBNull.Value : _editEstadoId!);
+            cmd.Parameters.AddWithValue("subcategoria", string.IsNullOrWhiteSpace(_editSubcategoriaId) ? (object)DBNull.Value : _editSubcategoriaId!);
+            cmd.Parameters.AddWithValue("area", string.IsNullOrWhiteSpace(_editAreaId) ? (object)DBNull.Value : _editAreaId!);
+            cmd.Parameters.AddWithValue("meson", string.IsNullOrWhiteSpace(_editMesonId) ? (object)DBNull.Value : _editMesonId!);
+            cmd.Parameters.AddWithValue("posicion", string.IsNullOrWhiteSpace(_editPosicion) ? (object)DBNull.Value : _editPosicion!);
+            cmd.Parameters.AddWithValue("requiere", _editRequiereCalibracion);
+            cmd.Parameters.AddWithValue("obs", string.IsNullOrWhiteSpace(_editObservaciones) ? (object)DBNull.Value : _editObservaciones!);
+            cmd.Parameters.AddWithValue("id", detalle.EquipoId);
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+        catch (Exception ex)
+        {
+            editMsg = $"No se pudo guardar: {ex.Message}";
+            return;
+        }
+
+        editMsg = "Actualización guardada.";
+        isEditing = false;
+        await OnParametersSetAsync();
     }
 
     private static string BuildUbicacion(string area, string meson, string posicion)
@@ -184,7 +478,14 @@ else
         public bool RequiereCalibracion { get; set; }
         public string Calibracion { get; set; } = "";
         public string Observaciones { get; set; } = "";
+        public string? SubcategoriaId { get; set; }
+        public string? EstadoId { get; set; }
+        public string? AreaId { get; set; }
+        public string? MesonId { get; set; }
+        public string? Posicion { get; set; }
     }
+
+    private sealed record SelectOption(string Id, string Label);
 }
 
 <style>
@@ -209,6 +510,23 @@ else
 
     .detail-card header h1 {
         margin: 0;
+    }
+
+    .detail-actions {
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+        margin: 1rem 0;
+        flex-wrap: wrap;
+    }
+
+    .edit-grid {
+        display: grid;
+        gap: 0.5rem;
+    }
+
+    .notes textarea {
+        width: 100%;
     }
 
     .detail-card .code {
