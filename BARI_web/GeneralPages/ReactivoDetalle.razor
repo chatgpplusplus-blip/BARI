@@ -81,7 +81,11 @@ else
                             @foreach (var cont in contenedores)
                             {
                                 <tr>
-                                    <td>@cont.Id</td>
+                                    <td>
+                                        <NavLink href="@($"/inventario-sustancias/contenedor/{cont.Id}")">
+                                            @cont.Id
+                                        </NavLink>
+                                    </td>
                                     <td>@cont.Cantidad</td>
                                     <td>@cont.Condicion</td>
                                     <td>@cont.Proveedor</td>
