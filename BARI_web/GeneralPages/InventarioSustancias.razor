@@ -111,10 +111,10 @@
             </select>
             <input class="border p-1" placeholder="Densidad g/mL" @bind="_nuevoContenedorDensidad" />
             <input class="border p-1" placeholder="Proveedor" @bind="_nuevoContenedorProveedor" />
-            <input class="border p-1" type="date" @bind="_nuevoContenedorFechaCompra" />
-            <input class="border p-1" type="date" @bind="_nuevoContenedorFechaRecepcion" />
-            <input class="border p-1" type="date" @bind="_nuevoContenedorFechaVencimiento" />
-            <input class="border p-1" type="date" @bind="_nuevoContenedorFechaApertura" />
+            <InputDate class="border p-1" @bind-Value="_nuevoContenedorFechaCompra" />
+            <InputDate class="border p-1" @bind-Value="_nuevoContenedorFechaRecepcion" />
+            <InputDate class="border p-1" @bind-Value="_nuevoContenedorFechaVencimiento" />
+            <InputDate class="border p-1" @bind-Value="_nuevoContenedorFechaApertura" />
             <input class="border p-1" placeholder="Masa envase vacío (g)" @bind="_nuevoContenedorMasaEnvase" />
             <input class="border p-1" placeholder="Masa tapa (g)" @bind="_nuevoContenedorMasaTapa" />
             <input class="border p-1" placeholder="Color envase" @bind="_nuevoContenedorColor" />
@@ -516,10 +516,10 @@
     private string? _nuevoContenedorMarcaId;
     private string? _nuevoContenedorDensidad;
     private string? _nuevoContenedorProveedor;
-    private string? _nuevoContenedorFechaCompra;
-    private string? _nuevoContenedorFechaRecepcion;
-    private string? _nuevoContenedorFechaVencimiento;
-    private string? _nuevoContenedorFechaApertura;
+    private DateTime? _nuevoContenedorFechaCompra;
+    private DateTime? _nuevoContenedorFechaRecepcion;
+    private DateTime? _nuevoContenedorFechaVencimiento;
+    private DateTime? _nuevoContenedorFechaApertura;
     private string? _nuevoContenedorMasaEnvase;
     private string? _nuevoContenedorMasaTapa;
     private string? _nuevoContenedorColor;
@@ -1292,12 +1292,8 @@
             : DBNull.Value;
     }
 
-    private static object ParseDateOrNull(string? value)
-    {
-        return DateTime.TryParse(value, out var d)
-            ? d
-            : DBNull.Value;
-    }
+    private static object ParseDateOrNull(DateTime? value) =>
+        value ?? (object)DBNull.Value;
 
     private async Task LoadSustanciasLookupAsync()
     {

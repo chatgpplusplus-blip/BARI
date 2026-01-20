@@ -238,8 +238,8 @@
 
             <input class="border p-1" placeholder="Nivel" @bind="_nuevoEquipoNivel" />
             <input class="border p-1" placeholder="Posición (ej. extremo derecho)" @bind="_nuevoEquipoPosicion" />
-            <input class="border p-1" type="date" @bind="_nuevoEquipoFechaCompra" />
-            <input class="border p-1" type="date" @bind="_nuevoEquipoGarantiaHasta" />
+            <InputDate class="border p-1" @bind-Value="_nuevoEquipoFechaCompra" />
+            <InputDate class="border p-1" @bind-Value="_nuevoEquipoGarantiaHasta" />
             <input class="border p-1" placeholder="Observaciones" @bind="_nuevoEquipoObservaciones" />
 
             <div class="upload-card">
@@ -421,8 +421,8 @@
     private string? _nuevoEquipoNivel;
     private string? _nuevoEquipoPosicion;
     private string? _nuevoEquipoPolyId;
-    private string? _nuevoEquipoFechaCompra;
-    private string? _nuevoEquipoGarantiaHasta;
+    private DateTime? _nuevoEquipoFechaCompra;
+    private DateTime? _nuevoEquipoGarantiaHasta;
     private string? _nuevoEquipoObservaciones;
     private string? _nuevoEquipoImagenUrl;
     private string _nuevoEquipoImagenModo = "url";
@@ -1059,12 +1059,8 @@
             : DBNull.Value;
     }
 
-    private static object ParseDateOrNull(string? value)
-    {
-        return DateTime.TryParse(value, out var d)
-            ? d
-            : DBNull.Value;
-    }
+    private static object ParseDateOrNull(DateTime? value) =>
+        value ?? (object)DBNull.Value;
 
     private static readonly string[] CategoriaPermitidas =
     [
