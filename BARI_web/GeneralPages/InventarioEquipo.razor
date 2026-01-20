@@ -691,11 +691,13 @@
         const string subcategoriaSql = @"
             SELECT s.subcategoria_id, s.nombre
             FROM subcategorias s
-            WHERE s.categoria_id = 'equipo-instumento'
+            INNER JOIN categorias c ON c.categoria_id = s.categoria_id
+            WHERE c.nombre = ANY(@categorias)
             ORDER BY s.nombre";
         await using (var cmd = new NpgsqlCommand(subcategoriaSql, conn))
-        await using (var reader = await cmd.ExecuteReaderAsync())
         {
+            cmd.Parameters.AddWithValue("categorias", CategoriaPermitidas);
+            await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
                 _subcategoriaOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
         }
