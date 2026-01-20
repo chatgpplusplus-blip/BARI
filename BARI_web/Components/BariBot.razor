@@ -1,0 +1,68 @@
+﻿@namespace BARI_web.Components
+@page "/bari-bot"
+@using BARI_web.Models
+@using Microsoft.AspNetCore.Components
+
+<div class="bari-bot">
+    <header class="bb-header">
+        <div class="bb-title">
+            <span class="bb-dot"></span>
+            <div>
+                <h1>BARI BOT</h1>
+                <p>Asistente de inventario (solo lectura)</p>
+            </div>
+        </div>
+
+        <div class="bb-actions">
+            <label class="bb-toggle">
+                <input type="checkbox" @bind="ShowDebug" />
+                <span>Debug SQL</span>
+            </label>
+            <button class="bb-btn" @onclick="ClearAsync" title="Limpiar chat">Limpiar</button>
+        </div>
+    </header>
+
+    <section class="bb-chat">
+        @foreach (var m in Messages)
+        {
+            <div class="bb-row @(m.Role == BariChatRole.User ? "user" : "assistant")">
+                <div class="bb-bubble">
+                    <div class="bb-meta">@m.DisplayRole • @m.Timestamp.ToLocalTime().ToString("HH:mm")</div>
+                    <div class="bb-text">@((MarkupString)m.Html)</div>
+
+                    @if (ShowDebug && !string.IsNullOrWhiteSpace(m.DebugSql))
+                    {
+                        <details class="bb-sql">
+                            <summary>Ver SQL</summary>
+                            <pre>@m.DebugSql</pre>
+                        </details>
+                    }
+                </div>
+            </div>
+        }
+
+        @if (IsBusy)
+        {
+            <div class="bb-row assistant">
+                <div class="bb-bubble bb-typing" aria-label="Escribiendo…">
+                    <span class="bb-typing-dot"></span>
+                    <span class="bb-typing-dot"></span>
+                    <span class="bb-typing-dot"></span>
+                </div>
+            </div>
+        }
+    </section>
+
+    <footer class="bb-input">
+        <textarea class="bb-textarea"
+                  placeholder="Pregúntame algo… (ej: 'contenedores que vencen en 30 días')"
+                  @bind="UserText" @bind:event="oninput"
+                  @onkeydown="HandleKeyDown"></textarea>
+
+        <button class="bb-send" @onclick="SendAsync" disabled="@(!CanSend)">Enviar</button>
+    </footer>
+
+    <div class="bb-hint">
+        Tip: pregunta por <b>vencimientos</b>, <b>ubicación</b> (área/mesón/nivel), <b>calibraciones</b> o <b>códigos H/P</b>.
+    </div>
+</div>

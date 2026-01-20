@@ -1,15 +1,16 @@
-﻿// Program.cs
-
-using System.Net.Http;
+﻿using System.Net.Http;
 using Microsoft.AspNetCore.Components;
-using BARI_web.Features.Seguridad_Quimica.Models; // SeedRunner, PlanRepo DTOs
+using BARI_web.Features.Seguridad_Quimica.Models;
 using BARI_web.General_Services;
-using BARI_web.General_Services.DataBaseConnection; // PgCrud
+using BARI_web.General_Services.DataBaseConnection;
 using Npgsql;
+// Se agrega el namespace de tus nuevos servicios
+using BARI_web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// HttpClient: factory + scoped client with BaseAddress for same-site API calls
+// --- CONFIGURACIÓN DE SERVICIOS EXISTENTES ---
+
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<HttpClient>(sp =>
 {
@@ -17,19 +18,18 @@ builder.Services.AddScoped<HttpClient>(sp =>
     return new HttpClient { BaseAddress = new Uri(nav.BaseUri) };
 });
 
-// Blazor + Razor Pages (custom root)
+// Blazor + Razor Pages (Se mantiene tu RootDirectory personalizado)
 builder.Services.AddRazorPages(options =>
 {
-    options.RootDirectory = "/GeneralPages"; // _Host.cshtml, _Layout.cshtml, Error.cshtml
+    options.RootDirectory = "/GeneralPages";
 });
 builder.Services.AddServerSideBlazor();
-
 
 // Postgres (Supabase)
 var pgConnStr = builder.Configuration["Database:PostgresConnectionString"]!;
 builder.Services.AddSingleton(sp => new NpgsqlDataSourceBuilder(pgConnStr).Build());
 
-// CRUD and services
+// CRUD y servicios del sistema base
 builder.Services.AddScoped<PgCrud>();
 builder.Services.AddScoped<LaboratorioState>();
 
@@ -37,7 +37,20 @@ builder.Services.AddScoped<LaboratorioState>();
 builder.Services.AddScoped<SeedCatalogs>();
 builder.Services.AddHostedService<SeedRunner>();
 
+// --- NUEVOS SERVICIOS: BARI BOT ---
+// Los agregamos como Singletons tal como pediste
+builder.Services.AddHttpClient<OllamaChatClient>();
+
+builder.Services.AddSingleton<BariIntentRouter>();
+builder.Services.AddSingleton<OllamaSqlPlanner>();
+builder.Services.AddSingleton<OllamaAnswerWriter>();
+builder.Services.AddSingleton<PostgresReadOnlyExecutor>();
+builder.Services.AddSingleton<BariBotOrchestrator>();
+
+
 var app = builder.Build();
+
+// --- CONFIGURACIÓN DEL PIPELINE (MIDDLEWARE) ---
 
 if (!app.Environment.IsDevelopment())
 {
@@ -47,12 +60,13 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
+
 app.UseRouting();
 
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
 
-// Simple net test endpoint using IHttpClientFactory
+// Se mantiene tu endpoint de prueba de red
 app.MapGet("/admin/net-test", async (IHttpClientFactory httpFactory) =>
 {
     var http = httpFactory.CreateClient();

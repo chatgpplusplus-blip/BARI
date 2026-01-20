@@ -29,12 +29,14 @@
             <h4>Reactivo (sustancia)</h4>
             <p class="form-hint">La sustancia es el reactivo como entidad química. Después puedes registrar uno o más contenedores físicos.</p>
         </div>
+
         <div class="assign-row form-grid">
             <input class="border p-1" placeholder="ID sustancia (opcional)" @bind="_nuevoSustanciaId" />
             <input class="border p-1" placeholder="Nombre comercial" @bind="_nuevoSustanciaNombreComercial" />
             <input class="border p-1" placeholder="Nombre químico" @bind="_nuevoSustanciaNombreQuimico" />
             <input class="border p-1" placeholder="CAS" @bind="_nuevoSustanciaCas" />
             <input class="border p-1" placeholder="Forma física" @bind="_nuevoSustanciaFormaFisica" />
+
             <select class="border p-1" @bind="_nuevoSustanciaSubcategoriaId">
                 <option value="">Subcategoría</option>
                 @foreach (var subcat in _subcategoriaOptions)
@@ -42,8 +44,145 @@
                     <option value="@subcat.Id">@subcat.Label</option>
                 }
             </select>
+
             <input class="border p-1" placeholder="Descripción" @bind="_nuevoSustanciaDescripcion" />
 
+            <!-- ============================
+                 NUEVO: GHS / H / P (DESPLEGABLES)
+                 ============================ -->
+
+            <div class="upload-card full-span">
+                <div class="text-xs text-gray-500">Pictogramas GHS</div>
+
+                <details>
+                    <summary style="cursor:pointer; font-weight:600;">
+                        @GhsDropdownLabel
+                    </summary>
+
+                    <div style="display:grid; gap:.35rem; padding-top:.5rem; max-height:240px; overflow:auto;">
+                        @if (_ghsOptions.Count == 0)
+                        {
+                            <div class="text-xs text-gray-500">Sin pictogramas disponibles.</div>
+                        }
+                        else
+                        {
+                            @foreach (var ghs in _ghsOptions)
+                            {
+                                <label style="display:flex; align-items:center; gap:.5rem;">
+                                    <input type="checkbox"
+                                           checked="@_nuevoSustanciaGhsIds.Contains(ghs.Id)"
+                                           @onchange="(e) => ToggleGhs(ghs.Id, e)" />
+
+                                    @if (!string.IsNullOrWhiteSpace(ghs.IconUrl))
+                                    {
+                                        <img src="@ghs.IconUrl"
+                                             alt="@ghs.Nombre"
+                                             style="width:20px; height:20px; object-fit:contain;" />
+                                    }
+
+                                    <span title="@ghs.Detalle">@ghs.Nombre</span>
+                                    <span class="text-xs text-gray-500">(@ghs.Id)</span>
+                                </label>
+                            }
+                        }
+                    </div>
+                </details>
+            </div>
+            <div class="upload-card" style="min-width:0; width:100%; max-width:100%;">
+                <div class="text-xs text-gray-500">H codes (pasa el mouse sobre el código para ver el grupo)</div>
+
+                <details style="width:100%; max-width:100%; overflow:hidden;">
+                    <summary style="cursor:pointer; font-weight:600; display:block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                        @HDropdownLabel
+                    </summary>
+
+                    <div style="display:grid; gap:.35rem; padding-top:.5rem; max-height:240px; overflow:auto; max-width:100%;">
+                        @if (_hCodeOptions.Count == 0)
+                        {
+                            <div class="text-xs text-gray-500">Sin H codes disponibles.</div>
+                        }
+                        else
+                        {
+                            @foreach (var hc in _hCodeOptions)
+                            {
+                                <label style="display:flex; gap:.5rem; align-items:flex-start; width:100%; max-width:100%;">
+                                    <input type="checkbox"
+                                           style="margin-top:.2rem;"
+                                           checked="@_nuevoSustanciaHIds.Contains(hc.Id)"
+                                           @onchange="(e) => ToggleH(hc.Id, e)" />
+
+                                    <!-- CLAVE: min-width:0 para que NO ensanche el grid -->
+                                    <div style="min-width:0; width:100%; max-width:100%;">
+                                        <span style="font-weight:700;"
+                                              title="@(!string.IsNullOrWhiteSpace(hc.Grupo) ? hc.Grupo : "Sin grupo")">
+                                            @hc.Id
+                                        </span>
+
+                                        <span style="
+                                  margin-left:.35rem;
+                                  display:inline;
+                                  white-space:normal;
+                                  overflow-wrap:anywhere;
+                                  word-break:break-word;">
+                                            @hc.Descripcion
+                                        </span>
+                                    </div>
+                                </label>
+                            }
+                        }
+                    </div>
+                </details>
+            </div>
+
+            <div class="upload-card" style="min-width:0; width:100%; max-width:100%;">
+                <div class="text-xs text-gray-500">P codes (pasa el mouse sobre el código para ver el grupo)</div>
+
+                <details style="width:100%; max-width:100%; overflow:hidden;">
+                    <summary style="cursor:pointer; font-weight:600; display:block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                        @PDropdownLabel
+                    </summary>
+
+                    <div style="display:grid; gap:.35rem; padding-top:.5rem; max-height:240px; overflow:auto; max-width:100%;">
+                        @if (_pCodeOptions.Count == 0)
+                        {
+                            <div class="text-xs text-gray-500">Sin P codes disponibles.</div>
+                        }
+                        else
+                        {
+                            @foreach (var pc in _pCodeOptions)
+                            {
+                                <label style="display:flex; gap:.5rem; align-items:flex-start; width:100%; max-width:100%;">
+                                    <input type="checkbox"
+                                           style="margin-top:.2rem;"
+                                           checked="@_nuevoSustanciaPIds.Contains(pc.Id)"
+                                           @onchange="(e) => ToggleP(pc.Id, e)" />
+
+                                    <!-- CLAVE: min-width:0 para que NO ensanche el grid -->
+                                    <div style="min-width:0; width:100%; max-width:100%;">
+                                        <span style="font-weight:700;"
+                                              title="@(!string.IsNullOrWhiteSpace(pc.Grupo) ? pc.Grupo : "Sin grupo")">
+                                            @pc.Id
+                                        </span>
+
+                                        <span style="
+                                  margin-left:.35rem;
+                                  display:inline;
+                                  white-space:normal;
+                                  overflow-wrap:anywhere;
+                                  word-break:break-word;">
+                                            @pc.Descripcion
+                                        </span>
+                                    </div>
+                                </label>
+                            }
+                        }
+                    </div>
+                </details>
+            </div>
+
+            <!-- ============================
+                 IMAGEN SUSTANCIA
+                 ============================ -->
             <div class="upload-card full-span">
                 <div class="upload-options">
                     <label class="text-sm">
@@ -85,6 +224,7 @@
             <label class="text-sm text-gray-600">
                 <input type="checkbox" @bind="_nuevoSustanciaControlada" /> Sustancia controlada
             </label>
+
             <div class="form-actions full-span">
                 <button class="btn primary" @onclick="SubirSustanciaAsync">Subir sustancia</button>
                 @if (!string.IsNullOrWhiteSpace(_nuevoSustanciaMsg))
@@ -578,6 +718,7 @@
     private string? subcategoriaNombre;
     private string? loadError;
     private string? contenedoresLoadError;
+
     private string? _nuevoSustanciaId;
     private string? _nuevoSustanciaNombreComercial;
     private string? _nuevoSustanciaNombreQuimico;
@@ -590,6 +731,7 @@
     private string? _nuevoSustanciaImagenArchivo;
     private string? _nuevoSustanciaObservaciones;
     private bool _nuevoSustanciaControlada;
+
     private string? _nuevoContenedorId;
     private string? _nuevoContenedorSustanciaId;
     private string? _nuevoContenedorMarcaId;
@@ -615,8 +757,10 @@
     private string? _nuevoContenedorImagenUrl;
     private string _nuevoContenedorImagenModo = "url";
     private string? _nuevoContenedorImagenArchivo;
+
     private string? _nuevoSustanciaMsg;
     private string? _nuevoContenedorMsg;
+
     private readonly List<SustanciaLookup> sustanciasLookup = new();
 
     private readonly List<SelectOption> _subcategoriaOptions = new();
@@ -632,6 +776,47 @@
     private readonly List<CanvasView> _canvasViews = new();
     private readonly Dictionary<string, string> _plantasLookup = new(StringComparer.OrdinalIgnoreCase);
     private string? _currentPlantaId;
+
+    // ============================
+    // NUEVO: Lookups GHS / H / P
+    // ============================
+    private readonly List<GhsOption> _ghsOptions = new();
+    private readonly List<HCodeOption> _hCodeOptions = new();
+    private readonly List<PCodeOption> _pCodeOptions = new();
+
+    private readonly HashSet<string> _nuevoSustanciaGhsIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _nuevoSustanciaHIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _nuevoSustanciaPIds = new(StringComparer.OrdinalIgnoreCase);
+
+    private string GhsDropdownLabel =>
+        _nuevoSustanciaGhsIds.Count == 0 ? "Selecciona pictogramas…" : $"Pictogramas seleccionados: {_nuevoSustanciaGhsIds.Count}";
+
+    private string HDropdownLabel =>
+        _nuevoSustanciaHIds.Count == 0 ? "Selecciona H codes…" : $"H codes seleccionados: {_nuevoSustanciaHIds.Count}";
+
+    private string PDropdownLabel =>
+        _nuevoSustanciaPIds.Count == 0 ? "Selecciona P codes…" : $"P codes seleccionados: {_nuevoSustanciaPIds.Count}";
+
+    private void ToggleGhs(string id, ChangeEventArgs e)
+    {
+        var isChecked = e.Value is bool b && b;
+        if (isChecked) _nuevoSustanciaGhsIds.Add(id);
+        else _nuevoSustanciaGhsIds.Remove(id);
+    }
+
+    private void ToggleH(string id, ChangeEventArgs e)
+    {
+        var isChecked = e.Value is bool b && b;
+        if (isChecked) _nuevoSustanciaHIds.Add(id);
+        else _nuevoSustanciaHIds.Remove(id);
+    }
+
+    private void ToggleP(string id, ChangeEventArgs e)
+    {
+        var isChecked = e.Value is bool b && b;
+        if (isChecked) _nuevoSustanciaPIds.Add(id);
+        else _nuevoSustanciaPIds.Remove(id);
+    }
 
     protected override void OnInitialized()
     {
@@ -808,44 +993,118 @@
             ? $"sus_{Guid.NewGuid():N}".Substring(0, 12)
             : _nuevoSustanciaId!.Trim();
 
-        await using var conn = await DataSource.OpenConnectionAsync();
-        const string sqlSust = @"
-            INSERT INTO sustancias
-            (sustancia_id, nombre_comercial, nombre_quimico, cas, forma_fisica, sustancia_controlada,
-             subcategoria_id, descripcion, imagen_url, observaciones, laboratorio_id)
-            VALUES (@id, @comercial, @quimico, @cas, @forma, @controlada,
-                    @subcat, @descripcion, @imagen, @obs, @lab)
-            ON CONFLICT (sustancia_id) DO NOTHING";
-        await using (var cmd = new NpgsqlCommand(sqlSust, conn))
+        try
         {
-            cmd.Parameters.AddWithValue("id", sustanciaId);
-            cmd.Parameters.AddWithValue("comercial", string.IsNullOrWhiteSpace(_nuevoSustanciaNombreComercial) ? (object)DBNull.Value : _nuevoSustanciaNombreComercial!);
-            cmd.Parameters.AddWithValue("quimico", string.IsNullOrWhiteSpace(_nuevoSustanciaNombreQuimico) ? (object)DBNull.Value : _nuevoSustanciaNombreQuimico!);
-            cmd.Parameters.AddWithValue("cas", string.IsNullOrWhiteSpace(_nuevoSustanciaCas) ? (object)DBNull.Value : _nuevoSustanciaCas!);
-            cmd.Parameters.AddWithValue("forma", string.IsNullOrWhiteSpace(_nuevoSustanciaFormaFisica) ? (object)DBNull.Value : _nuevoSustanciaFormaFisica!);
-            cmd.Parameters.AddWithValue("controlada", _nuevoSustanciaControlada);
-            cmd.Parameters.AddWithValue("subcat", string.IsNullOrWhiteSpace(_nuevoSustanciaSubcategoriaId) ? (object)DBNull.Value : _nuevoSustanciaSubcategoriaId!);
-            cmd.Parameters.AddWithValue("descripcion", string.IsNullOrWhiteSpace(_nuevoSustanciaDescripcion) ? (object)DBNull.Value : _nuevoSustanciaDescripcion!);
-            cmd.Parameters.AddWithValue("imagen", string.IsNullOrWhiteSpace(_nuevoSustanciaImagenUrl) ? (object)DBNull.Value : _nuevoSustanciaImagenUrl!);
-            cmd.Parameters.AddWithValue("obs", string.IsNullOrWhiteSpace(_nuevoSustanciaObservaciones) ? (object)DBNull.Value : _nuevoSustanciaObservaciones!);
-            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
-            await cmd.ExecuteNonQueryAsync();
-        }
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
 
-        _nuevoSustanciaId = null;
-        _nuevoSustanciaNombreComercial = null;
-        _nuevoSustanciaNombreQuimico = null;
-        _nuevoSustanciaCas = null;
-        _nuevoSustanciaFormaFisica = null;
-        _nuevoSustanciaSubcategoriaId = null;
-        _nuevoSustanciaDescripcion = null;
-        _nuevoSustanciaImagenUrl = null;
-        _nuevoSustanciaImagenModo = "url";
-        _nuevoSustanciaImagenArchivo = null;
-        _nuevoSustanciaObservaciones = null;
-        _nuevoSustanciaControlada = false;
-        _nuevoSustanciaMsg = "Sustancia registrada.";
-        await LoadSustanciasLookupAsync();
+            const string sqlSust = @"
+                INSERT INTO sustancias
+                (sustancia_id, nombre_comercial, nombre_quimico, cas, forma_fisica, sustancia_controlada,
+                 subcategoria_id, descripcion, imagen_url, observaciones, laboratorio_id)
+                VALUES (@id, @comercial, @quimico, @cas, @forma, @controlada,
+                        @subcat, @descripcion, @imagen, @obs, @lab)
+                ON CONFLICT (sustancia_id) DO NOTHING";
+
+            await using (var cmd = new NpgsqlCommand(sqlSust, conn, tx))
+            {
+                cmd.Parameters.AddWithValue("id", sustanciaId);
+                cmd.Parameters.AddWithValue("comercial", string.IsNullOrWhiteSpace(_nuevoSustanciaNombreComercial) ? (object)DBNull.Value : _nuevoSustanciaNombreComercial!);
+                cmd.Parameters.AddWithValue("quimico", string.IsNullOrWhiteSpace(_nuevoSustanciaNombreQuimico) ? (object)DBNull.Value : _nuevoSustanciaNombreQuimico!);
+                cmd.Parameters.AddWithValue("cas", string.IsNullOrWhiteSpace(_nuevoSustanciaCas) ? (object)DBNull.Value : _nuevoSustanciaCas!);
+                cmd.Parameters.AddWithValue("forma", string.IsNullOrWhiteSpace(_nuevoSustanciaFormaFisica) ? (object)DBNull.Value : _nuevoSustanciaFormaFisica!);
+                cmd.Parameters.AddWithValue("controlada", _nuevoSustanciaControlada);
+                cmd.Parameters.AddWithValue("subcat", string.IsNullOrWhiteSpace(_nuevoSustanciaSubcategoriaId) ? (object)DBNull.Value : _nuevoSustanciaSubcategoriaId!);
+                cmd.Parameters.AddWithValue("descripcion", string.IsNullOrWhiteSpace(_nuevoSustanciaDescripcion) ? (object)DBNull.Value : _nuevoSustanciaDescripcion!);
+                cmd.Parameters.AddWithValue("imagen", string.IsNullOrWhiteSpace(_nuevoSustanciaImagenUrl) ? (object)DBNull.Value : _nuevoSustanciaImagenUrl!);
+                cmd.Parameters.AddWithValue("obs", string.IsNullOrWhiteSpace(_nuevoSustanciaObservaciones) ? (object)DBNull.Value : _nuevoSustanciaObservaciones!);
+                cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            // NUEVO: sincroniza tablas intermedias (borramos y volvemos a insertar lo seleccionado)
+            await using (var del = new NpgsqlCommand(@"
+                    DELETE FROM sustancias_h WHERE sustancia_id = @id;
+                    DELETE FROM sustancias_p WHERE sustancia_id = @id;
+                    DELETE FROM sustancias_pictogramas WHERE sustancia_id = @id;
+                ", conn, tx))
+            {
+                del.Parameters.AddWithValue("id", sustanciaId);
+                await del.ExecuteNonQueryAsync();
+            }
+
+            const string insH = @"
+                INSERT INTO sustancias_h (sustancia_id, h_id)
+                VALUES (@sid, @hid)
+                ON CONFLICT DO NOTHING";
+
+            foreach (var hid in _nuevoSustanciaHIds)
+            {
+                await using var cmd = new NpgsqlCommand(insH, conn, tx);
+                cmd.Parameters.AddWithValue("sid", sustanciaId);
+                cmd.Parameters.AddWithValue("hid", hid);
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            const string insP = @"
+                INSERT INTO sustancias_p (sustancia_id, p_id)
+                VALUES (@sid, @pid)
+                ON CONFLICT DO NOTHING";
+
+            foreach (var pid in _nuevoSustanciaPIds)
+            {
+                await using var cmd = new NpgsqlCommand(insP, conn, tx);
+                cmd.Parameters.AddWithValue("sid", sustanciaId);
+                cmd.Parameters.AddWithValue("pid", pid);
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            const string insG = @"
+                INSERT INTO sustancias_pictogramas (sustancia_id, ghs_id)
+                VALUES (@sid, @gid)
+                ON CONFLICT DO NOTHING";
+
+            foreach (var gid in _nuevoSustanciaGhsIds)
+            {
+                await using var cmd = new NpgsqlCommand(insG, conn, tx);
+                cmd.Parameters.AddWithValue("sid", sustanciaId);
+                cmd.Parameters.AddWithValue("gid", gid);
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            await tx.CommitAsync();
+
+            var cG = _nuevoSustanciaGhsIds.Count;
+            var cH = _nuevoSustanciaHIds.Count;
+            var cP = _nuevoSustanciaPIds.Count;
+
+            _nuevoSustanciaId = null;
+            _nuevoSustanciaNombreComercial = null;
+            _nuevoSustanciaNombreQuimico = null;
+            _nuevoSustanciaCas = null;
+            _nuevoSustanciaFormaFisica = null;
+            _nuevoSustanciaSubcategoriaId = null;
+            _nuevoSustanciaDescripcion = null;
+            _nuevoSustanciaImagenUrl = null;
+            _nuevoSustanciaImagenModo = "url";
+            _nuevoSustanciaImagenArchivo = null;
+            _nuevoSustanciaObservaciones = null;
+            _nuevoSustanciaControlada = false;
+
+            _nuevoSustanciaGhsIds.Clear();
+            _nuevoSustanciaHIds.Clear();
+            _nuevoSustanciaPIds.Clear();
+
+            _nuevoSustanciaMsg = $"Sustancia registrada. GHS: {cG} · H: {cH} · P: {cP}";
+
+            await LoadSustanciasLookupAsync();
+            await LoadSustanciasAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            _nuevoSustanciaMsg = $"Error al registrar: {ex.Message}";
+        }
     }
 
     private async Task SubirContenedorAsync()
@@ -950,6 +1209,11 @@
         _condicionOptions.Clear();
         _areaOptions.Clear();
 
+        // NUEVO
+        _ghsOptions.Clear();
+        _hCodeOptions.Clear();
+        _pCodeOptions.Clear();
+
         await using var conn = await DataSource.OpenConnectionAsync();
 
         const string subcategoriaSql = @"
@@ -995,6 +1259,61 @@
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
                 _areaOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+        }
+
+        // ============================
+        // NUEVO: cargar GHS / H / P
+        // ============================
+        await using (var cmd = new NpgsqlCommand(@"
+                SELECT ghs_id, descripcion, icon_url, detalle
+                FROM ghs_pictogramas
+                ORDER BY ghs_id
+            ", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                _ghsOptions.Add(new GhsOption(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetString(2),
+                    reader.IsDBNull(3) ? null : reader.GetString(3)
+                ));
+            }
+        }
+
+        await using (var cmd = new NpgsqlCommand(@"
+                SELECT h_id, descripcion, grupo
+                FROM h_codes
+                ORDER BY h_id
+            ", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                _hCodeOptions.Add(new HCodeOption(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetString(2)
+                ));
+            }
+        }
+
+        await using (var cmd = new NpgsqlCommand(@"
+                SELECT p_id, descripcion, grupo
+                FROM p_codes
+                ORDER BY p_id
+            ", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                _pCodeOptions.Add(new PCodeOption(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetString(2)
+                ));
+            }
         }
     }
 
@@ -1830,6 +2149,13 @@
     {
         LaboratorioState.OnChange -= HandleLaboratorioChanged;
     }
+
+    // ============================
+    // NUEVO: Records opciones GHS/H/P
+    // ============================
+    private sealed record GhsOption(string Id, string Nombre, string? IconUrl, string? Detalle);
+    private sealed record HCodeOption(string Id, string Descripcion, string? Grupo);
+    private sealed record PCodeOption(string Id, string Descripcion, string? Grupo);
 }
 
 <style>
