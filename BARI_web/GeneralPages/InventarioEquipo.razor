@@ -25,7 +25,11 @@
 <section class="page-card" style="margin-top:1.5rem;">
     <details>
         <summary style="cursor:pointer; font-weight:600;">Subir equipo</summary>
-        <div class="assign-row" style="margin-top:.75rem;">
+        <div class="form-header">
+            <h4>Registro de equipo e instrumento</h4>
+            <p class="form-hint">Selecciona el modelo, estado y ubicación. El mapa te ayuda a elegir área y mesón con precisión.</p>
+        </div>
+        <div class="assign-row form-grid">
             <select class="border p-1" @bind="_nuevoEquipoModeloId">
                 <option value="">Modelo del equipo</option>
                 @foreach (var modelo in _modeloOptions)
@@ -42,7 +46,7 @@
                 }
             </select>
 
-            <div class="selector-split">
+            <div class="selector-split full-span">
                 <select class="border p-1"
                         value="@_nuevoEquipoAreaId"
                         @onchange="OnAreaChanged">
@@ -133,7 +137,7 @@
                 </div>
             </div>
 
-            <div class="selector-split">
+            <div class="selector-split full-span">
                 <select class="border p-1"
                         value="@_nuevoEquipoMesonId"
                         @onchange="OnMesonChanged"
@@ -241,7 +245,7 @@
             <input class="border p-1" type="date" @bind-value="_nuevoEquipoGarantiaHasta" @bind-value:format="yyyy-MM-dd" />
             <input class="border p-1" placeholder="Observaciones" @bind="_nuevoEquipoObservaciones" />
 
-            <div class="upload-card">
+            <div class="upload-card full-span">
                 <div class="upload-options">
                     <label class="text-sm">
                         <input type="radio"
@@ -281,11 +285,13 @@
             <label class="text-sm text-gray-600">
                 <input type="checkbox" @bind="_nuevoEquipoRequiereCalibracion" /> Requiere calibración
             </label>
-            <button class="btn" @onclick="SubirEquipoAsync">Subir</button>
-            @if (!string.IsNullOrWhiteSpace(_nuevoEquipoMsg))
-            {
-                <span class="text-sm text-gray-500">@_nuevoEquipoMsg</span>
-            }
+            <div class="form-actions full-span">
+                <button class="btn primary" @onclick="SubirEquipoAsync">Subir equipo</button>
+                @if (!string.IsNullOrWhiteSpace(_nuevoEquipoMsg))
+                {
+                    <span class="text-sm text-gray-500">@_nuevoEquipoMsg</span>
+                }
+            </div>
         </div>
     </details>
 </section>
@@ -1462,6 +1468,56 @@
         display: flex;
         gap: .75rem;
         align-items: center;
+    }
+
+    .form-header {
+        margin-top: 0.75rem;
+        margin-bottom: 0.75rem;
+    }
+
+        .form-header h4 {
+            margin: 0 0 0.25rem 0;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+    .form-hint {
+        margin: 0;
+        color: #64748b;
+        font-size: 0.95rem;
+    }
+
+    .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 0.75rem;
+        align-items: start;
+    }
+
+    .full-span {
+        grid-column: 1 / -1;
+    }
+
+    .form-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-top: 0.25rem;
+    }
+
+    .btn.primary {
+        background: #2563eb;
+        color: #fff;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 0.5rem;
+        font-weight: 600;
+        box-shadow: 0 6px 12px rgba(37, 99, 235, 0.18);
+    }
+
+    .btn.primary:hover {
+        background: #1d4ed8;
     }
 
     .area-label {

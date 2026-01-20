@@ -22,7 +22,11 @@
 <section class="page-card" style="margin-top:1.5rem;">
     <details>
         <summary style="cursor:pointer; font-weight:600;">Subir documento</summary>
-        <div class="assign-row" style="margin-top:.75rem;">
+        <div class="form-header">
+            <h4>Registro de documento</h4>
+            <p class="form-hint">Agrega la ficha o normativa con su categoría, procedencia y miniatura.</p>
+        </div>
+        <div class="assign-row form-grid">
             <input class="border p-1" placeholder="Título" @bind="_nuevoDocumentoTitulo" />
             <select class="border p-1" @bind="_nuevoDocumentoCategoriaId">
                 <option value="">Categoría</option>
@@ -47,7 +51,7 @@
                 <option value="ASIGNATURA">Procedencia · ASIGNATURA</option>
             </select>
 
-            <div class="upload-card">
+            <div class="upload-card full-span">
                 <div class="upload-options">
                     <label class="text-sm">
                         <input type="radio"
@@ -84,11 +88,13 @@
                 }
             </div>
             <input class="border p-1" placeholder="Notas" @bind="_nuevoDocumentoNotas" />
-            <button class="btn-link" @onclick="SubirDocumentoAsync">Subir</button>
-            @if (!string.IsNullOrWhiteSpace(_nuevoDocumentoMsg))
-            {
-                <span class="muted">@_nuevoDocumentoMsg</span>
-            }
+            <div class="form-actions full-span">
+                <button class="btn primary" @onclick="SubirDocumentoAsync">Subir documento</button>
+                @if (!string.IsNullOrWhiteSpace(_nuevoDocumentoMsg))
+                {
+                    <span class="muted">@_nuevoDocumentoMsg</span>
+                }
+            </div>
         </div>
     </details>
 </section>
@@ -408,6 +414,55 @@
 
 <style>
     .section-intro { color:#4b5563; margin-bottom:0.75rem; }
+    .form-header {
+        margin-top: 0.75rem;
+        margin-bottom: 0.75rem;
+    }
+
+        .form-header h4 {
+            margin: 0 0 0.25rem 0;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+    .form-hint {
+        margin: 0;
+        color: #64748b;
+        font-size: 0.95rem;
+    }
+
+    .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 0.75rem;
+        align-items: start;
+    }
+
+    .full-span {
+        grid-column: 1 / -1;
+    }
+
+    .form-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-top: 0.25rem;
+    }
+
+    .btn.primary {
+        background: #2563eb;
+        color: #fff;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 0.5rem;
+        font-weight: 600;
+        box-shadow: 0 6px 12px rgba(37, 99, 235, 0.18);
+    }
+
+    .btn.primary:hover {
+        background: #1d4ed8;
+    }
     .upload-card {
         border: 1px dashed #d1d5db;
         padding: 0.6rem;
