@@ -47,6 +47,52 @@ else
             </div>
         </dl>
 
+        <div class="edit-wrap">
+            <button type="button" class="btn-secondary" @onclick="ToggleEdit">
+                @(showEdit ? "Cerrar edición" : "Editar")
+            </button>
+        </div>
+
+        @if (showEdit)
+        {
+            <div class="edit-panel">
+                <h3>Actualizar reactivo</h3>
+                <div class="edit-grid">
+                    <label>
+                        Nombre comercial
+                        <input @bind="edit.NombreComercial" />
+                    </label>
+                    <label>
+                        Nombre químico
+                        <input @bind="edit.NombreQuimico" />
+                    </label>
+                    <label>
+                        CAS
+                        <input @bind="edit.Cas" />
+                    </label>
+                    <label>
+                        Forma física
+                        <input @bind="edit.FormaFisica" />
+                    </label>
+                    <label class="edit-check">
+                        <input type="checkbox" @bind="edit.SustanciaControlada" />
+                        Sustancia controlada
+                    </label>
+                    <label class="edit-wide">
+                        Observaciones
+                        <textarea rows="3" @bind="edit.Observaciones"></textarea>
+                    </label>
+                </div>
+                <div class="edit-actions">
+                    <button type="button" class="btn" @onclick="SaveEditAsync">Guardar cambios</button>
+                    @if (!string.IsNullOrWhiteSpace(editMessage))
+                    {
+                        <span class="edit-msg">@editMessage</span>
+                    }
+                </div>
+            </div>
+        }
+
         @if (!string.IsNullOrWhiteSpace(reactivo.Observaciones))
         {
             <div class="notes">
@@ -108,6 +154,9 @@ else
     private ReactivoInfo? reactivo;
     private readonly List<ContenedorInfo> contenedores = new();
     private string? loadError;
+    private bool showEdit;
+    private string? editMessage;
+    private ReactivoEdit edit = new();
 
     protected override async Task OnParametersSetAsync()
     {
@@ -154,6 +203,7 @@ else
                         SustanciaControlada = reader.GetBoolean(6),
                         Observaciones = reader.GetString(7)
                     };
+                    SyncEditState();
                 }
                 else
                 {
@@ -204,6 +254,78 @@ else
         {
             loadError = ex.Message;
         }
+    }
+
+    private void ToggleEdit()
+    {
+        showEdit = !showEdit;
+        if (showEdit)
+        {
+            SyncEditState();
+        }
+        editMessage = null;
+    }
+
+    private void SyncEditState()
+    {
+        if (reactivo is null) return;
+        edit = new ReactivoEdit
+        {
+            NombreComercial = reactivo.NombreComercial,
+            NombreQuimico = reactivo.NombreQuimico,
+            Cas = reactivo.Cas,
+            FormaFisica = reactivo.FormaFisica,
+            SustanciaControlada = reactivo.SustanciaControlada,
+            Observaciones = reactivo.Observaciones
+        };
+    }
+
+    private async Task SaveEditAsync()
+    {
+        if (reactivo is null) return;
+        editMessage = null;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+                UPDATE sustancias
+                SET nombre_comercial = @nombre_comercial,
+                    nombre_quimico = @nombre_quimico,
+                    cas = @cas,
+                    forma_fisica = @forma_fisica,
+                    sustancia_controlada = @sustancia_controlada,
+                    observaciones = @observaciones
+                WHERE sustancia_id = @id
+                  AND laboratorio_id = @laboratorio";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("nombre_comercial", string.IsNullOrWhiteSpace(edit.NombreComercial) ? (object)DBNull.Value : edit.NombreComercial);
+            cmd.Parameters.AddWithValue("nombre_quimico", string.IsNullOrWhiteSpace(edit.NombreQuimico) ? (object)DBNull.Value : edit.NombreQuimico);
+            cmd.Parameters.AddWithValue("cas", string.IsNullOrWhiteSpace(edit.Cas) ? (object)DBNull.Value : edit.Cas);
+            cmd.Parameters.AddWithValue("forma_fisica", string.IsNullOrWhiteSpace(edit.FormaFisica) ? (object)DBNull.Value : edit.FormaFisica);
+            cmd.Parameters.AddWithValue("sustancia_controlada", edit.SustanciaControlada);
+            cmd.Parameters.AddWithValue("observaciones", string.IsNullOrWhiteSpace(edit.Observaciones) ? (object)DBNull.Value : edit.Observaciones);
+            cmd.Parameters.AddWithValue("id", reactivo.Id);
+            cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
+            await cmd.ExecuteNonQueryAsync();
+
+            await OnParametersSetAsync();
+            editMessage = "Cambios guardados.";
+        }
+        catch (Exception ex)
+        {
+            editMessage = $"Error al guardar: {ex.Message}";
+        }
+    }
+
+    private sealed class ReactivoEdit
+    {
+        public string NombreComercial { get; set; } = "";
+        public string NombreQuimico { get; set; } = "";
+        public string Cas { get; set; } = "";
+        public string FormaFisica { get; set; } = "";
+        public bool SustanciaControlada { get; set; }
+        public string Observaciones { get; set; } = "";
     }
 
     private sealed class ReactivoInfo
@@ -294,6 +416,39 @@ else
     .notes p {
         margin: .4rem 0 0;
     }
+
+    .edit-wrap { margin: 0.75rem 0 0; }
+    .btn-secondary {
+        background: #eef2ff;
+        border: 1px solid #c7d2fe;
+        color: #1e1b4b;
+        padding: 0.35rem 0.75rem;
+        border-radius: 8px;
+        cursor: pointer;
+    }
+    .edit-panel {
+        margin-top: 0.75rem;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 0.85rem 1rem;
+    }
+    .edit-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+        gap: 0.75rem;
+        margin-top: 0.5rem;
+    }
+    .edit-grid label { display: flex; flex-direction: column; gap: 0.35rem; font-weight: 600; color: #1f2937; }
+    .edit-grid input, .edit-grid textarea {
+        border: 1px solid #cbd5f5;
+        border-radius: 8px;
+        padding: 0.4rem 0.5rem;
+    }
+    .edit-check { align-self: end; font-weight: 600; display: flex; gap: 0.5rem; }
+    .edit-wide { grid-column: 1 / -1; }
+    .edit-actions { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.75rem; }
+    .edit-msg { color: #0f766e; font-weight: 600; }
 
     .contenedores {
         margin-top: 1.5rem;
