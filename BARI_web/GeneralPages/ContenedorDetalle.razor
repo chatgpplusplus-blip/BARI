@@ -93,6 +93,66 @@ else
             }
         </div>
 
+        <div class="edit-wrap">
+            <button type="button" class="btn-secondary" @onclick="ToggleEdit">
+                @(showEdit ? "Cerrar edición" : "Editar")
+            </button>
+        </div>
+
+        @if (showEdit)
+        {
+            <div class="edit-panel">
+                <h3>Actualizar contenedor</h3>
+                <div class="edit-grid">
+                    <label>
+                        Proveedor
+                        <input @bind="edit.Proveedor" />
+                    </label>
+                    <label>
+                        Cantidad nominal
+                        <input type="number" min="0" step="0.01" @bind="edit.CantidadNominal" />
+                    </label>
+                    <label>
+                        Cantidad actual
+                        <input type="number" min="0" step="0.01" @bind="edit.CantidadActual" />
+                    </label>
+                    <label>
+                        Condición
+                        <select @bind="edit.CondicionId">
+                            <option value="">Sin condición</option>
+                            @foreach (var cond in condiciones)
+                            {
+                                <option value="@cond.Id">@cond.Nombre</option>
+                            }
+                        </select>
+                    </label>
+                    <label>
+                        Fecha de apertura
+                        <input type="date" @bind-value="edit.FechaApertura" @bind-value:format="yyyy-MM-dd" />
+                    </label>
+                    <label>
+                        Fecha de vencimiento
+                        <input type="date" @bind-value="edit.FechaVencimiento" @bind-value:format="yyyy-MM-dd" />
+                    </label>
+                    <label>
+                        QR
+                        <input @bind="edit.Qr" />
+                    </label>
+                    <label class="edit-wide">
+                        Observaciones
+                        <textarea rows="3" @bind="edit.Observaciones"></textarea>
+                    </label>
+                </div>
+                <div class="edit-actions">
+                    <button type="button" class="btn" @onclick="SaveEditAsync">Guardar cambios</button>
+                    @if (!string.IsNullOrWhiteSpace(editMessage))
+                    {
+                        <span class="edit-msg">@editMessage</span>
+                    }
+                </div>
+            </div>
+        }
+
         @if (!string.IsNullOrWhiteSpace(detalle.Observaciones))
         {
             <div class="notes">
@@ -108,6 +168,10 @@ else
 
     private ContenedorInfo? detalle;
     private string? loadError;
+    private readonly List<CondicionOption> condiciones = new();
+    private bool showEdit;
+    private string? editMessage;
+    private ContenedorEdit edit = new();
 
     protected override async Task OnParametersSetAsync()
     {
@@ -136,6 +200,7 @@ else
                        c.cantidad_reactivo_actual,
                        COALESCE(u.simbolo, '') AS unidad,
                        COALESCE(cond.nombre, '—') AS condicion,
+                       c.condicion_id,
                        COALESCE(a.nombre_areas, '') AS area,
                        COALESCE(m.nombre_meson, '') AS meson,
                        COALESCE(c.posicion, '') AS posicion,
@@ -178,16 +243,28 @@ else
                     CantidadNominal = cantidadNominal,
                     CantidadActual = cantidadActual,
                     Condicion = reader.GetString(12),
-                    Ubicacion = BuildUbicacion(reader.GetString(13), reader.GetString(14), reader.GetString(15)),
-                    Envase = BuildEnvase(reader, 16, 17, 18),
-                    Qr = reader.GetString(19),
-                    Observaciones = reader.GetString(20),
-                    ImagenUrl = reader.GetString(21)
+                    CondicionId = reader.IsDBNull(13) ? "" : reader.GetString(13),
+                    Ubicacion = BuildUbicacion(reader.GetString(14), reader.GetString(15), reader.GetString(16)),
+                    Posicion = reader.GetString(16),
+                    Envase = BuildEnvase(reader, 17, 18, 19),
+                    Qr = reader.GetString(20),
+                    Observaciones = reader.GetString(21),
+                    ImagenUrl = reader.GetString(22),
+                    CantidadNominalValor = reader.IsDBNull(9) ? (decimal?)null : reader.GetDecimal(9),
+                    CantidadActualValor = reader.IsDBNull(10) ? (decimal?)null : reader.GetDecimal(10),
+                    FechaAperturaValor = reader.IsDBNull(6) ? (DateTime?)null : reader.GetDateTime(6),
+                    FechaVencimientoValor = reader.IsDBNull(7) ? (DateTime?)null : reader.GetDateTime(7)
                 };
+                SyncEditState();
             }
             else
             {
                 loadError = "No se encontró el contenedor solicitado.";
+            }
+
+            if (detalle is not null)
+            {
+                await LoadCondicionesAsync();
             }
         }
         catch (Exception ex)
@@ -239,6 +316,92 @@ else
         return url.StartsWith("/", StringComparison.OrdinalIgnoreCase) ? url : $"/{url}";
     }
 
+    private async Task LoadCondicionesAsync()
+    {
+        condiciones.Clear();
+        await using var conn = await DataSource.OpenConnectionAsync();
+        const string sql = @"SELECT condicion_id, nombre FROM condiciones ORDER BY nombre";
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            condiciones.Add(new CondicionOption(reader.GetString(0), reader.GetString(1)));
+        }
+    }
+
+    private void ToggleEdit()
+    {
+        showEdit = !showEdit;
+        if (showEdit)
+        {
+            SyncEditState();
+        }
+        editMessage = null;
+    }
+
+    private void SyncEditState()
+    {
+        if (detalle is null) return;
+        edit = new ContenedorEdit
+        {
+            Proveedor = detalle.Proveedor,
+            CantidadNominal = detalle.CantidadNominalValor?.ToString() ?? "",
+            CantidadActual = detalle.CantidadActualValor?.ToString() ?? "",
+            CondicionId = detalle.CondicionId,
+            FechaApertura = detalle.FechaAperturaValor,
+            FechaVencimiento = detalle.FechaVencimientoValor,
+            Qr = detalle.Qr,
+            Observaciones = detalle.Observaciones
+        };
+    }
+
+    private async Task SaveEditAsync()
+    {
+        if (detalle is null) return;
+        editMessage = null;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+                UPDATE contenedores
+                SET proveedor = @proveedor,
+                    cantidad_reactivo_nominal = @cantidad_nominal,
+                    cantidad_reactivo_actual = @cantidad_actual,
+                    condicion_id = @condicion,
+                    fecha_apertura = @fecha_apertura,
+                    fecha_vencimiento = @fecha_vencimiento,
+                    qr = @qr,
+                    observaciones = @observaciones
+                WHERE cont_id = @id
+                  AND laboratorio_id = @laboratorio";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("proveedor", string.IsNullOrWhiteSpace(edit.Proveedor) ? (object)DBNull.Value : edit.Proveedor);
+            cmd.Parameters.AddWithValue("cantidad_nominal", decimal.TryParse(edit.CantidadNominal, out var nominal) ? nominal : (object)DBNull.Value);
+            cmd.Parameters.AddWithValue("cantidad_actual", decimal.TryParse(edit.CantidadActual, out var actual) ? actual : (object)DBNull.Value);
+            cmd.Parameters.AddWithValue("condicion", string.IsNullOrWhiteSpace(edit.CondicionId) ? (object)DBNull.Value : edit.CondicionId);
+            cmd.Parameters.AddWithValue("fecha_apertura", ToDbDate(edit.FechaApertura));
+            cmd.Parameters.AddWithValue("fecha_vencimiento", ToDbDate(edit.FechaVencimiento));
+            cmd.Parameters.AddWithValue("qr", string.IsNullOrWhiteSpace(edit.Qr) ? (object)DBNull.Value : edit.Qr);
+            cmd.Parameters.AddWithValue("observaciones", string.IsNullOrWhiteSpace(edit.Observaciones) ? (object)DBNull.Value : edit.Observaciones);
+            cmd.Parameters.AddWithValue("id", detalle.Id);
+            cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
+            await cmd.ExecuteNonQueryAsync();
+
+            await OnParametersSetAsync();
+            editMessage = "Cambios guardados.";
+        }
+        catch (Exception ex)
+        {
+            editMessage = $"Error al guardar: {ex.Message}";
+        }
+    }
+
+    private static object ToDbDate(DateTime? value)
+    {
+        return value.HasValue ? value.Value.Date : (object)DBNull.Value;
+    }
+
     private sealed class ContenedorInfo
     {
         public string Id { get; set; } = "";
@@ -249,15 +412,35 @@ else
         public string CantidadNominal { get; set; } = "";
         public string CantidadActual { get; set; } = "";
         public string Condicion { get; set; } = "";
+        public string CondicionId { get; set; } = "";
         public string Ubicacion { get; set; } = "";
+        public string Posicion { get; set; } = "";
         public string FechaCompra { get; set; } = "";
         public string FechaRecepcion { get; set; } = "";
         public string FechaApertura { get; set; } = "";
+        public DateTime? FechaAperturaValor { get; set; }
         public string FechaVencimiento { get; set; } = "";
+        public DateTime? FechaVencimientoValor { get; set; }
         public string Envase { get; set; } = "";
         public string Qr { get; set; } = "";
         public string Observaciones { get; set; } = "";
         public string ImagenUrl { get; set; } = "";
+        public decimal? CantidadNominalValor { get; set; }
+        public decimal? CantidadActualValor { get; set; }
+    }
+
+    private sealed record CondicionOption(string Id, string Nombre);
+
+    private sealed class ContenedorEdit
+    {
+        public string Proveedor { get; set; } = "";
+        public string CantidadNominal { get; set; } = "";
+        public string CantidadActual { get; set; } = "";
+        public string CondicionId { get; set; } = "";
+        public DateTime? FechaApertura { get; set; }
+        public DateTime? FechaVencimiento { get; set; }
+        public string Qr { get; set; } = "";
+        public string Observaciones { get; set; } = "";
     }
 }
 
@@ -328,6 +511,38 @@ else
     .notes p {
         margin: 0.5rem 0 0;
     }
+
+    .edit-wrap { margin: 0.75rem 0 0; }
+    .btn-secondary {
+        background: #eef2ff;
+        border: 1px solid #c7d2fe;
+        color: #1e1b4b;
+        padding: 0.35rem 0.75rem;
+        border-radius: 8px;
+        cursor: pointer;
+    }
+    .edit-panel {
+        margin-top: 0.75rem;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 0.85rem 1rem;
+    }
+    .edit-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+        gap: 0.75rem;
+        margin-top: 0.5rem;
+    }
+    .edit-grid label { display: flex; flex-direction: column; gap: 0.35rem; font-weight: 600; color: #1f2937; }
+    .edit-grid input, .edit-grid textarea, .edit-grid select {
+        border: 1px solid #cbd5f5;
+        border-radius: 8px;
+        padding: 0.4rem 0.5rem;
+    }
+    .edit-wide { grid-column: 1 / -1; }
+    .edit-actions { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.75rem; }
+    .edit-msg { color: #0f766e; font-weight: 600; }
 
     .code {
         color: #64748b;
