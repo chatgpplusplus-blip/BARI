@@ -128,11 +128,11 @@ else
                     </label>
                     <label>
                         Fecha de apertura
-                        <input type="date" @bind="edit.FechaApertura" />
+                        <input type="date" @bind-value="edit.FechaApertura" @bind-value:format="yyyy-MM-dd" />
                     </label>
                     <label>
                         Fecha de vencimiento
-                        <input type="date" @bind="edit.FechaVencimiento" />
+                        <input type="date" @bind-value="edit.FechaVencimiento" @bind-value:format="yyyy-MM-dd" />
                     </label>
                     <label>
                         QR
@@ -348,8 +348,8 @@ else
             CantidadNominal = detalle.CantidadNominalValor?.ToString() ?? "",
             CantidadActual = detalle.CantidadActualValor?.ToString() ?? "",
             CondicionId = detalle.CondicionId,
-            FechaApertura = detalle.FechaAperturaValor?.ToString("yyyy-MM-dd") ?? "",
-            FechaVencimiento = detalle.FechaVencimientoValor?.ToString("yyyy-MM-dd") ?? "",
+            FechaApertura = detalle.FechaAperturaValor,
+            FechaVencimiento = detalle.FechaVencimientoValor,
             Qr = detalle.Qr,
             Observaciones = detalle.Observaciones
         };
@@ -380,8 +380,8 @@ else
             cmd.Parameters.AddWithValue("cantidad_nominal", decimal.TryParse(edit.CantidadNominal, out var nominal) ? nominal : (object)DBNull.Value);
             cmd.Parameters.AddWithValue("cantidad_actual", decimal.TryParse(edit.CantidadActual, out var actual) ? actual : (object)DBNull.Value);
             cmd.Parameters.AddWithValue("condicion", string.IsNullOrWhiteSpace(edit.CondicionId) ? (object)DBNull.Value : edit.CondicionId);
-            cmd.Parameters.AddWithValue("fecha_apertura", ParseDateOrNull(edit.FechaApertura));
-            cmd.Parameters.AddWithValue("fecha_vencimiento", ParseDateOrNull(edit.FechaVencimiento));
+            cmd.Parameters.AddWithValue("fecha_apertura", ToDbDate(edit.FechaApertura));
+            cmd.Parameters.AddWithValue("fecha_vencimiento", ToDbDate(edit.FechaVencimiento));
             cmd.Parameters.AddWithValue("qr", string.IsNullOrWhiteSpace(edit.Qr) ? (object)DBNull.Value : edit.Qr);
             cmd.Parameters.AddWithValue("observaciones", string.IsNullOrWhiteSpace(edit.Observaciones) ? (object)DBNull.Value : edit.Observaciones);
             cmd.Parameters.AddWithValue("id", detalle.Id);
@@ -397,14 +397,9 @@ else
         }
     }
 
-    private static object ParseDateOrNull(string? value)
+    private static object ToDbDate(DateTime? value)
     {
-        if (DateTime.TryParse(value, out var date))
-        {
-            return date.Date;
-        }
-
-        return DBNull.Value;
+        return value?.Date ?? DBNull.Value;
     }
 
     private sealed class ContenedorInfo
@@ -442,8 +437,8 @@ else
         public string CantidadNominal { get; set; } = "";
         public string CantidadActual { get; set; } = "";
         public string CondicionId { get; set; } = "";
-        public string FechaApertura { get; set; } = "";
-        public string FechaVencimiento { get; set; } = "";
+        public DateTime? FechaApertura { get; set; }
+        public DateTime? FechaVencimiento { get; set; }
         public string Qr { get; set; } = "";
         public string Observaciones { get; set; } = "";
     }
