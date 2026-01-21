@@ -59,6 +59,54 @@ else
             </div>
         </dl>
 
+        <div class="edit-wrap">
+            <button type="button" class="btn-secondary" @onclick="ToggleEdit">
+                @(showEdit ? "Cerrar edición" : "Editar")
+            </button>
+        </div>
+
+        @if (showEdit)
+        {
+            <div class="edit-panel">
+                <h3>Actualizar equipo</h3>
+                <div class="edit-grid">
+                    <label>
+                        Serie
+                        <input @bind="edit.Serie" />
+                    </label>
+                    <label>
+                        Estado
+                        <select @bind="edit.EstadoId">
+                            <option value="">Sin estado</option>
+                            @foreach (var estado in estados)
+                            {
+                                <option value="@estado.Id">@estado.Nombre</option>
+                            }
+                        </select>
+                    </label>
+                    <label>
+                        Posición
+                        <input @bind="edit.Posicion" />
+                    </label>
+                    <label class="edit-check">
+                        <input type="checkbox" @bind="edit.RequiereCalibracion" />
+                        Requiere calibración
+                    </label>
+                    <label class="edit-wide">
+                        Observaciones
+                        <textarea rows="3" @bind="edit.Observaciones"></textarea>
+                    </label>
+                </div>
+                <div class="edit-actions">
+                    <button type="button" class="btn" @onclick="SaveEditAsync">Guardar cambios</button>
+                    @if (!string.IsNullOrWhiteSpace(editMessage))
+                    {
+                        <span class="edit-msg">@editMessage</span>
+                    }
+                </div>
+            </div>
+        }
+
         @if (!string.IsNullOrWhiteSpace(detalle.Observaciones))
         {
             <div class="notes">
@@ -74,6 +122,10 @@ else
 
     private EquipoInfo? detalle;
     private string? loadError;
+    private readonly List<EstadoOption> estados = new();
+    private bool showEdit;
+    private string? editMessage;
+    private EquipoEdit edit = new();
 
     protected override async Task OnParametersSetAsync()
     {
@@ -97,6 +149,8 @@ else
                        COALESCE(a.nombre_areas, '') AS area,
                        COALESCE(m.nombre_meson, '') AS meson,
                        COALESCE(e.posicion, '') AS posicion,
+                       e.estado_id,
+                       e.posicion,
                        e.requiere_calibracion,
                        cal.proxima_fecha,
                        COALESCE(e.observaciones, '') AS observaciones
@@ -123,8 +177,8 @@ else
             await using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync())
             {
-                var requiereCalibracion = reader.GetBoolean(10);
-                var proxima = reader.IsDBNull(11) ? (DateTime?)null : reader.GetDateTime(11);
+                var requiereCalibracion = reader.GetBoolean(12);
+                var proxima = reader.IsDBNull(13) ? (DateTime?)null : reader.GetDateTime(13);
                 detalle = new EquipoInfo
                 {
                     EquipoId = reader.GetString(0),
@@ -135,15 +189,23 @@ else
                     Marca = reader.GetString(4),
                     Serie = reader.GetString(5),
                     Estado = reader.GetString(6),
+                    EstadoId = reader.IsDBNull(10) ? "" : reader.GetString(10),
                     Ubicacion = BuildUbicacion(reader.GetString(7), reader.GetString(8), reader.GetString(9)),
+                    Posicion = reader.GetString(11),
                     RequiereCalibracion = requiereCalibracion,
                     Calibracion = BuildCalibracion(requiereCalibracion, proxima),
-                    Observaciones = reader.GetString(12)
+                    Observaciones = reader.GetString(14)
                 };
+                SyncEditState();
             }
             else
             {
                 loadError = "No se encontró el equipo solicitado.";
+            }
+
+            if (detalle is not null)
+            {
+                await LoadEstadosAsync();
             }
         }
         catch (Exception ex)
@@ -170,6 +232,78 @@ else
             : $"OK (próx. {proximaFecha:dd/MM/yyyy})";
     }
 
+    private async Task LoadEstadosAsync()
+    {
+        estados.Clear();
+        await using var conn = await DataSource.OpenConnectionAsync();
+        const string sql = @"SELECT estado_id, nombre FROM estados_activo ORDER BY nombre";
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            estados.Add(new EstadoOption(reader.GetString(0), reader.GetString(1)));
+        }
+    }
+
+    private void ToggleEdit()
+    {
+        showEdit = !showEdit;
+        if (showEdit)
+        {
+            SyncEditState();
+        }
+        editMessage = null;
+    }
+
+    private void SyncEditState()
+    {
+        if (detalle is null) return;
+        edit = new EquipoEdit
+        {
+            Serie = detalle.Serie,
+            EstadoId = detalle.EstadoId,
+            Posicion = detalle.Posicion,
+            RequiereCalibracion = detalle.RequiereCalibracion,
+            Observaciones = detalle.Observaciones
+        };
+    }
+
+    private async Task SaveEditAsync()
+    {
+        if (detalle is null) return;
+        editMessage = null;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+                UPDATE equipos
+                SET serie = @serie,
+                    estado_id = @estado,
+                    posicion = @posicion,
+                    requiere_calibracion = @requiere,
+                    observaciones = @observaciones
+                WHERE equipo_id = @id
+                  AND laboratorio_id = @laboratorio";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("serie", string.IsNullOrWhiteSpace(edit.Serie) ? (object)DBNull.Value : edit.Serie);
+            cmd.Parameters.AddWithValue("estado", string.IsNullOrWhiteSpace(edit.EstadoId) ? (object)DBNull.Value : edit.EstadoId);
+            cmd.Parameters.AddWithValue("posicion", string.IsNullOrWhiteSpace(edit.Posicion) ? (object)DBNull.Value : edit.Posicion);
+            cmd.Parameters.AddWithValue("requiere", edit.RequiereCalibracion);
+            cmd.Parameters.AddWithValue("observaciones", string.IsNullOrWhiteSpace(edit.Observaciones) ? (object)DBNull.Value : edit.Observaciones);
+            cmd.Parameters.AddWithValue("id", detalle.EquipoId);
+            cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
+            await cmd.ExecuteNonQueryAsync();
+
+            await OnParametersSetAsync();
+            editMessage = "Cambios guardados.";
+        }
+        catch (Exception ex)
+        {
+            editMessage = $"Error al guardar: {ex.Message}";
+        }
+    }
+
     private sealed class EquipoInfo
     {
         public string EquipoId { get; set; } = "";
@@ -180,9 +314,22 @@ else
         public string Marca { get; set; } = "";
         public string Serie { get; set; } = "";
         public string Estado { get; set; } = "";
+        public string EstadoId { get; set; } = "";
         public string Ubicacion { get; set; } = "";
+        public string Posicion { get; set; } = "";
         public bool RequiereCalibracion { get; set; }
         public string Calibracion { get; set; } = "";
+        public string Observaciones { get; set; } = "";
+    }
+
+    private sealed record EstadoOption(string Id, string Nombre);
+
+    private sealed class EquipoEdit
+    {
+        public string Serie { get; set; } = "";
+        public string EstadoId { get; set; } = "";
+        public string Posicion { get; set; } = "";
+        public bool RequiereCalibracion { get; set; }
         public string Observaciones { get; set; } = "";
     }
 }
@@ -251,6 +398,39 @@ else
     .notes p {
         margin: .4rem 0 0;
     }
+
+    .edit-wrap { margin: 0.75rem 0 0; }
+    .btn-secondary {
+        background: #eef2ff;
+        border: 1px solid #c7d2fe;
+        color: #1e1b4b;
+        padding: 0.35rem 0.75rem;
+        border-radius: 8px;
+        cursor: pointer;
+    }
+    .edit-panel {
+        margin-top: 0.75rem;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 0.85rem 1rem;
+    }
+    .edit-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+        gap: 0.75rem;
+        margin-top: 0.5rem;
+    }
+    .edit-grid label { display: flex; flex-direction: column; gap: 0.35rem; font-weight: 600; color: #1f2937; }
+    .edit-grid input, .edit-grid textarea, .edit-grid select {
+        border: 1px solid #cbd5f5;
+        border-radius: 8px;
+        padding: 0.4rem 0.5rem;
+    }
+    .edit-check { align-self: end; font-weight: 600; display: flex; gap: 0.5rem; }
+    .edit-wide { grid-column: 1 / -1; }
+    .edit-actions { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.75rem; }
+    .edit-msg { color: #0f766e; font-weight: 600; }
 
     .error-note { color: #b91c1c; margin-top: 0.75rem; }
 </style>
