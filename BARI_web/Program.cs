@@ -4,21 +4,24 @@ using BARI_web.Features.Seguridad_Quimica.Models;
 using BARI_web.General_Services;
 using BARI_web.General_Services.DataBaseConnection;
 using Npgsql;
-// Se agrega el namespace de tus nuevos servicios
 using BARI_web.Services;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// --- CONFIGURACIÓN DE SERVICIOS EXISTENTES ---
+// ------------------------------
+// SERVICIOS BASE
+// ------------------------------
 
 builder.Services.AddHttpClient();
+
 builder.Services.AddScoped<HttpClient>(sp =>
 {
     var nav = sp.GetRequiredService<NavigationManager>();
     return new HttpClient { BaseAddress = new Uri(nav.BaseUri) };
 });
 
-// Blazor + Razor Pages (Se mantiene tu RootDirectory personalizado)
+// Blazor + Razor Pages (RootDirectory personalizado)
 builder.Services.AddRazorPages(options =>
 {
     options.RootDirectory = "/GeneralPages";
@@ -37,20 +40,50 @@ builder.Services.AddScoped<LaboratorioState>();
 builder.Services.AddScoped<SeedCatalogs>();
 builder.Services.AddHostedService<SeedRunner>();
 
-// --- NUEVOS SERVICIOS: BARI BOT ---
-// Los agregamos como Singletons tal como pediste
-builder.Services.AddHttpClient<OllamaChatClient>();
+// ------------------------------
+// BARI BOT (DeepSeek + acceso total a BD en lectura)
+// ------------------------------
 
+// Bind opciones desde appsettings / user-secrets / env
+builder.Services.Configure<DeepSeekOptions>(builder.Configuration.GetSection("DeepSeek"));
+
+// HttpClient tipado para DeepSeek
+builder.Services.AddHttpClient<DeepSeekChatClient>((sp, http) =>
+{
+    var opt = sp.GetRequiredService<IOptions<DeepSeekOptions>>().Value;
+
+    http.BaseAddress = new Uri(opt.BaseUrl);
+    http.Timeout = TimeSpan.FromSeconds(opt.TimeoutSeconds);
+
+    if (!string.IsNullOrWhiteSpace(opt.ApiKey))
+        http.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", opt.ApiKey);
+
+    http.DefaultRequestHeaders.Accept.Add(
+        new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+});
+
+// Catálogo de esquema (introspección de TODA la BD, cacheado)
+builder.Services.AddSingleton<SchemaCatalog>();
+
+// Firewall SQL (solo SELECT/WITH, fuerza LIMIT y bloquea DDL/DML)
+builder.Services.AddSingleton<SafeSqlValidator>(sp => new SafeSqlValidator
+{
+    MaxRows = 100
+});
+
+// Servicios del bot (sin Ollama) - usando planner/executor genéricos
 builder.Services.AddSingleton<BariIntentRouter>();
-builder.Services.AddSingleton<OllamaSqlPlanner>();
-builder.Services.AddSingleton<OllamaAnswerWriter>();
+builder.Services.AddSingleton<DeepSeekSqlPlanner>();
 builder.Services.AddSingleton<PostgresReadOnlyExecutor>();
+builder.Services.AddSingleton<DeepSeekAnswerWriter>();
 builder.Services.AddSingleton<BariBotOrchestrator>();
 
+// ------------------------------
+// APP
+// ------------------------------
 
 var app = builder.Build();
-
-// --- CONFIGURACIÓN DEL PIPELINE (MIDDLEWARE) ---
 
 if (!app.Environment.IsDevelopment())
 {
@@ -66,7 +99,7 @@ app.UseRouting();
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
 
-// Se mantiene tu endpoint de prueba de red
+// Endpoint de prueba de red (se mantiene)
 app.MapGet("/admin/net-test", async (IHttpClientFactory httpFactory) =>
 {
     var http = httpFactory.CreateClient();

@@ -1,72 +1,73 @@
-﻿using System.Text.Json;
+﻿using Microsoft.Extensions.Options;
 
 namespace BARI_web.Services;
 
 public sealed class BariIntentRouter
 {
-    private readonly IConfiguration _cfg;
-    private readonly OllamaChatClient _ollama;
+    private readonly DeepSeekChatClient _llm;
+    private readonly DeepSeekOptions _opt;
 
-    public BariIntentRouter(IConfiguration cfg, OllamaChatClient ollama)
+    public BariIntentRouter(DeepSeekChatClient llm, IOptions<DeepSeekOptions> opt)
     {
-        _cfg = cfg;
-        _ollama = ollama;
+        _llm = llm;
+        _opt = opt.Value;
     }
 
-    public sealed class RoutePlan
+    public async Task<RouterDecision> DecideAsync(string userQuestion, IReadOnlyList<ChatMessage>? history = null, CancellationToken ct = default)
     {
-        public string Route { get; set; } = "db"; // db | web | mixed
-        public bool NeedsClarification { get; set; }
-        public string? ClarifyingQuestion { get; set; }
-        public decimal Confidence { get; set; }
-    }
+        var q = (userQuestion ?? "").Trim();
+        if (q.Length < 2)
+            return new RouterDecision { Intent = "needs_clarification", ClarifyingQuestion = "¿Qué quieres consultar exactamente del inventario o del laboratorio?" };
 
-    public async Task<RoutePlan> RouteAsync(string userQuestion, CancellationToken ct)
-    {
-        var model = _cfg["Ollama:ModelPlanner"] ?? "gemma3:latest";
+        var lower = q.ToLowerInvariant();
 
-        var system = """
-Clasifica la intención del usuario para un asistente de laboratorio.
-Devuelve SOLO JSON.
-Rutas:
-- db: inventario/ubicación/calibraciones/sustancias/equipos/documentos dentro del sistema.
-- web: requiere info externa (definiciones generales, normativa externa, etc.) que no está en BD/documentos.
-- mixed: mezcla (ej: "tengo X?" + "qué precauciones generales debo tomar?").
-""";
+        var looksDb =
+            lower.Contains("cuánt") || lower.Contains("cuantos") || lower.Contains("cantidad") ||
+            lower.Contains("inventario") || lower.Contains("tenemos") || lower.Contains("hay ") ||
+            lower.Contains("dónde") || lower.Contains("donde") || lower.Contains("ubic") ||
+            lower.Contains("venc") || lower.Contains("qr") || lower.Contains("cas") ||
+            lower.Contains("equipo") || lower.Contains("reactiv") || lower.Contains("sustanc") ||
+            lower.Contains("documento") || lower.Contains("material") ||
+            lower.Contains("mesón") || lower.Contains("mesones") ||
+            lower.Contains("área") || lower.Contains("areas") || lower.Contains("laboratorio");
 
-        var schema = new
+        if (looksDb)
+            return new RouterDecision { Intent = "db_query", Notes = "Heurística: parece consulta del inventario/BD." };
+
+        // fallback: pregunta al LLM
+        var msgs = new List<ChatMessage>
         {
-            type = "object",
-            required = new[] { "route", "needsClarification", "confidence" },
-            properties = new
-            {
-                route = new { type = "string" },
-                needsClarification = new { type = "boolean" },
-                clarifyingQuestion = new { type = "string" },
-                confidence = new { type = "number" }
-            }
+            new() { Role="system", Content=
+@"Responde en json.
+Clasifica la intención del usuario en:
+- db_query
+- general_help
+- needs_clarification
+
+Devuelve SOLO:
+{ ""intent"": ""db_query|general_help|needs_clarification"", ""clarifying_question"": null, ""notes"": ""breve"" }"
+            },
+            new() { Role="user", Content = q }
         };
 
-        var content = await _ollama.ChatAsync(
-            model,
-            new[]
-            {
-                new OllamaChatClient.Msg("system", system),
-                new OllamaChatClient.Msg("user", userQuestion),
-            },
-            format: schema,
-            options: new Dictionary<string, object?> { ["temperature"] = 0 },
-            ct
-        );
+        var decision = await _llm.CreateJsonAsync<RouterDecision>(_opt.ModelPlanner, msgs, maxTokens: 180, ct: ct);
+        decision.Intent = NormalizeIntent(decision.Intent);
 
-        try
+        if (decision.Intent == "needs_clarification" && string.IsNullOrWhiteSpace(decision.ClarifyingQuestion))
+            decision.ClarifyingQuestion = "¿Puedes dar un poco más de detalle para poder consultarlo en la base de datos?";
+
+        return decision;
+    }
+
+    private static string NormalizeIntent(string? intent)
+    {
+        var x = (intent ?? "").Trim().ToLowerInvariant();
+        return x switch
         {
-            return JsonSerializer.Deserialize<RoutePlan>(content, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-                   ?? new RoutePlan { Route = "db", Confidence = 0.5m };
-        }
-        catch
-        {
-            return new RoutePlan { Route = "db", Confidence = 0.5m };
-        }
+            "db" or "database" or "dbquery" or "db_query" => "db_query",
+            "general" or "general_help" => "general_help",
+            "clarify" or "needs_clarification" => "needs_clarification",
+            _ => "general_help"
+        };
     }
 }

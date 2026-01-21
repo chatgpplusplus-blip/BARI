@@ -1,68 +1,104 @@
-﻿@namespace BARI_web.Components
-@page "/bari-bot"
-@using BARI_web.Models
-@using Microsoft.AspNetCore.Components
+﻿@page "/baribot"
+@namespace BARI_web.Components
+@using BARI_web.Services
 
-<div class="bari-bot">
-    <header class="bb-header">
+<div class="bb-shell">
+    <div class="bb-header">
         <div class="bb-title">
-            <span class="bb-dot"></span>
-            <div>
-                <h1>BARI BOT</h1>
-                <p>Asistente de inventario (solo lectura)</p>
+            <div class="bb-badge">BariBot</div>
+            <div class="bb-subtitle">Inventario de laboratorio (química + electrónica)</div>
+        </div>
+
+        <div class="bb-status">
+            @if (IsBusy)
+            {
+                <span class="bb-dot bb-dot--busy"></span>
+                <span>Analizando…</span>
+            }
+            else
+            {
+                <span class="bb-dot bb-dot--ok"></span>
+                <span>Listo</span>
+            }
+        </div>
+    </div>
+
+    <div class="bb-body">
+        @if (Messages.Count == 0)
+        {
+            <div class="bb-empty">
+                <div class="bb-empty-title">Prueba con:</div>
+                <div class="bb-chips">
+                    <button class="bb-chip"
+                            @onclick="@(() => QuickAsk("¿Cuántos reactivos corrosivos hay?"))">
+                        ¿Cuántos reactivos corrosivos hay?
+                    </button>
+
+                    <button class="bb-chip"
+                            @onclick="@(() => QuickAsk("Lista equipos en el laboratorio"))">
+                        Lista equipos
+                    </button>
+
+                    <button class="bb-chip"
+                            @onclick="@(() => QuickAsk("¿Tienen ácido sulfúrico? (por nombre o CAS)"))">
+                        ¿Tienen ácido sulfúrico?
+                    </button>
+
+                    <button class="bb-chip"
+                            @onclick="@(() => QuickAsk("Busca documentos de seguridad"))">
+                        Busca documentos
+                    </button>
+                </div>
             </div>
-        </div>
+        }
 
-        <div class="bb-actions">
-            <label class="bb-toggle">
-                <input type="checkbox" @bind="ShowDebug" />
-                <span>Debug SQL</span>
-            </label>
-            <button class="bb-btn" @onclick="ClearAsync" title="Limpiar chat">Limpiar</button>
-        </div>
-    </header>
-
-    <section class="bb-chat">
         @foreach (var m in Messages)
         {
-            <div class="bb-row @(m.Role == BariChatRole.User ? "user" : "assistant")">
-                <div class="bb-bubble">
-                    <div class="bb-meta">@m.DisplayRole • @m.Timestamp.ToLocalTime().ToString("HH:mm")</div>
-                    <div class="bb-text">@((MarkupString)m.Html)</div>
+            <div class="bb-row @(m.Role == "user" ? "bb-row--me" : "bb-row--bot")">
+                <div class="bb-bubble @(m.Role == "user" ? "bb-bubble--me" : "bb-bubble--bot")">
+                    <div class="bb-bubble-meta">
+                        <span class="bb-who">@(m.Role == "user" ? "Tú" : "BariBot")</span>
+                        <span class="bb-time">@m.At.ToLocalTime().ToString("HH:mm")</span>
+                    </div>
 
-                    @if (ShowDebug && !string.IsNullOrWhiteSpace(m.DebugSql))
+                    <div class="bb-bubble-text">@m.Content</div>
+
+                    @if (m.Role == "assistant" && m.UsedDatabase == true)
                     {
-                        <details class="bb-sql">
-                            <summary>Ver SQL</summary>
-                            <pre>@m.DebugSql</pre>
-                        </details>
+                        <div class="bb-pill">BD</div>
                     }
                 </div>
             </div>
         }
 
-        @if (IsBusy)
+        @if (!string.IsNullOrWhiteSpace(ErrorMessage))
         {
-            <div class="bb-row assistant">
-                <div class="bb-bubble bb-typing" aria-label="Escribiendo…">
-                    <span class="bb-typing-dot"></span>
-                    <span class="bb-typing-dot"></span>
-                    <span class="bb-typing-dot"></span>
-                </div>
+            <div class="bb-error">
+                <strong>Error:</strong> @ErrorMessage
             </div>
         }
-    </section>
+    </div>
 
-    <footer class="bb-input">
-        <textarea class="bb-textarea"
-                  placeholder="Pregúntame algo… (ej: 'contenedores que vencen en 30 días')"
-                  @bind="UserText" @bind:event="oninput"
-                  @onkeydown="HandleKeyDown"></textarea>
+    <div class="bb-footer">
+        <div class="bb-input-wrap">
+            <textarea class="bb-input"
+                      placeholder="Escribe tu pregunta…"
+                      @bind="Draft"
+                      @bind:event="oninput"
+                      @onkeydown="OnKeyDown"
+                      disabled="@IsBusy"></textarea>
 
-        <button class="bb-send" @onclick="SendAsync" disabled="@(!CanSend)">Enviar</button>
-    </footer>
+            <button class="bb-send"
+                    @onclick="SendAsync"
+                    disabled="@IsBusy || string.IsNullOrWhiteSpace(Draft)">
+                <span class="bb-send-icon">➤</span>
+                <span>Enviar</span>
+            </button>
+        </div>
 
-    <div class="bb-hint">
-        Tip: pregunta por <b>vencimientos</b>, <b>ubicación</b> (área/mesón/nivel), <b>calibraciones</b> o <b>códigos H/P</b>.
+        <div class="bb-hint">
+            Tip: intenta por <code>nombre</code>, <code>CAS</code>, <code>QR</code>, <code>área</code>,
+            o por peligrosidad (<code>corros</code>, <code>inflam</code>, <code>toxic</code>).
+        </div>
     </div>
 </div>

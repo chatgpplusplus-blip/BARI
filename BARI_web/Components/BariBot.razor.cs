@@ -1,46 +1,41 @@
-﻿using System.Net;
-using Microsoft.AspNetCore.Components;
+﻿using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
-using Microsoft.Extensions.Configuration;
-using BARI_web.Models;
 using BARI_web.Services;
-using Microsoft.Extensions.AI;
 
 namespace BARI_web.Components;
 
+public sealed class ChatMessageVm
+{
+    public string Role { get; set; } = "user"; // user | assistant
+    public string Content { get; set; } = "";
+    public DateTimeOffset At { get; set; } = DateTimeOffset.Now;
+    public bool? UsedDatabase { get; set; }
+}
+
 public partial class BariBot : ComponentBase
 {
-    [Inject] public BariBotOrchestrator Orchestrator { get; set; } = default!;
-    [Inject] public IConfiguration Cfg { get; set; } = default!;
+    [Inject] public BariBotOrchestrator Bot { get; set; } = default!;
 
-    protected List<ChatVmMessage> Messages { get; set; } = new();
-    protected string UserText { get; set; } = "";
+    protected List<ChatMessageVm> Messages { get; } = new();
+    protected string Draft { get; set; } = "";
     protected bool IsBusy { get; set; }
-    protected bool ShowDebug { get; set; }
-
-    protected bool CanSend => !IsBusy && !string.IsNullOrWhiteSpace(UserText);
-
-    private int LabId => int.TryParse(Cfg["BariBot:LabIdDefault"], out var id) ? id : 1;
-
-    protected override void OnInitialized()
-    {
-        Messages.Add(new ChatVmMessage
-        {
-            Role = BariChatRole.Assistant,
-            Html = Html("Hola 👋 Soy BARI BOT. Pregúntame por inventario, vencimientos, ubicación o calibraciones.")
-        });
-    }
+    protected string? ErrorMessage { get; set; }
 
     protected async Task SendAsync()
     {
-        var text = (UserText ?? "").Trim();
-        if (string.IsNullOrWhiteSpace(text)) return;
-        UserText = "";
+        ErrorMessage = null;
 
-        Messages.Add(new ChatVmMessage
+        var text = (Draft ?? "").Trim();
+        if (IsBusy || string.IsNullOrWhiteSpace(text))
+            return;
+
+        Draft = "";
+
+        Messages.Add(new ChatMessageVm
         {
-            Role = BariChatRole.User,
-            Html = Html(text)
+            Role = "user",
+            Content = text,
+            At = DateTimeOffset.Now
         });
 
         IsBusy = true;
@@ -48,22 +43,37 @@ public partial class BariBot : ComponentBase
 
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-            var resp = await Orchestrator.AskAsync(text, LabId, cts.Token);
+            // Historial reducido para contexto del bot
+            var history = Messages
+                .TakeLast(12)
+                .Select(m => new ChatMessage
+                {
+                    Role = m.Role == "user" ? "user" : "assistant",
+                    Content = m.Content,
+                    At = m.At
+                })
+                .ToList();
 
-            Messages.Add(new ChatVmMessage
+            var resp = await Bot.AskAsync(text, history);
+
+            Messages.Add(new ChatMessageVm
             {
-                Role = BariChatRole.Assistant,
-                Html = Html(resp.Text),
-                DebugSql = resp.DebugSql
+                Role = "assistant",
+                Content = resp.Answer,
+                At = DateTimeOffset.Now,
+                UsedDatabase = resp.UsedDatabase
             });
         }
         catch (Exception ex)
         {
-            Messages.Add(new ChatVmMessage
+            ErrorMessage = ex.Message;
+
+            Messages.Add(new ChatMessageVm
             {
-                Role = BariChatRole.Assistant,
-                Html = Html("Ocurrió un error.\n\nDetalle: " + ex.Message)
+                Role = "assistant",
+                Content = "Tuve un problema procesando esa consulta. Intenta reformular con: nombre / CAS / QR / área / mesón.",
+                At = DateTimeOffset.Now,
+                UsedDatabase = false
             });
         }
         finally
@@ -73,25 +83,20 @@ public partial class BariBot : ComponentBase
         }
     }
 
-    protected Task ClearAsync()
+    protected Task QuickAsk(string text)
     {
-        Messages.Clear();
-        OnInitialized();
-        return Task.CompletedTask;
+        Draft = text;
+        return SendAsync();
     }
 
-    protected async Task HandleKeyDown(KeyboardEventArgs e)
+    protected async Task OnKeyDown(KeyboardEventArgs e)
     {
-        // Enter envía, Shift+Enter hace salto de línea
+        if (IsBusy) return;
+
+        // Enter envía; Shift+Enter permite salto de línea
         if (e.Key == "Enter" && !e.ShiftKey)
         {
             await SendAsync();
         }
-    }
-
-    private static string Html(string text)
-    {
-        var safe = WebUtility.HtmlEncode(text ?? "");
-        return safe.Replace("\r\n", "\n").Replace("\n", "<br />");
     }
 }
