@@ -399,7 +399,7 @@ else
 
     private static object ToDbDate(DateTime? value)
     {
-        return value?.Date ?? DBNull.Value;
+        return value.HasValue ? value.Value.Date : (object)DBNull.Value;
     }
 
     private sealed class ContenedorInfo
