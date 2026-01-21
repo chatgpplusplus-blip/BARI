@@ -129,7 +129,7 @@ else
                     </label>
                     <label>
                         Área
-                        <select @bind="edit.AreaId" @bind:after="OnAreaChangedAsync">
+                        <select @bind="edit.AreaId" @onchange="OnAreaChangedAsync">
                             <option value="">Selecciona un área</option>
                             @foreach (var area in areas)
                             {
@@ -182,7 +182,7 @@ else
                     </label>
                     <label>
                         Imagen
-                        <select @bind="edit.ImagenModo" @bind:after="OnImagenModoChanged">
+                        <select @bind="edit.ImagenModo" @onchange="OnImagenModoChanged">
                             <option value="url">URL</option>
                             <option value="archivo">Subir archivo</option>
                         </select>
@@ -497,14 +497,17 @@ else
         }
     }
 
-    private async Task OnAreaChangedAsync()
+    private async Task OnAreaChangedAsync(ChangeEventArgs args)
     {
+        edit.AreaId = args.Value?.ToString() ?? "";
         edit.MesonId = "";
         await LoadMesonesAsync(edit.AreaId);
     }
 
-    private void OnImagenModoChanged()
+    private void OnImagenModoChanged(ChangeEventArgs args)
     {
+        var value = args.Value?.ToString();
+        edit.ImagenModo = string.IsNullOrWhiteSpace(value) ? "url" : value;
         if (edit.ImagenModo != "url" && edit.ImagenModo != "archivo")
             edit.ImagenModo = "url";
     }
