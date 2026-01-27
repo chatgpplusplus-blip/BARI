@@ -1,0 +1,1619 @@
+﻿@page "/inventario-mesones"
+@page "/inventario-mesones/{AreaId}"
+
+@using Npgsql
+@using BARI_web.General_Services
+@using System.Globalization
+@using System.IO
+@using System.Linq
+@using Microsoft.AspNetCore.Components.Forms
+@inject NpgsqlDataSource DataSource
+@inject LaboratorioState LaboratorioState
+@inject NavigationManager Nav
+@inject IWebHostEnvironment HostEnvironment
+@implements IDisposable
+
+<PageTitle>Inventario de Mesones</PageTitle>
+
+<section class="page-card">
+    <h2>Inventario de Mesones</h2>
+    <p class="helper">
+        Mesones del laboratorio (mobiliario dentro de áreas). Al registrar, se crea automáticamente un bloque en el canvas
+        sin solaparse con otros bloques del mismo canvas (mesones e instalaciones).
+    </p>
+    <LaboratorioSelector />
+</section>
+
+<!-- =========================================================
+     1) REGISTRAR
+========================================================= -->
+<section class="page-card" style="margin-top:1.5rem;">
+    <details>
+        <summary style="cursor:pointer; font-weight:800;">Registrar mesón</summary>
+
+        <div class="form-header">
+            <h4>Nuevo mesón</h4>
+            <p class="form-hint">
+                Se guarda dentro del laboratorio actual. El área es obligatoria.
+                Puedes seleccionar el área desde el mapa. Al registrar, se crea un bloque asociado al mesón.
+            </p>
+        </div>
+
+        <div class="form-grid">
+            <div class="field">
+                <label>ID mesón (opcional)</label>
+                <input class="border p-1" placeholder="mes_xxx (opcional)" @bind="_nuevoId" />
+            </div>
+
+            <div class="field">
+                <label>Nombre del mesón</label>
+                <input class="border p-1" placeholder="Ej: Mesón central" @bind="_nuevoNombre" />
+            </div>
+
+            <div class="field">
+                <label>Niveles totales (opcional)</label>
+                <input class="border p-1" type="number" step="1" placeholder="Ej: 3" @bind="_nuevoNiveles" />
+            </div>
+
+            <!-- Área + Visualizador -->
+            <div class="field full-span">
+                <label>Área (obligatorio)</label>
+
+                <div class="selector-split">
+                    <select class="border p-1"
+                            value="@_nuevoAreaId"
+                            @onchange="OnAreaChanged">
+                        <option value="">(selecciona área)</option>
+                        @foreach (var a in _areaOptions)
+                        {
+                            <option value="@a.Id">@a.Label</option>
+                        }
+                    </select>
+
+                    <div class="visual-picker">
+                        <div class="visual-toolbar">
+                            <label class="text-xs muted">Mapa de áreas</label>
+
+                            <select class="border p-1 text-xs" @bind="_currentPlantaId">
+                                <option value="">Todas</option>
+                                @foreach (var planta in _plantasLookup)
+                                {
+                                    <option value="@planta.Key">@planta.Value</option>
+                                }
+                            </select>
+                        </div>
+
+                        @if (_canvasViews.Count == 0)
+                        {
+                            <div class="text-xs muted">Sin mapas disponibles.</div>
+                        }
+                        else
+                        {
+                            @foreach (var view in _canvasViews)
+                            {
+                                var areasPorPlanta = view.Areas.Where(a => IsAreaInCurrentPlanta(a.PlantaId)).ToList();
+                                if (areasPorPlanta.Count == 0)
+                                    continue;
+
+                                <div class="canvas-card">
+                                    <div class="text-xs muted">@view.Canvas.Nombre</div>
+
+                                    <svg width="100%" height="100%"
+                                         viewBox="0 0 @view.Canvas.Ancho @view.Canvas.largo"
+                                         preserveAspectRatio="xMidYMid meet">
+
+                                        <rect x="0" y="0"
+                                              width="@FormatSvg(view.Canvas.Ancho)"
+                                              height="@FormatSvg(view.Canvas.largo)"
+                                              fill="transparent"
+                                              style="pointer-events:all"
+                                              @onclick="ClearAreaSelection" />
+
+                                        @foreach (var area in areasPorPlanta)
+                                        {
+                                            foreach (var poly in area.Poligonos.OrderBy(p => p.ZOrder))
+                                            {
+                                                <polygon points="@PointsString(poly)"
+                                                         fill="@AreaFill(area)"
+                                                         stroke="#111827" stroke-width="0.03"
+                                                         style="cursor:pointer"
+                                                         @onclick:stopPropagation="true"
+                                                         @onclick="@(() => SelectAreaFromVisualAsync(area.AreaId))" />
+                                            }
+
+                                            @if (!string.IsNullOrWhiteSpace(area.Nombre))
+                                            {
+                                                var labelWidth = AreaLabelWidth(area);
+                                                var labelHeight = AreaLabelHeight(area);
+                                                var fontSize = AreaLabelFontSize(area);
+
+                                                <svg:rect x="@FormatSvg(area.CenterX - labelWidth / 2m)"
+                                                          y="@FormatSvg(area.CenterY - labelHeight / 2m)"
+                                                          width="@FormatSvg(labelWidth)"
+                                                          height="@FormatSvg(labelHeight)"
+                                                          fill="#ffffff" opacity="0.8" rx="0.15" ry="0.15"
+                                                          @onclick:stopPropagation="true" />
+                                                <svg:text class="area-label"
+                                                          x="@FormatSvg(area.CenterX)" y="@FormatSvg(area.CenterY)"
+                                                          text-anchor="middle" dominant-baseline="middle"
+                                                          font-size="@FormatSvg(fontSize)"
+                                                          @onclick:stopPropagation="true">
+                                                    @area.Nombre
+                                                </svg:text>
+                                            }
+                                        }
+                                    </svg>
+                                </div>
+                            }
+                        }
+
+                        @if (!string.IsNullOrWhiteSpace(_nuevoAreaId))
+                        {
+                            <div class="text-xs muted">Seleccionado: @SelectedAreaLabel</div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- Canvas (para crear el bloque) -->
+            <div class="field">
+                <label>Canvas</label>
+                <select class="border p-1" @bind="_nuevoCanvasId">
+                    <option value="">(auto desde área)</option>
+                    @foreach (var c in _canvasOptions)
+                    {
+                        <option value="@c.Id">@c.Label</option>
+                    }
+                </select>
+                @if (!string.IsNullOrWhiteSpace(_nuevoAreaId) && !string.IsNullOrWhiteSpace(AutoCanvasHint))
+                {
+                    <div class="text-xs muted">@AutoCanvasHint</div>
+                }
+                <div class="text-xs muted">Requerido para crear el bloque (si tu área no tiene canvas asignado, elige uno aquí).</div>
+            </div>
+
+            <!-- Dimensiones del bloque -->
+            <div class="field">
+                <label>Ancho del bloque (m)</label>
+                <input class="border p-1" type="number" step="any" placeholder="Ej: 2.00" @bind="_nuevoBloqueAnchoM" />
+            </div>
+
+            <div class="field">
+                <label>Largo del bloque (m)</label>
+                <input class="border p-1" type="number" step="any" placeholder="Ej: 0.75" @bind="_nuevoBloqueLargoM" />
+            </div>
+
+            <div class="field">
+                <label>Altura (m) (opcional)</label>
+                <input class="border p-1" type="number" step="any" placeholder="Ej: 0.90" @bind="_nuevoBloqueAlturaM" />
+            </div>
+
+            <div class="upload-card full-span">
+                <div class="upload-options">
+                    <label class="text-sm">
+                        <input type="radio" name="imgModoMes"
+                               value="url"
+                               checked="@(_nuevoImagenModo == "url")"
+                               @onchange="OnNuevoImagenModoChanged" />
+                        Colocar un URL
+                    </label>
+                    <label class="text-sm">
+                        <input type="radio" name="imgModoMes"
+                               value="archivo"
+                               checked="@(_nuevoImagenModo == "archivo")"
+                               @onchange="OnNuevoImagenModoChanged" />
+                        Subir imagen
+                    </label>
+                </div>
+
+                @if (_nuevoImagenModo == "url")
+                {
+                    <input class="border p-1" placeholder="Imagen URL (o ruta relativa)" @bind="_nuevoImagenUrl" />
+                }
+                else
+                {
+                    <label class="upload-drop">
+                        <InputFile OnChange="OnNuevoImagenArchivoSeleccionado" accept="image/png,image/jpeg,image/jpg,image/webp" />
+                        <span>Arrastra una imagen o haz clic para buscar</span>
+                    </label>
+                    @if (!string.IsNullOrWhiteSpace(_nuevoImagenNombre))
+                    {
+                        <div class="text-xs muted">Archivo: @_nuevoImagenNombre</div>
+                    }
+                }
+            </div>
+
+            <div class="form-actions full-span">
+                <button class="btn primary" type="button" @onclick="CrearMesonAsync" disabled="@isSaving">Registrar</button>
+                @if (!string.IsNullOrWhiteSpace(msg))
+                {
+                    <span class="text-sm muted">@msg</span>
+                }
+            </div>
+        </div>
+    </details>
+</section>
+
+<!-- =========================================================
+     2) GUÍA / FILTROS
+========================================================= -->
+<section class="page-card" style="margin-top:1.5rem;">
+    <div class="category-header">
+        <div>
+            <h3>Guía de áreas</h3>
+            <p class="helper">Selecciona un área para ver sus mesones.</p>
+        </div>
+
+        <div class="category-controls">
+            <label class="toggle">
+                <input type="checkbox"
+                       checked="@_verTodos"
+                       @onchange="OnVerTodosToggle" />
+                <span>Ver todos los mesones</span>
+            </label>
+
+            <select class="category-select"
+                    @onchange="OnAreaFilterChanged"
+                    value="@(_verTodos ? "" : AreaId)">
+                <option value="">Todas las áreas</option>
+                @foreach (var a in _areaOptions)
+                {
+                    <option value="@a.Id">@a.Label</option>
+                }
+            </select>
+        </div>
+
+        @if (!_verTodos && !string.IsNullOrWhiteSpace(AreaId))
+        {
+            <NavLink class="btn-link" href="/inventario-mesones" Match="NavLinkMatch.All">Ver todas las áreas</NavLink>
+        }
+    </div>
+</section>
+
+<!-- =========================================================
+     3) TABLA + BUSCADOR
+========================================================= -->
+<section class="page-card" style="margin-top:1.5rem;">
+    <div class="materials-header">
+        <div class="materials-title">
+            <h3>
+                @(_verTodos
+                    ? "Todos los mesones"
+                    : (string.IsNullOrWhiteSpace(AreaId)
+                    ? "Mesones disponibles"
+                    : $"Mesones · {areaNombre ?? AreaId}"))
+            </h3>
+
+            @if (_verTodos || !string.IsNullOrWhiteSpace(AreaId))
+            {
+                <span class="badge">@FilteredCountLabel</span>
+            }
+        </div>
+
+        <input class="border p-1 search-input-invent"
+               placeholder="Buscar (nombre, área, niveles)..."
+               @bind="_searchText"
+               @bind:event="oninput"
+               disabled="@(!(_verTodos || !string.IsNullOrWhiteSpace(AreaId)))" />
+
+        @if (_verTodos)
+        {
+            <NavLink class="btn-link" href="/inventario-mesones" Match="NavLinkMatch.All">Volver a áreas</NavLink>
+        }
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(loadError))
+    {
+        <p class="error-note">No se pudieron cargar mesones: @loadError</p>
+    }
+    else if (string.IsNullOrWhiteSpace(AreaId) && !_verTodos)
+    {
+        <div class="empty">
+            <div class="helper">Elige un área o activa “Ver todos los mesones”.</div>
+        </div>
+    }
+    else if (mesones.Count == 0)
+    {
+        <div class="empty">No hay mesones registrados para este filtro.</div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Mesón</th>
+                        <th>Área</th>
+                        <th>Niveles</th>
+                        <th>Imagen</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var it in MesonesFiltrados)
+                    {
+                        <tr>
+                            <td>@it.Id</td>
+                            <td>
+                                <NavLink href="@($"/inventario-mesones/item/{it.Id}")" class="btn-link">
+                                    @it.Nombre
+                                </NavLink>
+                            </td>
+                            <td>@(string.IsNullOrWhiteSpace(it.Area) ? "—" : it.Area)</td>
+                            <td>@(it.Niveles is null ? "—" : it.Niveles.Value.ToString(CultureInfo.InvariantCulture))</td>
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(it.ImagenUrl))
+                                {
+                                    <img class="thumb thumb-material" src="@ResolveUrl(it.ImagenUrl)" alt="Imagen mesón" />
+                                }
+                                else
+                                {
+                                    <span class="text-xs muted">—</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter] public string? AreaId { get; set; }
+
+    private bool isSaving;
+    private bool _verTodos;
+
+    private string? loadError;
+    private string? msg;
+
+    private string? areaNombre;
+    private string? _searchText;
+
+    private readonly List<SelectOption> _areaOptions = new();
+    private readonly List<SelectOption> _canvasOptions = new();
+    private readonly List<MesonRow> mesones = new();
+
+    // Visualizador
+    private readonly List<CanvasView> _canvasViews = new();
+    private readonly Dictionary<string, string> _plantasLookup = new(StringComparer.OrdinalIgnoreCase);
+    private string? _currentPlantaId;
+
+    // Nuevo (form)
+    private string? _nuevoId;
+    private string? _nuevoNombre;
+    private string? _nuevoAreaId;
+    private string? _nuevoCanvasId;
+
+    private string? _nuevoNiveles;
+
+    // Dimensiones bloque
+    private string? _nuevoBloqueAnchoM;
+    private string? _nuevoBloqueLargoM;
+    private string? _nuevoBloqueAlturaM;
+
+    // Imagen
+    private string _nuevoImagenModo = "url";
+    private string? _nuevoImagenUrl;
+    private string? _nuevoImagenNombre;
+
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        loadError = null;
+        _verTodos = ComputeVerTodos();
+
+        await LoadLookupsAsync();
+        await LoadCanvasAreasAsync();
+        await LoadMesonesAsync();
+    }
+
+    private bool ComputeVerTodos()
+        => string.Equals(AreaId, "todos", StringComparison.OrdinalIgnoreCase);
+
+    private void HandleLaboratorioChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            _nuevoAreaId = null;
+            _nuevoCanvasId = null;
+
+            _areaOptions.Clear();
+            _canvasOptions.Clear();
+            _canvasViews.Clear();
+            _plantasLookup.Clear();
+            _currentPlantaId = null;
+
+            await LoadLookupsAsync();
+            await LoadCanvasAreasAsync();
+            await LoadMesonesAsync();
+
+            StateHasChanged();
+        });
+    }
+
+    private async Task LoadLookupsAsync()
+    {
+        _areaOptions.Clear();
+        _canvasOptions.Clear();
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        // Áreas del lab
+        const string areaSql = @"
+            SELECT area_id, nombre_areas
+            FROM areas
+            WHERE laboratorio_id = @lab
+            ORDER BY nombre_areas";
+        await using (var cmd = new NpgsqlCommand(areaSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+                _areaOptions.Add(new SelectOption(r.GetString(0), (r.GetString(1) ?? "").Trim()));
+        }
+
+        // Canvas del lab
+        const string canvasSql = @"
+            SELECT canvas_id, nombre
+            FROM canvas_lab
+            WHERE laboratorio_id = @lab
+            ORDER BY nombre";
+        await using (var cmd = new NpgsqlCommand(canvasSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+                _canvasOptions.Add(new SelectOption(r.GetString(0), (r.GetString(1) ?? "").Trim()));
+        }
+    }
+
+    private async Task LoadCanvasAreasAsync()
+    {
+        _canvasViews.Clear();
+        _plantasLookup.Clear();
+
+        var previousPlantaId = _currentPlantaId;
+        _currentPlantaId = null;
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        // Plantas
+        await using (var cmd = new NpgsqlCommand("SELECT planta_id, nombre FROM plantas ORDER BY nombre", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+            while (await reader.ReadAsync())
+                _plantasLookup[reader.GetString(0)] = (reader.GetString(1) ?? "").Trim();
+
+        if (!string.IsNullOrWhiteSpace(previousPlantaId) && _plantasLookup.ContainsKey(previousPlantaId))
+            _currentPlantaId = previousPlantaId;
+        else
+            _currentPlantaId = _plantasLookup.Keys.FirstOrDefault();
+
+        // Canvases que tienen áreas del laboratorio
+        const string canvasSql = @"
+            SELECT DISTINCT c.canvas_id, c.nombre, c.ancho_m, c.largo_m, c.margen_m
+            FROM canvas_lab c
+            INNER JOIN areas a ON a.canvas_id = c.canvas_id
+            WHERE a.laboratorio_id = @lab
+            ORDER BY c.nombre";
+
+        var canvases = new List<CanvasItem>();
+        await using (var cmd = new NpgsqlCommand(canvasSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                canvases.Add(new CanvasItem(
+                    reader.GetString(0),
+                    (reader.GetString(1) ?? "").Trim(),
+                    reader.GetDecimal(2),
+                    reader.GetDecimal(3),
+                    reader.GetDecimal(4)
+                ));
+        }
+
+        // Áreas del laboratorio
+        const string areaSql = @"
+            SELECT area_id, nombre_areas, planta_id, canvas_id
+            FROM areas
+            WHERE laboratorio_id = @lab
+            ORDER BY nombre_areas";
+
+        var areas = new List<AreaItem>();
+        await using (var cmd = new NpgsqlCommand(areaSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                areas.Add(new AreaItem(
+                    reader.GetString(0),
+                    (reader.GetString(1) ?? "").Trim(),
+                    reader.IsDBNull(2) ? null : reader.GetString(2),
+                    reader.IsDBNull(3) ? null : reader.GetString(3)
+                ));
+            }
+        }
+
+        // Polígonos
+        const string polySql = @"
+            SELECT p.poly_id, p.area_id, COALESCE(p.color_hex, '#cbd5f5') AS color_hex, p.z_order
+            FROM poligonos p
+            INNER JOIN areas a ON a.area_id = p.area_id
+            WHERE a.laboratorio_id = @lab
+            ORDER BY p.z_order, p.poly_id";
+
+        var polys = new Dictionary<string, PolygonItem>(StringComparer.OrdinalIgnoreCase);
+        await using (var cmd = new NpgsqlCommand(polySql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var polyId = reader.GetString(0);
+                polys[polyId] = new PolygonItem(
+                    polyId,
+                    reader.IsDBNull(1) ? null : reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetInt32(3)
+                );
+            }
+        }
+
+        // Puntos
+        const string pointsSql = @"
+            SELECT poly_id, orden, x_m, y_m
+            FROM poligonos_puntos
+            ORDER BY poly_id, orden";
+
+        await using (var cmd = new NpgsqlCommand(pointsSql, conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                var polyId = reader.GetString(0);
+                if (!polys.TryGetValue(polyId, out var poly))
+                    continue;
+
+                poly.Points.Add(new PointItem(reader.GetDecimal(2), reader.GetDecimal(3)));
+            }
+        }
+
+        foreach (var area in areas)
+        {
+            var areaPolys = polys.Values
+                .Where(p => string.Equals(p.AreaId, area.AreaId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (areaPolys.Count == 0)
+                continue;
+
+            area.Poligonos.AddRange(areaPolys);
+            area.CalculateBounds();
+        }
+
+        foreach (var canvas in canvases)
+        {
+            var viewAreas = areas
+                .Where(a => string.Equals(a.CanvasId, canvas.CanvasId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (viewAreas.Count == 0)
+                continue;
+
+            _canvasViews.Add(new CanvasView(canvas, viewAreas));
+        }
+
+        EnsurePlantaSelection(areas);
+    }
+
+    private async Task LoadMesonesAsync()
+    {
+        mesones.Clear();
+        areaNombre = null;
+
+        if (!_verTodos && string.IsNullOrWhiteSpace(AreaId))
+            return;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+
+            if (!_verTodos && !string.IsNullOrWhiteSpace(AreaId))
+            {
+                const string sqlA = @"SELECT nombre_areas FROM areas WHERE area_id=@id";
+                await using var cmdN = new NpgsqlCommand(sqlA, conn);
+                cmdN.Parameters.AddWithValue("id", AreaId);
+                areaNombre = (await cmdN.ExecuteScalarAsync())?.ToString()?.Trim();
+            }
+
+            var sql = _verTodos
+                ? @"
+                    SELECT m.meson_id,
+                           m.nombre_meson,
+                           COALESCE(a.nombre_areas,'') AS area,
+                           m.niveles_totales,
+                           COALESCE(m.imagen_url,'') AS imagen_url
+                    FROM mesones m
+                    LEFT JOIN areas a ON a.area_id = m.area_id
+                    WHERE m.laboratorio_id = @lab
+                    ORDER BY a.nombre_areas, m.nombre_meson, m.meson_id"
+                : @"
+                    SELECT m.meson_id,
+                           m.nombre_meson,
+                           COALESCE(a.nombre_areas,'') AS area,
+                           m.niveles_totales,
+                           COALESCE(m.imagen_url,'') AS imagen_url
+                    FROM mesones m
+                    LEFT JOIN areas a ON a.area_id = m.area_id
+                    WHERE m.laboratorio_id = @lab
+                      AND m.area_id = @area
+                    ORDER BY m.nombre_meson, m.meson_id";
+
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+
+            if (!_verTodos)
+                cmd.Parameters.AddWithValue("area", AreaId!);
+
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                mesones.Add(new MesonRow(
+                    r.GetString(0),
+                    (r.GetString(1) ?? "").Trim(),
+                    (r.GetString(2) ?? "").Trim(),
+                    r.IsDBNull(3) ? (int?)null : r.GetInt32(3),
+                    (r.GetString(4) ?? "").Trim()
+                ));
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+    }
+
+    private IEnumerable<MesonRow> MesonesFiltrados
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_searchText))
+                return mesones;
+
+            var q = _searchText.Trim();
+
+            bool Hit(string? s) =>
+                !string.IsNullOrWhiteSpace(s) &&
+                s.Contains(q, StringComparison.OrdinalIgnoreCase);
+
+            return mesones.Where(m =>
+                Hit(m.Id) ||
+                Hit(m.Nombre) ||
+                Hit(m.Area) ||
+                (m.Niveles?.ToString(CultureInfo.InvariantCulture).Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)
+            );
+        }
+    }
+
+    private string FilteredCountLabel
+    {
+        get
+        {
+            var total = mesones.Count;
+            if (string.IsNullOrWhiteSpace(_searchText))
+                return $"{total} mesones";
+
+            var filtered = MesonesFiltrados.Count();
+            return $"{filtered} de {total}";
+        }
+    }
+
+    private void OnAreaFilterChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            Nav.NavigateTo("/inventario-mesones");
+            return;
+        }
+        Nav.NavigateTo($"/inventario-mesones/{value}");
+    }
+
+    private void OnVerTodosToggle(ChangeEventArgs args)
+    {
+        var isChecked =
+            args.Value is bool b ? b :
+            string.Equals(args.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+
+        if (isChecked)
+            Nav.NavigateTo("/inventario-mesones/todos");
+        else
+            Nav.NavigateTo("/inventario-mesones");
+    }
+
+    private async Task OnAreaChanged(ChangeEventArgs args)
+    {
+        var newArea = args.Value?.ToString();
+        _nuevoAreaId = string.IsNullOrWhiteSpace(newArea) ? null : newArea;
+        SyncCanvasFromSelectedArea();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SelectAreaFromVisualAsync(string? areaId)
+    {
+        if (string.IsNullOrWhiteSpace(areaId))
+            return;
+
+        if (string.Equals(areaId, _nuevoAreaId, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        _nuevoAreaId = areaId;
+        SyncCanvasFromSelectedArea();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void ClearAreaSelection()
+    {
+        _nuevoAreaId = null;
+        StateHasChanged();
+    }
+
+    private void SyncCanvasFromSelectedArea()
+    {
+        if (!string.IsNullOrWhiteSpace(_nuevoCanvasId))
+            return;
+
+        var area = SelectedAreaForMap;
+        if (area is not null && !string.IsNullOrWhiteSpace(area.CanvasId))
+            _nuevoCanvasId = area.CanvasId;
+    }
+
+    private AreaItem? SelectedAreaForMap =>
+        _canvasViews.SelectMany(v => v.Areas)
+            .FirstOrDefault(a => string.Equals(a.AreaId, _nuevoAreaId, StringComparison.OrdinalIgnoreCase));
+
+    private string SelectedAreaLabel =>
+        _areaOptions.FirstOrDefault(a => string.Equals(a.Id, _nuevoAreaId, StringComparison.OrdinalIgnoreCase))?.Label
+        ?? _nuevoAreaId
+        ?? "Área";
+
+    private string? AutoCanvasHint
+    {
+        get
+        {
+            var area = SelectedAreaForMap;
+            if (area is null || string.IsNullOrWhiteSpace(area.CanvasId))
+                return null;
+
+            if (!string.IsNullOrWhiteSpace(_nuevoCanvasId))
+                return null;
+
+            var canvasLabel = _canvasOptions.FirstOrDefault(c => string.Equals(c.Id, area.CanvasId, StringComparison.OrdinalIgnoreCase))?.Label
+                             ?? area.CanvasId;
+
+            return $"Sugerencia: esta área está en el canvas “{canvasLabel}”.";
+        }
+    }
+
+    private void OnNuevoImagenModoChanged(ChangeEventArgs args)
+    {
+        var v = args.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(v))
+            _nuevoImagenModo = v;
+
+        if (_nuevoImagenModo == "url")
+            _nuevoImagenNombre = null;
+        else
+            _nuevoImagenUrl = null;
+    }
+
+    private async Task OnNuevoImagenArchivoSeleccionado(InputFileChangeEventArgs args)
+    {
+        if (args.FileCount == 0) return;
+
+        var file = args.File;
+        var ext = Path.GetExtension(file.Name);
+        var fileName = $"mes_{Guid.NewGuid():N}{ext}";
+        var relative = Path.Combine("uploads", "mesones", fileName).Replace("\\", "/");
+        var absolute = Path.Combine(HostEnvironment.WebRootPath, relative);
+        Directory.CreateDirectory(Path.GetDirectoryName(absolute)!);
+
+        await using var stream = file.OpenReadStream(8 * 1024 * 1024);
+        await using var fs = File.Create(absolute);
+        await stream.CopyToAsync(fs);
+
+        _nuevoImagenUrl = $"/{relative}";
+        _nuevoImagenNombre = file.Name;
+        msg = $"Imagen cargada: {file.Name}";
+    }
+
+    private async Task CrearMesonAsync()
+    {
+        msg = null;
+        isSaving = true;
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_nuevoNombre))
+            {
+                msg = "Ingresa el nombre del mesón.";
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(_nuevoAreaId))
+            {
+                msg = "Selecciona un área (obligatorio).";
+                return;
+            }
+
+            // Dimensiones requeridas
+            if (!TryParseDecimalFlexible(_nuevoBloqueAnchoM, out var nuevoAncho) || nuevoAncho <= 0)
+            {
+                msg = "Ingresa un ancho válido (m) para el bloque.";
+                return;
+            }
+            if (!TryParseDecimalFlexible(_nuevoBloqueLargoM, out var nuevoLargo) || nuevoLargo <= 0)
+            {
+                msg = "Ingresa un largo válido (m) para el bloque.";
+                return;
+            }
+
+            decimal? nuevaAltura = null;
+            if (TryParseDecimalFlexible(_nuevoBloqueAlturaM, out var alt) && alt > 0)
+                nuevaAltura = alt;
+
+            int? niveles = null;
+            if (!string.IsNullOrWhiteSpace(_nuevoNiveles) && int.TryParse(_nuevoNiveles.Trim(), out var n) && n > 0)
+                niveles = n;
+
+            // Canvas para el bloque: auto desde área o selección manual
+            var canvasId = _nuevoCanvasId;
+            if (string.IsNullOrWhiteSpace(canvasId))
+            {
+                var areaMap = SelectedAreaForMap;
+                if (areaMap is not null && !string.IsNullOrWhiteSpace(areaMap.CanvasId))
+                    canvasId = areaMap.CanvasId;
+            }
+
+            if (string.IsNullOrWhiteSpace(canvasId))
+            {
+                msg = "No se pudo determinar el canvas desde el área. Selecciona un canvas manualmente.";
+                return;
+            }
+
+            var id = string.IsNullOrWhiteSpace(_nuevoId)
+                ? $"mes_{Guid.NewGuid():N}".Substring(0, 12)
+                : _nuevoId.Trim();
+
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            // Validar que el área pertenece al laboratorio
+            const string chkArea = @"
+                SELECT canvas_id
+                FROM areas
+                WHERE area_id=@area AND laboratorio_id=@lab";
+            string? areaCanvasDb = null;
+            await using (var cmdA = new NpgsqlCommand(chkArea, conn, tx))
+            {
+                cmdA.Parameters.AddWithValue("area", _nuevoAreaId!);
+                cmdA.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+                await using var r = await cmdA.ExecuteReaderAsync();
+                if (!await r.ReadAsync())
+                {
+                    msg = "El área seleccionada no pertenece al laboratorio actual.";
+                    return;
+                }
+                areaCanvasDb = r.IsDBNull(0) ? null : r.GetString(0);
+            }
+
+            // Validar canvas pertenece al laboratorio y obtener dimensiones
+            decimal canvasAncho, canvaslargo, canvasMargen;
+            const string canvasInfoSql = @"
+                SELECT ancho_m, largo_m, margen_m
+                FROM canvas_lab
+                WHERE canvas_id=@canvas AND laboratorio_id=@lab";
+            await using (var cmdC = new NpgsqlCommand(canvasInfoSql, conn, tx))
+            {
+                cmdC.Parameters.AddWithValue("canvas", canvasId!);
+                cmdC.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+
+                await using var r = await cmdC.ExecuteReaderAsync();
+                if (!await r.ReadAsync())
+                {
+                    msg = "El canvas seleccionado no pertenece al laboratorio actual.";
+                    return;
+                }
+
+                canvasAncho = r.GetDecimal(0);
+                canvaslargo = r.GetDecimal(1);
+                canvasMargen = r.GetDecimal(2);
+            }
+
+            // Insert mesón
+            const string insMeson = @"
+                INSERT INTO mesones
+                (meson_id, area_id, nombre_meson, niveles_totales, laboratorio_id, imagen_url)
+                VALUES
+                (@id, @area, @nombre, @niveles, @lab, @img);";
+
+            await using (var cmdM = new NpgsqlCommand(insMeson, conn, tx))
+            {
+                cmdM.Parameters.AddWithValue("id", id);
+                cmdM.Parameters.AddWithValue("area", _nuevoAreaId!);
+                cmdM.Parameters.AddWithValue("nombre", _nuevoNombre.Trim());
+                cmdM.Parameters.AddWithValue("niveles", (object?)niveles ?? DBNull.Value);
+                cmdM.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+                cmdM.Parameters.AddWithValue("img", DbOrNull(_nuevoImagenUrl));
+
+                try
+                {
+                    await cmdM.ExecuteNonQueryAsync();
+                }
+                catch (PostgresException pex) when (pex.SqlState == "23505")
+                {
+                    msg = "Ya existe un mesón con ese nombre en esa área (o el ID ya existe).";
+                    return;
+                }
+            }
+
+            // Leer bloques existentes del canvas (mesones + instalaciones)
+            var existentes = new List<BlockRect>();
+            const string blocksSql = @"
+                SELECT b.pos_x, b.pos_y, b.ancho, b.largo
+                FROM bloques_int b
+                LEFT JOIN instalaciones i ON i.instalacion_id = b.instalacion_id
+                LEFT JOIN mesones m ON m.meson_id = b.meson_id
+                WHERE b.canvas_id = @canvas
+                  AND (i.instalacion_id IS NOT NULL OR m.meson_id IS NOT NULL)";
+            await using (var cmdB = new NpgsqlCommand(blocksSql, conn, tx))
+            {
+                cmdB.Parameters.AddWithValue("canvas", canvasId!);
+                await using var r = await cmdB.ExecuteReaderAsync();
+                while (await r.ReadAsync())
+                {
+                    existentes.Add(new BlockRect(
+                        r.GetDecimal(0),
+                        r.GetDecimal(1),
+                        r.GetDecimal(2),
+                        r.GetDecimal(3)
+                    ));
+                }
+            }
+
+            var spot = FindFreeSpot(canvasAncho, canvaslargo, canvasMargen, nuevoAncho, nuevoLargo, existentes);
+            if (spot is null)
+            {
+                await tx.RollbackAsync();
+                msg = "No hay espacio disponible en el canvas para ese bloque (ajusta dimensiones o libera espacio).";
+                return;
+            }
+
+            var (px, py) = spot.Value;
+
+            // Insert bloque_int asociado al mesón
+            var bloqueId = $"blk_{Guid.NewGuid():N}".Substring(0, 12);
+            const string insBloque = @"
+                INSERT INTO bloques_int
+                (bloque_id, canvas_id, instalacion_id, meson_id,
+                 etiqueta, color_hex, z_order,
+                 pos_x, pos_y, ancho, largo, altura,
+                 offset_x, offset_y)
+                VALUES
+                (@bid, @canvas, NULL, @meson,
+                 @etq, @color, 0,
+                 @x, @y, @ancho, @largo, @altura,
+                 0, 0);";
+
+            await using (var cmdInsB = new NpgsqlCommand(insBloque, conn, tx))
+            {
+                cmdInsB.Parameters.AddWithValue("bid", bloqueId);
+                cmdInsB.Parameters.AddWithValue("canvas", canvasId!);
+                cmdInsB.Parameters.AddWithValue("meson", id);
+
+                cmdInsB.Parameters.AddWithValue("etq", _nuevoNombre.Trim());
+                cmdInsB.Parameters.AddWithValue("color", "#fde68a");
+
+                cmdInsB.Parameters.AddWithValue("x", px);
+                cmdInsB.Parameters.AddWithValue("y", py);
+                cmdInsB.Parameters.AddWithValue("ancho", nuevoAncho);
+                cmdInsB.Parameters.AddWithValue("largo", nuevoLargo);
+                cmdInsB.Parameters.AddWithValue("altura", (object?)nuevaAltura ?? DBNull.Value);
+
+                await cmdInsB.ExecuteNonQueryAsync();
+            }
+
+            await tx.CommitAsync();
+
+            msg = "Mesón registrado y bloque creado en el canvas.";
+
+            // reset
+            _nuevoId = null;
+            _nuevoNombre = null;
+            _nuevoNiveles = null;
+
+            _nuevoAreaId = null;
+            _nuevoCanvasId = null;
+
+            _nuevoBloqueAnchoM = null;
+            _nuevoBloqueLargoM = null;
+            _nuevoBloqueAlturaM = null;
+
+            _nuevoImagenModo = "url";
+            _nuevoImagenUrl = null;
+            _nuevoImagenNombre = null;
+
+            await LoadMesonesAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            msg = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    // ====== Colocación automática (no solapar) ======
+    private sealed record BlockRect(decimal X, decimal Y, decimal W, decimal H);
+
+    private static (decimal X, decimal Y)? FindFreeSpot(
+        decimal canvasW,
+        decimal canvasH,
+        decimal margin,
+        decimal newW,
+        decimal newH,
+        List<BlockRect> existing)
+    {
+        const decimal pad = 0.02m;
+
+        var startX = margin;
+        var startY = margin;
+        var endX = canvasW - margin - newW;
+        var endY = canvasH - margin - newH;
+
+        if (endX < startX || endY < startY)
+            return null;
+
+        var step = Math.Max(0.05m, Math.Min(newW, newH) / 4m);
+        if (step > 0.25m) step = 0.25m;
+
+        bool OverlapsAny(decimal x, decimal y)
+        {
+            var ax1 = x - pad;
+            var ay1 = y - pad;
+            var ax2 = x + newW + pad;
+            var ay2 = y + newH + pad;
+
+            foreach (var b in existing)
+            {
+                var bx1 = b.X - pad;
+                var by1 = b.Y - pad;
+                var bx2 = b.X + b.W + pad;
+                var by2 = b.Y + b.H + pad;
+
+                var overlap =
+                    ax1 < bx2 && ax2 > bx1 &&
+                    ay1 < by2 && ay2 > by1;
+
+                if (overlap) return true;
+            }
+            return false;
+        }
+
+        for (decimal y = startY; y <= endY; y += step)
+            for (decimal x = startX; x <= endX; x += step)
+                if (!OverlapsAny(x, y))
+                    return (x, y);
+
+        return null;
+    }
+
+    // ===== Helpers =====
+    private static object DbOrNull(string? s) =>
+        string.IsNullOrWhiteSpace(s) ? (object)DBNull.Value : s!.Trim();
+
+    private static bool TryParseDecimalFlexible(string? s, out decimal value)
+    {
+        value = 0m;
+        if (string.IsNullOrWhiteSpace(s))
+            return false;
+
+        var t = s.Trim();
+
+        if (decimal.TryParse(t, NumberStyles.Any, CultureInfo.CurrentCulture, out var d1))
+        {
+            value = d1;
+            return true;
+        }
+
+        var normalized = t.Replace(" ", "").Replace(",", ".");
+        if (decimal.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out var d2))
+        {
+            value = d2;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static string ResolveUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return "";
+        if (url.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return url;
+        return url.StartsWith("/", StringComparison.OrdinalIgnoreCase) ? url : $"/{url}";
+    }
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
+
+    // ===== Visualizador helpers =====
+    private static string PointsString(PolygonItem poly) =>
+        string.Join(" ", poly.Points.Select(p => $"{p.X.ToString(CultureInfo.InvariantCulture)},{p.Y.ToString(CultureInfo.InvariantCulture)}"));
+
+    private static string FormatSvg(decimal value) => value.ToString(CultureInfo.InvariantCulture);
+
+    private string AreaFill(AreaItem area)
+    {
+        if (!string.IsNullOrWhiteSpace(_nuevoAreaId)
+            && string.Equals(_nuevoAreaId, area.AreaId, StringComparison.OrdinalIgnoreCase))
+        {
+            return "#93c5fd";
+        }
+        return area.Poligonos.FirstOrDefault()?.ColorHex ?? "#cbd5f5";
+    }
+
+    private bool IsAreaInCurrentPlanta(string? plantaId)
+    {
+        if (string.IsNullOrWhiteSpace(_currentPlantaId))
+            return true;
+
+        if (string.IsNullOrWhiteSpace(plantaId))
+            return false;
+
+        return string.Equals(plantaId, _currentPlantaId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void EnsurePlantaSelection(List<AreaItem> areas)
+    {
+        if (areas.Count == 0)
+        {
+            _currentPlantaId = _plantasLookup.Keys.FirstOrDefault();
+            return;
+        }
+
+        var firstAreaPlanta = areas.FirstOrDefault(a => !string.IsNullOrWhiteSpace(a.PlantaId))?.PlantaId;
+        if (string.IsNullOrWhiteSpace(firstAreaPlanta))
+        {
+            _currentPlantaId = null;
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_currentPlantaId)
+            && _plantasLookup.ContainsKey(_currentPlantaId)
+            && areas.Any(a => string.Equals(a.PlantaId, _currentPlantaId, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        _currentPlantaId = firstAreaPlanta ?? _plantasLookup.Keys.FirstOrDefault();
+    }
+
+    private static decimal AreaLabelWidth(AreaItem area) => Math.Max(0.6m, area.Width * 0.85m);
+    private static decimal AreaLabelHeight(AreaItem area) => Math.Max(0.25m, area.Height * 0.25m);
+
+    private static decimal AreaLabelFontSize(AreaItem area)
+    {
+        var baseSize = Math.Min(area.Width, area.Height) * 0.18m;
+        return ClampDecimal(baseSize, 0.18m, 0.55m);
+    }
+
+    private static decimal ClampDecimal(decimal value, decimal min, decimal max)
+    {
+        if (value < min) return min;
+        if (value > max) return max;
+        return value;
+    }
+
+    // ===== Modelos internos =====
+    private sealed record SelectOption(string Id, string Label);
+
+    private sealed record MesonRow(
+        string Id,
+        string Nombre,
+        string Area,
+        int? Niveles,
+        string ImagenUrl
+    );
+
+    private sealed record CanvasItem(string CanvasId, string Nombre, decimal Ancho, decimal largo, decimal Margen);
+    private sealed record CanvasView(CanvasItem Canvas, List<AreaItem> Areas);
+
+    private sealed class AreaItem
+    {
+        public AreaItem(string areaId, string nombre, string? plantaId, string? canvasId)
+        {
+            AreaId = areaId;
+            Nombre = nombre;
+            PlantaId = plantaId;
+            CanvasId = canvasId;
+        }
+
+        public string AreaId { get; }
+        public string Nombre { get; }
+        public string? PlantaId { get; }
+        public string? CanvasId { get; }
+        public List<PolygonItem> Poligonos { get; } = new();
+
+        public decimal CenterX { get; private set; }
+        public decimal CenterY { get; private set; }
+        public decimal Width { get; private set; }
+        public decimal Height { get; private set; }
+        public decimal MinX { get; private set; }
+        public decimal MinY { get; private set; }
+        public decimal MaxX { get; private set; }
+        public decimal MaxY { get; private set; }
+
+        public void CalculateBounds()
+        {
+            var points = Poligonos.SelectMany(p => p.Points).ToList();
+            if (points.Count == 0) return;
+
+            var minX = points.Min(p => p.X);
+            var maxX = points.Max(p => p.X);
+            var minY = points.Min(p => p.Y);
+            var maxY = points.Max(p => p.Y);
+
+            MinX = minX; MaxX = maxX;
+            MinY = minY; MaxY = maxY;
+
+            CenterX = (minX + maxX) / 2m;
+            CenterY = (minY + maxY) / 2m;
+            Width = Math.Max(0.2m, maxX - minX);
+            Height = Math.Max(0.2m, maxY - minY);
+        }
+    }
+
+    private sealed class PolygonItem
+    {
+        public PolygonItem(string polyId, string? areaId, string colorHex, int zOrder)
+        {
+            PolyId = polyId;
+            AreaId = areaId;
+            ColorHex = colorHex;
+            ZOrder = zOrder;
+        }
+
+        public string PolyId { get; }
+        public string? AreaId { get; }
+        public string ColorHex { get; }
+        public int ZOrder { get; }
+        public List<PointItem> Points { get; } = new();
+    }
+
+    private sealed record PointItem(decimal X, decimal Y);
+}
+
+<style>
+    .page-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+        padding: 1rem;
+        box-shadow: 0 6px 14px rgba(15, 23, 42, 0.04);
+    }
+
+    .helper {
+        margin: .3rem 0 0;
+        color: #475569;
+        font-size: .95rem;
+    }
+
+    .muted {
+        color: #64748b;
+    }
+
+    .text-xs {
+        font-size: .8rem;
+    }
+
+    .text-sm {
+        font-size: .9rem;
+    }
+
+    .error-note {
+        color: #b91c1c;
+        margin-top: .75rem;
+    }
+
+    .empty {
+        padding: .85rem 1rem;
+        border-radius: 10px;
+        background: #fef9c3;
+        border: 1px solid #fde68a;
+        color: #854d0e;
+    }
+
+    .category-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .category-controls {
+        display: flex;
+        gap: .75rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .category-select {
+        min-width: 240px;
+        padding: .35rem .6rem;
+        border-radius: 8px;
+        border: 1px solid #cbd5f5;
+        background: #fff;
+        color: #0f172a;
+    }
+
+    .btn-link {
+        color: #1d4ed8;
+        text-decoration: none;
+        font-weight: 800;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        padding: 0;
+    }
+
+        .btn-link:hover {
+            text-decoration: underline;
+        }
+
+    .form-header {
+        margin-top: .75rem;
+        margin-bottom: .75rem;
+    }
+
+        .form-header h4 {
+            margin: 0 0 .25rem 0;
+            font-weight: 900;
+            color: #0f172a;
+        }
+
+    .form-hint {
+        margin: 0;
+        color: #64748b;
+        font-size: .95rem;
+    }
+
+    .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: .75rem;
+        align-items: start;
+    }
+
+    .field label {
+        display: block;
+        font-size: .85rem;
+        color: #475569;
+        margin-bottom: .25rem;
+        font-weight: 900;
+    }
+
+    .full-span {
+        grid-column: 1 / -1;
+    }
+
+    .border {
+        border: 1px solid #e5e7eb;
+        border-radius: .5rem;
+    }
+
+    .p-1 {
+        padding: .45rem .6rem;
+    }
+
+    .form-actions {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+        flex-wrap: wrap;
+        margin-top: .25rem;
+    }
+
+    .btn.primary {
+        background: #2563eb;
+        color: #fff;
+        border: none;
+        padding: .5rem 1rem;
+        border-radius: .6rem;
+        font-weight: 800;
+        box-shadow: 0 6px 12px rgba(37, 99, 235, 0.18);
+        cursor: pointer;
+    }
+
+        .btn.primary:hover {
+            background: #1d4ed8;
+        }
+
+        .btn.primary:disabled {
+            opacity: .65;
+            cursor: not-allowed;
+        }
+
+    .toggle {
+        display: flex;
+        gap: .45rem;
+        align-items: center;
+        padding: .35rem .6rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 999px;
+        background: #fff;
+        font-size: .9rem;
+        color: #0f172a;
+        user-select: none;
+    }
+
+    .table-wrap {
+        overflow-x: auto;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #fff;
+    }
+
+    th, td {
+        padding: 0.6rem;
+        border-bottom: 1px solid #e5e7eb;
+        text-align: left;
+        vertical-align: top;
+    }
+
+    th {
+        background: #f3f4f6;
+        font-weight: 900;
+    }
+
+    .materials-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: .75rem;
+        flex-wrap: wrap;
+    }
+
+    .materials-title {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+        flex-wrap: wrap;
+    }
+
+    .badge {
+        background: #e2e8f0;
+        color: #0f172a;
+        padding: .2rem .55rem;
+        border-radius: 999px;
+        font-size: .85rem;
+        font-weight: 800;
+    }
+
+    .search-input-invent {
+        min-width: 280px;
+        flex: 1 1 320px;
+        border-radius: 10px;
+        background: #ffffff;
+        color: #0f172a;
+        border: 1px solid #cbd5e1;
+    }
+
+    .upload-card {
+        border: 1px dashed #d1d5db;
+        padding: .75rem;
+        border-radius: .75rem;
+        display: grid;
+        gap: .6rem;
+        background: #fff;
+    }
+
+    .upload-options {
+        display: flex;
+        gap: .75rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .upload-drop {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        padding: .6rem;
+        border: 1px solid #e5e7eb;
+        border-radius: .5rem;
+        color: #6b7280;
+        cursor: pointer;
+    }
+
+        .upload-drop input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+    .selector-split {
+        display: flex;
+        gap: .75rem;
+        align-items: flex-start;
+        flex-wrap: wrap;
+    }
+
+    .visual-picker {
+        border: 1px solid #e5e7eb;
+        border-radius: .75rem;
+        padding: .6rem;
+        background: #fff;
+        min-width: 320px;
+    }
+
+    .visual-toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: .5rem;
+        margin-bottom: .5rem;
+    }
+
+    .canvas-card {
+        border: 1px solid #e5e7eb;
+        border-radius: .75rem;
+        padding: .5rem;
+        background: #fafafa;
+        margin-top: .5rem;
+    }
+
+        .canvas-card svg {
+            width: 100%;
+            height: 200px;
+            background: white;
+            border-radius: .5rem;
+        }
+
+    .area-label {
+        fill: #111827;
+        paint-order: stroke fill;
+        stroke: #ffffff;
+        stroke-width: 0.04;
+    }
+
+    .thumb {
+        width: 34px;
+        height: 34px;
+        object-fit: contain;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        background: #fff;
+    }
+
+    .thumb-material {
+        width: 44px;
+        height: 44px;
+    }
+</style>

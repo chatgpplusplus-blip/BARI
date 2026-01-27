@@ -1,0 +1,2051 @@
+﻿@page "/inventario-instalaciones"
+@page "/inventario-instalaciones/{SubcategoriaId}"
+
+@using Npgsql
+@using BARI_web.General_Services
+@using System.Globalization
+@using System.IO
+@using System.Linq
+@using Microsoft.AspNetCore.Components.Forms
+@inject NpgsqlDataSource DataSource
+@inject LaboratorioState LaboratorioState
+@inject NavigationManager Nav
+@inject IWebHostEnvironment HostEnvironment
+@implements IDisposable
+
+<PageTitle>Inventario de Instalaciones</PageTitle>
+
+<section class="page-card">
+    <h2>Inventario de Instalaciones</h2>
+    <p class="helper">
+        Infraestructura fija del laboratorio (hidrosanitarias, climatización, eléctricas, gases, mobiliario, telecomunicaciones).
+    </p>
+    <LaboratorioSelector />
+</section>
+
+<!-- =========================================================
+     1) REGISTRAR
+========================================================= -->
+<section class="page-card" style="margin-top:1.5rem;">
+    <details>
+        <summary style="cursor:pointer; font-weight:800;">Registrar instalación</summary>
+
+        <div class="form-header">
+            <h4>Nueva instalación</h4>
+            <p class="form-hint">
+                Se guarda dentro del laboratorio actual. Ubicación (área) y estado son recomendados.
+                Puedes seleccionar el área desde el mapa. Al registrar, se crea automáticamente un bloque en el canvas
+                sin solaparse con otros bloques del mismo canvas.
+            </p>
+        </div>
+
+        <div class="form-grid">
+            <div class="field">
+                <label>ID instalación (opcional)</label>
+                <input class="border p-1" placeholder="inst_xxx (opcional)" @bind="_nuevoId" />
+            </div>
+
+            <div class="field">
+                <label>Nombre</label>
+                <input class="border p-1" placeholder="Ej: Campana extractora principal" @bind="_nuevoNombre" />
+            </div>
+
+            <!-- ✅ Estándar como materiales: Categoría -> Subcategoría filtrada -->
+            <div class="field">
+                <label>Categoría</label>
+                <select class="border p-1"
+                        value="@_nuevoCategoriaId"
+                        @onchange="OnCategoriaInstChanged">
+                    <option value="">(selecciona)</option>
+                    @foreach (var c in _categoriaInstOptions)
+                    {
+                        <option value="@c.Id">@c.Label</option>
+                    }
+                </select>
+            </div>
+
+            <div class="field">
+                <label>Subcategoría</label>
+                <select class="border p-1"
+                        @bind="_nuevoSubcategoriaId"
+                        disabled="@string.IsNullOrWhiteSpace(_nuevoCategoriaId)">
+                    <option value="">(selecciona)</option>
+                    @foreach (var s in SubcategoriasInstFiltradas)
+                    {
+                        <option value="@s.Id">@s.Label</option>
+                    }
+                </select>
+            </div>
+
+            <div class="field">
+                <label>Estado</label>
+                <select class="border p-1" @bind="_nuevoEstadoId">
+                    <option value="">(sin estado)</option>
+                    @foreach (var e in _estadoOptions)
+                    {
+                        <option value="@e.Id">@e.Label</option>
+                    }
+                </select>
+            </div>
+
+            <div class="field">
+                <label>Proveedor de servicio</label>
+                <input class="border p-1" placeholder="Ej: Empresa de gas" @bind="_nuevoProveedorServicio" />
+            </div>
+
+            <div class="field">
+                <label>Fecha instalación</label>
+                <input class="border p-1" type="date" @bind-value="_nuevoFechaInstalacion" @bind-value:format="yyyy-MM-dd" />
+            </div>
+
+            <div class="field">
+                <label>Última revisión</label>
+                <input class="border p-1" type="date" @bind-value="_nuevoFechaUltimaRevision" @bind-value:format="yyyy-MM-dd" />
+            </div>
+
+            <div class="field">
+                <label>Próxima revisión</label>
+                <input class="border p-1" type="date" @bind-value="_nuevoFechaProximaRevision" @bind-value:format="yyyy-MM-dd" />
+            </div>
+
+            <!-- Área + Visualizador -->
+            <div class="field full-span">
+                <label>Área (opcional, recomendado)</label>
+
+                <div class="selector-split">
+                    <select class="border p-1"
+                            value="@_nuevoAreaId"
+                            @onchange="OnAreaChanged">
+                        <option value="">(sin área)</option>
+                        @foreach (var a in _areaOptions)
+                        {
+                            <option value="@a.Id">@a.Label</option>
+                        }
+                    </select>
+
+                    <div class="visual-picker">
+                        <div class="visual-toolbar">
+                            <label class="text-xs muted">Mapa de áreas</label>
+
+                            <select class="border p-1 text-xs" @bind="_currentPlantaId">
+                                <option value="">Todas</option>
+                                @foreach (var planta in _plantasLookup)
+                                {
+                                    <option value="@planta.Key">@planta.Value</option>
+                                }
+                            </select>
+                        </div>
+
+                        @if (_canvasViews.Count == 0)
+                        {
+                            <div class="text-xs muted">Sin mapas disponibles.</div>
+                        }
+                        else
+                        {
+                            @foreach (var view in _canvasViews)
+                            {
+                                var areasPorPlanta = view.Areas.Where(a => IsAreaInCurrentPlanta(a.PlantaId)).ToList();
+                                if (areasPorPlanta.Count == 0)
+                                    continue;
+
+                                <div class="canvas-card">
+                                    <div class="text-xs muted">@view.Canvas.Nombre</div>
+
+                                    <svg width="100%" height="100%"
+                                         viewBox="0 0 @view.Canvas.Ancho @view.Canvas.largo"
+                                         preserveAspectRatio="xMidYMid meet">
+
+                                        <rect x="0" y="0"
+                                              width="@FormatSvg(view.Canvas.Ancho)"
+                                              height="@FormatSvg(view.Canvas.largo)"
+                                              fill="transparent"
+                                              style="pointer-events:all"
+                                              @onclick="ClearAreaSelection" />
+
+                                        @foreach (var area in areasPorPlanta)
+                                        {
+                                            foreach (var poly in area.Poligonos.OrderBy(p => p.ZOrder))
+                                            {
+                                                <polygon points="@PointsString(poly)"
+                                                         fill="@AreaFill(area)"
+                                                         stroke="#111827" stroke-width="0.03"
+                                                         style="cursor:pointer"
+                                                         @onclick:stopPropagation="true"
+                                                         @onclick="@(() => SelectAreaFromVisualAsync(area.AreaId))" />
+                                            }
+
+                                            @if (!string.IsNullOrWhiteSpace(area.Nombre))
+                                            {
+                                                var labelWidth = AreaLabelWidth(area);
+                                                var labelHeight = AreaLabelHeight(area);
+                                                var fontSize = AreaLabelFontSize(area);
+
+                                                <svg:rect x="@FormatSvg(area.CenterX - labelWidth / 2m)"
+                                                          y="@FormatSvg(area.CenterY - labelHeight / 2m)"
+                                                          width="@FormatSvg(labelWidth)"
+                                                          height="@FormatSvg(labelHeight)"
+                                                          fill="#ffffff" opacity="0.8" rx="0.15" ry="0.15"
+                                                          @onclick:stopPropagation="true" />
+                                                <svg:text class="area-label"
+                                                          x="@FormatSvg(area.CenterX)" y="@FormatSvg(area.CenterY)"
+                                                          text-anchor="middle" dominant-baseline="middle"
+                                                          font-size="@FormatSvg(fontSize)"
+                                                          @onclick:stopPropagation="true">
+                                                    @area.Nombre
+                                                </svg:text>
+                                            }
+                                        }
+                                    </svg>
+                                </div>
+                            }
+                        }
+
+                        @if (!string.IsNullOrWhiteSpace(_nuevoAreaId))
+                        {
+                            <div class="text-xs muted">Seleccionado: @SelectedAreaLabel</div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- Canvas -->
+            <div class="field">
+                <label>Canvas</label>
+                <select class="border p-1" @bind="_nuevoCanvasId">
+                    <option value="">(sin canvas)</option>
+                    @foreach (var c in _canvasOptions)
+                    {
+                        <option value="@c.Id">@c.Label</option>
+                    }
+                </select>
+                @if (!string.IsNullOrWhiteSpace(_nuevoAreaId) && !string.IsNullOrWhiteSpace(AutoCanvasHint))
+                {
+                    <div class="text-xs muted">@AutoCanvasHint</div>
+                }
+                <div class="text-xs muted">Requerido para crear el bloque automáticamente.</div>
+            </div>
+
+            <!-- ✅ Dimensiones del bloque (requeridas) -->
+            <div class="field">
+                <label>Ancho del bloque (m)</label>
+                <input class="border p-1" type="number" step="any" placeholder="Ej: 1.20" @bind="_nuevoBloqueAnchoM" />
+            </div>
+
+            <div class="field">
+                <label>Largo del bloque (m)</label>
+                <input class="border p-1" type="number" step="any" placeholder="Ej: 0.60" @bind="_nuevoBloqueLargoM" />
+            </div>
+
+            <div class="field">
+                <label>Altura (m) (opcional)</label>
+                <input class="border p-1" type="number" step="any" placeholder="Ej: 2.10" @bind="_nuevoBloqueAlturaM" />
+            </div>
+
+            <div class="field full-span">
+                <label>Descripción</label>
+                <textarea class="border p-1" rows="3" placeholder="Descripción" @bind="_nuevoDescripcion"></textarea>
+            </div>
+
+            <div class="field full-span">
+                <label>Observaciones</label>
+                <textarea class="border p-1" rows="3" placeholder="Observaciones" @bind="_nuevoObservaciones"></textarea>
+            </div>
+
+            <div class="upload-card full-span">
+                <div class="upload-options">
+                    <label class="text-sm">
+                        <input type="radio" name="imgModoInst"
+                               value="url"
+                               checked="@(_nuevoImagenModo == "url")"
+                               @onchange="OnNuevoImagenModoChanged" />
+                        Colocar un URL
+                    </label>
+                    <label class="text-sm">
+                        <input type="radio" name="imgModoInst"
+                               value="archivo"
+                               checked="@(_nuevoImagenModo == "archivo")"
+                               @onchange="OnNuevoImagenModoChanged" />
+                        Subir imagen
+                    </label>
+                </div>
+
+                @if (_nuevoImagenModo == "url")
+                {
+                    <input class="border p-1" placeholder="Imagen URL (o ruta relativa)" @bind="_nuevoImagenUrl" />
+                }
+                else
+                {
+                    <label class="upload-drop">
+                        <InputFile OnChange="OnNuevoImagenArchivoSeleccionado" accept="image/png,image/jpeg,image/jpg,image/webp" />
+                        <span>Arrastra una imagen o haz clic para buscar</span>
+                    </label>
+                    @if (!string.IsNullOrWhiteSpace(_nuevoImagenNombre))
+                    {
+                        <div class="text-xs muted">Archivo: @_nuevoImagenNombre</div>
+                    }
+                }
+            </div>
+
+            <div class="form-actions full-span">
+                <button class="btn primary" type="button" @onclick="CrearInstalacionAsync" disabled="@isSaving">Registrar</button>
+                @if (!string.IsNullOrWhiteSpace(msg))
+                {
+                    <span class="text-sm muted">@msg</span>
+                }
+            </div>
+        </div>
+    </details>
+</section>
+
+<!-- =========================================================
+     2) GUÍA / FILTROS (MISMO ESTÁNDAR QUE MATERIALES)
+========================================================= -->
+<section class="page-card" style="margin-top:1.5rem;">
+    <div class="category-header">
+        <div>
+            <h3>Guía de categorías (instalaciones)</h3>
+            <p class="helper">Selecciona una subcategoría para ver las instalaciones.</p>
+        </div>
+
+        <div class="category-controls">
+            <label class="toggle">
+                <input type="checkbox"
+                       checked="@_verTodos"
+                       @onchange="OnVerTodosToggle" />
+                <span>Ver todas las instalaciones</span>
+            </label>
+
+            <select class="category-select"
+                    @onchange="OnSubcategoriaChanged"
+                    value="@(_verTodos ? "" : SubcategoriaId)">
+                <option value="">Todas las subcategorías</option>
+                @foreach (var categoria in categoriasGuia)
+                {
+                    <optgroup label="@categoria.Nombre">
+                        @foreach (var sub in categoria.Subcategorias)
+                        {
+                            <option value="@sub.Id">@sub.Nombre</option>
+                        }
+                    </optgroup>
+                }
+            </select>
+        </div>
+
+        @if (!_verTodos && !string.IsNullOrWhiteSpace(SubcategoriaId))
+        {
+            <NavLink class="btn-link" href="/inventario-instalaciones" Match="NavLinkMatch.All">Ver todas las categorías</NavLink>
+        }
+    </div>
+
+    @if (categoriasGuia.Count == 0)
+    {
+        <p><em>Cargando categorías…</em></p>
+    }
+    else
+    {
+        <div class="category-grid">
+            @foreach (var categoria in categoriasGuia)
+            {
+                <div class="category-card">
+                    <div class="category-title">@categoria.Nombre</div>
+                    <ul class="category-list">
+                        @foreach (var sub in categoria.Subcategorias)
+                        {
+                            <li>
+                                <NavLink href="@($"/inventario-instalaciones/{sub.Id}")"
+                                         Match="NavLinkMatch.All"
+                                         class="category-link">
+                                    @sub.Nombre
+                                </NavLink>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            }
+        </div>
+    }
+</section>
+
+<!-- =========================================================
+     3) TABLA + BUSCADOR
+========================================================= -->
+<section class="page-card" style="margin-top:1.5rem;">
+    <div class="materials-header">
+        <div class="materials-title">
+            <h3>
+                @(_verTodos
+                    ? "Todas las instalaciones"
+                    : (string.IsNullOrWhiteSpace(SubcategoriaId)
+                    ? "Instalaciones disponibles"
+                    : $"Instalaciones · {subcategoriaNombre ?? SubcategoriaId}"))
+            </h3>
+
+            @if (_verTodos || !string.IsNullOrWhiteSpace(SubcategoriaId))
+            {
+                <span class="badge">@FilteredCountLabel</span>
+            }
+        </div>
+
+        <input class="border p-1 search-input-invent"
+               placeholder="Buscar (nombre, categoría, subcategoría, área, estado, proveedor, etc.)..."
+               @bind="_searchText"
+               @bind:event="oninput"
+               disabled="@(!(_verTodos || !string.IsNullOrWhiteSpace(SubcategoriaId)))" />
+
+        @if (_verTodos)
+        {
+            <NavLink class="btn-link" href="/inventario-instalaciones" Match="NavLinkMatch.All">Volver a categorías</NavLink>
+        }
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(loadError))
+    {
+        <p class="error-note">No se pudieron cargar instalaciones: @loadError</p>
+    }
+    else if (string.IsNullOrWhiteSpace(SubcategoriaId) && !_verTodos)
+    {
+        <div class="empty">
+            <div class="helper">Elige una subcategoría o activa “Ver todas las instalaciones”.</div>
+        </div>
+    }
+    else if (instalaciones.Count == 0)
+    {
+        <div class="empty">No hay instalaciones registradas para este filtro.</div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Instalación</th>
+                        <th>Categoría</th>
+                        <th>Subcategoría</th>
+                        <th>Área</th>
+                        <th>Estado</th>
+                        <th>Próxima revisión</th>
+                        <th>Proveedor</th>
+                        <th>Imagen</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var it in InstalacionesFiltradas)
+                    {
+                        <tr>
+                            <td>@it.Id</td>
+
+                            <td>
+                                <NavLink href="@($"/inventario-instalaciones/item/{it.Id}")" class="btn-link">
+                                    @it.Nombre
+                                </NavLink>
+                                @if (!string.IsNullOrWhiteSpace(it.Descripcion))
+                                {
+                                    <div class="text-xs muted" title="@it.Descripcion">@Trunc(it.Descripcion, 90)</div>
+                                }
+                            </td>
+
+                            <td>@(string.IsNullOrWhiteSpace(it.Categoria) ? "—" : it.Categoria)</td>
+                            <td>@(string.IsNullOrWhiteSpace(it.Subcategoria) ? "—" : it.Subcategoria)</td>
+                            <td>@(string.IsNullOrWhiteSpace(it.Area) ? "—" : it.Area)</td>
+                            <td>@(string.IsNullOrWhiteSpace(it.Estado) ? "—" : it.Estado)</td>
+                            <td>@(string.IsNullOrWhiteSpace(it.ProximaRevision) ? "—" : it.ProximaRevision)</td>
+                            <td>@(string.IsNullOrWhiteSpace(it.Proveedor) ? "—" : it.Proveedor)</td>
+
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(it.ImagenUrl))
+                                {
+                                    <img class="thumb thumb-material" src="@ResolveUrl(it.ImagenUrl)" alt="Imagen instalación" />
+                                }
+                                else
+                                {
+                                    <span class="text-xs muted">—</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter] public string? SubcategoriaId { get; set; }
+
+    // ✅ Categorías reales de instalaciones (según tu BD)
+    private static readonly string[] CategoriaInstIds = new[]
+    {
+        "ins-agua",
+        "ins-clima",
+        "ins-electrica",
+        "ins-gas",
+        "ins-mobiliario",
+        "ins-teleco"
+    };
+
+    private bool isSaving;
+    private bool _verTodos;
+
+    private string? loadError;
+    private string? msg;
+    private string? subcategoriaNombre;
+
+    private string? _searchText;
+
+    private readonly List<CategoriaRow> categoriasGuia = new();
+    private readonly List<InstalacionRow> instalaciones = new();
+
+    // Lookups
+    private readonly List<SelectOption> _areaOptions = new();
+    private readonly List<SelectOption> _estadoOptions = new();
+    private readonly List<SelectOption> _canvasOptions = new();
+
+    // ✅ Lookups de categorías/subcategorías de instalaciones (como materiales)
+    private string? _nuevoCategoriaId;
+    private readonly List<SelectOption> _categoriaInstOptions = new();
+    private readonly Dictionary<string, List<SelectOption>> _subcategoriasByCategoria
+        = new(StringComparer.OrdinalIgnoreCase);
+
+    private IEnumerable<SelectOption> SubcategoriasInstFiltradas =>
+        (!string.IsNullOrWhiteSpace(_nuevoCategoriaId)
+         && _subcategoriasByCategoria.TryGetValue(_nuevoCategoriaId, out var list))
+            ? list
+            : Enumerable.Empty<SelectOption>();
+
+    // Visualizador
+    private readonly List<CanvasView> _canvasViews = new();
+    private readonly Dictionary<string, string> _plantasLookup = new(StringComparer.OrdinalIgnoreCase);
+    private string? _currentPlantaId;
+
+    // Nuevo (form)
+    private string? _nuevoId;
+    private string? _nuevoNombre;
+    private string? _nuevoSubcategoriaId;
+    private string? _nuevoAreaId;
+    private string? _nuevoEstadoId;
+    private string? _nuevoCanvasId;
+
+    // ✅ Dimensiones del bloque (en metros)
+    private string? _nuevoBloqueAnchoM;
+    private string? _nuevoBloqueLargoM;
+    private string? _nuevoBloqueAlturaM;
+
+    private DateTime? _nuevoFechaInstalacion;
+    private DateTime? _nuevoFechaUltimaRevision;
+    private DateTime? _nuevoFechaProximaRevision;
+
+    private string? _nuevoProveedorServicio;
+    private string? _nuevoDescripcion;
+    private string? _nuevoObservaciones;
+
+    private string _nuevoImagenModo = "url";
+    private string? _nuevoImagenUrl;
+    private string? _nuevoImagenNombre;
+
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        loadError = null;
+        _verTodos = ComputeVerTodos();
+
+        await LoadCategoriasGuiaAsync();    // (global, cacheable)
+        await LoadLookupsAsync();          // (depende del lab)
+        await LoadCanvasAreasAsync();      // (depende del lab)
+        await LoadInstalacionesAsync();    // (depende de filtro + lab)
+    }
+
+    private bool ComputeVerTodos()
+        => string.Equals(SubcategoriaId, "todos", StringComparison.OrdinalIgnoreCase);
+
+    private void HandleLaboratorioChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            _nuevoAreaId = null;
+            _nuevoCanvasId = null;
+
+            _areaOptions.Clear();
+            _estadoOptions.Clear();
+            _canvasOptions.Clear();
+
+            _categoriaInstOptions.Clear();
+            _subcategoriasByCategoria.Clear();
+
+            _canvasViews.Clear();
+            _plantasLookup.Clear();
+            _currentPlantaId = null;
+
+            await LoadLookupsAsync();
+            await LoadCanvasAreasAsync();
+            await LoadInstalacionesAsync();
+
+            StateHasChanged();
+        });
+    }
+
+    private void OnCategoriaInstChanged(ChangeEventArgs args)
+    {
+        _nuevoCategoriaId = args.Value?.ToString();
+        _nuevoSubcategoriaId = null; // evita mezcla
+        StateHasChanged();
+    }
+
+    // ✅ Igual patrón que materiales: carga categorías + subcategorías agrupadas
+    private async Task LoadCategoriasGuiaAsync()
+    {
+        if (categoriasGuia.Count > 0) return;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+                SELECT c.categoria_id, c.nombre,
+                       s.subcategoria_id, s.nombre
+                FROM categorias c
+                LEFT JOIN subcategorias s ON s.categoria_id = c.categoria_id
+                WHERE c.categoria_id = ANY(@categorias)
+                ORDER BY c.nombre, s.nombre";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("categorias", CategoriaInstIds);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            var map = new Dictionary<string, CategoriaRow>(StringComparer.OrdinalIgnoreCase);
+
+            while (await reader.ReadAsync())
+            {
+                var categoriaId = reader.GetString(0);
+                var categoriaNombre = (reader.GetString(1) ?? "").Trim();
+
+                if (!map.TryGetValue(categoriaId, out var categoria))
+                {
+                    categoria = new CategoriaRow(categoriaId, categoriaNombre);
+                    map[categoriaId] = categoria;
+                    categoriasGuia.Add(categoria);
+                }
+
+                if (!reader.IsDBNull(2))
+                {
+                    var subId = reader.GetString(2);
+                    var subNombre = (reader.GetString(3) ?? "").Trim();
+                    categoria.Subcategorias.Add(new SubcategoriaRow(subId, subNombre));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+    }
+
+    private async Task LoadLookupsAsync()
+    {
+        _areaOptions.Clear();
+        _estadoOptions.Clear();
+        _canvasOptions.Clear();
+
+        _categoriaInstOptions.Clear();
+        _subcategoriasByCategoria.Clear();
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        // Estados
+        await using (var cmd = new NpgsqlCommand("SELECT estado_id, nombre FROM estados_activo ORDER BY nombre", conn))
+        await using (var r = await cmd.ExecuteReaderAsync())
+            while (await r.ReadAsync())
+                _estadoOptions.Add(new SelectOption(r.GetString(0), (r.GetString(1) ?? "").Trim()));
+
+        // Áreas del lab
+        const string areaSql = @"
+            SELECT area_id, nombre_areas
+            FROM areas
+            WHERE laboratorio_id = @lab
+            ORDER BY nombre_areas";
+        await using (var cmd = new NpgsqlCommand(areaSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+                _areaOptions.Add(new SelectOption(r.GetString(0), (r.GetString(1) ?? "").Trim()));
+        }
+
+        // Canvas del lab
+        const string canvasSql = @"
+            SELECT canvas_id, nombre
+            FROM canvas_lab
+            WHERE laboratorio_id = @lab
+            ORDER BY nombre";
+        await using (var cmd = new NpgsqlCommand(canvasSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+                _canvasOptions.Add(new SelectOption(r.GetString(0), (r.GetString(1) ?? "").Trim()));
+        }
+
+        // ✅ Categorías instalaciones
+        const string catSql = @"
+            SELECT categoria_id, nombre
+            FROM categorias
+            WHERE categoria_id = ANY(@categorias)
+            ORDER BY nombre";
+        await using (var cmd = new NpgsqlCommand(catSql, conn))
+        {
+            cmd.Parameters.AddWithValue("categorias", CategoriaInstIds);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+                _categoriaInstOptions.Add(new SelectOption(r.GetString(0), (r.GetString(1) ?? "").Trim()));
+        }
+
+        // ✅ Subcategorías agrupadas por categoria_id (instalaciones)
+        const string subSql = @"
+            SELECT s.categoria_id, s.subcategoria_id, s.nombre, c.nombre AS categoria_nombre
+            FROM subcategorias s
+            INNER JOIN categorias c ON c.categoria_id = s.categoria_id
+            WHERE s.categoria_id = ANY(@categorias)
+            ORDER BY c.nombre, s.nombre";
+        await using (var cmd = new NpgsqlCommand(subSql, conn))
+        {
+            cmd.Parameters.AddWithValue("categorias", CategoriaInstIds);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                var catId = r.GetString(0);
+                var subId = r.GetString(1);
+                var subNombre = (r.GetString(2) ?? "").Trim();
+
+                if (!_subcategoriasByCategoria.TryGetValue(catId, out var list))
+                {
+                    list = new List<SelectOption>();
+                    _subcategoriasByCategoria[catId] = list;
+                }
+
+                list.Add(new SelectOption(subId, subNombre));
+            }
+        }
+
+        // default de categoría
+        _nuevoCategoriaId ??= _categoriaInstOptions.FirstOrDefault()?.Id;
+        if (!string.IsNullOrWhiteSpace(_nuevoCategoriaId)
+            && !_subcategoriasByCategoria.ContainsKey(_nuevoCategoriaId))
+        {
+            _nuevoSubcategoriaId = null;
+        }
+    }
+
+    private async Task LoadCanvasAreasAsync()
+    {
+        _canvasViews.Clear();
+        _plantasLookup.Clear();
+
+        var previousPlantaId = _currentPlantaId;
+        _currentPlantaId = null;
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        // Plantas
+        await using (var cmd = new NpgsqlCommand("SELECT planta_id, nombre FROM plantas ORDER BY nombre", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+            while (await reader.ReadAsync())
+                _plantasLookup[reader.GetString(0)] = (reader.GetString(1) ?? "").Trim();
+
+        if (!string.IsNullOrWhiteSpace(previousPlantaId) && _plantasLookup.ContainsKey(previousPlantaId))
+            _currentPlantaId = previousPlantaId;
+        else
+            _currentPlantaId = _plantasLookup.Keys.FirstOrDefault();
+
+        // Canvases que tienen áreas del laboratorio
+        const string canvasSql = @"
+            SELECT DISTINCT c.canvas_id, c.nombre, c.ancho_m, c.largo_m, c.margen_m
+            FROM canvas_lab c
+            INNER JOIN areas a ON a.canvas_id = c.canvas_id
+            WHERE a.laboratorio_id = @lab
+            ORDER BY c.nombre";
+
+        var canvases = new List<CanvasItem>();
+        await using (var cmd = new NpgsqlCommand(canvasSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                canvases.Add(new CanvasItem(
+                    reader.GetString(0),
+                    (reader.GetString(1) ?? "").Trim(),
+                    reader.GetDecimal(2),
+                    reader.GetDecimal(3),
+                    reader.GetDecimal(4)
+                ));
+        }
+
+        // Áreas del laboratorio
+        const string areaSql = @"
+            SELECT area_id, nombre_areas, planta_id, canvas_id
+            FROM areas
+            WHERE laboratorio_id = @lab
+            ORDER BY nombre_areas";
+
+        var areas = new List<AreaItem>();
+        await using (var cmd = new NpgsqlCommand(areaSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                areas.Add(new AreaItem(
+                    reader.GetString(0),
+                    (reader.GetString(1) ?? "").Trim(),
+                    reader.IsDBNull(2) ? null : reader.GetString(2),
+                    reader.IsDBNull(3) ? null : reader.GetString(3)
+                ));
+            }
+        }
+
+        // Polígonos (solo áreas del lab)
+        const string polySql = @"
+            SELECT p.poly_id, p.area_id, COALESCE(p.color_hex, '#cbd5f5') AS color_hex, p.z_order
+            FROM poligonos p
+            INNER JOIN areas a ON a.area_id = p.area_id
+            WHERE a.laboratorio_id = @lab
+            ORDER BY p.z_order, p.poly_id";
+
+        var polys = new Dictionary<string, PolygonItem>(StringComparer.OrdinalIgnoreCase);
+        await using (var cmd = new NpgsqlCommand(polySql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var polyId = reader.GetString(0);
+                polys[polyId] = new PolygonItem(
+                    polyId,
+                    reader.IsDBNull(1) ? null : reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetInt32(3)
+                );
+            }
+        }
+
+        // Puntos
+        const string pointsSql = @"
+            SELECT poly_id, orden, x_m, y_m
+            FROM poligonos_puntos
+            ORDER BY poly_id, orden";
+
+        await using (var cmd = new NpgsqlCommand(pointsSql, conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                var polyId = reader.GetString(0);
+                if (!polys.TryGetValue(polyId, out var poly))
+                    continue;
+
+                poly.Points.Add(new PointItem(reader.GetDecimal(2), reader.GetDecimal(3)));
+            }
+        }
+
+        foreach (var area in areas)
+        {
+            var areaPolys = polys.Values
+                .Where(p => string.Equals(p.AreaId, area.AreaId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (areaPolys.Count == 0)
+                continue;
+
+            area.Poligonos.AddRange(areaPolys);
+            area.CalculateBounds();
+        }
+
+        foreach (var canvas in canvases)
+        {
+            var viewAreas = areas
+                .Where(a => string.Equals(a.CanvasId, canvas.CanvasId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (viewAreas.Count == 0)
+                continue;
+
+            _canvasViews.Add(new CanvasView(canvas, viewAreas));
+        }
+
+        EnsurePlantaSelection(areas);
+    }
+
+    private async Task LoadInstalacionesAsync()
+    {
+        instalaciones.Clear();
+        subcategoriaNombre = null;
+
+        if (!_verTodos && string.IsNullOrWhiteSpace(SubcategoriaId))
+            return;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+
+            if (!_verTodos && !string.IsNullOrWhiteSpace(SubcategoriaId))
+            {
+                const string sqlSub = @"SELECT nombre FROM subcategorias WHERE subcategoria_id = @id";
+                await using var cmdN = new NpgsqlCommand(sqlSub, conn);
+                cmdN.Parameters.AddWithValue("id", SubcategoriaId);
+                subcategoriaNombre = (await cmdN.ExecuteScalarAsync())?.ToString()?.Trim();
+            }
+
+            var sql = _verTodos
+                ? @"
+                    SELECT i.instalacion_id,
+                           i.nombre,
+                           COALESCE(c.nombre,'') AS categoria,
+                           COALESCE(sc.nombre,'') AS subcategoria,
+                           COALESCE(a.nombre_areas,'') AS area,
+                           COALESCE(ea.nombre,'') AS estado,
+                           i.fecha_proxima_revision,
+                           COALESCE(i.proveedor_servicio,'') AS proveedor,
+                           COALESCE(i.descripcion,'') AS descripcion,
+                           COALESCE(i.imagen_url,'') AS imagen_url
+                    FROM instalaciones i
+                    LEFT JOIN subcategorias sc ON sc.subcategoria_id = i.subcategoria_id
+                    LEFT JOIN categorias c ON c.categoria_id = sc.categoria_id
+                    LEFT JOIN areas a ON a.area_id = i.area_id
+                    LEFT JOIN estados_activo ea ON ea.estado_id = i.estado_id
+                    WHERE i.laboratorio_id = @lab
+                    ORDER BY c.nombre, sc.nombre, i.nombre, i.instalacion_id"
+                : @"
+                    SELECT i.instalacion_id,
+                           i.nombre,
+                           COALESCE(c.nombre,'') AS categoria,
+                           COALESCE(sc.nombre,'') AS subcategoria,
+                           COALESCE(a.nombre_areas,'') AS area,
+                           COALESCE(ea.nombre,'') AS estado,
+                           i.fecha_proxima_revision,
+                           COALESCE(i.proveedor_servicio,'') AS proveedor,
+                           COALESCE(i.descripcion,'') AS descripcion,
+                           COALESCE(i.imagen_url,'') AS imagen_url
+                    FROM instalaciones i
+                    LEFT JOIN subcategorias sc ON sc.subcategoria_id = i.subcategoria_id
+                    LEFT JOIN categorias c ON c.categoria_id = sc.categoria_id
+                    LEFT JOIN areas a ON a.area_id = i.area_id
+                    LEFT JOIN estados_activo ea ON ea.estado_id = i.estado_id
+                    WHERE i.laboratorio_id = @lab
+                      AND i.subcategoria_id = @sub
+                    ORDER BY i.nombre, i.instalacion_id";
+
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+
+            if (!_verTodos)
+                cmd.Parameters.AddWithValue("sub", SubcategoriaId!);
+
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                instalaciones.Add(new InstalacionRow(
+                    r.GetString(0),
+                    (r.GetString(1) ?? "").Trim(),
+                    (r.GetString(2) ?? "").Trim(),
+                    (r.GetString(3) ?? "").Trim(),
+                    (r.GetString(4) ?? "").Trim(),
+                    (r.GetString(5) ?? "").Trim(),
+                    r.IsDBNull(6) ? "" : r.GetDateTime(6).ToString("dd/MM/yyyy"),
+                    (r.GetString(7) ?? "").Trim(),
+                    (r.GetString(8) ?? "").Trim(),
+                    (r.GetString(9) ?? "").Trim()
+                ));
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+    }
+
+    private IEnumerable<InstalacionRow> InstalacionesFiltradas
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_searchText))
+                return instalaciones;
+
+            var q = _searchText.Trim();
+
+            bool Hit(string? s) =>
+                !string.IsNullOrWhiteSpace(s) &&
+                s.Contains(q, StringComparison.OrdinalIgnoreCase);
+
+            return instalaciones.Where(i =>
+                Hit(i.Id) ||
+                Hit(i.Nombre) ||
+                Hit(i.Categoria) ||
+                Hit(i.Subcategoria) ||
+                Hit(i.Area) ||
+                Hit(i.Estado) ||
+                Hit(i.Proveedor) ||
+                Hit(i.Descripcion)
+            );
+        }
+    }
+
+    private string FilteredCountLabel
+    {
+        get
+        {
+            var total = instalaciones.Count;
+            if (string.IsNullOrWhiteSpace(_searchText))
+                return $"{total} instalaciones";
+
+            var filtered = InstalacionesFiltradas.Count();
+            return $"{filtered} de {total}";
+        }
+    }
+
+    private void OnSubcategoriaChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            Nav.NavigateTo("/inventario-instalaciones");
+            return;
+        }
+        Nav.NavigateTo($"/inventario-instalaciones/{value}");
+    }
+
+    private void OnVerTodosToggle(ChangeEventArgs args)
+    {
+        var isChecked =
+            args.Value is bool b ? b :
+            string.Equals(args.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+
+        if (isChecked)
+            Nav.NavigateTo("/inventario-instalaciones/todos");
+        else
+            Nav.NavigateTo("/inventario-instalaciones");
+    }
+
+    private async Task OnAreaChanged(ChangeEventArgs args)
+    {
+        var newArea = args.Value?.ToString();
+        _nuevoAreaId = string.IsNullOrWhiteSpace(newArea) ? null : newArea;
+        SyncCanvasFromSelectedArea();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SelectAreaFromVisualAsync(string? areaId)
+    {
+        if (string.IsNullOrWhiteSpace(areaId))
+            return;
+
+        if (string.Equals(areaId, _nuevoAreaId, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        _nuevoAreaId = areaId;
+        SyncCanvasFromSelectedArea();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void ClearAreaSelection()
+    {
+        _nuevoAreaId = null;
+        StateHasChanged();
+    }
+
+    private void SyncCanvasFromSelectedArea()
+    {
+        if (!string.IsNullOrWhiteSpace(_nuevoCanvasId))
+            return;
+
+        var area = SelectedAreaForMap;
+        if (area is not null && !string.IsNullOrWhiteSpace(area.CanvasId))
+            _nuevoCanvasId = area.CanvasId;
+    }
+
+    private string SelectedAreaLabel =>
+        _areaOptions.FirstOrDefault(a => string.Equals(a.Id, _nuevoAreaId, StringComparison.OrdinalIgnoreCase))?.Label
+        ?? _nuevoAreaId
+        ?? "Área";
+
+    private string? AutoCanvasHint
+    {
+        get
+        {
+            var area = SelectedAreaForMap;
+            if (area is null || string.IsNullOrWhiteSpace(area.CanvasId))
+                return null;
+
+            if (!string.IsNullOrWhiteSpace(_nuevoCanvasId))
+                return null;
+
+            var canvasLabel = _canvasOptions.FirstOrDefault(c => string.Equals(c.Id, area.CanvasId, StringComparison.OrdinalIgnoreCase))?.Label
+                             ?? area.CanvasId;
+
+            return $"Sugerencia: esta área está en el canvas “{canvasLabel}”.";
+        }
+    }
+
+    private AreaItem? SelectedAreaForMap =>
+        _canvasViews.SelectMany(v => v.Areas)
+            .FirstOrDefault(a => string.Equals(a.AreaId, _nuevoAreaId, StringComparison.OrdinalIgnoreCase));
+
+    private void OnNuevoImagenModoChanged(ChangeEventArgs args)
+    {
+        var v = args.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(v))
+            _nuevoImagenModo = v;
+
+        if (_nuevoImagenModo == "url")
+            _nuevoImagenNombre = null;
+        else
+            _nuevoImagenUrl = null;
+    }
+
+    private async Task OnNuevoImagenArchivoSeleccionado(InputFileChangeEventArgs args)
+    {
+        if (args.FileCount == 0) return;
+
+        var file = args.File;
+        var ext = Path.GetExtension(file.Name);
+        var fileName = $"inst_{Guid.NewGuid():N}{ext}";
+        var relative = Path.Combine("uploads", "instalaciones", fileName).Replace("\\", "/");
+        var absolute = Path.Combine(HostEnvironment.WebRootPath, relative);
+        Directory.CreateDirectory(Path.GetDirectoryName(absolute)!);
+
+        await using var stream = file.OpenReadStream(8 * 1024 * 1024);
+        await using var fs = File.Create(absolute);
+        await stream.CopyToAsync(fs);
+
+        _nuevoImagenUrl = $"/{relative}";
+        _nuevoImagenNombre = file.Name;
+        msg = $"Imagen cargada: {file.Name}";
+    }
+
+    private async Task CrearInstalacionAsync()
+    {
+        msg = null;
+        isSaving = true;
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_nuevoNombre))
+            {
+                msg = "Ingresa el nombre.";
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(_nuevoCategoriaId))
+            {
+                msg = "Selecciona la categoría.";
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(_nuevoSubcategoriaId))
+            {
+                msg = "Selecciona la subcategoría.";
+                return;
+            }
+
+            // ✅ Canvas requerido (para crear bloque)
+            var canvasId = _nuevoCanvasId;
+            if (string.IsNullOrWhiteSpace(canvasId))
+            {
+                // intento inferir desde el área seleccionada
+                var area = SelectedAreaForMap;
+                if (area is not null && !string.IsNullOrWhiteSpace(area.CanvasId))
+                    canvasId = area.CanvasId;
+            }
+
+            if (string.IsNullOrWhiteSpace(canvasId))
+            {
+                msg = "Selecciona un canvas (es requerido para crear el bloque automáticamente).";
+                return;
+            }
+
+            // ✅ Dimensiones del bloque requeridas
+            if (!TryParseDecimalFlexible(_nuevoBloqueAnchoM, out var nuevoAncho) || nuevoAncho <= 0)
+            {
+                msg = "Ingresa un ancho válido (m) para el bloque.";
+                return;
+            }
+            if (!TryParseDecimalFlexible(_nuevoBloqueLargoM, out var nuevoLargo) || nuevoLargo <= 0)
+            {
+                msg = "Ingresa un largo válido (m) para el bloque.";
+                return;
+            }
+
+            decimal? nuevaAltura = null;
+            if (TryParseDecimalFlexible(_nuevoBloqueAlturaM, out var alt) && alt > 0)
+                nuevaAltura = alt;
+
+            var id = string.IsNullOrWhiteSpace(_nuevoId)
+                ? $"inst_{Guid.NewGuid():N}".Substring(0, 12)
+                : _nuevoId.Trim();
+
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            // ✅ Validar: subcat pertenece a la categoría seleccionada
+            const string chkSub = @"
+                SELECT COUNT(*)
+                FROM subcategorias
+                WHERE subcategoria_id=@sub
+                  AND categoria_id=@cat";
+            await using (var c = new NpgsqlCommand(chkSub, conn, tx))
+            {
+                c.Parameters.AddWithValue("sub", _nuevoSubcategoriaId!);
+                c.Parameters.AddWithValue("cat", _nuevoCategoriaId!);
+                var ok = Convert.ToInt64(await c.ExecuteScalarAsync()) > 0;
+                if (!ok)
+                {
+                    msg = "La subcategoría no pertenece a la categoría seleccionada.";
+                    return;
+                }
+            }
+
+            // Validar área si viene
+            if (!string.IsNullOrWhiteSpace(_nuevoAreaId))
+            {
+                const string chkArea = @"
+                    SELECT COUNT(*)
+                    FROM areas
+                    WHERE area_id=@area AND laboratorio_id=@lab";
+                await using var cArea = new NpgsqlCommand(chkArea, conn, tx);
+                cArea.Parameters.AddWithValue("area", _nuevoAreaId!);
+                cArea.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+                var okArea = Convert.ToInt64(await cArea.ExecuteScalarAsync()) > 0;
+                if (!okArea)
+                {
+                    msg = "El área seleccionada no pertenece al laboratorio actual.";
+                    return;
+                }
+            }
+
+            // ✅ Validar canvas pertenece al laboratorio
+            decimal canvasAncho, canvaslargo, canvasMargen;
+            const string canvasInfoSql = @"
+                SELECT ancho_m, largo_m, margen_m
+                FROM canvas_lab
+                WHERE canvas_id=@canvas AND laboratorio_id=@lab";
+            await using (var cmdC = new NpgsqlCommand(canvasInfoSql, conn, tx))
+            {
+                cmdC.Parameters.AddWithValue("canvas", canvasId!);
+                cmdC.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+
+                await using var r = await cmdC.ExecuteReaderAsync();
+                if (!await r.ReadAsync())
+                {
+                    msg = "El canvas seleccionado no pertenece al laboratorio actual.";
+                    return;
+                }
+
+                canvasAncho = r.GetDecimal(0);
+                canvaslargo = r.GetDecimal(1);
+                canvasMargen = r.GetDecimal(2);
+            }
+
+            // ✅ Insert instalación (SIN pos_x / pos_y)
+            const string insInst = @"
+                INSERT INTO instalaciones
+                (instalacion_id, nombre, subcategoria_id,
+                 laboratorio_id, area_id, canvas_id,
+                 estado_id, fecha_instalacion, fecha_ultima_revision, fecha_proxima_revision,
+                 proveedor_servicio, observaciones, descripcion, imagen_url)
+                VALUES
+                (@id, @nombre, @subcat,
+                 @lab, @area, @canvas,
+                 @estado, @finst, @fult, @fprox,
+                 @prov, @obs, @desc, @img)
+                ON CONFLICT (instalacion_id) DO NOTHING;
+            ";
+
+            int affected;
+            await using (var cmd = new NpgsqlCommand(insInst, conn, tx))
+            {
+                cmd.Parameters.AddWithValue("id", id);
+                cmd.Parameters.AddWithValue("nombre", _nuevoNombre.Trim());
+                cmd.Parameters.AddWithValue("subcat", _nuevoSubcategoriaId!);
+
+                cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+                cmd.Parameters.AddWithValue("area", string.IsNullOrWhiteSpace(_nuevoAreaId) ? (object)DBNull.Value : _nuevoAreaId!);
+                cmd.Parameters.AddWithValue("canvas", canvasId!);
+
+                cmd.Parameters.AddWithValue("estado", string.IsNullOrWhiteSpace(_nuevoEstadoId) ? (object)DBNull.Value : _nuevoEstadoId!);
+
+                cmd.Parameters.AddWithValue("finst", ToDbDate(_nuevoFechaInstalacion));
+                cmd.Parameters.AddWithValue("fult", ToDbDate(_nuevoFechaUltimaRevision));
+                cmd.Parameters.AddWithValue("fprox", ToDbDate(_nuevoFechaProximaRevision));
+
+                cmd.Parameters.AddWithValue("prov", DbOrNull(_nuevoProveedorServicio));
+                cmd.Parameters.AddWithValue("obs", DbOrNull(_nuevoObservaciones));
+                cmd.Parameters.AddWithValue("desc", DbOrNull(_nuevoDescripcion));
+                cmd.Parameters.AddWithValue("img", DbOrNull(_nuevoImagenUrl));
+
+                affected = await cmd.ExecuteNonQueryAsync();
+            }
+
+            if (affected == 0)
+            {
+                await tx.RollbackAsync();
+                msg = "Ese ID ya existe. Cambia el ID o déjalo vacío para autogenerar.";
+                return;
+            }
+
+            // ✅ Leer bloques existentes del canvas (incluyendo los de mesones e instalaciones)
+            var existentes = new List<BlockRect>();
+            const string blocksSql = @"
+                SELECT b.pos_x, b.pos_y, b.ancho, b.largo
+                FROM bloques_int b
+                LEFT JOIN instalaciones i ON i.instalacion_id = b.instalacion_id
+                LEFT JOIN mesones m ON m.meson_id = b.meson_id
+                WHERE b.canvas_id = @canvas
+                  AND (i.instalacion_id IS NOT NULL OR m.meson_id IS NOT NULL)";
+            await using (var cmdB = new NpgsqlCommand(blocksSql, conn, tx))
+            {
+                cmdB.Parameters.AddWithValue("canvas", canvasId!);
+                await using var r = await cmdB.ExecuteReaderAsync();
+                while (await r.ReadAsync())
+                {
+                    existentes.Add(new BlockRect(
+                        r.GetDecimal(0),
+                        r.GetDecimal(1),
+                        r.GetDecimal(2),
+                        r.GetDecimal(3)
+                    ));
+                }
+            }
+
+            // ✅ Buscar un espacio libre
+            var spot = FindFreeSpot(
+                canvasAncho,
+                canvaslargo,
+                canvasMargen,
+                nuevoAncho,
+                nuevoLargo,
+                existentes
+            );
+
+            if (spot is null)
+            {
+                await tx.RollbackAsync();
+                msg = "No hay espacio disponible en el canvas para ese bloque (ajusta dimensiones o libera espacio).";
+                return;
+            }
+
+            var (px, py) = spot.Value;
+
+            // ✅ Insert bloque_int asociado a la instalación
+            var bloqueId = $"blk_{Guid.NewGuid():N}".Substring(0, 12);
+            const string insBloque = @"
+                INSERT INTO bloques_int
+                (bloque_id, canvas_id, instalacion_id, meson_id,
+                 etiqueta, color_hex, z_order,
+                 pos_x, pos_y, ancho, largo, altura,
+                 offset_x, offset_y)
+                VALUES
+                (@bid, @canvas, @inst, NULL,
+                 @etq, @color, 0,
+                 @x, @y, @ancho, @largo, @altura,
+                 0, 0);";
+
+            await using (var cmdInsB = new NpgsqlCommand(insBloque, conn, tx))
+            {
+                cmdInsB.Parameters.AddWithValue("bid", bloqueId);
+                cmdInsB.Parameters.AddWithValue("canvas", canvasId!);
+                cmdInsB.Parameters.AddWithValue("inst", id);
+
+                cmdInsB.Parameters.AddWithValue("etq", _nuevoNombre.Trim());
+                cmdInsB.Parameters.AddWithValue("color", "#a7f3d0"); // color por defecto (ajústalo si quieres)
+
+                cmdInsB.Parameters.AddWithValue("x", px);
+                cmdInsB.Parameters.AddWithValue("y", py);
+                cmdInsB.Parameters.AddWithValue("ancho", nuevoAncho);
+                cmdInsB.Parameters.AddWithValue("largo", nuevoLargo);
+                cmdInsB.Parameters.AddWithValue("altura", (object?)nuevaAltura ?? DBNull.Value);
+
+                await cmdInsB.ExecuteNonQueryAsync();
+            }
+
+            await tx.CommitAsync();
+
+            msg = "Instalación registrada y bloque creado en el canvas.";
+
+            // reset
+            _nuevoId = null;
+            _nuevoNombre = null;
+            _nuevoSubcategoriaId = null;
+            _nuevoCategoriaId = _categoriaInstOptions.FirstOrDefault()?.Id;
+
+            _nuevoAreaId = null;
+            _nuevoEstadoId = null;
+            _nuevoCanvasId = null;
+
+            _nuevoBloqueAnchoM = null;
+            _nuevoBloqueLargoM = null;
+            _nuevoBloqueAlturaM = null;
+
+            _nuevoFechaInstalacion = null;
+            _nuevoFechaUltimaRevision = null;
+            _nuevoFechaProximaRevision = null;
+
+            _nuevoProveedorServicio = null;
+            _nuevoDescripcion = null;
+            _nuevoObservaciones = null;
+
+            _nuevoImagenModo = "url";
+            _nuevoImagenUrl = null;
+            _nuevoImagenNombre = null;
+
+            await LoadInstalacionesAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            msg = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    // ====== Colocación automática (no solapar) ======
+    private sealed record BlockRect(decimal X, decimal Y, decimal W, decimal H);
+
+    private static (decimal X, decimal Y)? FindFreeSpot(
+        decimal canvasW,
+        decimal canvasH,
+        decimal margin,
+        decimal newW,
+        decimal newH,
+        List<BlockRect> existing)
+    {
+        // separación mínima (m) para que no queden "pegados"
+        const decimal pad = 0.02m;
+
+        var startX = margin;
+        var startY = margin;
+        var endX = canvasW - margin - newW;
+        var endY = canvasH - margin - newH;
+
+        if (endX < startX || endY < startY)
+            return null;
+
+        // Paso de búsqueda (m): equilibrio entre precisión y performance
+        var step = Math.Max(0.05m, Math.Min(newW, newH) / 4m);
+        if (step > 0.25m) step = 0.25m;
+
+        bool OverlapsAny(decimal x, decimal y)
+        {
+            var ax1 = x - pad;
+            var ay1 = y - pad;
+            var ax2 = x + newW + pad;
+            var ay2 = y + newH + pad;
+
+            foreach (var b in existing)
+            {
+                var bx1 = b.X - pad;
+                var by1 = b.Y - pad;
+                var bx2 = b.X + b.W + pad;
+                var by2 = b.Y + b.H + pad;
+
+                var overlap =
+                    ax1 < bx2 && ax2 > bx1 &&
+                    ay1 < by2 && ay2 > by1;
+
+                if (overlap) return true;
+            }
+
+            return false;
+        }
+
+        // Barrido simple (fila por fila)
+        for (decimal y = startY; y <= endY; y += step)
+        {
+            for (decimal x = startX; x <= endX; x += step)
+            {
+                if (!OverlapsAny(x, y))
+                    return (x, y);
+            }
+        }
+
+        return null;
+    }
+
+    // ====== Helpers ======
+    private static object DbOrNull(string? s) =>
+        string.IsNullOrWhiteSpace(s) ? (object)DBNull.Value : s!.Trim();
+
+    private static object ToDbDate(DateTime? d) =>
+        d.HasValue ? d.Value.Date : (object)DBNull.Value;
+
+    private static bool TryParseDecimalFlexible(string? s, out decimal value)
+    {
+        value = 0m;
+        if (string.IsNullOrWhiteSpace(s))
+            return false;
+
+        var t = s.Trim();
+
+        if (decimal.TryParse(t, NumberStyles.Any, CultureInfo.CurrentCulture, out var d1))
+        {
+            value = d1;
+            return true;
+        }
+
+        var normalized = t.Replace(" ", "").Replace(",", ".");
+        if (decimal.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out var d2))
+        {
+            value = d2;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static string ResolveUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return "";
+        if (url.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return url;
+        return url.StartsWith("/", StringComparison.OrdinalIgnoreCase) ? url : $"/{url}";
+    }
+
+    private static string Trunc(string? s, int max)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "";
+        var t = s.Trim();
+        if (t.Length <= max) return t;
+        return t.Substring(0, max - 1) + "…";
+    }
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
+
+    // ===== Visualizador helpers =====
+    private static string PointsString(PolygonItem poly) =>
+        string.Join(" ", poly.Points.Select(p => $"{p.X.ToString(CultureInfo.InvariantCulture)},{p.Y.ToString(CultureInfo.InvariantCulture)}"));
+
+    private static string FormatSvg(decimal value) => value.ToString(CultureInfo.InvariantCulture);
+
+    private string AreaFill(AreaItem area)
+    {
+        if (!string.IsNullOrWhiteSpace(_nuevoAreaId)
+            && string.Equals(_nuevoAreaId, area.AreaId, StringComparison.OrdinalIgnoreCase))
+        {
+            return "#93c5fd";
+        }
+        return area.Poligonos.FirstOrDefault()?.ColorHex ?? "#cbd5f5";
+    }
+
+    private bool IsAreaInCurrentPlanta(string? plantaId)
+    {
+        if (string.IsNullOrWhiteSpace(_currentPlantaId))
+            return true;
+
+        if (string.IsNullOrWhiteSpace(plantaId))
+            return false;
+
+        return string.Equals(plantaId, _currentPlantaId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void EnsurePlantaSelection(List<AreaItem> areas)
+    {
+        if (areas.Count == 0)
+        {
+            _currentPlantaId = _plantasLookup.Keys.FirstOrDefault();
+            return;
+        }
+
+        var firstAreaPlanta = areas.FirstOrDefault(a => !string.IsNullOrWhiteSpace(a.PlantaId))?.PlantaId;
+        if (string.IsNullOrWhiteSpace(firstAreaPlanta))
+        {
+            _currentPlantaId = null;
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_currentPlantaId)
+            && _plantasLookup.ContainsKey(_currentPlantaId)
+            && areas.Any(a => string.Equals(a.PlantaId, _currentPlantaId, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        _currentPlantaId = firstAreaPlanta ?? _plantasLookup.Keys.FirstOrDefault();
+    }
+
+    private static decimal AreaLabelWidth(AreaItem area) => Math.Max(0.6m, area.Width * 0.85m);
+    private static decimal AreaLabelHeight(AreaItem area) => Math.Max(0.25m, area.Height * 0.25m);
+
+    private static decimal AreaLabelFontSize(AreaItem area)
+    {
+        var baseSize = Math.Min(area.Width, area.Height) * 0.18m;
+        return ClampDecimal(baseSize, 0.18m, 0.55m);
+    }
+
+    private static decimal ClampDecimal(decimal value, decimal min, decimal max)
+    {
+        if (value < min) return min;
+        if (value > max) return max;
+        return value;
+    }
+
+    // ===== Modelos internos =====
+    private sealed class CategoriaRow
+    {
+        public CategoriaRow(string id, string nombre) { Id = id; Nombre = nombre; }
+        public string Id { get; }
+        public string Nombre { get; }
+        public List<SubcategoriaRow> Subcategorias { get; } = new();
+    }
+
+    private sealed record SubcategoriaRow(string Id, string Nombre);
+    private sealed record SelectOption(string Id, string Label);
+
+    private sealed record InstalacionRow(
+        string Id,
+        string Nombre,
+        string Categoria,
+        string Subcategoria,
+        string Area,
+        string Estado,
+        string ProximaRevision,
+        string Proveedor,
+        string Descripcion,
+        string ImagenUrl
+    );
+
+    private sealed record CanvasItem(string CanvasId, string Nombre, decimal Ancho, decimal largo, decimal Margen);
+    private sealed record CanvasView(CanvasItem Canvas, List<AreaItem> Areas);
+
+    private sealed class AreaItem
+    {
+        public AreaItem(string areaId, string nombre, string? plantaId, string? canvasId)
+        {
+            AreaId = areaId;
+            Nombre = nombre;
+            PlantaId = plantaId;
+            CanvasId = canvasId;
+        }
+
+        public string AreaId { get; }
+        public string Nombre { get; }
+        public string? PlantaId { get; }
+        public string? CanvasId { get; }
+        public List<PolygonItem> Poligonos { get; } = new();
+
+        public decimal CenterX { get; private set; }
+        public decimal CenterY { get; private set; }
+        public decimal Width { get; private set; }
+        public decimal Height { get; private set; }
+        public decimal MinX { get; private set; }
+        public decimal MinY { get; private set; }
+        public decimal MaxX { get; private set; }
+        public decimal MaxY { get; private set; }
+
+        public void CalculateBounds()
+        {
+            var points = Poligonos.SelectMany(p => p.Points).ToList();
+            if (points.Count == 0) return;
+
+            var minX = points.Min(p => p.X);
+            var maxX = points.Max(p => p.X);
+            var minY = points.Min(p => p.Y);
+            var maxY = points.Max(p => p.Y);
+
+            MinX = minX; MaxX = maxX;
+            MinY = minY; MaxY = maxY;
+
+            CenterX = (minX + maxX) / 2m;
+            CenterY = (minY + maxY) / 2m;
+            Width = Math.Max(0.2m, maxX - minX);
+            Height = Math.Max(0.2m, maxY - minY);
+        }
+    }
+
+    private sealed class PolygonItem
+    {
+        public PolygonItem(string polyId, string? areaId, string colorHex, int zOrder)
+        {
+            PolyId = polyId;
+            AreaId = areaId;
+            ColorHex = colorHex;
+            ZOrder = zOrder;
+        }
+
+        public string PolyId { get; }
+        public string? AreaId { get; }
+        public string ColorHex { get; }
+        public int ZOrder { get; }
+        public List<PointItem> Points { get; } = new();
+    }
+
+    private sealed record PointItem(decimal X, decimal Y);
+}
+
+<style>
+    .page-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+        padding: 1rem;
+        box-shadow: 0 6px 14px rgba(15, 23, 42, 0.04);
+    }
+
+    .helper {
+        margin: .3rem 0 0;
+        color: #475569;
+        font-size: .95rem;
+    }
+
+    .muted {
+        color: #64748b;
+    }
+
+    .text-xs {
+        font-size: .8rem;
+    }
+
+    .text-sm {
+        font-size: .9rem;
+    }
+
+    .error-note {
+        color: #b91c1c;
+        margin-top: .75rem;
+    }
+
+    .empty {
+        padding: .85rem 1rem;
+        border-radius: 10px;
+        background: #fef9c3;
+        border: 1px solid #fde68a;
+        color: #854d0e;
+    }
+
+    .category-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .category-controls {
+        display: flex;
+        gap: .75rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .category-select {
+        min-width: 240px;
+        padding: .35rem .6rem;
+        border-radius: 8px;
+        border: 1px solid #cbd5f5;
+        background: #fff;
+        color: #0f172a;
+    }
+
+    .btn-link {
+        color: #1d4ed8;
+        text-decoration: none;
+        font-weight: 800;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        padding: 0;
+    }
+
+        .btn-link:hover {
+            text-decoration: underline;
+        }
+
+    .category-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 1rem;
+        margin-top: 1rem;
+    }
+
+    .category-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+        padding: 1rem;
+        box-shadow: 0 6px 14px rgba(15, 23, 42, 0.04);
+    }
+
+    .category-title {
+        font-weight: 900;
+        color: #0f172a;
+        margin-bottom: .5rem;
+    }
+
+    .category-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        gap: .35rem;
+    }
+
+    .category-link {
+        display: inline-flex;
+        padding: .35rem .6rem;
+        border-radius: 999px;
+        background: #f1f5f9;
+        color: #0f172a;
+        text-decoration: none;
+        font-size: .9rem;
+        font-weight: 700;
+    }
+
+        .category-link.active,
+        .category-link:hover {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+
+    .form-header {
+        margin-top: .75rem;
+        margin-bottom: .75rem;
+    }
+
+        .form-header h4 {
+            margin: 0 0 .25rem 0;
+            font-weight: 900;
+            color: #0f172a;
+        }
+
+    .form-hint {
+        margin: 0;
+        color: #64748b;
+        font-size: .95rem;
+    }
+
+    .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: .75rem;
+        align-items: start;
+    }
+
+    .field label {
+        display: block;
+        font-size: .85rem;
+        color: #475569;
+        margin-bottom: .25rem;
+        font-weight: 900;
+    }
+
+    .full-span {
+        grid-column: 1 / -1;
+    }
+
+    .border {
+        border: 1px solid #e5e7eb;
+        border-radius: .5rem;
+    }
+
+    .p-1 {
+        padding: .45rem .6rem;
+    }
+
+    .form-actions {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+        flex-wrap: wrap;
+        margin-top: .25rem;
+    }
+
+    .btn.primary {
+        background: #2563eb;
+        color: #fff;
+        border: none;
+        padding: .5rem 1rem;
+        border-radius: .6rem;
+        font-weight: 800;
+        box-shadow: 0 6px 12px rgba(37, 99, 235, 0.18);
+        cursor: pointer;
+    }
+
+        .btn.primary:hover {
+            background: #1d4ed8;
+        }
+
+        .btn.primary:disabled {
+            opacity: .65;
+            cursor: not-allowed;
+        }
+
+    .toggle {
+        display: flex;
+        gap: .45rem;
+        align-items: center;
+        padding: .35rem .6rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 999px;
+        background: #fff;
+        font-size: .9rem;
+        color: #0f172a;
+        user-select: none;
+    }
+
+    .table-wrap {
+        overflow-x: auto;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #fff;
+    }
+
+    th, td {
+        padding: 0.6rem;
+        border-bottom: 1px solid #e5e7eb;
+        text-align: left;
+        vertical-align: top;
+    }
+
+    th {
+        background: #f3f4f6;
+        font-weight: 900;
+    }
+
+    .materials-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: .75rem;
+        flex-wrap: wrap;
+    }
+
+    .materials-title {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+        flex-wrap: wrap;
+    }
+
+    .badge {
+        background: #e2e8f0;
+        color: #0f172a;
+        padding: .2rem .55rem;
+        border-radius: 999px;
+        font-size: .85rem;
+        font-weight: 800;
+    }
+
+    .search-input-invent {
+        min-width: 280px;
+        flex: 1 1 320px;
+        border-radius: 10px;
+        background: #ffffff;
+        color: #0f172a;
+        border: 1px solid #cbd5e1;
+    }
+
+        .search-input-invent::placeholder {
+            color: #64748b;
+            opacity: 1;
+        }
+
+    .upload-card {
+        border: 1px dashed #d1d5db;
+        padding: .75rem;
+        border-radius: .75rem;
+        display: grid;
+        gap: .6rem;
+        background: #fff;
+    }
+
+    .upload-options {
+        display: flex;
+        gap: .75rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .upload-drop {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        padding: .6rem;
+        border: 1px solid #e5e7eb;
+        border-radius: .5rem;
+        color: #6b7280;
+        cursor: pointer;
+    }
+
+        .upload-drop input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+    .selector-split {
+        display: flex;
+        gap: .75rem;
+        align-items: flex-start;
+        flex-wrap: wrap;
+    }
+
+    .visual-picker {
+        border: 1px solid #e5e7eb;
+        border-radius: .75rem;
+        padding: .6rem;
+        background: #fff;
+        min-width: 320px;
+    }
+
+    .visual-toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: .5rem;
+        margin-bottom: .5rem;
+    }
+
+    .canvas-card {
+        border: 1px solid #e5e7eb;
+        border-radius: .75rem;
+        padding: .5rem;
+        background: #fafafa;
+        margin-top: .5rem;
+    }
+
+        .canvas-card svg {
+            width: 100%;
+            height: 200px;
+            background: white;
+            border-radius: .5rem;
+        }
+
+    .area-label {
+        fill: #111827;
+        paint-order: stroke fill;
+        stroke: #ffffff;
+        stroke-width: 0.04;
+    }
+
+    .thumb {
+        width: 34px;
+        height: 34px;
+        object-fit: contain;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        background: #fff;
+    }
+
+    .thumb-material {
+        width: 44px;
+        height: 44px;
+    }
+</style>

@@ -2,21 +2,292 @@
     overscroll-behavior: contain;
 }
 
+/* ===== Layout base ===== */
+.areas-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding-bottom: 2rem;
+}
+
+/* ===== Toolbar ===== */
 .toolbar {
     display: flex;
-    gap: .5rem;
     align-items: center;
-    margin: .25rem 0 1rem;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.9rem 1rem;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
 
+.toolbar-left {
+    min-width: 0;
+}
+
+.toolbar-title {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #0f172a;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.toolbar-actions {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+/* ===== Botones ===== */
 .btn {
+    padding: 0.5rem 0.9rem;
+    border-radius: 0.6rem;
     border: 1px solid #e5e7eb;
     background: #fff;
-    border-radius: .5rem;
-    padding: .35rem .6rem;
-    box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    color: #0f172a;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
 
+    .btn:hover {
+        border-color: #2563eb;
+        box-shadow: 0 6px 14px rgba(37,99,235,0.12);
+    }
+
+    .btn:active {
+        transform: translateY(1px);
+    }
+
+    .btn:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+        box-shadow: none;
+    }
+
+    .btn.primary {
+        background: #2563eb;
+        border-color: #2563eb;
+        color: #fff;
+        box-shadow: 0 8px 18px rgba(37,99,235,0.20);
+    }
+
+        .btn.primary:hover {
+            background: #1d4ed8;
+            border-color: #1d4ed8;
+        }
+
+    .btn.link {
+        background: none;
+        border: none;
+        box-shadow: none;
+        padding: 0;
+        color: #2563eb;
+        text-decoration: underline;
+    }
+
+/* ===== Cards ===== */
+.card {
+    border: 1px solid #e5e7eb;
+    border-radius: 0.75rem;
+    padding: 0.9rem 1rem;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+
+    .card h3 {
+        margin: 0 0 0.6rem 0;
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    .card h4 {
+        margin: 0.75rem 0 0.35rem;
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+/* ===== Mapa (NO gigante) ===== */
+.map-frame {
+    width: 100%;
+    height: min(60vh, 520px);
+    border: 1px solid #e5e7eb;
+    border-radius: 0.75rem;
+    overflow: hidden;
+    background: #fafafa;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+
+.map-svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+/* ===== Campos (inputs/select) ===== */
+.field {
+    padding: 0.5rem 0.65rem;
+    border-radius: 0.6rem;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #0f172a;
+    font-size: 0.9rem;
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+    min-height: 2.2rem;
+}
+
+    .field:focus {
+        outline: none;
+        border-color: #2563eb;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+    }
+
+    .field::placeholder {
+        color: #94a3b8;
+        font-weight: 600;
+    }
+
+select.field {
+    appearance: auto;
+}
+
+/* ===== Grids y filas ===== */
+.info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.9rem;
+}
+
+    .info-grid strong {
+        display: block;
+        font-size: 0.8rem;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        color: #64748b;
+        margin-bottom: 0.2rem;
+    }
+
+.assign-row {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    margin: 0.6rem 0;
+    flex-wrap: wrap;
+}
+
+.muted {
+    color: #6b7280;
+}
+
+/* ===== Listas clickeables ===== */
+.list-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.55rem 0.25rem;
+    border-bottom: 1px dashed #eef2f7;
+}
+
+    .list-row:last-child {
+        border-bottom: none;
+    }
+
+.row-main {
+    min-width: 0;
+}
+
+.row-title {
+    font-weight: 700;
+    color: #0f172a;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.row-sub {
+    font-size: 0.85rem;
+    color: #6b7280;
+    margin-top: 0.15rem;
+}
+
+.row-cta {
+    font-weight: 800;
+    color: #2563eb;
+    padding: 0 0.25rem;
+}
+
+.row-click {
+    cursor: pointer;
+    border-radius: 0.5rem;
+    transition: background 0.12s ease, box-shadow 0.12s ease;
+}
+
+    .row-click:hover {
+        background: #f8fafc;
+        box-shadow: inset 0 0 0 1px #e5e7eb;
+    }
+
+/* ===== SVG hover/click para bloques ===== */
 svg .softshadow {
     filter: drop-shadow(0 1px 1px rgba(0,0,0,.10));
+}
+
+.map-block.is-clickable .block-rect {
+    cursor: pointer;
+    transition: filter 0.12s ease, opacity 0.12s ease;
+}
+
+.map-block.is-clickable:hover .block-rect {
+    filter: brightness(1.08) saturate(1.15);
+    opacity: 0.70; /* se nota el hover */
+}
+
+.map-block.is-clickable:hover .block-rect {
+    stroke: #1d4ed8;
+}
+
+.block-text {
+    pointer-events: none;
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 768px) {
+    .toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .toolbar-title {
+        white-space: normal;
+    }
+
+    .toolbar-actions {
+        justify-content: flex-start;
+    }
+
+    .map-frame {
+        height: min(55vh, 420px);
+    }
+    .map-svg text {
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    }
+    .block-text, .area-label {
+        paint-order: stroke;
+        stroke: rgba(255,255,255,0.85);
+        stroke-width: 0.6px;
+    }
+
 }

@@ -7,11 +7,12 @@ public sealed class SafeSqlValidator
     // Bloqueo fuerte de cosas peligrosas (DDL/DML y comandos)
     private static readonly string[] BannedTokens =
     {
-        "insert","update","delete","drop","alter","create","grant","revoke","truncate",
-        "copy","call","do","execute","prepare","deallocate","vacuum","analyze","refresh",
-        "comment","security","owner","cluster","listen","notify",
-        "set","show","reset", // evita cambios de sesión desde el modelo
-    };
+    "insert","update","delete","drop","alter","create","grant","revoke","truncate",
+    "copy","call","execute","prepare","deallocate","vacuum","analyze","refresh",
+    "comment","security","owner","cluster","listen","notify",
+    "set","show","reset",
+}; 
+
 
     public int MaxRows { get; set; } = 100;
 

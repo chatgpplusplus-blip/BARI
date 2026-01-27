@@ -1,0 +1,1924 @@
+﻿@page "/inventario-materiales/item/{MaterialId}"
+@using Npgsql
+@using System.Globalization
+@using System.IO
+@using System.Linq
+@using Microsoft.AspNetCore.Components.Forms
+@inject NpgsqlDataSource DataSource
+@inject LaboratorioState LaboratorioState
+@inject NavigationManager Nav
+@inject IWebHostEnvironment HostEnvironment
+@implements IDisposable
+
+<PageTitle>Detalle de Material</PageTitle>
+
+<section class="page-card">
+    <div class="header-row">
+        <div>
+            <h2>Detalle de Material</h2>
+            <div class="muted">ID: <b>@MaterialId</b></div>
+        </div>
+        <div class="header-actions">
+            <button class="btn" type="button" @onclick="GoBack">Volver</button>
+        </div>
+    </div>
+
+    <LaboratorioSelector />
+</section>
+
+<section class="page-card" style="margin-top:1.2rem;">
+    @if (!string.IsNullOrWhiteSpace(loadError))
+    {
+        <p class="error-note">Error: @loadError</p>
+    }
+    else if (isLoading)
+    {
+        <p><em>Cargando…</em></p>
+    }
+    else if (!found)
+    {
+        <div class="empty">
+            No se encontró el material <b>@MaterialId</b> en el laboratorio actual.
+        </div>
+    }
+    else
+    {
+        @* ======= VISTA ======= *@
+        @if (!isEditing)
+        {
+            <div class="detail-grid">
+                <div class="detail-media">
+                    @if (!string.IsNullOrWhiteSpace(edit.ImagenUrl))
+                    {
+                        <img class="material-img"
+                             src="@ResolveUrl(edit.ImagenUrl)"
+                             alt="Imagen del material"
+                             onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+                        <div class="img-placeholder" style="display:none;">Sin imagen</div>
+                    }
+                    else
+                    {
+                        <div class="img-placeholder">Sin imagen</div>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(edit.ImagenUrl))
+                    {
+                        <div class="text-xs muted" style="margin-top:.35rem;">
+                            <span>Imagen:</span> <code>@edit.ImagenUrl</code>
+                        </div>
+                    }
+                </div>
+
+                <div class="detail-info">
+                    <div class="title-row">
+                        <h3 style="margin:0;">@edit.Nombre</h3>
+                        <div class="badges">
+                            <span class="badge">@TipoLabel(edit.Tipo)</span>
+                            <span class="badge gray">@NullDash(EstadoLabel)</span>
+                            <span class="badge gray">@NullDash(MarcaLabel)</span>
+                        </div>
+                    </div>
+
+                    <div class="dl">
+                        <div class="dl-row">
+                            <div class="dt">Categoría</div>
+                            <div class="dd">@NullDash(CategoriaLabel)</div>
+                        </div>
+
+                        <div class="dl-row">
+                            <div class="dt">Subcategorías</div>
+                            <div class="dd">@NullDash(SubcategoriasLabel)</div>
+                        </div>
+
+                        <div class="dl-row">
+                            <div class="dt">Marca</div>
+                            <div class="dd">
+                                <div class="cell-media">
+                                    @if (!string.IsNullOrWhiteSpace(MarcaImagenUrl))
+                                    {
+                                        <img class="thumb thumb-logo" src="@ResolveUrl(MarcaImagenUrl)" alt="Logo marca" />
+                                    }
+                                    <span>@NullDash(MarcaLabel)</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="dl-row">
+                            <div class="dt">Estado</div>
+                            <div class="dd">@NullDash(EstadoLabel)</div>
+                        </div>
+
+                        <div class="dl-row">
+                            <div class="dt">Cantidad</div>
+                            <div class="dd">@NullDash(edit.Cantidad)</div>
+                        </div>
+
+                        <div class="dl-row">
+                            <div class="dt">Altura (cm)</div>
+                            <div class="dd">@NullDash(edit.AlturaCm)</div>
+                        </div>
+
+                        @if (IsVidrioOrPlastico(edit.Tipo))
+                        {
+                            <div class="dl-row">
+                                <div class="dt">Capacidad</div>
+                                <div class="dd">@NullDash(edit.CapacidadNum) @NullDash(UnidadLabel)</div>
+                            </div>
+                        }
+
+                        <div class="dl-row">
+                            <div class="dt">Ubicación</div>
+                            <div class="dd">@BuildUbicacion(SelectedAreaLabel, SelectedMesonLabel, edit.Nivel, edit.Posicion)</div>
+                        </div>
+
+                        <div class="dl-row">
+                            <div class="dt">Descripción</div>
+                            <div class="dd">@NullDash(edit.Descripcion)</div>
+                        </div>
+
+                        <div class="dl-row">
+                            <div class="dt">Observaciones</div>
+                            <div class="dd">@NullDash(edit.Observaciones)</div>
+                        </div>
+
+                        <div class="dl-row">
+                            <div class="dt">Experiencias asociadas</div>
+                            <div class="dd">
+                                @if (_experienciasLigadas.Count == 0)
+                                {
+                                    <span class="muted">—</span>
+                                }
+                                else
+                                {
+                                    <ul class="link-list">
+                                        @foreach (var ex in _experienciasLigadas.OrderBy(x => x.Nombre))
+                                        {
+                                            <li>
+                                                <span class="pill">@ex.Nombre</span>
+                                                <span class="text-xs muted">(@ex.ExperienciaId)</span>
+                                            </li>
+                                        }
+                                    </ul>
+                                }
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="view-actions">
+                        <button class="btn primary" type="button" @onclick="StartEdit">Editar</button>
+
+                        @if (!confirmDelete)
+                        {
+                            <button class="btn danger" type="button" @onclick="AskDelete">Eliminar</button>
+                        }
+                        else
+                        {
+                            <button class="btn danger" type="button" @onclick="DeleteAsync" disabled="@isSaving">Confirmar eliminar</button>
+                            <button class="btn" type="button" @onclick="CancelDelete" disabled="@isSaving">Cancelar</button>
+                        }
+
+                        @if (!string.IsNullOrWhiteSpace(msg))
+                        {
+                            <span class="text-sm muted">@msg</span>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            @* ======= EDICIÓN ======= *@
+            <div class="form-header">
+                <h4>Editar material</h4>
+                <p class="form-hint">
+                    Categoría filtra subcategorías (M:N) para evitar mezclas.
+                    Experiencias se gestionan con <code>experiencia_materiales</code>.
+                </p>
+            </div>
+
+            <div class="form-grid">
+
+                <div class="field">
+                    <label>Categoría (material)</label>
+                    <select class="border p-1" value="@edit.CategoriaId" @onchange="OnCategoriaChanged">
+                        <option value="">(selecciona)</option>
+                        @foreach (var c in _categoriaOptions.OrderBy(x => x.Label))
+                        {
+                            <option value="@c.Id">@c.Label</option>
+                        }
+                    </select>
+
+                    <div class="text-xs muted" style="margin-top:.25rem;">
+                        Tipo (derivado): <b>@TipoLabel(edit.Tipo)</b>
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(tipoOriginal) && !string.Equals(tipoOriginal, edit.Tipo, StringComparison.OrdinalIgnoreCase))
+                    {
+                        <div class="text-xs warn">
+                            Cambiarás el tipo de <b>@TipoLabel(tipoOriginal)</b> a <b>@TipoLabel(edit.Tipo)</b>.
+                        </div>
+                    }
+                </div>
+
+                <div class="field">
+                    <label>Nombre</label>
+                    <input class="border p-1" placeholder="Nombre" @bind="edit.Nombre" />
+                </div>
+
+                <div class="field full-span">
+                    <label>Subcategorías (obligatorio)</label>
+
+                    <div class="subcats-dropdown">
+                        <button type="button"
+                                class="border p-1 subcats-btn"
+                                @onclick="ToggleSubcatsDropdown"
+                                disabled="@string.IsNullOrWhiteSpace(edit.CategoriaId)">
+                            @SelectedSubcategoriasLabel
+                        </button>
+
+                        @if (_showSubcatsDropdown)
+                        {
+                            <div class="subcats-panel">
+                                @if (string.IsNullOrWhiteSpace(edit.CategoriaId))
+                                {
+                                    <div class="text-xs muted">Selecciona una categoría primero.</div>
+                                }
+                                else if (SubcategoriasFiltradas.Count == 0)
+                                {
+                                    <div class="text-xs warn">No hay subcategorías para esta categoría.</div>
+                                }
+                                else
+                                {
+                                    <div class="text-xs muted" style="margin-bottom:.35rem;">
+                                        Puedes elegir varias (solo de la categoría seleccionada).
+                                    </div>
+
+                                    @foreach (var s in SubcategoriasFiltradas.OrderBy(x => x.Label))
+                                    {
+                                        <label class="subcats-item">
+                                            <input type="checkbox"
+                                                   checked="@edit.SubcategoriaIds.Contains(s.Id)"
+                                                   @onchange="(e) => OnSubcategoriaToggle(s.Id, e)" />
+                                            <span>@s.Label</span>
+                                        </label>
+                                    }
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(edit.CategoriaId) && edit.SubcategoriaIds.Count == 0)
+                    {
+                        <div class="text-xs warn" style="margin-top:.25rem;">Selecciona al menos una subcategoría.</div>
+                    }
+                </div>
+
+                @if (IsVidrioOrPlastico(edit.Tipo))
+                {
+                    <div class="field">
+                        <label>Capacidad (número)</label>
+                        <input class="border p-1" type="number" step="any" placeholder="Ej: 250" @bind="edit.CapacidadNum" />
+                        @if (string.Equals(edit.Tipo, "VIDRIO", StringComparison.OrdinalIgnoreCase))
+                        {
+                            <div class="text-xs muted" style="margin-top:.25rem;">Vidrio: capacidad obligatoria.</div>
+                        }
+                    </div>
+
+                    <div class="field">
+                        <label>Unidad</label>
+                        <select class="border p-1" @bind="edit.UnidadId">
+                            <option value="">(sin unidad)</option>
+                            @foreach (var u in _unidadOptions.OrderBy(x => x.Label))
+                            {
+                                <option value="@u.Id">@u.Label</option>
+                            }
+                        </select>
+                    </div>
+                }
+
+                <div class="field">
+                    <label>Cantidad</label>
+                    <input class="border p-1"
+                           type="number"
+                           step="@(string.Equals(edit.Tipo,"CONSUMIBLE",StringComparison.OrdinalIgnoreCase) ? "1" : "any")"
+                           placeholder="Cantidad"
+                           @bind="edit.Cantidad" />
+                    @if (string.Equals(edit.Tipo, "CONSUMIBLE", StringComparison.OrdinalIgnoreCase))
+                    {
+                        <div class="text-xs muted">Consumible: cantidad obligatoria (ideal entero).</div>
+                    }
+                </div>
+
+                <div class="field">
+                    <label>Altura (cm)</label>
+                    <input class="border p-1"
+                           type="number"
+                           step="any"
+                           placeholder="Altura (cm)"
+                           @bind="edit.AlturaCm" />
+                </div>
+
+                <div class="field">
+                    <label>Estado</label>
+                    <select class="border p-1" @bind="edit.EstadoId">
+                        <option value="">(sin estado)</option>
+                        @foreach (var e in _estadoOptions.OrderBy(x => x.Label))
+                        {
+                            <option value="@e.Id">@e.Label</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="field">
+                    <label>Marca</label>
+                    <select class="border p-1" @bind="edit.MarcaId">
+                        <option value="">(sin marca)</option>
+                        @foreach (var m in _marcaOptions.OrderBy(x => x.Label))
+                        {
+                            <option value="@m.Id">@m.Label</option>
+                        }
+                    </select>
+                    @if (!string.IsNullOrWhiteSpace(MarcaImagenUrl))
+                    {
+                        <div class="text-xs muted" style="margin-top:.25rem;">
+                            <img class="thumb thumb-logo" src="@ResolveUrl(MarcaImagenUrl)" alt="Logo marca" />
+                        </div>
+                    }
+                </div>
+
+                <div class="field">
+                    <label>Área</label>
+                    <select class="border p-1" value="@edit.AreaId" @onchange="OnAreaChanged">
+                        <option value="">(selecciona)</option>
+                        @foreach (var a in _areaOptions.OrderBy(x => x.Label))
+                        {
+                            <option value="@a.Id">@a.Label</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="field">
+                    <label>Mesón</label>
+                    <select class="border p-1"
+                            value="@edit.MesonId"
+                            @onchange="OnMesonChanged"
+                            disabled="@string.IsNullOrWhiteSpace(edit.AreaId)">
+                        <option value="">(selecciona)</option>
+                        @foreach (var m in _mesonOptions.OrderBy(x => x.Label))
+                        {
+                            <option value="@m.Id">@m.Label</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="field">
+                    <label>Nivel</label>
+                    <input class="border p-1" type="number" step="1" placeholder="Nivel" @bind="edit.Nivel" />
+                </div>
+
+                <div class="field">
+                    <label>Posición</label>
+                    <input class="border p-1" placeholder="Ej: al fondo, en el medio" @bind="edit.Posicion" />
+                </div>
+
+                <div class="field full-span">
+                    <label>Descripción</label>
+                    <textarea class="border p-1" rows="3" placeholder="Descripción" @bind="edit.Descripcion"></textarea>
+                </div>
+
+                <div class="upload-card full-span">
+                    <div class="upload-options">
+                        <label class="text-sm">
+                            <input type="radio" name="imagenModo"
+                                   value="url"
+                                   checked="@(_imagenModo == "url")"
+                                   @onchange="OnImagenModoChanged" />
+                            URL
+                        </label>
+                        <label class="text-sm">
+                            <input type="radio" name="imagenModo"
+                                   value="archivo"
+                                   checked="@(_imagenModo == "archivo")"
+                                   @onchange="OnImagenModoChanged" />
+                            Archivo
+                        </label>
+                    </div>
+
+                    @if (_imagenModo == "url")
+                    {
+                        <input class="border p-1" placeholder="Imagen URL (o ruta relativa)" @bind="edit.ImagenUrl" />
+                    }
+                    else
+                    {
+                        <label class="upload-drop">
+                            <InputFile OnChange="OnImagenArchivoSeleccionado" accept="image/png,image/jpeg,image/jpg,image/webp" />
+                            <span>Arrastra una imagen o haz clic para buscar</span>
+                        </label>
+
+                        @if (!string.IsNullOrWhiteSpace(_imagenArchivoNombre))
+                        {
+                            <div class="text-xs muted">Archivo: @_imagenArchivoNombre</div>
+                        }
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(edit.ImagenUrl))
+                    {
+                        <div class="preview-row">
+                            <div class="text-xs muted">Preview:</div>
+                            <img class="material-img-sm"
+                                 src="@ResolveUrl(edit.ImagenUrl)"
+                                 alt="Preview"
+                                 onerror="this.style.display='none';" />
+                            <div class="text-xs muted">Guardará: <code>@edit.ImagenUrl</code></div>
+                        </div>
+                    }
+                </div>
+
+                <div class="field full-span">
+                    <label>Observaciones</label>
+                    <textarea class="border p-1" rows="3" placeholder="Observaciones" @bind="edit.Observaciones"></textarea>
+                </div>
+
+                <div class="field full-span">
+                    <label>Experiencias asociadas (tabla intermedia)</label>
+
+                    <div class="rel-box">
+                        <div class="rel-add">
+                            <select class="border p-1" @bind="_experienciaToAddId">
+                                <option value="">(agregar experiencia…)</option>
+                                @foreach (var opt in _experienciaOptions.Where(o => !edit.ExperienciaIds.Contains(o.Id)).OrderBy(o => o.Label))
+                                {
+                                    <option value="@opt.Id">@opt.Label</option>
+                                }
+                            </select>
+                            <button type="button" class="btn" @onclick="AddExperienciaLink" disabled="@string.IsNullOrWhiteSpace(_experienciaToAddId)">
+                                Agregar
+                            </button>
+                        </div>
+
+                        @if (edit.ExperienciaIds.Count == 0)
+                        {
+                            <div class="text-sm muted">— Sin experiencias asociadas</div>
+                        }
+                        else
+                        {
+                            <ul class="link-list">
+                                @foreach (var exId in edit.ExperienciaIds.OrderBy(x => GetExperienciaLabel(x)))
+                                {
+                                    <li class="rel-item">
+                                        <span class="pill">@GetExperienciaLabel(exId)</span>
+                                        <span class="text-xs muted">(@exId)</span>
+                                        <button type="button" class="btn mini danger" @onclick="@(() => RemoveExperienciaLink(exId))">
+                                            Quitar
+                                        </button>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    </div>
+
+                    <div class="text-xs muted" style="margin-top:.25rem;">
+                        Esto actualiza <code>experiencia_materiales</code> al guardar.
+                    </div>
+                </div>
+
+                <div class="form-actions full-span">
+                    <button class="btn primary" type="button" @onclick="SaveAsync" disabled="@isSaving">Guardar cambios</button>
+                    <button class="btn" type="button" @onclick="CancelEdit" disabled="@isSaving">Cancelar</button>
+
+                    @if (!confirmDelete)
+                    {
+                        <button class="btn danger" type="button" @onclick="AskDelete" disabled="@isSaving">Eliminar</button>
+                    }
+                    else
+                    {
+                        <button class="btn danger" type="button" @onclick="DeleteAsync" disabled="@isSaving">Confirmar eliminar</button>
+                        <button class="btn" type="button" @onclick="CancelDelete" disabled="@isSaving">Cancelar eliminar</button>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(msg))
+                    {
+                        <span class="text-sm muted">@msg</span>
+                    }
+                </div>
+            </div>
+        }
+    }
+</section>
+
+@code {
+    [Parameter] public string MaterialId { get; set; } = "";
+
+    private bool isLoading = true;
+    private bool isSaving = false;
+    private bool found = false;
+
+    private bool isEditing = false;
+    private bool confirmDelete = false;
+
+    private string? loadError;
+    private string? msg;
+
+    private string? tipoOriginal;
+
+    private MaterialEdit edit = new();
+
+    // Imagen
+    private string _imagenModo = "url";
+    private string? _imagenArchivoNombre;
+
+    // UI subcategorías dropdown
+    private bool _showSubcatsDropdown;
+
+    // Lookups
+    private readonly List<SelectOption> _estadoOptions = new();
+    private readonly List<SelectOption> _unidadOptions = new();
+    private readonly List<SelectOption> _marcaOptions = new();
+    private readonly Dictionary<string, string?> _marcaImagenById = new(StringComparer.OrdinalIgnoreCase);
+
+    private readonly List<SelectOption> _areaOptions = new();
+    private readonly List<SelectOption> _mesonOptions = new();
+
+    // Categorías materiales + subcategorías filtradas por categoría
+    private readonly List<SelectOption> _categoriaOptions = new();
+    private readonly List<SelectOption> _subcategoriaAllOptions = new(); // labels "Categoria · Subcategoria"
+    private readonly Dictionary<string, List<SelectOption>> _subcategoriasByCategoria = new(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly string[] CategoriaMaterialIds = new[]
+    {
+        "material-vidrio",
+        "material-plastico",
+        "material-consumible",
+        "material-montaje"
+    };
+
+    // Experiencias (M:N)
+    private readonly List<SelectOption> _experienciaOptions = new();
+    private readonly List<ExperienciaLink> _experienciasLigadas = new();
+    private string? _experienciaToAddId;
+
+    private List<SelectOption> SubcategoriasFiltradas
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(edit.CategoriaId)) return new List<SelectOption>();
+            if (_subcategoriasByCategoria.TryGetValue(edit.CategoriaId, out var list)) return list;
+            return new List<SelectOption>();
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await ReloadAllAsync();
+    }
+
+    private void HandleLaboratorioChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await ReloadAllAsync();
+            StateHasChanged();
+        });
+    }
+
+    private async Task ReloadAllAsync()
+    {
+        loadError = null;
+        msg = null;
+        confirmDelete = false;
+        _experienciaToAddId = null;
+
+        isLoading = true;
+        found = false;
+        isEditing = false;
+
+        _estadoOptions.Clear();
+        _unidadOptions.Clear();
+        _marcaOptions.Clear();
+        _marcaImagenById.Clear();
+
+        _areaOptions.Clear();
+        _mesonOptions.Clear();
+
+        _categoriaOptions.Clear();
+        _subcategoriaAllOptions.Clear();
+        _subcategoriasByCategoria.Clear();
+
+        _experienciaOptions.Clear();
+        _experienciasLigadas.Clear();
+
+        _showSubcatsDropdown = false;
+
+        edit = new MaterialEdit();
+
+        try
+        {
+            await LoadLookupsAsync();
+            await LoadMaterialAsync();
+
+            if (found)
+            {
+                if (!string.IsNullOrWhiteSpace(edit.AreaId))
+                    await LoadMesonesAsync(edit.AreaId);
+
+                await LoadExperienciasLigadasAsync(edit.MaterialId);
+                await LoadExperienciasOptionsAsync();
+            }
+
+            _imagenModo = "url";
+            _imagenArchivoNombre = null;
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void StartEdit()
+    {
+        msg = null;
+        confirmDelete = false;
+        _showSubcatsDropdown = false;
+        isEditing = true;
+    }
+
+    private async Task CancelEdit()
+    {
+        msg = null;
+        confirmDelete = false;
+        isEditing = false;
+        await ReloadAllAsync();
+    }
+
+    private void AskDelete()
+    {
+        confirmDelete = true;
+        msg = "Esto eliminará el material y sus relaciones. Presiona Confirmar eliminar para continuar.";
+    }
+
+    private void CancelDelete()
+    {
+        confirmDelete = false;
+        msg = null;
+    }
+
+    private void GoBack()
+    {
+        Nav.NavigateTo("/inventario-materiales");
+    }
+
+    // ========= Labels (vista) =========
+    private string EstadoLabel => FindLabel(_estadoOptions, edit.EstadoId);
+    private string MarcaLabel => FindLabel(_marcaOptions, edit.MarcaId);
+    private string UnidadLabel => FindLabel(_unidadOptions, edit.UnidadId);
+    private string CategoriaLabel => FindLabel(_categoriaOptions, edit.CategoriaId);
+
+    private string? MarcaImagenUrl =>
+        !string.IsNullOrWhiteSpace(edit.MarcaId) && _marcaImagenById.TryGetValue(edit.MarcaId, out var url) ? url : null;
+
+    private string SubcategoriasLabel =>
+        edit.SubcategoriaIds.Count == 0
+            ? ""
+            : string.Join(", ",
+                edit.SubcategoriaIds
+                    .Select(id => FindLabel(_subcategoriaAllOptions, id))
+                    .Where(x => !string.IsNullOrWhiteSpace(x)));
+
+    private string SelectedSubcategoriasLabel
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(edit.CategoriaId))
+                return "Subcategorías (selecciona categoría)";
+
+            if (edit.SubcategoriaIds.Count == 0)
+                return "Subcategorías (obligatorio)";
+
+            var labels = edit.SubcategoriaIds
+                .Select(id => FindLabel(_subcategoriaAllOptions, id))
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToList();
+
+            return labels.Count == 0 ? "Subcategorías (obligatorio)" : string.Join(", ", labels);
+        }
+    }
+
+    private string SelectedAreaLabel =>
+        _areaOptions.FirstOrDefault(a => string.Equals(a.Id, edit.AreaId, StringComparison.OrdinalIgnoreCase))?.Label
+        ?? edit.AreaId
+        ?? "";
+
+    private string SelectedMesonLabel =>
+        _mesonOptions.FirstOrDefault(m => string.Equals(m.Id, edit.MesonId, StringComparison.OrdinalIgnoreCase))?.Label
+        ?? edit.MesonId
+        ?? "";
+
+    private static string FindLabel(List<SelectOption> list, string? id)
+        => string.IsNullOrWhiteSpace(id) ? "" : (list.FirstOrDefault(x => string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase))?.Label ?? id);
+
+    private static string NullDash(string? s) => string.IsNullOrWhiteSpace(s) ? "—" : s;
+
+    private static bool IsVidrioOrPlastico(string? tipo)
+    {
+        var t = (tipo ?? "").Trim().ToUpperInvariant();
+        return t is "VIDRIO" or "PLASTICO";
+    }
+
+    private static string TipoLabel(string? t)
+    {
+        var x = (t ?? "").Trim().ToUpperInvariant();
+        return x switch
+        {
+            "VIDRIO" => "Vidrio",
+            "PLASTICO" => "Plástico",
+            "MONTAJE" => "Montaje",
+            "CONSUMIBLE" => "Consumible",
+            _ => string.IsNullOrWhiteSpace(t) ? "—" : t!
+        };
+    }
+
+    private static string BuildUbicacion(string area, string meson, string? nivel, string? posicion)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(area)) parts.Add(area);
+        if (!string.IsNullOrWhiteSpace(meson)) parts.Add(meson);
+        if (!string.IsNullOrWhiteSpace(nivel)) parts.Add($"Nivel {nivel}");
+        if (!string.IsNullOrWhiteSpace(posicion)) parts.Add(posicion);
+        return parts.Count == 0 ? "Sin ubicación" : string.Join(" · ", parts);
+    }
+
+    private static string ResolveUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return "";
+        if (url.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return url;
+        return url.StartsWith("/", StringComparison.OrdinalIgnoreCase) ? url : $"/{url}";
+    }
+
+    // ========= Mapping =========
+    private static string? MapCategoriaToTipo(string? categoriaId) => (categoriaId ?? "").Trim() switch
+    {
+        "material-vidrio" => "VIDRIO",
+        "material-plastico" => "PLASTICO",
+        "material-consumible" => "CONSUMIBLE",
+        "material-montaje" => "MONTAJE",
+        _ => null
+    };
+
+    private static string? MapTipoToCategoria(string? tipo) => (tipo ?? "").Trim().ToUpperInvariant() switch
+    {
+        "VIDRIO" => "material-vidrio",
+        "PLASTICO" => "material-plastico",
+        "CONSUMIBLE" => "material-consumible",
+        "MONTAJE" => "material-montaje",
+        _ => null
+    };
+
+    // ========= UI handlers =========
+    private void ToggleSubcatsDropdown()
+    {
+        if (string.IsNullOrWhiteSpace(edit.CategoriaId))
+            return;
+
+        _showSubcatsDropdown = !_showSubcatsDropdown;
+    }
+
+    private void OnSubcategoriaToggle(string subcatId, ChangeEventArgs args)
+    {
+        var isChecked = args.Value switch
+        {
+            bool b => b,
+            string s => s.Equals("true", StringComparison.OrdinalIgnoreCase) || s.Equals("on", StringComparison.OrdinalIgnoreCase),
+            _ => false
+        };
+
+        if (isChecked) edit.SubcategoriaIds.Add(subcatId);
+        else edit.SubcategoriaIds.Remove(subcatId);
+    }
+
+    // ========= Lookups =========
+    private async Task LoadLookupsAsync()
+    {
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        await using (var cmd = new NpgsqlCommand("SELECT estado_id, nombre FROM estados_activo ORDER BY nombre", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+            while (await reader.ReadAsync())
+                _estadoOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+
+        await using (var cmd = new NpgsqlCommand("SELECT unidad_id, nombre, simbolo FROM unidades ORDER BY nombre", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+            while (await reader.ReadAsync())
+                _unidadOptions.Add(new SelectOption(reader.GetString(0), $"{reader.GetString(1)} ({reader.GetString(2)})"));
+
+        // Marcas con imagen
+        await using (var cmd = new NpgsqlCommand("SELECT marca_id, nombre, imagen_url FROM marcas ORDER BY nombre", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+            while (await reader.ReadAsync())
+            {
+                var id = reader.GetString(0);
+                _marcaOptions.Add(new SelectOption(id, reader.GetString(1)));
+                _marcaImagenById[id] = reader.IsDBNull(2) ? null : reader.GetString(2);
+            }
+
+        // Categorías materiales
+        const string catSql = @"
+            SELECT categoria_id, nombre
+            FROM categorias
+            WHERE categoria_id = ANY(@categorias)
+            ORDER BY nombre";
+        await using (var cmd = new NpgsqlCommand(catSql, conn))
+        {
+            cmd.Parameters.AddWithValue("categorias", CategoriaMaterialIds);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+                _categoriaOptions.Add(new SelectOption(r.GetString(0), r.GetString(1)));
+        }
+
+        // Subcategorías (2 vistas)
+        const string subSql = @"
+            SELECT s.categoria_id, c.nombre AS categoria_nombre,
+                   s.subcategoria_id, s.nombre AS sub_nombre
+            FROM subcategorias s
+            INNER JOIN categorias c ON c.categoria_id = s.categoria_id
+            WHERE s.categoria_id = ANY(@categorias)
+            ORDER BY c.nombre, s.nombre";
+        await using (var cmd = new NpgsqlCommand(subSql, conn))
+        {
+            cmd.Parameters.AddWithValue("categorias", CategoriaMaterialIds);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                var catId = r.GetString(0);
+                var catName = r.GetString(1);
+                var subId = r.GetString(2);
+                var subName = r.GetString(3);
+
+                _subcategoriaAllOptions.Add(new SelectOption(subId, $"{catName} · {subName}"));
+
+                if (!_subcategoriasByCategoria.TryGetValue(catId, out var list))
+                {
+                    list = new List<SelectOption>();
+                    _subcategoriasByCategoria[catId] = list;
+                }
+                list.Add(new SelectOption(subId, subName));
+            }
+        }
+
+        // Áreas del laboratorio
+        const string areaSql = @"
+            SELECT area_id, nombre_areas
+            FROM areas
+            WHERE laboratorio_id = @lab
+            ORDER BY nombre_areas";
+        await using (var cmd = new NpgsqlCommand(areaSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                _areaOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+        }
+    }
+
+    private async Task LoadMesonesAsync(string areaId)
+    {
+        _mesonOptions.Clear();
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        const string mesonSql = @"
+            SELECT m.meson_id,
+                   COALESCE(NULLIF(m.nombre_meson, ''), m.meson_id) AS nombre_meson
+            FROM mesones m
+            INNER JOIN areas a ON a.area_id = m.area_id AND a.laboratorio_id = @lab
+            WHERE m.area_id = @area
+            ORDER BY nombre_meson";
+
+        await using var cmd = new NpgsqlCommand(mesonSql, conn);
+        cmd.Parameters.AddWithValue("area", areaId);
+        cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            _mesonOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+    }
+
+    // ========= Carga material =========
+    private async Task LoadMaterialAsync()
+    {
+        var id = (MaterialId ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(id)) { found = false; return; }
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        // ✅ Subcats filtradas por la MISMA categoria del material (anti-mezcla)
+        const string sql = @"
+            SELECT m.material_id,
+                   m.categoria_id,
+                   m.tipo,
+                   m.nombre,
+                   m.capacidad_num,
+                   m.unidad_id,
+                   m.marca_id,
+                   m.estado_id,
+                   m.cantidad,
+                   m.altura_cm,
+                   m.area_id,
+                   m.meson_id,
+                   m.nivel,
+                   m.posicion,
+                   m.descripcion,
+                   m.imagen_url,
+                   m.observaciones,
+                   COALESCE(array_agg(DISTINCT sc.subcategoria_id)
+                            FILTER (WHERE sc.subcategoria_id IS NOT NULL), '{}'::varchar[]) AS subcats
+            FROM materiales m
+            LEFT JOIN material_subcategorias msc ON msc.material_id = m.material_id
+            LEFT JOIN subcategorias sc ON sc.subcategoria_id = msc.subcategoria_id
+                                     AND sc.categoria_id = m.categoria_id
+            WHERE m.material_id = @id
+              AND m.laboratorio_id = @lab
+            GROUP BY m.material_id, m.categoria_id, m.tipo, m.nombre,
+                     m.capacidad_num, m.unidad_id, m.marca_id, m.estado_id,
+                     m.cantidad, m.altura_cm, m.area_id, m.meson_id, m.nivel, m.posicion,
+                     m.descripcion, m.imagen_url, m.observaciones
+            LIMIT 1;
+        ";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("id", id);
+        cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            found = false;
+            return;
+        }
+
+        found = true;
+
+        var categoriaIdDb = reader.IsDBNull(1) ? null : reader.GetString(1);
+        var tipoDb = reader.IsDBNull(2) ? null : reader.GetString(2);
+        var subcats = reader.IsDBNull(17) ? Array.Empty<string>() : (string[])reader.GetValue(17);
+
+        edit = new MaterialEdit
+            {
+                MaterialId = reader.GetString(0),
+                CategoriaId = string.IsNullOrWhiteSpace(categoriaIdDb) ? null : categoriaIdDb,
+                Tipo = string.IsNullOrWhiteSpace(tipoDb) ? "" : tipoDb,
+                Nombre = reader.IsDBNull(3) ? "" : reader.GetString(3),
+
+                CapacidadNum = reader.IsDBNull(4) ? null : reader.GetDecimal(4).ToString(CultureInfo.InvariantCulture),
+                UnidadId = reader.IsDBNull(5) ? null : reader.GetString(5),
+
+                MarcaId = reader.IsDBNull(6) ? null : reader.GetString(6),
+                EstadoId = reader.IsDBNull(7) ? null : reader.GetString(7),
+
+                Cantidad = reader.IsDBNull(8) ? null : reader.GetDecimal(8).ToString(CultureInfo.InvariantCulture),
+                AlturaCm = reader.IsDBNull(9) ? null : reader.GetDecimal(9).ToString(CultureInfo.InvariantCulture),
+
+                AreaId = reader.IsDBNull(10) ? null : reader.GetString(10),
+                MesonId = reader.IsDBNull(11) ? null : reader.GetString(11),
+
+                Nivel = reader.IsDBNull(12) ? null : reader.GetInt32(12).ToString(CultureInfo.InvariantCulture),
+                Posicion = reader.IsDBNull(13) ? null : reader.GetString(13),
+
+                Descripcion = reader.IsDBNull(14) ? null : reader.GetString(14),
+                ImagenUrl = reader.IsDBNull(15) ? null : reader.GetString(15),
+                Observaciones = reader.IsDBNull(16) ? null : reader.GetString(16),
+            };
+
+        edit.Tipo = (edit.Tipo ?? "").Trim().ToUpperInvariant();
+
+        edit.SubcategoriaIds.Clear();
+        foreach (var sc in subcats.Where(x => !string.IsNullOrWhiteSpace(x)))
+            edit.SubcategoriaIds.Add(sc);
+
+        edit.CategoriaId ??= MapTipoToCategoria(edit.Tipo);
+
+        var derivedTipo = MapCategoriaToTipo(edit.CategoriaId) ?? edit.Tipo;
+        if (!string.IsNullOrWhiteSpace(derivedTipo))
+            edit.Tipo = derivedTipo;
+
+        tipoOriginal = edit.Tipo;
+    }
+
+    // ========= Experiencias (material) =========
+    private async Task LoadExperienciasLigadasAsync(string materialId)
+    {
+        _experienciasLigadas.Clear();
+        edit.ExperienciaIds.Clear();
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+        const string sql = @"
+            SELECT e.experiencia_id, e.nombre
+            FROM experiencia_materiales em
+            INNER JOIN experiencias_clases e ON e.experiencia_id = em.experiencia_id
+            WHERE em.material_id = @mat
+              AND e.laboratorio_id = @lab
+            ORDER BY e.nombre;
+        ";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("mat", materialId);
+        cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+        {
+            var expId = r.GetString(0);
+            var nombre = r.GetString(1);
+            _experienciasLigadas.Add(new ExperienciaLink(expId, nombre));
+            edit.ExperienciaIds.Add(expId);
+        }
+    }
+
+    private async Task LoadExperienciasOptionsAsync()
+    {
+        _experienciaOptions.Clear();
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+        const string sql = @"
+            SELECT experiencia_id, nombre
+            FROM experiencias_clases
+            WHERE laboratorio_id = @lab
+            ORDER BY nombre;
+        ";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+            _experienciaOptions.Add(new SelectOption(r.GetString(0), r.GetString(1)));
+    }
+
+    private string GetExperienciaLabel(string experienciaId)
+        => _experienciaOptions.FirstOrDefault(x => string.Equals(x.Id, experienciaId, StringComparison.OrdinalIgnoreCase))?.Label
+           ?? _experienciasLigadas.FirstOrDefault(x => string.Equals(x.ExperienciaId, experienciaId, StringComparison.OrdinalIgnoreCase))?.Nombre
+           ?? experienciaId;
+
+    private void AddExperienciaLink()
+    {
+        var id = _experienciaToAddId?.Trim();
+        if (string.IsNullOrWhiteSpace(id)) return;
+
+        edit.ExperienciaIds.Add(id);
+        _experienciaToAddId = null;
+        msg = null;
+    }
+
+    private void RemoveExperienciaLink(string experienciaId)
+    {
+        edit.ExperienciaIds.Remove(experienciaId);
+        msg = null;
+    }
+
+    // ========= Handlers =========
+    private async Task OnAreaChanged(ChangeEventArgs args)
+    {
+        var newArea = args.Value?.ToString();
+        edit.AreaId = string.IsNullOrWhiteSpace(newArea) ? null : newArea;
+        edit.MesonId = null;
+
+        _mesonOptions.Clear();
+        if (!string.IsNullOrWhiteSpace(edit.AreaId))
+            await LoadMesonesAsync(edit.AreaId);
+
+        msg = null;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OnMesonChanged(ChangeEventArgs args)
+    {
+        var v = args.Value?.ToString();
+        edit.MesonId = string.IsNullOrWhiteSpace(v) ? null : v;
+    }
+
+    private void OnCategoriaChanged(ChangeEventArgs args)
+    {
+        var cat = args.Value?.ToString();
+        edit.CategoriaId = string.IsNullOrWhiteSpace(cat) ? null : cat;
+
+        var tipo = MapCategoriaToTipo(edit.CategoriaId);
+        edit.Tipo = tipo ?? "";
+
+        // reset subcats
+        edit.SubcategoriaIds.Clear();
+        _showSubcatsDropdown = false;
+
+        if (!IsVidrioOrPlastico(edit.Tipo))
+        {
+            edit.CapacidadNum = null;
+            edit.UnidadId = null;
+        }
+
+        msg = null;
+        StateHasChanged();
+    }
+
+    // ========= Imagen =========
+    private void OnImagenModoChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(value))
+            _imagenModo = value;
+    }
+
+    private async Task OnImagenArchivoSeleccionado(InputFileChangeEventArgs args)
+    {
+        if (args.FileCount == 0) return;
+
+        var file = args.File;
+        var extension = Path.GetExtension(file.Name);
+        var fileName = $"material_{Guid.NewGuid():N}{extension}";
+        var relativePath = Path.Combine("uploads", "materiales", fileName).Replace("\\", "/");
+        var absolutePath = Path.Combine(HostEnvironment.WebRootPath, relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(absolutePath)!);
+
+        await using var stream = file.OpenReadStream(5 * 1024 * 1024);
+        await using var fileStream = File.Create(absolutePath);
+        await stream.CopyToAsync(fileStream);
+
+        edit.ImagenUrl = $"/{relativePath}";
+        _imagenArchivoNombre = file.Name;
+        msg = $"Imagen cargada: {file.Name}";
+    }
+
+    // ========= Guardar / Borrar =========
+    private async Task SaveAsync()
+    {
+        msg = null;
+        confirmDelete = false;
+
+        if (!found)
+        {
+            msg = "No hay material cargado.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(edit.Nombre))
+        {
+            msg = "Ingresa el nombre.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(edit.AreaId))
+        {
+            msg = "Selecciona un área.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(edit.MesonId))
+        {
+            msg = "Selecciona un mesón.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(edit.CategoriaId))
+        {
+            msg = "Selecciona la categoría del material.";
+            return;
+        }
+
+        var tipo = MapCategoriaToTipo(edit.CategoriaId);
+        if (string.IsNullOrWhiteSpace(tipo) || tipo is not ("VIDRIO" or "PLASTICO" or "MONTAJE" or "CONSUMIBLE"))
+        {
+            msg = "Categoría inválida (no se pudo derivar el tipo).";
+            return;
+        }
+
+        if (edit.SubcategoriaIds.Count == 0)
+        {
+            msg = "Selecciona al menos una subcategoría.";
+            return;
+        }
+
+        if (!_subcategoriasByCategoria.TryGetValue(edit.CategoriaId!, out var subList))
+        {
+            msg = "No hay subcategorías para la categoría elegida.";
+            return;
+        }
+
+        var allowed = subList.Select(s => s.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (edit.SubcategoriaIds.Any(x => !allowed.Contains(x)))
+        {
+            msg = "Hay subcategorías seleccionadas que no pertenecen a la categoría elegida.";
+            return;
+        }
+
+        // Validar experiencias en laboratorio actual
+        var experienciaIds = edit.ExperienciaIds.ToList();
+        if (experienciaIds.Count > 0)
+        {
+            var setOpt = new HashSet<string>(_experienciaOptions.Select(x => x.Id), StringComparer.OrdinalIgnoreCase);
+            if (experienciaIds.Any(id => !setOpt.Contains(id)))
+            {
+                msg = "Hay experiencias seleccionadas que no existen en el laboratorio actual.";
+                return;
+            }
+        }
+
+        // Reglas por tipo
+        decimal? capacidad = null;
+        string? unidadId = null;
+
+        if (tipo == "VIDRIO")
+        {
+            if (!TryParseDecimal(edit.CapacidadNum, out var cap))
+            {
+                msg = "Vidrio: ingresa una capacidad válida.";
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(edit.UnidadId))
+            {
+                msg = "Vidrio: selecciona una unidad.";
+                return;
+            }
+            capacidad = cap;
+            unidadId = edit.UnidadId;
+        }
+        else if (tipo == "PLASTICO")
+        {
+            var hasCap = !string.IsNullOrWhiteSpace(edit.CapacidadNum);
+            var hasUni = !string.IsNullOrWhiteSpace(edit.UnidadId);
+
+            if (hasCap || hasUni)
+            {
+                if (!TryParseDecimal(edit.CapacidadNum, out var cap))
+                {
+                    msg = "Plástico: capacidad inválida.";
+                    return;
+                }
+                if (string.IsNullOrWhiteSpace(edit.UnidadId))
+                {
+                    msg = "Plástico: si hay capacidad, selecciona unidad.";
+                    return;
+                }
+                capacidad = cap;
+                unidadId = edit.UnidadId;
+            }
+        }
+        else
+        {
+            edit.CapacidadNum = null;
+            edit.UnidadId = null;
+        }
+
+        decimal? cantidad = null;
+        if (!string.IsNullOrWhiteSpace(edit.Cantidad))
+        {
+            if (!TryParseDecimal(edit.Cantidad, out var cant))
+            {
+                msg = "Cantidad inválida.";
+                return;
+            }
+            cantidad = cant;
+        }
+
+        if (tipo == "CONSUMIBLE" && cantidad is null)
+        {
+            msg = "Consumible: ingresa una cantidad.";
+            return;
+        }
+
+        decimal? alturaCm = null;
+        if (!string.IsNullOrWhiteSpace(edit.AlturaCm))
+        {
+            if (!TryParseDecimal(edit.AlturaCm, out var alt))
+            {
+                msg = "Altura (cm) inválida.";
+                return;
+            }
+            if (alt < 0)
+            {
+                msg = "Altura (cm) no puede ser negativa.";
+                return;
+            }
+            alturaCm = alt;
+        }
+
+        isSaving = true;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            const string sql = @"
+                UPDATE materiales
+                SET nombre=@nombre,
+                    tipo=@tipo,
+                    categoria_id=@categoria,
+                    marca_id=@marca,
+                    estado_id=@estado,
+                    area_id=@area,
+                    meson_id=@meson,
+                    nivel=@nivel,
+                    posicion=@posicion,
+                    descripcion=@descripcion,
+                    imagen_url=@imagen,
+                    observaciones=@obs,
+                    capacidad_num=@capacidad,
+                    unidad_id=@unidad,
+                    cantidad=@cantidad,
+                    altura_cm=@altura_cm
+                WHERE material_id=@id AND laboratorio_id=@lab;
+            ";
+
+            await ExecAsync(conn, tx, sql,
+                ("id", edit.MaterialId),
+                ("lab", LaboratorioState.LaboratorioId),
+
+                ("nombre", edit.Nombre ?? ""),
+                ("tipo", tipo),
+
+                ("categoria", edit.CategoriaId!),
+                ("marca", (object?)edit.MarcaId ?? DBNull.Value),
+                ("estado", (object?)edit.EstadoId ?? DBNull.Value),
+
+                ("area", (object?)edit.AreaId ?? DBNull.Value),
+                ("meson", (object?)edit.MesonId ?? DBNull.Value),
+                ("nivel", ParseIntOrNull(edit.Nivel)),
+                ("posicion", (object?)edit.Posicion ?? DBNull.Value),
+
+                ("descripcion", (object?)edit.Descripcion ?? DBNull.Value),
+                ("imagen", (object?)edit.ImagenUrl ?? DBNull.Value),
+                ("obs", (object?)edit.Observaciones ?? DBNull.Value),
+
+                ("capacidad", capacidad is null ? (object)DBNull.Value : capacidad.Value),
+                ("unidad", string.IsNullOrWhiteSpace(unidadId) ? (object)DBNull.Value : unidadId!),
+                ("cantidad", cantidad is null ? (object)DBNull.Value : cantidad.Value),
+                ("altura_cm", alturaCm is null ? (object)DBNull.Value : alturaCm.Value)
+            );
+
+            // material_subcategorias: reescritura completa
+            await ExecAsync(conn, tx, "DELETE FROM material_subcategorias WHERE material_id=@id", ("id", edit.MaterialId));
+
+            const string linkSql = @"
+                INSERT INTO material_subcategorias(material_id, subcategoria_id)
+                SELECT @id, x
+                FROM unnest(@subcats::varchar[]) AS x
+                ON CONFLICT DO NOTHING;
+            ";
+            await using (var cmdLink = new NpgsqlCommand(linkSql, conn, tx))
+            {
+                cmdLink.Parameters.AddWithValue("id", edit.MaterialId);
+                cmdLink.Parameters.AddWithValue("subcats", edit.SubcategoriaIds.ToArray());
+                await cmdLink.ExecuteNonQueryAsync();
+            }
+
+            // experiencia_materiales: reescritura completa
+            await ExecAsync(conn, tx, "DELETE FROM experiencia_materiales WHERE material_id = @id", ("id", edit.MaterialId));
+
+            const string insEM = @"
+                INSERT INTO experiencia_materiales (experiencia_id, material_id)
+                VALUES (@exp, @mat)
+                ON CONFLICT DO NOTHING;
+            ";
+            foreach (var expId in experienciaIds)
+            {
+                await ExecAsync(conn, tx, insEM, ("exp", expId), ("mat", edit.MaterialId));
+            }
+
+            await tx.CommitAsync();
+
+            tipoOriginal = tipo;
+            edit.Tipo = tipo;
+
+            msg = "Guardado correctamente.";
+            isEditing = false;
+
+            await ReloadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        msg = null;
+        if (!found) return;
+
+        isSaving = true;
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            await ExecAsync(conn, tx, "DELETE FROM experiencia_materiales WHERE material_id = @id", ("id", edit.MaterialId));
+            await ExecAsync(conn, tx, "DELETE FROM material_subcategorias WHERE material_id = @id", ("id", edit.MaterialId));
+
+            // documentos ligados al material (si aplica)
+            await ExecAsync(conn, tx, "DELETE FROM documentos WHERE material_id = @id AND laboratorio_id = @lab",
+                ("id", edit.MaterialId),
+                ("lab", LaboratorioState.LaboratorioId));
+
+            await ExecAsync(conn, tx, "DELETE FROM materiales WHERE material_id = @id AND laboratorio_id = @lab",
+                ("id", edit.MaterialId),
+                ("lab", LaboratorioState.LaboratorioId));
+
+            await tx.CommitAsync();
+
+            Nav.NavigateTo("/inventario-materiales");
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private static object ParseIntOrNull(string? value) =>
+        int.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var i) ? i : DBNull.Value;
+
+    private static bool TryParseDecimal(string? value, out decimal d)
+    {
+        d = 0m;
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        var s = value.Trim().Replace(",", ".");
+        return decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out d);
+    }
+
+    private static async Task<int> ExecAsync(NpgsqlConnection conn, NpgsqlTransaction tx, string sql, params (string name, object value)[] ps)
+    {
+        await using var cmd = new NpgsqlCommand(sql, conn, tx) { CommandTimeout = 60 };
+        foreach (var (name, value) in ps)
+            cmd.Parameters.AddWithValue(name, value ?? DBNull.Value);
+        return await cmd.ExecuteNonQueryAsync();
+    }
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
+
+    private sealed record SelectOption(string Id, string Label);
+    private sealed record ExperienciaLink(string ExperienciaId, string Nombre);
+
+    private sealed class MaterialEdit
+    {
+        public string MaterialId { get; set; } = "";
+
+        public string? CategoriaId { get; set; }
+        public string Tipo { get; set; } = "";
+
+        public string? Nombre { get; set; }
+
+        public HashSet<string> SubcategoriaIds { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        public string? CapacidadNum { get; set; }
+        public string? UnidadId { get; set; }
+
+        public string? MarcaId { get; set; }
+        public string? EstadoId { get; set; }
+
+        public string? Cantidad { get; set; }
+
+        // ✅ NUEVO (DB: materiales.altura_cm)
+        public string? AlturaCm { get; set; }
+
+        public string? AreaId { get; set; }
+        public string? MesonId { get; set; }
+
+        public string? Nivel { get; set; }
+        public string? Posicion { get; set; }
+
+        public string? Descripcion { get; set; }
+        public string? ImagenUrl { get; set; }
+        public string? Observaciones { get; set; }
+
+        // ✅ experiencias M:N
+        public HashSet<string> ExperienciaIds { get; } = new(StringComparer.OrdinalIgnoreCase);
+    }
+}
+
+<style>
+    .page-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+        padding: 1rem;
+        box-shadow: 0 6px 14px rgba(15, 23, 42, 0.04);
+    }
+
+    .header-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+    }
+
+    .header-actions {
+        display: flex;
+        gap: .5rem;
+        align-items: center;
+    }
+
+    .muted {
+        color: #64748b;
+    }
+
+    .text-xs {
+        font-size: .8rem;
+    }
+
+    .text-sm {
+        font-size: .9rem;
+    }
+
+    .error-note {
+        color: #b91c1c;
+    }
+
+    .empty {
+        padding: .85rem 1rem;
+        border-radius: 10px;
+        background: #fef9c3;
+        border: 1px solid #fde68a;
+        color: #854d0e;
+    }
+
+    .btn {
+        border: 1px solid #cbd5e1;
+        background: #fff;
+        color: #0f172a;
+        padding: .5rem .9rem;
+        border-radius: .55rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+        .btn.primary {
+            background: #2563eb;
+            color: #fff;
+            border: none;
+            box-shadow: 0 6px 12px rgba(37, 99, 235, 0.18);
+        }
+
+            .btn.primary:hover {
+                background: #1d4ed8;
+            }
+
+        .btn.danger {
+            background: #b91c1c;
+            color: #fff;
+            border: none;
+        }
+
+            .btn.danger:hover {
+                background: #991b1b;
+            }
+
+        .btn.mini {
+            padding: .25rem .55rem;
+            border-radius: .45rem;
+            font-size: .85rem;
+        }
+
+    .warn {
+        color: #b45309;
+    }
+
+    /* ===== Vista bonita ===== */
+    .detail-grid {
+        display: grid;
+        grid-template-columns: minmax(240px, 320px) 1fr;
+        gap: 1rem;
+        align-items: start;
+    }
+
+    @@media (max-width: 900px) {
+        .detail-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .detail-media {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: .75rem;
+        background: #fafafa;
+    }
+
+    .material-img {
+        width: 100%;
+        height: 280px;
+        object-fit: contain;
+        border-radius: 10px;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+    }
+
+    .img-placeholder {
+        width: 100%;
+        height: 280px;
+        border-radius: 10px;
+        background: #f1f5f9;
+        border: 1px dashed #cbd5e1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #64748b;
+        font-weight: 700;
+    }
+
+    .detail-info {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 1rem;
+        background: #fff;
+    }
+
+    .title-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: .75rem;
+    }
+
+    .badges {
+        display: flex;
+        gap: .4rem;
+        flex-wrap: wrap;
+    }
+
+    .badge {
+        background: #dbeafe;
+        color: #1d4ed8;
+        padding: .2rem .55rem;
+        border-radius: 999px;
+        font-size: .85rem;
+        font-weight: 700;
+    }
+
+        .badge.gray {
+            background: #e2e8f0;
+            color: #0f172a;
+        }
+
+    .dl {
+        display: grid;
+        gap: .6rem;
+    }
+
+    .dl-row {
+        display: grid;
+        grid-template-columns: 220px 1fr;
+        gap: .75rem;
+    }
+
+    @@media (max-width: 900px) {
+        .dl-row {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .dt {
+        color: #475569;
+        font-weight: 800;
+    }
+
+    .dd {
+        color: #0f172a;
+    }
+
+    .view-actions {
+        margin-top: 1rem;
+        display: flex;
+        gap: .75rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    /* ===== Form ===== */
+    .form-header {
+        margin-bottom: .75rem;
+    }
+
+        .form-header h4 {
+            margin: 0 0 .25rem 0;
+            font-weight: 800;
+            color: #0f172a;
+        }
+
+    .form-hint {
+        margin: 0;
+        color: #64748b;
+        font-size: .95rem;
+    }
+
+    .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: .75rem;
+        align-items: start;
+    }
+
+    .full-span {
+        grid-column: 1 / -1;
+    }
+
+    .field label {
+        display: block;
+        font-size: .85rem;
+        color: #475569;
+        margin-bottom: .25rem;
+        font-weight: 800;
+    }
+
+    .border {
+        border: 1px solid #e5e7eb;
+        border-radius: .5rem;
+    }
+
+    .p-1 {
+        padding: .45rem .6rem;
+    }
+
+    .form-actions {
+        display: flex;
+        gap: .75rem;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-top: .25rem;
+    }
+
+    /* Upload + preview */
+    .upload-card {
+        border: 1px dashed #d1d5db;
+        padding: .75rem;
+        border-radius: .75rem;
+        display: grid;
+        gap: .6rem;
+    }
+
+    .upload-options {
+        display: flex;
+        gap: .75rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .upload-drop {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        padding: .6rem;
+        border: 1px solid #e5e7eb;
+        border-radius: .5rem;
+        color: #6b7280;
+        cursor: pointer;
+    }
+
+        .upload-drop input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+    .preview-row {
+        display: flex;
+        gap: .5rem;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-top: .25rem;
+    }
+
+    .material-img-sm {
+        width: 180px;
+        height: 120px;
+        object-fit: contain;
+        border-radius: 10px;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+    }
+
+    /* Experiencias UI */
+    .rel-box {
+        border: 1px solid #e5e7eb;
+        border-radius: .75rem;
+        padding: .75rem;
+        background: #fafafa;
+        display: grid;
+        gap: .6rem;
+    }
+
+    .rel-add {
+        display: flex;
+        gap: .5rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .link-list {
+        list-style: none;
+        padding-left: 0;
+        margin: 0;
+        display: grid;
+        gap: .35rem;
+    }
+
+    .rel-item {
+        display: flex;
+        gap: .5rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .pill {
+        display: inline-flex;
+        padding: .2rem .55rem;
+        border-radius: 999px;
+        background: #eef2ff;
+        color: #3730a3;
+        font-weight: 700;
+        font-size: .88rem;
+    }
+
+    /* Marca mini */
+    .cell-media {
+        display: flex;
+        gap: .45rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .thumb {
+        width: 34px;
+        height: 34px;
+        object-fit: contain;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        background: #fff;
+    }
+
+    .thumb-logo {
+        width: 34px;
+        height: 34px;
+    }
+
+    /* ✅ dropdown multi-subcats */
+    .subcats-dropdown {
+        position: relative;
+        width: 100%;
+    }
+
+    .subcats-btn {
+        width: 100%;
+        text-align: left;
+        border-radius: 10px;
+        background: #fff;
+    }
+
+    .subcats-panel {
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        right: 0;
+        z-index: 30;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: .6rem;
+        max-height: 240px;
+        overflow: auto;
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+    }
+
+    .subcats-item {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        padding: .35rem .25rem;
+        border-radius: 8px;
+    }
+
+        .subcats-item:hover {
+            background: #f1f5f9;
+        }
+</style>

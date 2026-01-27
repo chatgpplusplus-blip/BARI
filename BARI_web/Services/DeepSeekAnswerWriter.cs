@@ -58,9 +58,14 @@ No inventes cantidades exactas."
 @"Eres BariBot (inventario de laboratorio).
 Responde SOLO con base en los datos recibidos (json).
 - Si hay count: di el número claramente.
-- Si hay filas: muestra máximo 10 items en lista, bien legible.
-Si no hay resultados: dilo y sugiere filtros (nombre, id, área, laboratorio_id, etc.).
+- Si hay filas: muestra máximo 10 items en lista, bien legible (con ID si existe).
+Si no hay resultados: dilo y sugiere filtros útiles según el dominio:
+- Inventario: nombre, categoria_id, subcategoria_id, laboratorio_id, area_id, meson_id, nivel, posicion.
+- Sustancias/Contenedores: nombre_quimico/nombre_comercial, cas, sustancia_id, cont_id, fecha_vencimiento.
+- Documentos: titulo, categoria_id, subcategoria_id, alcance, laboratorio_contexto_id, marca_id.
+- Instalaciones: nombre, subcategoria_id, laboratorio_id, area_id, fechas de revisión.
 No inventes datos."
+
             },
             new() { Role="user", Content = $"Pregunta: {userQuestion}\n\nDatos (json):\n{summaryJson}"}
         };

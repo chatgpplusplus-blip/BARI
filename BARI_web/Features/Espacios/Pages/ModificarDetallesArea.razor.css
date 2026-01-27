@@ -96,3 +96,11 @@ svg {
     pointer-events: none;
 }
 /* el texto no captura el puntero */
+.area-label {
+    pointer-events: none;
+}
+.area-label {
+    paint-order: stroke;
+    stroke: white;
+    stroke-width: 0.06px;
+}

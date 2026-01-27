@@ -3,7 +3,7 @@
 
 <div class="areas-wrap">
     <div class="toolbar">
-        <h2 class="text-2xl" style="margin:0">Editar materiales de montaje y mesones — @(_area?.Label ?? AreaSlug)</h2>
+        <h2 class="text-2xl" style="margin:0">Editar instalaciones y mesones — @(_area?.Label ?? AreaSlug)</h2>
 
         <button type="button" class="btn" @onclick="@(()=>Nav.NavigateTo($"/detalles/{AreaSlug}"))">
             Volver a detalles
@@ -68,7 +68,7 @@
                                     }
                                     else
                                     {
-                                        <rect x="@S(p.x_m)" y="@S(p.y_m)" width="@S(p.ancho_m)" height="@S(p.alto_m)" />
+                                        <rect x="@S(p.x_m)" y="@S(p.y_m)" width="@S(p.ancho_m)" height="@S(p.largo_m)" />
                                     }
                                 }
                             </clipPath>
@@ -87,52 +87,93 @@
                                   vector-effect="non-scaling-stroke" />
                         }
 
-                        <!-- ELEMENTOS INTERIORES (EDITABLES) -->
+                        <!-- ELEMENTOS INTERIORES (MESONES / INSTALACIONES) -->
                         @foreach (var it in _inners.OrderBy(i => i.z_order))
                         {
                             var isSel = _selIn == it.poly_in_id;
                             var stroke = isSel ? "#0a7" : "#777";
+
                             <g transform="translate(@S(it.abs_x),@S(it.abs_y))"
                                @onmouseover="() => _hoverIn = it.poly_in_id"
                                @onmouseout="() => _hoverIn = null">
-                                <rect x="0" y="0" width="@S(it.ancho_m)" height="@S(it.alto_m)"
+                                <rect x="0" y="0" width="@S(it.ancho_m)" height="@S(it.largo_m)"
                                       fill="@it.fill" opacity="@S(it.opacidad)"
                                       stroke="@stroke" stroke-width="@S(isSel?0.05m:0.03m)"
                                       style="cursor:@(isSel? "move" : "pointer")"
                                       @onpointerdown:preventDefault="true"
                                       @onpointerdown:stopPropagation="true"
                                       @onpointerdown="(e)=>OnPointerDownMoveInner(e, it.poly_in_id)" />
+
                                 @if (!string.IsNullOrWhiteSpace(it.label))
                                 {
                                     var targetW = Math.Max(0.15m, it.ancho_m - 0.25m);
-                                    <svg:text class="area-label"
-                                              x="@S(it.ancho_m/2m)" y="@S(it.alto_m/2m)"
-                                              text-anchor="middle" dominant-baseline="middle"
-                                              font-size="@S(FitInnerText(it))" fill="#111"
-                                              textLength="@S(targetW)" lengthAdjust="spacingAndGlyphs">
-                                        @it.label.ToUpperInvariant()
-                                    </svg:text>
+                                    @if (!string.IsNullOrWhiteSpace(it.label))
+{
+    var txt = LayoutLabel(it.label.ToUpperInvariant(), it.ancho_m, it.largo_m);
+
+    if (txt.Lines.Count > 0)
+    {
+        var cx = it.ancho_m / 2m;
+        var cy = it.largo_m / 2m;
+
+        var dy = txt.FontSize * txt.LineHeight;
+        var totalH = txt.Lines.Count * dy;
+
+        // Baseline “aprox” centrada verticalmente
+        var firstBaseline = cy - (totalH / 2m) + (txt.FontSize * 0.85m);
+
+        <svg:text class="area-label"
+              text-anchor="middle"
+              font-size="@S(txt.FontSize)" fill="#111">
+            <tspan x="@S(cx)" y="@S(firstBaseline)">@txt.Lines[0]</tspan>
+            @for (var i = 1; i < txt.Lines.Count; i++)
+            {
+                <tspan x="@S(cx)" dy="@S(dy)">@txt.Lines[i]</tspan>
+            }
+        </svg:text>
+    }
+}
+
                                 }
 
                                 @if (isSel)
                                 {
                                     @CornerHandle(it, 0m, 0m, Handle.NW)
                                     @CornerHandle(it, it.ancho_m, 0m, Handle.NE)
-                                    @CornerHandle(it, 0m, it.alto_m, Handle.SW)
-                                    @CornerHandle(it, it.ancho_m, it.alto_m, Handle.SE)
+                                    @CornerHandle(it, 0m, it.largo_m, Handle.SW)
+                                    @CornerHandle(it, it.ancho_m, it.largo_m, Handle.SE)
                                 }
                             </g>
                         }
 
-                        <!-- BLOQUES INTERNOS (materiales_montaje) -->
-                        @foreach (var b in _blocks.OrderBy(b => b.z_order))
+                        <!-- BLOQUES INTERNOS (ASOCIADOS A MESÓN O INSTALACIÓN EXISTENTE) -->
+                        @{
+                            // IDs válidos del área actual (evita dibujar bloques de “áreas vecinas”)
+                            var _mesonesAreaIds = MesonesDelAreaActual()
+                            .Select(m => m.meson_id)
+                            .ToHashSet(System.StringComparer.OrdinalIgnoreCase);
+
+                            // Asumo que _instalaciones contiene las instalaciones cargadas para el área actual
+                            // (si no fuera así, igual te protege al menos de IDs no presentes)
+                            var _instalacionesAreaIds = _instalaciones.Keys
+                            .ToHashSet(System.StringComparer.OrdinalIgnoreCase);
+                        }
+
+                        <!-- BLOQUES INTERNOS (SOLO SI EL OBJETO PERTENECE AL ÁREA ACTUAL) -->
+                        @foreach (var b in _blocks
+                       .Where(b =>
+                       (!string.IsNullOrWhiteSpace(b.meson_id) && _mesonesAreaIds.Contains(b.meson_id!)) ||
+                       (!string.IsNullOrWhiteSpace(b.instalacion_id) && _instalacionesAreaIds.Contains(b.instalacion_id!))
+                       )
+                       .OrderBy(b => b.z_order))
                         {
                             var isSelBlock = _selBlock == b.bloque_id;
                             var stroke = isSelBlock ? "#0a7" : "#1f2937";
+
                             <g @onmouseover="() => _hoverBlock = b.bloque_id"
                                @onmouseout="() => _hoverBlock = null">
                                 <rect x="@S(b.abs_x)" y="@S(b.abs_y)"
-                                      width="@S(b.ancho)" height="@S(b.alto)"
+                                      width="@S(b.ancho)" height="@S(b.largo)"
                                       fill="@(string.IsNullOrWhiteSpace(b.color_hex) ? "#2563eb" : b.color_hex)"
                                       opacity="@S(0.25m)"
                                       stroke="@stroke" stroke-width="@S(isSelBlock ? 0.05m : 0.03m)"
@@ -140,24 +181,49 @@
                                       @onpointerdown:preventDefault="true"
                                       @onpointerdown:stopPropagation="true"
                                       @onpointerdown="(e)=>OnPointerDownMoveBlock(e, b.bloque_id)" />
+
+
                                 @if (!string.IsNullOrWhiteSpace(b.etiqueta))
                                 {
-                                    <svg:text class="area-label"
-                                              x="@S(b.abs_x + b.ancho / 2m)" y="@S(b.abs_y + b.alto / 2m)"
-                                              text-anchor="middle" dominant-baseline="middle"
-                                              font-size="@S(0.28m)" fill="#111">
-                                        @b.etiqueta
-                                    </svg:text>
+                                    var txt = LayoutLabel(b.etiqueta, b.ancho, b.largo);
+
+
+                                    if (txt.Lines.Count > 0)
+                                    {
+                                        var cx = b.abs_x + (b.ancho / 2m);
+                                        var cy = b.abs_y + (b.largo / 2m);
+
+
+                                        var dy = txt.FontSize * txt.LineHeight;
+                                        var totalH = txt.Lines.Count * dy;
+
+
+                                        var firstBaseline = cy - (totalH / 2m) + (txt.FontSize * 0.85m);
+
+
+                                        <svg:text class="area-label"
+                                                  text-anchor="middle"
+                                                  font-size="@S(txt.FontSize)" fill="#111">
+                                            <tspan x="@S(cx)" y="@S(firstBaseline)">@txt.Lines[0]</tspan>
+                                            @for (var i = 1; i < txt.Lines.Count; i++)
+                                            {
+                                                <tspan x="@S(cx)" dy="@S(dy)">@txt.Lines[i]</tspan>
+                                            }
+                                        </svg:text>
+                                    }
                                 }
+
+
                                 @if (isSelBlock)
                                 {
                                     @BlockCornerHandle(b, b.abs_x, b.abs_y, Handle.NW)
                                     @BlockCornerHandle(b, b.abs_x + b.ancho, b.abs_y, Handle.NE)
-                                    @BlockCornerHandle(b, b.abs_x, b.abs_y + b.alto, Handle.SW)
-                                    @BlockCornerHandle(b, b.abs_x + b.ancho, b.abs_y + b.alto, Handle.SE)
+                                    @BlockCornerHandle(b, b.abs_x, b.abs_y + b.largo, Handle.SW)
+                                    @BlockCornerHandle(b, b.abs_x + b.ancho, b.abs_y + b.largo, Handle.SE)
                                 }
                             </g>
                         }
+
 
                         <!-- Puertas / Ventanas solo display -->
                         @foreach (var d in _doors)
@@ -176,7 +242,7 @@
                 <!-- ACCIONES DEBAJO DEL LIENZO -->
                 <div class="under-canvas-actions">
                     <div class="btn-row">
-                        <button class="px-3 py-2 border rounded" @onclick="MostrarNuevoBloque">+ Agregar bloque de montaje</button>
+                        <button class="px-3 py-2 border rounded" @onclick="MostrarNuevoBloque">+ Crear bloque (asociar)</button>
                         <button class="px-3 py-2 border rounded text-red-600 border-red-300" @onclick="EliminarInner" disabled="@(_selIn is null)">Eliminar seleccionado</button>
                         <button class="px-3 py-2 border rounded text-red-600 border-red-300" @onclick="EliminarBloqueSeleccionado" disabled="@(_selBlock is null)">Eliminar bloque</button>
                     </div>
@@ -188,6 +254,7 @@
                 @if (_selIn is not null && _mapIn.TryGetValue(_selIn, out var sel))
                 {
                     <h4 class="font-semibold mb-2">Elemento interior</h4>
+
                     <div class="grid grid-cols-2 gap-2 text-sm">
                         <div class="col-span-2">
                             <label class="block text-xs text-gray-600 mb-1">Etiqueta</label>
@@ -212,18 +279,20 @@
                                    @oninput="(e)=>{ sel.ancho_m = ParseFlexible(e.Value); NormalizeInner(sel); }" />
                         </div>
                         <div>
-                            <label class="block text-xs text-gray-600 mb-1">Alto (m)</label>
-                            <input class="border p-1 w-full" value="@S(sel.alto_m)"
-                                   @oninput="(e)=>{ sel.alto_m = ParseFlexible(e.Value); NormalizeInner(sel); }" />
+                            <label class="block text-xs text-gray-600 mb-1">largo (m)</label>
+                            <input class="border p-1 w-full" value="@S(sel.largo_m)"
+                                   @oninput="(e)=>{ sel.largo_m = ParseFlexible(e.Value); NormalizeInner(sel); }" />
                         </div>
 
                         <div>
                             <label class="block text-xs text-gray-600 mb-1">Opacidad (0–1)</label>
-                            <input class="border p-1 w-full" value="@S(sel.opacidad)" @oninput="(e)=>{ sel.opacidad = ParseFlexible(e.Value); StateHasChanged(); }" />
+                            <input class="border p-1 w-full" value="@S(sel.opacidad)"
+                                   @oninput="(e)=>{ sel.opacidad = ParseFlexible(e.Value); StateHasChanged(); }" />
                         </div>
                         <div>
                             <label class="block text-xs text-gray-600 mb-1">Z-order</label>
-                            <input class="border p-1 w-full" value="@sel.z_order" @oninput="(e)=>{ sel.z_order = int.TryParse(e.Value?.ToString(), out var n)? n : 0; StateHasChanged(); }" />
+                            <input class="border p-1 w-full" value="@sel.z_order"
+                                   @oninput="(e)=>{ sel.z_order = int.TryParse(e.Value?.ToString(), out var n)? n : 0; StateHasChanged(); }" />
                         </div>
 
                         <div class="col-span-2">
@@ -234,51 +303,205 @@
                         </div>
                     </div>
 
-                    <!-- MESÓN VINCULADO -->
-                    @if (!string.IsNullOrWhiteSpace(sel.meson_id) && _mesones.TryGetValue(sel.meson_id, out var m))
+                    <hr class="my-3" />
+
+                    <!-- VINCULACIÓN: MESÓN O INSTALACIÓN (solo asignar existente, no crear aquí) -->
+                    <h4 class="font-semibold mb-2">Vínculo</h4>
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        <div class="col-span-2 text-xs text-gray-600">
+                            El elemento interior debe ser <b>MESÓN</b> o <b>INSTALACIÓN</b>. Se asigna a registros ya creados abajo.
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Asignar MESÓN existente</label>
+                            <select class="border p-1 w-full"
+                                    value="@(sel.meson_id ?? "")"
+                                    @onchange="(e)=> AssignInnerMeson(sel, e.Value?.ToString())">
+                                <option value="">— Sin mesón —</option>
+
+                                @* ✅ CAMBIO: ahora SOLO mesones del área actual *@
+                                @foreach (var mesOpt in MesonesDelAreaActual())
+                                {
+                                    <option value="@mesOpt.meson_id">@mesOpt.nombre_meson</option>
+                                }
+                            </select>
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Asignar INSTALACIÓN existente</label>
+                            <select class="border p-1 w-full"
+                                    value="@(sel.instalacion_id ?? "")"
+                                    @onchange="(e)=> AssignInnerInstalacion(sel, e.Value?.ToString())">
+                                <option value="">— Sin instalación —</option>
+                                @foreach (var kv in _instalaciones.OrderBy(k => k.Value.nombre))
+                                {
+                                    <option value="@kv.Key">@kv.Value.nombre</option>
+                                }
+                            </select>
+                        </div>
+
+                        <div class="col-span-2 text-xs text-gray-500">
+                            Nota: si asignas mesón, se limpia instalación (y viceversa).
+                        </div>
+                    </div>
+
+                    @* ✅ FIX CS0136: renombré "out var m" a "out var mesSel" *@
+                    @if (!string.IsNullOrWhiteSpace(sel.meson_id) && _mesones.TryGetValue(sel.meson_id, out var mesSel))
                     {
                         <hr class="my-3" />
-                        <h4 class="font-semibold mb-2">Mesón vinculado</h4>
+                        <h4 class="font-semibold mb-2">Mesón (SQL)</h4>
                         <div class="grid grid-cols-2 gap-2 text-sm">
-                            <div>
-                                <label class="block text-xs text-gray-600 mb-1">Ancho (cm)</label>
-                                <input class="border p-1 w-full" value="@m.ancho_cm" @oninput="(e)=>{ m.ancho_cm = Int(e.Value); StateHasChanged(); }" />
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Nombre</label>
+                                <input class="border p-1 w-full" value="@mesSel.nombre_meson"
+                                       @oninput="(e)=>{ mesSel.nombre_meson = e.Value?.ToString() ?? string.Empty; _mesonesLookup[mesSel.meson_id] = mesSel.nombre_meson; StateHasChanged(); }" />
                             </div>
-                            <div>
-                                <label class="block text-xs text-gray-600 mb-1">Largo (cm)</label>
-                                <input class="border p-1 w-full" value="@m.largo_cm" @oninput="(e)=>{ m.largo_cm = Int(e.Value); StateHasChanged(); }" />
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Niveles totales</label>
+                                <input class="border p-1 w-full" value="@(mesSel.niveles_totales?.ToString() ?? "")"
+                                       @oninput="(e)=>{ mesSel.niveles_totales = int.TryParse(e.Value?.ToString(), out var n)? n : (int?)null; StateHasChanged(); }" />
                             </div>
-                            <div>
-                                <label class="block text-xs text-gray-600 mb-1">Profundidad (cm)</label>
-                                <input class="border p-1 w-full" value="@m.profundidad_cm" @oninput="(e)=>{ m.profundidad_cm = Int(e.Value); StateHasChanged(); }" />
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Imagen (URL o archivo_local)</label>
+                                <input class="border p-1 w-full" value="@(mesSel.imagen_url ?? "")"
+                                       @oninput="(e)=>{ mesSel.imagen_url = e.Value?.ToString(); StateHasChanged(); }" />
+
+                                @if (!string.IsNullOrWhiteSpace(mesSel.imagen_url))
+                                {
+                                    <div class="mt-2 flex items-center gap-2">
+                                        <img src="@ResolveUrl(mesSel.imagen_url!)"
+                                             style="width:120px;height:80px;object-fit:contain;border:1px solid #e5e7eb;border-radius:8px;background:#fff"
+                                             onerror="this.style.display='none';" />
+                                        <div class="text-xs text-gray-500"><code>@mesSel.imagen_url</code></div>
+                                    </div>
+                                }
                             </div>
-                            <div>
-                                <label class="block text-xs text-gray-600 mb-1">Niveles</label>
-                                <input class="border p-1 w-full" value="@m.niveles_totales" @oninput="(e)=>{ m.niveles_totales = Int(e.Value); StateHasChanged(); }" />
-                            </div>
+
                         </div>
                     }
 
+                    <!-- Si ya tiene instalación vinculada -->
+                    @if (!string.IsNullOrWhiteSpace(sel.instalacion_id) && _instalaciones.TryGetValue(sel.instalacion_id, out var ins))
+                    {
+                        <hr class="my-3" />
+                        <h4 class="font-semibold mb-2">Instalación (SQL)</h4>
+
+                        <div class="grid grid-cols-2 gap-2 text-sm">
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Nombre</label>
+                                <input class="border p-1 w-full" value="@ins.nombre"
+                                       @oninput="(e)=>{ ins.nombre = e.Value?.ToString() ?? string.Empty; StateHasChanged(); }" />
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Subcategoría</label>
+                                <select class="border p-1 w-full" value="@(ins.subcategoria_id ?? "")"
+                                        @onchange="(e)=>{ ins.subcategoria_id = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? null : e.Value?.ToString(); StateHasChanged(); }">
+                                    <option value="">— Sin subcategoría —</option>
+                                    @foreach (var kv in _subcatsInstLookup.OrderBy(k => k.Value))
+                                    {
+                                        <option value="@kv.Key">@kv.Value</option>
+                                    }
+                                </select>
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Estado</label>
+                                <select class="border p-1 w-full" value="@(ins.estado_id ?? "")"
+                                        @onchange="(e)=>{ ins.estado_id = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? null : e.Value?.ToString(); StateHasChanged(); }">
+                                    <option value="">— Sin estado —</option>
+                                    @foreach (var kv in _estadosLookup.OrderBy(k => k.Value))
+                                    {
+                                        <option value="@kv.Key">@kv.Value</option>
+                                    }
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Fecha instalación</label>
+                                <input type="date" class="border p-1 w-full"
+                                       value="@(DateToInput(ins.fecha_instalacion))"
+                                       @onchange="(e)=>{ ins.fecha_instalacion = ParseDate(e.Value?.ToString()); StateHasChanged(); }" />
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Última revisión</label>
+                                <input type="date" class="border p-1 w-full"
+                                       value="@(DateToInput(ins.fecha_ultima_revision))"
+                                       @onchange="(e)=>{ ins.fecha_ultima_revision = ParseDate(e.Value?.ToString()); StateHasChanged(); }" />
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Próxima revisión</label>
+                                <input type="date" class="border p-1 w-full"
+                                       value="@(DateToInput(ins.fecha_proxima_revision))"
+                                       @onchange="(e)=>{ ins.fecha_proxima_revision = ParseDate(e.Value?.ToString()); StateHasChanged(); }" />
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Proveedor servicio</label>
+                                <input class="border p-1 w-full" value="@(ins.proveedor_servicio ?? "")"
+                                       @oninput="(e)=>{ ins.proveedor_servicio = e.Value?.ToString(); StateHasChanged(); }" />
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Observaciones</label>
+                                <textarea class="border p-1 w-full" rows="2"
+                                          @oninput="(e)=>{ ins.observaciones = e.Value?.ToString(); StateHasChanged(); }">@ins.observaciones</textarea>
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Descripción</label>
+                                <textarea class="border p-1 w-full" rows="3"
+                                          @oninput="(e)=>{ ins.descripcion = e.Value?.ToString(); StateHasChanged(); }">@ins.descripcion</textarea>
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Imagen URL</label>
+                                <input class="border p-1 w-full" @bind="_nuevoIns_ImagenUrl" @bind:event="oninput" />
+
+                                @if (!string.IsNullOrWhiteSpace(_nuevoIns_ImagenUrl))
+                                {
+                                    <div class="mt-2 flex items-center gap-2">
+                                        <img src="@ResolveUrl(_nuevoIns_ImagenUrl)"
+                                             style="width:120px;height:80px;object-fit:contain;border:1px solid #e5e7eb;border-radius:8px;background:#fff"
+                                             onerror="this.style.display='none';" />
+                                        <div class="text-xs text-gray-500"><code>@_nuevoIns_ImagenUrl</code></div>
+                                    </div>
+                                }
+                            </div>
+
+
+                        </div>
+                    }
                 }
                 else if (_selBlock is not null && _blocksById.TryGetValue(_selBlock, out var blockSel))
                 {
-                    <h4 class="font-semibold mb-2">Bloque de montaje</h4>
+                    <h4 class="font-semibold mb-2">Bloque (asociar a existente)</h4>
+
                     <div class="grid grid-cols-2 gap-2 text-sm">
                         <div class="col-span-2">
                             <label class="block text-xs text-gray-600 mb-1">Etiqueta</label>
                             <input class="border p-1 w-full" value="@(blockSel.etiqueta ?? "")"
                                    @oninput="(e)=>{ blockSel.etiqueta = e.Value?.ToString(); StateHasChanged(); }" />
                         </div>
+
                         <div>
                             <label class="block text-xs text-gray-600 mb-1">Ancho (m)</label>
                             <input class="border p-1 w-full" value="@S(blockSel.ancho)"
                                    @oninput="(e)=>{ blockSel.ancho = Clamp(0.1m, 10m, ParseFlexible(e.Value)); UpdateBlockAbs(blockSel); StateHasChanged(); }" />
                         </div>
                         <div>
-                            <label class="block text-xs text-gray-600 mb-1">Alto (m)</label>
-                            <input class="border p-1 w-full" value="@S(blockSel.alto)"
-                                   @oninput="(e)=>{ blockSel.alto = Clamp(0.1m, 10m, ParseFlexible(e.Value)); UpdateBlockAbs(blockSel); StateHasChanged(); }" />
+                            <label class="block text-xs text-gray-600 mb-1">Largo (m)</label>
+                            <input class="border p-1 w-full" value="@S(blockSel.largo)"
+                                   @oninput="(e)=>{ blockSel.largo = Clamp(0.1m, 10m, ParseFlexible(e.Value)); UpdateBlockAbs(blockSel); StateHasChanged(); }" />
                         </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Altura</label>
+                            <input class="border p-1 w-full" value="@(blockSel.altura?.ToString() ?? "")"
+                                   @oninput="(e)=>{ blockSel.altura = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? (decimal?)null : ParseFlexible(e.Value); StateHasChanged(); }" />
+                        </div>
+
                         <div>
                             <label class="block text-xs text-gray-600 mb-1">Offset X (m)</label>
                             <input class="border p-1 w-full" value="@S(blockSel.offset_x)"
@@ -289,28 +512,33 @@
                             <input class="border p-1 w-full" value="@S(blockSel.offset_y)"
                                    @oninput="(e)=>{ blockSel.offset_y = ParseFlexible(e.Value); UpdateBlockAbs(blockSel); StateHasChanged(); }" />
                         </div>
+
                         <div class="col-span-2">
-                            <label class="block text-xs text-gray-600 mb-1">Material de montaje</label>
-                            <select class="border p-1 w-full" value="@(blockSel.material_montaje_id ?? "")"
-                                    @onchange="(e)=> UpdateBlockMaterial(blockSel, e.Value?.ToString())">
-                                <option value="">— Selecciona un material —</option>
-                                @foreach (var kv in _materialesLookup)
+                            <label class="block text-xs text-gray-600 mb-1">Asociar a INSTALACIÓN existente</label>
+                            <select class="border p-1 w-full" value="@(blockSel.instalacion_id ?? "")"
+                                    @onchange="(e)=> UpdateBlockInstalacion(blockSel, e.Value?.ToString())">
+                                <option value="">— Ninguna —</option>
+                                @foreach (var kv in _instalaciones.OrderBy(k => k.Value.nombre))
                                 {
-                                    <option value="@kv.Key">@kv.Value</option>
+                                    <option value="@kv.Key">@kv.Value.nombre</option>
                                 }
+
                             </select>
                         </div>
+
                         <div class="col-span-2">
-                            <label class="block text-xs text-gray-600 mb-1">Mesón</label>
+                            <label class="block text-xs text-gray-600 mb-1">Asociar a MESÓN existente</label>
                             <select class="border p-1 w-full" value="@(blockSel.meson_id ?? "")"
                                     @onchange="(e)=> UpdateBlockMeson(blockSel, e.Value?.ToString())">
-                                <option value="">— Selecciona un mesón —</option>
-                                @foreach (var kv in _mesonesLookup)
+                                <option value="">— Ninguno —</option>
+                                @foreach (var m in MesonesDelAreaActual().OrderBy(x => x.nombre_meson))
                                 {
-                                    <option value="@kv.Key">@kv.Value</option>
+                                    <option value="@m.meson_id">@m.nombre_meson</option>
                                 }
+
                             </select>
                         </div>
+
                         <div class="col-span-2">
                             <label class="block text-xs text-gray-600 mb-1">Color</label>
                             <input class="border p-1 w-full"
@@ -318,56 +546,7 @@
                                    @bind-value:event="oninput" />
                         </div>
                     </div>
-                    @if (!string.IsNullOrWhiteSpace(blockSel.meson_id) && _mesones.TryGetValue(blockSel.meson_id, out var blockMeson))
-                    {
-                        <hr class="my-3" />
-                        <h4 class="font-semibold mb-2">Mesón asociado</h4>
-                        <div class="grid grid-cols-2 gap-2 text-sm">
-                            <div class="col-span-2">
-                                <label class="block text-xs text-gray-600 mb-1">Nombre</label>
-                                <input class="border p-1 w-full" value="@blockMeson.nombre_meson"
-                                       @oninput="(e)=>{ blockMeson.nombre_meson = e.Value?.ToString() ?? string.Empty; _mesonesLookup[blockMeson.meson_id] = blockMeson.nombre_meson; StateHasChanged(); }" />
-                            </div>
-                            <div>
-                                <label class="block text-xs text-gray-600 mb-1">Ancho (cm)</label>
-                                <input class="border p-1 w-full" value="@blockMeson.ancho_cm" @oninput="(e)=>{ blockMeson.ancho_cm = Int(e.Value); StateHasChanged(); }" />
-                            </div>
-                            <div>
-                                <label class="block text-xs text-gray-600 mb-1">Largo (cm)</label>
-                                <input class="border p-1 w-full" value="@blockMeson.largo_cm" @oninput="(e)=>{ blockMeson.largo_cm = Int(e.Value); StateHasChanged(); }" />
-                            </div>
-                            <div>
-                                <label class="block text-xs text-gray-600 mb-1">Profundidad (cm)</label>
-                                <input class="border p-1 w-full" value="@blockMeson.profundidad_cm" @oninput="(e)=>{ blockMeson.profundidad_cm = Int(e.Value); StateHasChanged(); }" />
-                            </div>
-                            <div>
-                                <label class="block text-xs text-gray-600 mb-1">Niveles</label>
-                                <input class="border p-1 w-full" value="@blockMeson.niveles_totales" @oninput="(e)=>{ blockMeson.niveles_totales = Int(e.Value); StateHasChanged(); }" />
-                            </div>
-                        </div>
-                    }
-                    @if (!string.IsNullOrWhiteSpace(blockSel.material_montaje_id) && _materialesMontaje.TryGetValue(blockSel.material_montaje_id, out var blockMaterial))
-                    {
-                        <hr class="my-3" />
-                        <h4 class="font-semibold mb-2">Material de montaje asociado</h4>
-                        <div class="grid grid-cols-2 gap-2 text-sm">
-                            <div class="col-span-2">
-                                <label class="block text-xs text-gray-600 mb-1">Nombre</label>
-                                <input class="border p-1 w-full" value="@blockMaterial.nombre"
-                                       @oninput="(e)=>{ blockMaterial.nombre = e.Value?.ToString() ?? string.Empty; _materialesLookup[blockMaterial.material_id] = blockMaterial.nombre; StateHasChanged(); }" />
-                            </div>
-                            <div>
-                                <label class="block text-xs text-gray-600 mb-1">Estado</label>
-                                <input class="border p-1 w-full" value="@blockMaterial.estado_id"
-                                       @oninput="(e)=>{ blockMaterial.estado_id = e.Value?.ToString(); StateHasChanged(); }" />
-                            </div>
-                            <div>
-                                <label class="block text-xs text-gray-600 mb-1">Posición</label>
-                                <input class="border p-1 w-full" value="@blockMaterial.posicion"
-                                       @oninput="(e)=>{ blockMaterial.posicion = e.Value?.ToString(); StateHasChanged(); }" />
-                            </div>
-                        </div>
-                    }
+
                     @if (!string.IsNullOrWhiteSpace(_blockMsg))
                     {
                         <div class="text-xs text-gray-500 mt-2">@_blockMsg</div>
@@ -375,40 +554,40 @@
                 }
                 else if (_showBlockCreator)
                 {
-                    <h4 class="font-semibold mb-2">Nuevo bloque de montaje</h4>
+                    <h4 class="font-semibold mb-2">Nuevo bloque (solo asignar existente)</h4>
+
                     <div class="grid grid-cols-2 gap-2 text-sm">
                         <div class="col-span-2">
-                            <label class="block text-xs text-gray-600 mb-1">Asociar bloque</label>
+                            <label class="block text-xs text-gray-600 mb-1">¿A qué quieres asociarlo?</label>
                             <div class="flex items-center gap-3">
                                 <label class="flex items-center gap-2 text-xs text-gray-700">
-                                    <input type="checkbox" checked="@_newBlockAssignMaterial"
-                                           @onchange="(e)=> ToggleNewBlockAssignMaterial(Bool(e.Value))" />
-                                    Material de montaje
+                                    <input type="checkbox" checked="@_newBlockAssignInstalacion"
+                                           @onchange="(e)=> ToggleNewBlockAssignInstalacion(Bool(e.Value))" />
+                                    Instalación existente
                                 </label>
                                 <label class="flex items-center gap-2 text-xs text-gray-700">
                                     <input type="checkbox" checked="@_newBlockAssignMeson"
                                            @onchange="(e)=> ToggleNewBlockAssignMeson(Bool(e.Value))" />
-                                    Mesón
+                                    Mesón existente
                                 </label>
                             </div>
                         </div>
+
                         <div class="col-span-2">
-                            <label class="block text-xs text-gray-600 mb-1">Material de montaje</label>
+                            <label class="block text-xs text-gray-600 mb-1">Instalación</label>
                             <select class="border p-1 w-full"
-                                    value="@(_newBlockMaterialId ?? "")"
-                                    disabled="@(!_newBlockAssignMaterial)"
-                                    @onchange="(e)=> OnSelectBlockMaterial(e.Value?.ToString())">
-                                <option value="">— Selecciona un material —</option>
-                                @foreach (var kv in MaterialesMontajeDisponibles())
+                                    value="@(_newBlockInstalacionId ?? "")"
+                                    disabled="@(!_newBlockAssignInstalacion)"
+                                    @onchange="(e)=> OnSelectBlockInstalacion(e.Value?.ToString())">
+                                <option value="">— Selecciona una instalación —</option>
+                                @foreach (var kv in _instalaciones.OrderBy(k => k.Value.nombre))
                                 {
-                                    <option value="@kv.Key">@kv.Value</option>
+                                    <option value="@kv.Key">@kv.Value.nombre</option>
                                 }
+
                             </select>
-                            @if (_newBlockAssignMaterial && MaterialesMontajeDisponibles().Count() == 0)
-                            {
-                                <div class="text-xs text-gray-500 mt-1">No hay materiales disponibles. Crea uno más abajo.</div>
-                            }
                         </div>
+
                         <div class="col-span-2">
                             <label class="block text-xs text-gray-600 mb-1">Mesón</label>
                             <select class="border p-1 w-full"
@@ -416,30 +595,37 @@
                                     disabled="@(!_newBlockAssignMeson)"
                                     @onchange="(e)=> OnSelectBlockMeson(e.Value?.ToString())">
                                 <option value="">— Selecciona un mesón —</option>
-                                @foreach (var kv in MesonesDisponibles())
+                                @foreach (var m in MesonesDelAreaActual().OrderBy(x => x.nombre_meson))
                                 {
-                                    <option value="@kv.Key">@kv.Value</option>
+                                    <option value="@m.meson_id">@m.nombre_meson</option>
                                 }
+
                             </select>
-                            @if (_newBlockAssignMeson && MesonesDisponibles().Count() == 0)
-                            {
-                                <div class="text-xs text-gray-500 mt-1">No hay mesones disponibles. Crea uno más abajo.</div>
-                            }
                         </div>
+
                         <div class="col-span-2">
                             <label class="block text-xs text-gray-600 mb-1">Etiqueta</label>
                             <input class="border p-1 w-full" @bind="_newBlockEtiqueta" @bind:event="oninput" />
                         </div>
+
                         <div>
                             <label class="block text-xs text-gray-600 mb-1">Ancho (m)</label>
                             <input class="border p-1 w-full" value="@S(_newBlockAncho)"
                                    @oninput="(e)=> _newBlockAncho = ParseFlexible(e.Value)" />
                         </div>
                         <div>
-                            <label class="block text-xs text-gray-600 mb-1">Alto (m)</label>
-                            <input class="border p-1 w-full" value="@S(_newBlockAlto)"
-                                   @oninput="(e)=> _newBlockAlto = ParseFlexible(e.Value)" />
+                            <label class="block text-xs text-gray-600 mb-1">Largo (m)</label>
+                            <input class="border p-1 w-full" value="@S(_newBlockLargo)"
+                                   @oninput="(e)=> _newBlockLargo = ParseFlexible(e.Value)" />
                         </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Altura</label>
+                            <input class="border p-1 w-full" value="@(_newBlockAltura?.ToString() ?? "")"
+                                   @oninput="(e)=> _newBlockAltura = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? (decimal?)null : ParseFlexible(e.Value)" />
+                        </div>
+
+
                         <div>
                             <label class="block text-xs text-gray-600 mb-1">Offset X (m)</label>
                             <input class="border p-1 w-full" value="@S(_newBlockOffsetX)"
@@ -450,88 +636,245 @@
                             <input class="border p-1 w-full" value="@S(_newBlockOffsetY)"
                                    @oninput="(e)=> _newBlockOffsetY = ParseFlexible(e.Value)" />
                         </div>
+
                         <div class="col-span-2">
                             <label class="block text-xs text-gray-600 mb-1">Color</label>
                             <input class="border p-1 w-full" @bind="_newBlockColor" @bind:event="oninput" />
                         </div>
+
                         <div class="col-span-2 flex gap-2">
                             <button class="px-3 py-2 border rounded bg-black text-white" @onclick="AgregarBloque">Agregar bloque</button>
                             <button class="px-3 py-2 border rounded" @onclick="()=>_showBlockCreator=false">Cancelar</button>
                         </div>
+
+                        @if (!string.IsNullOrWhiteSpace(_blockMsg))
+                        {
+                            <div class="col-span-2 text-xs text-gray-500">@_blockMsg</div>
+                        }
                     </div>
                 }
                 else
                 {
-                    <div class="text-sm text-gray-600">Selecciona un elemento interior para editarlo.</div>
+                    <div class="text-sm text-gray-600">Selecciona un elemento interior o un bloque para editarlo.</div>
                 }
             </aside>
         </div>
 
+        <!-- ABAJO: CREAR MESÓN / CREAR INSTALACIÓN (COMPLETO SEGÚN SQL) -->
         <section style="margin-top:1rem; border:1px solid #e5e7eb; border-radius:.5rem; padding:1rem; background:#fff">
-            <h3 class="font-semibold mb-3">Registrar mesones y materiales (sin crear bloque)</h3>
+            <h3 class="font-semibold mb-3">Crear y registrar (SQL)</h3>
+
             <div class="grid grid-cols-2 gap-6">
-                <div>
-                    <h4 class="font-semibold mb-2">Nuevo mesón</h4>
-                    <div class="grid grid-cols-2 gap-2 text-sm">
+                <!-- MESONES -->
+                <details class="panel-box">
+                    <summary class="panel-header">
+                        <div class="panel-title">Crear mesón</div>
+                    </summary>
+
+                    <div class="grid grid-cols-2 gap-2 text-sm mt-2">
                         <div class="col-span-2">
-                            <label class="block text-xs text-gray-600 mb-1">Nombre</label>
+                            <label class="block text-xs text-gray-600 mb-1">Nombre (nombre_meson)</label>
                             <input class="border p-1 w-full" @bind="_nuevoMesonNombre" @bind:event="oninput" />
                         </div>
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Ancho (cm)</label>
-                            <input class="border p-1 w-full" value="@_nuevoMesonAnchoCm"
-                                   @oninput="(e)=> _nuevoMesonAnchoCm = Int(e.Value)" />
-                        </div>
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Largo (cm)</label>
-                            <input class="border p-1 w-full" value="@_nuevoMesonLargoCm"
-                                   @oninput="(e)=> _nuevoMesonLargoCm = Int(e.Value)" />
-                        </div>
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Profundidad (cm)</label>
-                            <input class="border p-1 w-full" value="@_nuevoMesonProfundidadCm"
-                                   @oninput="(e)=> _nuevoMesonProfundidadCm = Int(e.Value)" />
-                        </div>
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Niveles</label>
-                            <input class="border p-1 w-full" value="@_nuevoMesonNiveles"
-                                   @oninput="(e)=> _nuevoMesonNiveles = Int(e.Value)" />
-                        </div>
+
                         <div class="col-span-2">
-                            <button class="px-3 py-2 border rounded bg-black text-white" @onclick="CrearMesonRegistro">Registrar mesón</button>
+                            <label class="block text-xs text-gray-600 mb-1">Niveles totales (niveles_totales)</label>
+                            <input class="border p-1 w-full" value="@(_nuevoMesonNiveles?.ToString() ?? "")"
+                                   @oninput="(e)=> _nuevoMesonNiveles = int.TryParse(e.Value?.ToString(), out var n) ? n : (int?)null" />
                         </div>
+
+                        <!-- ✅ NUEVO -->
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Imagen (URL o archivo_local)</label>
+                            <input class="border p-1 w-full" @bind="_nuevoMesonImagenUrl" @bind:event="oninput" />
+
+                            @if (!string.IsNullOrWhiteSpace(_nuevoMesonImagenUrl))
+                            {
+                                <div class="mt-2 flex items-center gap-2">
+                                    <img src="@ResolveUrl(_nuevoMesonImagenUrl)"
+                                         style="width:120px;height:80px;object-fit:contain;border:1px solid #e5e7eb;border-radius:8px;background:#fff"
+                                         onerror="this.style.display='none';" />
+                                    <div class="text-xs text-gray-500"><code>@_nuevoMesonImagenUrl</code></div>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="col-span-2 flex gap-2">
+                            <button class="px-3 py-2 border rounded bg-black text-white" @onclick="CrearMesonRegistro">
+                                Registrar mesón
+                            </button>
+                        </div>
+
                         @if (!string.IsNullOrWhiteSpace(_nuevoMesonMsg))
                         {
                             <div class="col-span-2 text-xs text-gray-500">@_nuevoMesonMsg</div>
                         }
                     </div>
-                </div>
+                </details>
 
-                <div>
-                    <h4 class="font-semibold mb-2">Nuevo material de montaje</h4>
-                    <div class="grid grid-cols-2 gap-2 text-sm">
-                        <div class="col-span-2">
-                            <label class="block text-xs text-gray-600 mb-1">Nombre</label>
-                            <input class="border p-1 w-full" @bind="_nuevoMaterialNombre" @bind:event="oninput" />
-                        </div>
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Estado</label>
-                            <input class="border p-1 w-full" @bind="_nuevoMaterialEstado" @bind:event="oninput" />
-                        </div>
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Posición</label>
-                            <input class="border p-1 w-full" @bind="_nuevoMaterialPosicion" @bind:event="oninput" />
-                        </div>
-                        <div class="col-span-2">
-                            <button class="px-3 py-2 border rounded bg-black text-white" @onclick="CrearMaterialMontaje">Registrar material</button>
-                        </div>
-                        @if (!string.IsNullOrWhiteSpace(_nuevoMaterialMsg))
+                <details class="panel-box">
+                    <summary class="panel-header">
+                        <div class="panel-title">Ver todos los mesones (@MesonesDelAreaActual().Count())</div>
+                    </summary>
+
+                    <div class="text-xs text-gray-500 mb-2 mt-2">Mesones creados (clic para seleccionar en canvas)</div>
+                    <div class="space-y-2">
+                        @foreach (var mesRow in MesonesDelAreaActual().OrderBy(x => x.nombre_meson))
                         {
-                            <div class="col-span-2 text-xs text-gray-500">@_nuevoMaterialMsg</div>
+                            <div class="flex items-center justify-between border rounded p-2">
+                                <div class="text-sm flex items-center gap-3">
+                                    @if (!string.IsNullOrWhiteSpace(mesRow.imagen_url))
+                                    {
+                                        <img src="@ResolveUrl(mesRow.imagen_url!)"
+                                             style="width:52px;height:38px;object-fit:contain;border:1px solid #e5e7eb;border-radius:6px;background:#fff"
+                                             onerror="this.style.display='none';" />
+                                    }
+
+                                    <div>
+                                        <div class="font-medium">@mesRow.nombre_meson</div>
+                                        <div class="text-xs text-gray-500">niveles: @(mesRow.niveles_totales?.ToString() ?? "—")</div>
+                                    </div>
+                                </div>
+
+                                <button class="px-2 py-1 border rounded text-sm" @onclick="(()=>SeleccionarPorMeson(mesRow.meson_id))">
+                                    Seleccionar
+                                </button>
+                            </div>
                         }
                     </div>
-                </div>
+                </details>
+
+                <!-- INSTALACIONES -->
+                <details class="panel-box" open>
+                    <summary class="panel-header">
+                        <div class="panel-title">Crear instalación</div>
+                    </summary>
+
+                    <div class="grid grid-cols-2 gap-2 text-sm mt-2">
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Nombre</label>
+                            <input class="border p-1 w-full" @bind="_nuevoIns_Nombre" @bind:event="oninput" />
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Subcategoría (subcategoria_id)</label>
+                            <select class="border p-1 w-full" @bind="_nuevoIns_SubcategoriaId">
+                                <option value="">— Sin subcategoría —</option>
+                                @foreach (var kv in _subcatsInstLookup.OrderBy(k => k.Value))
+                                {
+                                    <option value="@kv.Key">@kv.Value</option>
+                                }
+                            </select>
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Estado (estado_id)</label>
+                            <select class="border p-1 w-full" @bind="_nuevoIns_EstadoId">
+                                <option value="">— Sin estado —</option>
+                                @foreach (var kv in _estadosLookup.OrderBy(k => k.Value))
+                                {
+                                    <option value="@kv.Key">@kv.Value</option>
+                                }
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Fecha instalación</label>
+                            <input type="date" class="border p-1 w-full" @bind-value="FechaInstalacionWrapper" />
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Última revisión</label>
+                            <input type="date" class="border p-1 w-full" @bind-value="FechaUltRevWrapper" />
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Próxima revisión</label>
+                            <input type="date" class="border p-1 w-full" @bind-value="FechaProxRevWrapper" />
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Proveedor servicio</label>
+                            <input class="border p-1 w-full" @bind="_nuevoIns_ProveedorServicio" @bind:event="oninput" />
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Observaciones</label>
+                            <textarea class="border p-1 w-full" rows="2" @bind="_nuevoIns_Observaciones" @bind:event="oninput"></textarea>
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Descripción</label>
+                            <textarea class="border p-1 w-full" rows="3" @bind="_nuevoIns_Descripcion" @bind:event="oninput"></textarea>
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Imagen URL</label>
+                            <input class="border p-1 w-full" @bind="_nuevoIns_ImagenUrl" @bind:event="oninput" />
+
+                            @if (!string.IsNullOrWhiteSpace(_nuevoIns_ImagenUrl))
+                            {
+                                <div class="mt-2 flex items-center gap-2">
+                                    <img src="@ResolveUrl(_nuevoIns_ImagenUrl)"
+                                         style="width:120px;height:80px;object-fit:contain;border:1px solid #e5e7eb;border-radius:8px;background:#fff"
+                                         onerror="this.style.display='none';" />
+                                    <div class="text-xs text-gray-500"><code>@_nuevoIns_ImagenUrl</code></div>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="col-span-2 flex gap-2">
+                            <button class="px-3 py-2 border rounded bg-black text-white" @onclick="CrearInstalacionRegistro">
+                                Registrar instalación
+                            </button>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(_nuevoIns_Msg))
+                        {
+                            <div class="col-span-2 text-xs text-gray-500">@_nuevoIns_Msg</div>
+                        }
+                    </div>
+                </details>
             </div>
+
+            <details class="panel-box">
+                <summary class="panel-header">
+                    <div class="panel-title">Ver todas las instalaciones (@_instalaciones.Count)</div>
+                </summary>
+
+                <div class="text-xs text-gray-500 mb-2 mt-2">Instalaciones creadas (clic para seleccionar en canvas)</div>
+
+                <div class="space-y-2">
+                    @foreach (var insItem in _instalaciones.Values.OrderBy(x => x.nombre))
+                    {
+                        <div class="flex items-center justify-between border rounded p-2">
+                            <div class="text-sm flex items-center gap-3">
+                                @if (!string.IsNullOrWhiteSpace(insItem.imagen_url))
+                                {
+                                    <img src="@ResolveUrl(insItem.imagen_url!)"
+                                         style="width:52px;height:38px;object-fit:contain;border:1px solid #e5e7eb;border-radius:6px;background:#fff"
+                                         onerror="this.style.display='none';" />
+                                }
+
+                                <div>
+                                    <div class="font-medium">@insItem.nombre</div>
+                                    <div class="text-xs text-gray-500">
+                                        estado:
+                                        @((insItem.estado_id is null)
+                                            ? "—"
+                                            : (_estadosLookup.TryGetValue(insItem.estado_id, out var s) ? s : insItem.estado_id))
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button class="px-2 py-1 border rounded text-sm" @onclick="(()=>SeleccionarPorInstalacion(insItem.instalacion_id))">
+                                Seleccionar
+                            </button>
+                        </div>
+                    }
+                </div>
+            </details>
+
         </section>
     }
 </div>
@@ -558,6 +901,16 @@
         border-radius: 8px;
         padding: 12px;
     }
+
+    .panel-box > summary {
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+}
+.panel-box > summary::-webkit-details-marker {
+    display: none;
+}
+
 
     .zoom-btn {
         width: 32px;
@@ -598,15 +951,5 @@
 
     .panel-title {
         font-weight: 600;
-    }
-
-    .panel-close {
-        border: 1px solid #e5e7eb;
-        background: #fff;
-        width: 28px;
-        height: 28px;
-        border-radius: 6px;
-        line-height: 26px;
-        text-align: center;
     }
 </style>

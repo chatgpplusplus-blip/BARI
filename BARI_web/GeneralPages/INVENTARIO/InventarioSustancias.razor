@@ -1,0 +1,3305 @@
+﻿@page "/inventario-sustancias"
+@page "/inventario-sustancias/categoria/{SubcategoriaId}"
+@page "/inventario-sustancias/todos"
+
+@using Npgsql
+@using BARI_web.General_Services
+@using System.Globalization
+@using System.IO
+@using Microsoft.AspNetCore.Components.Forms
+
+@inject NpgsqlDataSource DataSource
+@inject LaboratorioState LaboratorioState
+@inject NavigationManager Nav
+@inject IWebHostEnvironment HostEnvironment
+@implements IDisposable
+
+<PageTitle>Inventario de Sustancias</PageTitle>
+
+<section class="page-card">
+    <h2>Inventario de Sustancias</h2>
+    <p>
+        Gestión de reactivos del laboratorio: sustancias (entidad química) y contenedores (envases físicos).
+        Incluye seguridad (GHS/H/P), stock, ubicación real y carga de imágenes.
+    </p>
+    <LaboratorioSelector />
+</section>
+
+<!-- =========================================================
+     1) SUBIR SUSTANCIA
+     ========================================================= -->
+<section class="page-card" style="margin-top:1.5rem;">
+    <details>
+        <summary style="cursor:pointer; font-weight:600;">Subir sustancia</summary>
+
+        <div class="form-header">
+            <h4>Reactivo (Sustancia)</h4>
+            <p class="form-hint">
+                La sustancia es la entidad química. Luego puedes registrar uno o más contenedores físicos.
+            </p>
+        </div>
+
+        <div class="assign-row form-grid">
+            <input class="border p-1" placeholder="ID sustancia (opcional)" @bind="_nuevoSustanciaId" />
+            <input class="border p-1" placeholder="Nombre comercial" @bind="_nuevoSustanciaNombreComercial" />
+            <input class="border p-1" placeholder="Nombre químico" @bind="_nuevoSustanciaNombreQuimico" />
+            <input class="border p-1" placeholder="CAS" @bind="_nuevoSustanciaCas" />
+            <input class="border p-1" placeholder="Forma física" @bind="_nuevoSustanciaFormaFisica" />
+
+            <select class="border p-1" value="@_nuevoSustanciaCategoriaId" @onchange="OnNuevoSustanciaCategoriaChanged">
+                <option value="">Categoría</option>
+                @foreach (var cat in _categoriaReactivoOptions)
+                {
+                    <option value="@cat.Id">@cat.Label</option>
+                }
+            </select>
+
+            <div class="upload-card" style="min-width:0; width:100%; max-width:100%;">
+                <div class="text-xs text-gray-500">Subcategorías (checkbox). Se muestra la categoría en cada opción.</div>
+
+                <details style="width:100%; max-width:100%; overflow:hidden;">
+                    <summary style="cursor:pointer; font-weight:600; display:block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                        @_nuevoSustanciaSubcatsDropdownLabel
+                    </summary>
+
+                    <div style="display:grid; gap:.35rem; padding-top:.5rem; max-height:240px; overflow:auto; max-width:100%;">
+                        @if (string.IsNullOrWhiteSpace(_nuevoSustanciaCategoriaId))
+                        {
+                            <div class="text-xs text-gray-500">Selecciona una categoría primero.</div>
+                        }
+                        else if (NuevoSustanciaSubcategoriasFiltradas.Count == 0)
+                        {
+                            <div class="text-xs text-gray-500">No hay subcategorías para esta categoría.</div>
+                        }
+                        else
+                        {
+                            @foreach (var sc in NuevoSustanciaSubcategoriasFiltradas)
+                            {
+                                <label style="display:flex; gap:.5rem; align-items:flex-start; width:100%; max-width:100%;">
+                                    <input type="checkbox"
+                                           style="margin-top:.2rem;"
+                                           checked="@_nuevoSustanciaSubcategoriaIds.Contains(sc.Id)"
+                                           @onchange="(e) => ToggleNuevoSustanciaSubcategoria(sc.Id, e)" />
+
+                                    <div style="min-width:0; width:100%; max-width:100%;">
+                                        <span style="font-weight:700;">@sc.Label</span>
+                                        <span class="text-xs text-gray-500" style="margin-left:.35rem;">(@sc.Id)</span>
+                                    </div>
+                                </label>
+                            }
+                        }
+                    </div>
+                </details>
+            </div>
+
+
+            <input class="border p-1" placeholder="Descripción" @bind="_nuevoSustanciaDescripcion" />
+
+            <!-- ============================
+                 GHS
+                 ============================ -->
+            <div class="upload-card full-span">
+                <div class="text-xs text-gray-500">Pictogramas GHS</div>
+
+                <details>
+                    <summary style="cursor:pointer; font-weight:600;">
+                        @GhsDropdownLabel
+                    </summary>
+
+                    <div style="display:grid; gap:.35rem; padding-top:.5rem; max-height:240px; overflow:auto;">
+                        @if (_ghsOptions.Count == 0)
+                        {
+                            <div class="text-xs text-gray-500">Sin pictogramas disponibles.</div>
+                        }
+                        else
+                        {
+                            @foreach (var ghs in _ghsOptions)
+                            {
+                                <label style="display:flex; align-items:center; gap:.5rem;">
+                                    <input type="checkbox"
+                                           checked="@_nuevoSustanciaGhsIds.Contains(ghs.Id)"
+                                           @onchange="(e) => ToggleGhs(ghs.Id, e)" />
+
+                                    @if (!string.IsNullOrWhiteSpace(ghs.IconUrl))
+                                    {
+                                        <img src="@ghs.IconUrl"
+                                             alt="@ghs.Nombre"
+                                             style="width:20px; height:20px; object-fit:contain;" />
+                                    }
+
+                                    <span title="@ghs.Detalle">@ghs.Nombre</span>
+                                    <span class="text-xs text-gray-500">(@ghs.Id)</span>
+                                </label>
+                            }
+                        }
+                    </div>
+                </details>
+            </div>
+
+            <!-- ============================
+                 H codes
+                 ============================ -->
+            <div class="upload-card" style="min-width:0; width:100%; max-width:100%;">
+                <div class="text-xs text-gray-500">H codes (pasa el mouse sobre el código para ver el grupo)</div>
+
+                <details style="width:100%; max-width:100%; overflow:hidden;">
+                    <summary style="cursor:pointer; font-weight:600; display:block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                        @HDropdownLabel
+                    </summary>
+
+                    <div style="display:grid; gap:.35rem; padding-top:.5rem; max-height:240px; overflow:auto; max-width:100%;">
+                        @if (_hCodeOptions.Count == 0)
+                        {
+                            <div class="text-xs text-gray-500">Sin H codes disponibles.</div>
+                        }
+                        else
+                        {
+                            @foreach (var hc in _hCodeOptions)
+                            {
+                                <label style="display:flex; gap:.5rem; align-items:flex-start; width:100%; max-width:100%;">
+                                    <input type="checkbox"
+                                           style="margin-top:.2rem;"
+                                           checked="@_nuevoSustanciaHIds.Contains(hc.Id)"
+                                           @onchange="(e) => ToggleH(hc.Id, e)" />
+
+                                    <div style="min-width:0; width:100%; max-width:100%;">
+                                        <span style="font-weight:700;"
+                                              title="@(!string.IsNullOrWhiteSpace(hc.Grupo) ? hc.Grupo : "Sin grupo")">
+                                            @hc.Id
+                                        </span>
+
+                                        <span style="margin-left:.35rem; display:inline; white-space:normal; overflow-wrap:anywhere; word-break:break-word;">
+                                            @hc.Descripcion
+                                        </span>
+                                    </div>
+                                </label>
+                            }
+                        }
+                    </div>
+                </details>
+            </div>
+
+            <!-- ============================
+                 P codes
+                 ============================ -->
+            <div class="upload-card" style="min-width:0; width:100%; max-width:100%;">
+                <div class="text-xs text-gray-500">P codes (pasa el mouse sobre el código para ver el grupo)</div>
+
+                <details style="width:100%; max-width:100%; overflow:hidden;">
+                    <summary style="cursor:pointer; font-weight:600; display:block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                        @PDropdownLabel
+                    </summary>
+
+                    <div style="display:grid; gap:.35rem; padding-top:.5rem; max-height:240px; overflow:auto; max-width:100%;">
+                        @if (_pCodeOptions.Count == 0)
+                        {
+                            <div class="text-xs text-gray-500">Sin P codes disponibles.</div>
+                        }
+                        else
+                        {
+                            @foreach (var pc in _pCodeOptions)
+                            {
+                                <label style="display:flex; gap:.5rem; align-items:flex-start; width:100%; max-width:100%;">
+                                    <input type="checkbox"
+                                           style="margin-top:.2rem;"
+                                           checked="@_nuevoSustanciaPIds.Contains(pc.Id)"
+                                           @onchange="(e) => ToggleP(pc.Id, e)" />
+
+                                    <div style="min-width:0; width:100%; max-width:100%;">
+                                        <span style="font-weight:700;"
+                                              title="@(!string.IsNullOrWhiteSpace(pc.Grupo) ? pc.Grupo : "Sin grupo")">
+                                            @pc.Id
+                                        </span>
+
+                                        <span style="margin-left:.35rem; display:inline; white-space:normal; overflow-wrap:anywhere; word-break:break-word;">
+                                            @pc.Descripcion
+                                        </span>
+                                    </div>
+                                </label>
+                            }
+                        }
+                    </div>
+                </details>
+            </div>
+
+            <!-- ============================
+                 IMAGEN SUSTANCIA
+                 ============================ -->
+            <div class="upload-card full-span">
+                <div class="upload-options">
+                    <label class="text-sm">
+                        <input type="radio"
+                               name="sustanciaImagenModo"
+                               value="url"
+                               checked="@(_nuevoSustanciaImagenModo == "url")"
+                               @onchange="OnSustanciaImagenModoChanged" />
+                        Colocar un URL
+                    </label>
+                    <label class="text-sm">
+                        <input type="radio"
+                               name="sustanciaImagenModo"
+                               value="archivo"
+                               checked="@(_nuevoSustanciaImagenModo == "archivo")"
+                               @onchange="OnSustanciaImagenModoChanged" />
+                        Subir archivo
+                    </label>
+                </div>
+
+                @if (_nuevoSustanciaImagenModo == "url")
+                {
+                    <input class="border p-1" placeholder="Imagen URL (o ruta relativa)" @bind="_nuevoSustanciaImagenUrl" />
+                }
+                else
+                {
+                    <label class="upload-drop">
+                        <InputFile OnChange="OnSustanciaImagenArchivoSeleccionado" accept="image/png,image/jpeg,image/jpg,image/webp" />
+                        <span>Arrastra una imagen o haz clic para buscar</span>
+                    </label>
+                    @if (!string.IsNullOrWhiteSpace(_nuevoSustanciaImagenArchivo))
+                    {
+                        <div class="text-xs text-gray-500">Archivo: @_nuevoSustanciaImagenArchivo</div>
+                    }
+                }
+            </div>
+
+            <input class="border p-1" placeholder="Observaciones" @bind="_nuevoSustanciaObservaciones" />
+
+            <label class="text-sm text-gray-600">
+                <input type="checkbox" @bind="_nuevoSustanciaControlada" /> Sustancia controlada
+            </label>
+
+            <div class="form-actions full-span">
+                <button class="btn primary" @onclick="SubirSustanciaAsync">Subir sustancia</button>
+                @if (!string.IsNullOrWhiteSpace(_nuevoSustanciaMsg))
+                {
+                    <span class="text-sm text-gray-500">@_nuevoSustanciaMsg</span>
+                }
+            </div>
+        </div>
+    </details>
+</section>
+
+<!-- =========================================================
+     2) SUBIR CONTENEDOR
+     ========================================================= -->
+<section class="page-card" style="margin-top:1rem;">
+    <details>
+        <summary style="cursor:pointer; font-weight:600;">Subir contenedor</summary>
+
+        <div class="form-header">
+            <h4>Contenedor físico</h4>
+            <p class="form-hint">
+                El contenedor es el envase del reactivo y define ubicación real (área, mesón, nivel) y stock.
+            </p>
+        </div>
+
+        <div class="assign-row form-grid">
+            <input class="border p-1" placeholder="ID contenedor (opcional)" @bind="_nuevoContenedorId" />
+
+            <select class="border p-1" @bind="_nuevoContenedorSustanciaId">
+                <option value="">Selecciona sustancia</option>
+                @foreach (var opt in sustanciasLookup)
+                {
+                    <option value="@opt.Id">@opt.Nombre</option>
+                }
+            </select>
+
+            <div class="brand-picker">
+                <select class="border p-1" @bind="_nuevoContenedorMarcaId">
+                    <option value="">Marca</option>
+                    @foreach (var marca in _marcaOptions)
+                    {
+                        <option value="@marca.Id">@marca.Label</option>
+                    }
+                </select>
+
+                @if (!string.IsNullOrWhiteSpace(SelectedContenedorMarcaLogoUrl))
+                {
+                    <img class="thumb thumb-logo" src="@SelectedContenedorMarcaLogoUrl" alt="Logo marca" />
+                }
+            </div>
+
+            <input class="border p-1" placeholder="Densidad g/mL" @bind="_nuevoContenedorDensidad" />
+            <input class="border p-1" placeholder="Proveedor" @bind="_nuevoContenedorProveedor" />
+
+            <div class="field-stack">
+                <label class="field-label">Fecha de compra</label>
+                <input class="border p-1" type="date" @bind-value="_nuevoContenedorFechaCompra" @bind-value:format="yyyy-MM-dd" />
+            </div>
+            <div class="field-stack">
+                <label class="field-label">Fecha de recepción</label>
+                <input class="border p-1" type="date" @bind-value="_nuevoContenedorFechaRecepcion" @bind-value:format="yyyy-MM-dd" />
+            </div>
+            <div class="field-stack">
+                <label class="field-label">Fecha de vencimiento</label>
+                <input class="border p-1" type="date" @bind-value="_nuevoContenedorFechaVencimiento" @bind-value:format="yyyy-MM-dd" />
+            </div>
+            <div class="field-stack">
+                <label class="field-label">Fecha de apertura</label>
+                <input class="border p-1" type="date" @bind-value="_nuevoContenedorFechaApertura" @bind-value:format="yyyy-MM-dd" />
+            </div>
+
+            <input class="border p-1" placeholder="Masa envase vacío (g)" @bind="_nuevoContenedorMasaEnvase" />
+            <input class="border p-1" placeholder="Masa tapa (g)" @bind="_nuevoContenedorMasaTapa" />
+            <input class="border p-1" placeholder="Color envase" @bind="_nuevoContenedorColor" />
+
+
+            <input class="border p-1" placeholder="Altura (cm)" @bind="_nuevoContenedorAlturaCm" />
+
+
+            <select class="border p-1" @bind="_nuevoContenedorUnidadId">
+                <option value="">Unidad</option>
+                @foreach (var unidad in _unidadOptions)
+                {
+                    <option value="@unidad.Id">@unidad.Label</option>
+                }
+            </select>
+            <input class="border p-1" placeholder="Cantidad nominal" @bind="_nuevoContenedorCantidadNominal" />
+            <input class="border p-1" placeholder="Cantidad actual" @bind="_nuevoContenedorCantidad" />
+
+            <select class="border p-1" @bind="_nuevoContenedorCondicionId">
+                <option value="">Condición</option>
+                @foreach (var condicion in _condicionOptions)
+                {
+                    <option value="@condicion.Id">@condicion.Label</option>
+                }
+            </select>
+
+            <input class="border p-1" placeholder="Observaciones" @bind="_nuevoContenedorObservaciones" />
+
+            <!-- ============================
+                 AREA: dropdown + mapa
+                 ============================ -->
+            <div class="selector-split full-span">
+                <select class="border p-1"
+                        value="@_nuevoContenedorAreaId"
+                        @onchange="OnContenedorAreaChanged">
+                    <option value="">Área</option>
+                    @foreach (var area in _areaOptions)
+                    {
+                        <option value="@area.Id">@area.Label</option>
+                    }
+                </select>
+
+                <div class="visual-picker">
+                    <div class="visual-toolbar">
+                        <label class="text-xs text-gray-500">Mapa de áreas</label>
+
+                        <select class="border p-1 text-xs" @bind="_currentPlantaId">
+                            <option value="">Todas</option>
+                            @foreach (var planta in _plantasLookup)
+                            {
+                                <option value="@planta.Key">@planta.Value</option>
+                            }
+                        </select>
+                    </div>
+
+                    @if (_canvasViews.Count == 0)
+                    {
+                        <div class="text-xs text-gray-500">Sin mapas disponibles.</div>
+                    }
+                    else
+                    {
+                        @foreach (var view in _canvasViews)
+                        {
+                            var areasPorPlanta = view.Areas.Where(a => IsAreaInCurrentPlanta(a.PlantaId)).ToList();
+                            if (areasPorPlanta.Count == 0)
+                                continue;
+
+                            <div class="canvas-card">
+                                <div class="text-xs text-gray-500">@view.Canvas.Nombre</div>
+
+                                <svg width="100%" height="100%"
+                                     viewBox="0 0 @view.Canvas.Ancho @view.Canvas.largo"
+                                     preserveAspectRatio="xMidYMid meet">
+
+                                    <rect x="0" y="0"
+                                          width="@FormatSvg(view.Canvas.Ancho)"
+                                          height="@FormatSvg(view.Canvas.largo)"
+                                          fill="transparent"
+                                          style="pointer-events:all"
+                                          @onclick="ClearContenedorAreaSelection" />
+
+                                    @foreach (var area in areasPorPlanta)
+                                    {
+                                        foreach (var poly in area.Poligonos.OrderBy(p => p.ZOrder))
+                                        {
+                                            <polygon points="@PointsString(poly)"
+                                                     fill="@AreaFill(area)"
+                                                     stroke="#111827" stroke-width="0.03"
+                                                     style="cursor:pointer"
+                                                     @onclick:stopPropagation="true"
+                                                     @onclick="@(() => SelectContenedorAreaFromVisualAsync(area.AreaId))" />
+                                        }
+
+                                        @if (!string.IsNullOrWhiteSpace(area.Nombre))
+                                        {
+                                            var labelWidth = AreaLabelWidth(area);
+                                            var labelHeight = AreaLabelHeight(area);
+                                            var fontSize = AreaLabelFontSize(area);
+
+                                            <svg:rect x="@FormatSvg(area.CenterX - labelWidth / 2m)"
+                                                      y="@FormatSvg(area.CenterY - labelHeight / 2m)"
+                                                      width="@FormatSvg(labelWidth)"
+                                                      height="@FormatSvg(labelHeight)"
+                                                      fill="#ffffff" opacity="0.8" rx="0.15" ry="0.15"
+                                                      @onclick:stopPropagation="true" />
+                                            <svg:text class="area-label"
+                                                      x="@FormatSvg(area.CenterX)" y="@FormatSvg(area.CenterY)"
+                                                      text-anchor="middle" dominant-baseline="middle"
+                                                      font-size="@FormatSvg(fontSize)"
+                                                      @onclick:stopPropagation="true">
+                                                @area.Nombre
+                                            </svg:text>
+                                        }
+                                    }
+                                </svg>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+
+            <!-- ============================
+                 MESON: dropdown + mapa + lista
+                 ============================ -->
+            <div class="selector-split full-span">
+                <select class="border p-1"
+                        value="@_nuevoContenedorMesonId"
+                        @onchange="OnContenedorMesonChanged"
+                        disabled="@string.IsNullOrWhiteSpace(_nuevoContenedorAreaId)">
+                    <option value="">Mesón</option>
+                    @foreach (var meson in _mesonOptions)
+                    {
+                        <option value="@meson.Id">@meson.Label</option>
+                    }
+                </select>
+
+                <div class="visual-picker">
+                    <div class="text-xs text-gray-500">Mesones del área seleccionada</div>
+
+                    @if (SelectedAreaForMap is not null)
+                    {
+                        var selectedArea = SelectedAreaForMap;
+                        var vb = AreaViewBoxRect(selectedArea);
+
+                        <div class="canvas-card">
+                            <div class="text-xs text-gray-500">@SelectedAreaLabel</div>
+                            <svg width="100%" height="100%"
+                                 viewBox="@AreaViewBox(selectedArea)"
+                                 preserveAspectRatio="xMidYMid meet">
+
+                                <rect x="@FormatSvg(vb.x)" y="@FormatSvg(vb.y)"
+                                      width="@FormatSvg(vb.w)" height="@FormatSvg(vb.h)"
+                                      fill="transparent"
+                                      style="pointer-events:all"
+                                      @onclick="ClearContenedorMesonSelection" />
+
+                                @foreach (var poly in selectedArea.Poligonos.OrderBy(p => p.ZOrder))
+                                {
+                                    <polygon points="@PointsString(poly)"
+                                             fill="@AreaFill(selectedArea)"
+                                             stroke="#111827" stroke-width="0.03"
+                                             @onclick:stopPropagation="true" />
+                                }
+
+                                @foreach (var meson in _mesonVisuals.OrderBy(m => m.ZOrder))
+                                {
+                                    <g class="meson-visual"
+                                       style="cursor:pointer"
+                                       @onclick:stopPropagation="true"
+                                       @onclick="@(() => SelectContenedorMeson(meson.MesonId))">
+
+                                        <rect x="@FormatSvg(meson.X)"
+                                              y="@FormatSvg(meson.Y)"
+                                              width="@FormatSvg(meson.Width)"
+                                              height="@FormatSvg(meson.Height)"
+                                              fill="@MesonFill(meson)"
+                                              opacity="@FormatSvg(MesonOpacity(meson))"
+                                              stroke="@MesonStroke(meson)"
+                                              stroke-width="@FormatSvg(MesonStrokeWidth(meson))" />
+                                        <svg:text x="@FormatSvg(meson.X + meson.Width / 2m)"
+                                                  y="@FormatSvg(meson.Y + meson.Height / 2m)"
+                                                  text-anchor="middle"
+                                                  dominant-baseline="middle"
+                                                  font-size="@FormatSvg(MesonLabelFontSize(meson))"
+                                                  fill="#111827">
+                                            @meson.Label
+                                        </svg:text>
+                                    </g>
+                                }
+                            </svg>
+                        </div>
+                    }
+
+                    @if (_mesonSummaries.Count == 0)
+                    {
+                        <div class="text-xs text-gray-500">Sin mesones disponibles.</div>
+                    }
+                    else
+                    {
+                        <ul class="meson-list">
+                            @foreach (var meson in _mesonSummaries)
+                            {
+                                var isSel = string.Equals(meson.MesonId, _nuevoContenedorMesonId, StringComparison.OrdinalIgnoreCase);
+
+                                <li class="@(isSel ? "meson-item selected" : "meson-item")">
+                                    <button type="button" class="btn link"
+                                            @onclick="@(() => SelectContenedorMeson(meson.MesonId))">
+                                        @meson.Nombre
+                                    </button>
+                                    <div class="text-xs text-gray-500">
+                                        Reactivos: @meson.ReactivosCount · Equipos: @meson.EquiposCount
+                                    </div>
+                                </li>
+                            }
+                        </ul>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(_nuevoContenedorMesonId))
+                    {
+                        <div class="text-xs text-gray-500">
+                            Seleccionado: @SelectedAreaLabel · @SelectedMesonLabel
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <input class="border p-1" placeholder="Nivel" @bind="_nuevoContenedorNivel" />
+            <input class="border p-1" placeholder="Posición" @bind="_nuevoContenedorPosicion" />
+            <input class="border p-1" placeholder="QR" @bind="_nuevoContenedorQr" />
+
+            <!-- ============================
+                 IMAGEN CONTENEDOR
+                 ============================ -->
+            <div class="upload-card full-span">
+                <div class="upload-options">
+                    <label class="text-sm">
+                        <input type="radio"
+                               name="contenedorImagenModo"
+                               value="url"
+                               checked="@(_nuevoContenedorImagenModo == "url")"
+                               @onchange="OnContenedorImagenModoChanged" />
+                        Colocar un URL
+                    </label>
+                    <label class="text-sm">
+                        <input type="radio"
+                               name="contenedorImagenModo"
+                               value="archivo"
+                               checked="@(_nuevoContenedorImagenModo == "archivo")"
+                               @onchange="OnContenedorImagenModoChanged" />
+                        Subir archivo
+                    </label>
+                </div>
+
+                @if (_nuevoContenedorImagenModo == "url")
+                {
+                    <input class="border p-1" placeholder="Imagen URL (o ruta relativa)" @bind="_nuevoContenedorImagenUrl" />
+                }
+                else
+                {
+                    <label class="upload-drop">
+                        <InputFile OnChange="OnContenedorImagenArchivoSeleccionado" accept="image/png,image/jpeg,image/jpg,image/webp" />
+                        <span>Arrastra una imagen o haz clic para buscar</span>
+                    </label>
+                    @if (!string.IsNullOrWhiteSpace(_nuevoContenedorImagenArchivo))
+                    {
+                        <div class="text-xs text-gray-500">Archivo: @_nuevoContenedorImagenArchivo</div>
+                    }
+                }
+            </div>
+
+            <div class="form-actions full-span">
+                <button class="btn primary" @onclick="SubirContenedorAsync">Subir contenedor</button>
+                @if (!string.IsNullOrWhiteSpace(_nuevoContenedorMsg))
+                {
+                    <span class="text-sm text-gray-500">@_nuevoContenedorMsg</span>
+                }
+            </div>
+        </div>
+    </details>
+</section>
+
+<!-- =========================================================
+     3) GUIA CATEGORIAS + FILTRO + VER TODOS
+     ========================================================= -->
+<section class="page-card" style="margin-top:1.5rem;">
+    <div class="category-header">
+        <div>
+            <h3>Guía base (reactivos químicos)</h3>
+            <p class="helper">Selecciona una subcategoría para ver los reactivos, o activa “Ver todos”.</p>
+        </div>
+
+        <div class="category-controls">
+            <label class="toggle">
+                <input type="checkbox"
+                       checked="@_verTodos"
+                       @onchange="OnVerTodosToggleAsync" />
+                <span>Ver todos los reactivos</span>
+            </label>
+
+            <select class="category-select"
+                    @onchange="OnSubcategoriaChanged"
+                    value="@(_verTodos ? "" : SubcategoriaId)">
+                <option value="">Todas las subcategorías</option>
+                @foreach (var categoria in categorias)
+                {
+                    <optgroup label="@categoria.Nombre">
+                        @foreach (var subcategoria in categoria.Subcategorias)
+                        {
+                            <option value="@subcategoria.Id">@subcategoria.Nombre</option>
+                        }
+                    </optgroup>
+                }
+            </select>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(SubcategoriaId))
+        {
+            <NavLink class="btn-link" href="/inventario-sustancias">Ver todas</NavLink>
+        }
+    </div>
+
+    @if (categorias.Count == 0)
+    {
+        <p><em>Cargando categorías…</em></p>
+    }
+    else
+    {
+        <div class="category-grid">
+            @foreach (var categoria in categorias)
+            {
+                <div class="category-card">
+                    <div class="category-title">@categoria.Nombre</div>
+                    <ul class="category-list">
+                        @foreach (var subcategoria in categoria.Subcategorias)
+                        {
+                            <li>
+                                <NavLink href="@($"/inventario-sustancias/categoria/{subcategoria.Id}")" class="category-link">
+                                    @subcategoria.Nombre
+                                </NavLink>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            }
+        </div>
+    }
+</section>
+
+<!-- =========================================================
+     4) LISTA: SUSTANCIAS (con search + conteo)
+     ========================================================= -->
+<section class="page-card" style="margin-top:1.5rem;">
+    <div class="materials-header">
+        <div class="materials-title">
+            <h3>
+                @(_verTodos
+                    ? "Todos los reactivos"
+                    : (string.IsNullOrWhiteSpace(SubcategoriaId)
+                    ? "Reactivos disponibles"
+                    : $"Reactivos · {subcategoriaNombre ?? SubcategoriaId}"))
+            </h3>
+
+            @if (_verTodos || !string.IsNullOrWhiteSpace(SubcategoriaId))
+            {
+                <span class="badge">@SustanciasCountLabel</span>
+            }
+        </div>
+
+        <input class="border p-1 search-input-invent"
+               placeholder="Buscar (nombre, CAS, subcategoría, GHS, etc.)..."
+               @bind="_searchSustanciasText"
+               @bind:event="oninput"
+               disabled="@(!(_verTodos || !string.IsNullOrWhiteSpace(SubcategoriaId)))" />
+
+        @if (_verTodos)
+        {
+            <NavLink class="btn-link" href="/inventario-sustancias">Volver a categorías</NavLink>
+        }
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(loadError))
+    {
+        <p class="error-note">No se pudieron cargar reactivos: @loadError</p>
+    }
+    else if (string.IsNullOrWhiteSpace(SubcategoriaId) && !_verTodos)
+    {
+        <div class="empty">
+            <div class="helper">Elige una subcategoría para ver reactivos asociados o lista todo el inventario.</div>
+        </div>
+    }
+    else if (sustancias.Count == 0)
+    {
+        <div class="empty">
+            No hay reactivos registrados para este filtro.
+        </div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Reactivo</th>
+                        <th>CAS</th>
+                        <th>Subcategorías</th>
+                        <th>Seguridad</th>
+                        <th>Controlada</th>
+                        <th>Contenedores</th>
+                        <th>Stock total</th>
+                        <th>Ubicación (último)</th>
+                        <th>Imagen</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var s in SustanciasFiltradas)
+                    {
+                        <tr>
+                            <td>@s.Id</td>
+
+                            <td>
+                                <NavLink href="@($"/inventario-sustancias/{s.Id}")">
+                                    @s.Nombre
+                                </NavLink>
+                            </td>
+
+                            <td>@(string.IsNullOrWhiteSpace(s.Cas) ? "—" : s.Cas)</td>
+                            <td>@(string.IsNullOrWhiteSpace(s.Subcategoria) ? "—" : s.Subcategoria)</td>
+
+                            <td>
+                                <div class="cell-media">
+                                    @if (s.GhsIconUrls is not null && s.GhsIconUrls.Length > 0)
+                                    {
+                                        foreach (var icon in s.GhsIconUrls.Take(6))
+                                        {
+                                            if (string.IsNullOrWhiteSpace(icon)) { continue; }
+                                            <img class="thumb thumb-ghs" src="@icon" alt="GHS" />
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span class="text-xs text-gray-500">—</span>
+                                    }
+                                </div>
+                            </td>
+
+                            <td>
+                                @if (s.Controlada)
+                                {
+                                    <span class="badge badge-warn">Sí</span>
+                                }
+                                else
+                                {
+                                    <span class="text-xs text-gray-500">No</span>
+                                }
+                            </td>
+
+                            <td>@s.ContenedoresCount</td>
+                            <td>@s.StockTotalLabel</td>
+                            <td>@(string.IsNullOrWhiteSpace(s.Ubicacion) ? "—" : s.Ubicacion)</td>
+
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(s.ImagenUrl))
+                                {
+                                    <img class="thumb thumb-material" src="@s.ImagenUrl" alt="Imagen sustancia" />
+                                }
+                                else
+                                {
+                                    <span class="text-xs text-gray-500">—</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+<!-- =========================================================
+     5) LISTA: CONTENEDORES (con search + conteo)
+     ========================================================= -->
+<section class="page-card" style="margin-top:1.5rem;">
+    <div class="materials-header">
+        <div class="materials-title">
+            <h3>
+                @(_verTodos
+                    ? "Contenedores · (todos)"
+                    : (string.IsNullOrWhiteSpace(SubcategoriaId)
+                    ? "Contenedores"
+                    : $"Contenedores · {subcategoriaNombre ?? SubcategoriaId}"))
+            </h3>
+
+            @if (_verTodos || !string.IsNullOrWhiteSpace(SubcategoriaId))
+            {
+                <span class="badge">@ContenedoresCountLabel</span>
+            }
+        </div>
+
+        <input class="border p-1 search-input-invent"
+               placeholder="Buscar (reactivo, ID, marca, condición, área, QR, proveedor)..."
+               @bind="_searchContenedoresText"
+               @bind:event="oninput"
+               disabled="@(!(_verTodos || !string.IsNullOrWhiteSpace(SubcategoriaId)))" />
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(contenedoresLoadError))
+    {
+        <p class="error-note">No se pudieron cargar contenedores: @contenedoresLoadError</p>
+    }
+    else if (string.IsNullOrWhiteSpace(SubcategoriaId) && !_verTodos)
+    {
+        <div class="empty">
+            <div class="helper">Elige una subcategoría o activa “Ver todos” para listar contenedores.</div>
+        </div>
+    }
+    else if (contenedores.Count == 0)
+    {
+        <div class="empty">
+            No hay contenedores registrados para este filtro.
+        </div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Reactivo</th>
+                        <th>Marca</th>
+                        <th>Cantidad</th>
+                        <th>Condición</th>
+                        <th>Altura (cm)</th>
+                        <th>Ubicación</th>
+                        <th>Apertura</th>
+                        <th>Vencimiento</th>
+                        <th>QR</th>
+                        <th>Imagen</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in ContenedoresFiltrados)
+                    {
+                        <tr>
+                            <td>
+                                <NavLink href="@($"/inventario-sustancias/contenedor/{c.Id}")">
+                                    @c.Id
+                                </NavLink>
+                            </td>
+
+                            <td>@c.Reactivo</td>
+
+                            <td>
+                                <div class="cell-media">
+                                    @if (!string.IsNullOrWhiteSpace(c.MarcaImagenUrl))
+                                    {
+                                        <img class="thumb thumb-logo" src="@c.MarcaImagenUrl" alt="Logo marca" />
+                                    }
+                                    <span>@(string.IsNullOrWhiteSpace(c.MarcaNombre) ? "—" : c.MarcaNombre)</span>
+                                </div>
+                            </td>
+
+                            <td>@c.Cantidad</td>
+                            <td>@(string.IsNullOrWhiteSpace(c.Condicion) ? "—" : c.Condicion)</td>
+                            <td>@(string.IsNullOrWhiteSpace(c.AlturaCm) ? "—" : c.AlturaCm)</td>
+                            <td>@(string.IsNullOrWhiteSpace(c.Ubicacion) ? "—" : c.Ubicacion)</td>
+                            <td>@c.FechaApertura</td>
+                            <td>@c.FechaVencimiento</td>
+                            <td>@(string.IsNullOrWhiteSpace(c.Qr) ? "—" : c.Qr)</td>
+
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(c.ImagenUrl))
+                                {
+                                    <img class="thumb thumb-material" src="@c.ImagenUrl" alt="Imagen contenedor" />
+                                }
+                                else
+                                {
+                                    <span class="text-xs text-gray-500">—</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter] public string? SubcategoriaId { get; set; }
+
+    // ✅ Categoría base (reactivos)
+    private static readonly string[] CategoriaReactivoIds = new[] { "reactivo-quimico" };
+
+    // ============================
+    // Estado UI
+    // ============================
+    private bool _verTodos;
+    private string? subcategoriaNombre;
+    private string? loadError;
+    private string? contenedoresLoadError;
+
+    private string? _searchSustanciasText;
+    private string? _searchContenedoresText;
+
+    // ============================
+    // Colecciones
+    // ============================
+    private readonly List<CategoriaRow> categorias = new();
+    private readonly List<SustanciaRow> sustancias = new();
+    private readonly List<ContenedorRow> contenedores = new();
+    private readonly List<SustanciaLookup> sustanciasLookup = new();
+
+    // Lookups
+    private readonly List<SelectOption> _subcategoriaReactivoOptions = new();
+    private readonly List<SelectOption> _marcaOptions = new();
+    private readonly List<SelectOption> _unidadOptions = new();
+    private readonly List<SelectOption> _condicionOptions = new();
+    private readonly List<SelectOption> _areaOptions = new();
+    private readonly List<SelectOption> _mesonOptions = new();
+    private readonly List<SelectOption> _categoriaReactivoOptions = new();
+
+// subcats: lista “bonita” con "Categoria · Subcategoria" y mapeo por categoría
+private readonly List<SelectOption> _subcategoriaAllOptions = new();
+private readonly Dictionary<string, List<SelectOption>> _subcategoriasByCategoria =
+    new(StringComparer.OrdinalIgnoreCase);
+
+
+    // Mesón visuals
+    private readonly List<MesonSummary> _mesonSummaries = new();
+    private readonly List<MesonVisual> _mesonVisuals = new();
+
+    // Canvas / mapas
+    private readonly List<CanvasView> _canvasViews = new();
+    private readonly Dictionary<string, string> _plantasLookup = new(StringComparer.OrdinalIgnoreCase);
+    private string? _currentPlantaId;
+
+    // GHS/H/P
+    private readonly List<GhsOption> _ghsOptions = new();
+    private readonly List<HCodeOption> _hCodeOptions = new();
+    private readonly List<PCodeOption> _pCodeOptions = new();
+
+    private readonly HashSet<string> _nuevoSustanciaGhsIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _nuevoSustanciaHIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _nuevoSustanciaPIds = new(StringComparer.OrdinalIgnoreCase);
+
+    // ============================
+    // Form: Sustancia
+    // ============================
+    private string? _nuevoSustanciaId;
+    private string? _nuevoSustanciaNombreComercial;
+    private string? _nuevoSustanciaNombreQuimico;
+    private string? _nuevoSustanciaCas;
+    private string? _nuevoSustanciaFormaFisica;
+    private string? _nuevoSustanciaCategoriaId = "reactivo-quimico";
+    private readonly HashSet<string> _nuevoSustanciaSubcategoriaIds = new(StringComparer.OrdinalIgnoreCase);
+    private string? _nuevoSustanciaDescripcion;
+    private string? _nuevoSustanciaImagenUrl;
+    private string _nuevoSustanciaImagenModo = "url";
+    private string? _nuevoSustanciaImagenArchivo;
+    private string? _nuevoSustanciaObservaciones;
+    private bool _nuevoSustanciaControlada;
+    private string? _nuevoSustanciaMsg;
+
+    // ============================
+    // Form: Contenedor
+    // ============================
+    private string? _nuevoContenedorId;
+    private string? _nuevoContenedorSustanciaId;
+    private string? _nuevoContenedorMarcaId;
+    private string? _nuevoContenedorDensidad;
+    private string? _nuevoContenedorProveedor;
+    private DateTime? _nuevoContenedorFechaCompra;
+    private DateTime? _nuevoContenedorFechaRecepcion;
+    private DateTime? _nuevoContenedorFechaVencimiento;
+    private DateTime? _nuevoContenedorFechaApertura;
+    private string? _nuevoContenedorMasaEnvase;
+    private string? _nuevoContenedorMasaTapa;
+    private string? _nuevoContenedorColor;
+    private string? _nuevoContenedorAlturaCm;
+    private string? _nuevoContenedorUnidadId;
+    private string? _nuevoContenedorCantidadNominal;
+    private string? _nuevoContenedorCantidad;
+    private string? _nuevoContenedorCondicionId;
+    private string? _nuevoContenedorObservaciones;
+    private string? _nuevoContenedorAreaId;
+    private string? _nuevoContenedorMesonId;
+    private string? _nuevoContenedorNivel;
+    private string? _nuevoContenedorPosicion;
+    private string? _nuevoContenedorQr;
+    private string? _nuevoContenedorImagenUrl;
+    private string _nuevoContenedorImagenModo = "url";
+    private string? _nuevoContenedorImagenArchivo;
+    private string? _nuevoContenedorMsg;
+
+    // ============================
+    // Labels
+    // ============================
+    private string GhsDropdownLabel =>
+        _nuevoSustanciaGhsIds.Count == 0 ? "Selecciona pictogramas…" : $"Pictogramas seleccionados: {_nuevoSustanciaGhsIds.Count}";
+
+    private string HDropdownLabel =>
+        _nuevoSustanciaHIds.Count == 0 ? "Selecciona H codes…" : $"H codes seleccionados: {_nuevoSustanciaHIds.Count}";
+
+    private string PDropdownLabel =>
+        _nuevoSustanciaPIds.Count == 0 ? "Selecciona P codes…" : $"P codes seleccionados: {_nuevoSustanciaPIds.Count}";
+
+    private string? SelectedContenedorMarcaLogoUrl =>
+        _marcaOptions.FirstOrDefault(m => string.Equals(m.Id, _nuevoContenedorMarcaId, StringComparison.OrdinalIgnoreCase))?.ImageUrl;
+
+    // ============================
+    // List filtered
+    // ============================
+    private IEnumerable<SustanciaRow> SustanciasFiltradas
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_searchSustanciasText))
+                return sustancias;
+
+            var q = _searchSustanciasText.Trim();
+
+            bool Hit(string? s) =>
+                !string.IsNullOrWhiteSpace(s) &&
+                s.Contains(q, StringComparison.OrdinalIgnoreCase);
+
+            return sustancias.Where(s =>
+                Hit(s.Id) ||
+                Hit(s.Nombre) ||
+                Hit(s.Cas) ||
+                Hit(s.Categoria) ||
+                Hit(s.Subcategoria) ||
+                Hit(s.Ubicacion) ||
+                (s.Controlada && q.Contains("control", StringComparison.OrdinalIgnoreCase)) ||
+                (s.GhsIds is not null && s.GhsIds.Any(id => Hit(id)))
+            );
+        }
+    }
+
+    private IEnumerable<ContenedorRow> ContenedoresFiltrados
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_searchContenedoresText))
+                return contenedores;
+
+            var q = _searchContenedoresText.Trim();
+
+            bool Hit(string? s) =>
+                !string.IsNullOrWhiteSpace(s) &&
+                s.Contains(q, StringComparison.OrdinalIgnoreCase);
+
+            return contenedores.Where(c =>
+    Hit(c.Id) ||
+    Hit(c.Reactivo) ||
+    Hit(c.MarcaNombre) ||
+    Hit(c.Cantidad) ||
+    Hit(c.Condicion) ||
+    Hit(c.AlturaCm) ||
+    Hit(c.Ubicacion) ||
+    Hit(c.FechaApertura) ||
+    Hit(c.FechaVencimiento) ||
+    Hit(c.Qr)
+    );
+        }
+    }
+
+    private string SustanciasCountLabel
+    {
+        get
+        {
+            var total = sustancias.Count;
+            if (string.IsNullOrWhiteSpace(_searchSustanciasText))
+                return $"{total} reactivos";
+
+            var filtered = SustanciasFiltradas.Count();
+            return $"{filtered} de {total}";
+        }
+    }
+
+    private string ContenedoresCountLabel
+    {
+        get
+        {
+            var total = contenedores.Count;
+            if (string.IsNullOrWhiteSpace(_searchContenedoresText))
+                return $"{total} contenedores";
+
+            var filtered = ContenedoresFiltrados.Count();
+            return $"{filtered} de {total}";
+        }
+    }
+
+    // ============================
+    // Lifecycle
+    // ============================
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _verTodos = ComputeVerTodos();
+
+        loadError = null;
+        contenedoresLoadError = null;
+
+        await LoadCategoriasAsync();        // 1 sola vez
+        await LoadLookupsAsync();           // subcats reactivo + marcas + unidades + condiciones + áreas + GHS/H/P
+        await LoadCanvasAreasAsync();       // mapas
+        await LoadSustanciasLookupAsync();  // dropdown contenedor
+
+        await LoadSustanciasAsync();        // tabla sustancias
+        await LoadContenedoresAsync();      // tabla contenedores
+    }
+
+    private void HandleLaboratorioChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            _nuevoContenedorAreaId = null;
+            _nuevoContenedorMesonId = null;
+
+            _mesonOptions.Clear();
+            _mesonSummaries.Clear();
+            _mesonVisuals.Clear();
+
+            _canvasViews.Clear();
+            _plantasLookup.Clear();
+            _currentPlantaId = null;
+
+            _searchSustanciasText = null;
+            _searchContenedoresText = null;
+
+            loadError = null;
+            contenedoresLoadError = null;
+
+            await LoadLookupsAsync();
+            await LoadCanvasAreasAsync();
+            await LoadSustanciasLookupAsync();
+            await LoadSustanciasAsync();
+            await LoadContenedoresAsync();
+
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
+
+    // ============================
+    // Toggle/Navigation
+    // ============================
+    private bool ComputeVerTodos()
+    {
+        var path = new Uri(Nav.Uri).AbsolutePath.TrimEnd('/');
+        return path.EndsWith("/inventario-sustancias/todos", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task OnVerTodosToggleAsync(ChangeEventArgs args)
+    {
+        var isChecked =
+            args.Value is bool b ? b :
+            string.Equals(args.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+
+        // Caso problemático: vienes de /inventario-sustancias (SubcategoriaId == null)
+        // y te vas a /inventario-sustancias/todos (SubcategoriaId sigue null).
+        if (string.IsNullOrWhiteSpace(SubcategoriaId))
+        {
+            _verTodos = isChecked;
+
+            await LoadSustanciasAsync();
+            await LoadContenedoresAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+
+        Nav.NavigateTo(isChecked ? "/inventario-sustancias/todos" : "/inventario-sustancias");
+    }
+
+
+    private void OnSubcategoriaChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            Nav.NavigateTo("/inventario-sustancias");
+            return;
+        }
+        Nav.NavigateTo($"/inventario-sustancias/categoria/{value}");
+    }
+
+    // ============================
+    // GHS/H/P toggle
+    // ============================
+    private void ToggleGhs(string id, ChangeEventArgs e)
+    {
+        var isChecked = e.Value is bool b && b;
+        if (isChecked) _nuevoSustanciaGhsIds.Add(id);
+        else _nuevoSustanciaGhsIds.Remove(id);
+    }
+
+    private void ToggleH(string id, ChangeEventArgs e)
+    {
+        var isChecked = e.Value is bool b && b;
+        if (isChecked) _nuevoSustanciaHIds.Add(id);
+        else _nuevoSustanciaHIds.Remove(id);
+    }
+
+    private void ToggleP(string id, ChangeEventArgs e)
+    {
+        var isChecked = e.Value is bool b && b;
+        if (isChecked) _nuevoSustanciaPIds.Add(id);
+        else _nuevoSustanciaPIds.Remove(id);
+    }
+
+    // ============================
+    // Imagen: Sustancia
+    // ============================
+    private void OnSustanciaImagenModoChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(value))
+            _nuevoSustanciaImagenModo = value;
+    }
+
+    private async Task OnSustanciaImagenArchivoSeleccionado(InputFileChangeEventArgs args)
+    {
+        _nuevoSustanciaMsg = null;
+
+        if (args.FileCount == 0) return;
+
+        var file = args.File;
+        var extension = Path.GetExtension(file.Name).ToLowerInvariant();
+
+        if (!AllowedImageExtensions.Contains(extension))
+        {
+            _nuevoSustanciaMsg = "Formato no permitido. Usa PNG, JPG o WEBP.";
+            return;
+        }
+
+        var fileName = $"sustancia_{Guid.NewGuid():N}{extension}";
+        var relativePath = Path.Combine("uploads", "sustancias", fileName).Replace("\\", "/");
+        var absolutePath = Path.Combine(HostEnvironment.WebRootPath, relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(absolutePath)!);
+
+        await using var stream = file.OpenReadStream(5 * 1024 * 1024);
+        await using var fileStream = File.Create(absolutePath);
+        await stream.CopyToAsync(fileStream);
+
+        _nuevoSustanciaImagenUrl = $"/{relativePath}";
+        _nuevoSustanciaImagenArchivo = file.Name;
+        _nuevoSustanciaMsg = $"Imagen cargada: {file.Name}";
+    }
+
+    // ============================
+    // Imagen: Contenedor
+    // ============================
+    private void OnContenedorImagenModoChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(value))
+            _nuevoContenedorImagenModo = value;
+    }
+
+    private async Task OnContenedorImagenArchivoSeleccionado(InputFileChangeEventArgs args)
+    {
+        _nuevoContenedorMsg = null;
+
+        if (args.FileCount == 0) return;
+
+        var file = args.File;
+        var extension = Path.GetExtension(file.Name).ToLowerInvariant();
+
+        if (!AllowedImageExtensions.Contains(extension))
+        {
+            _nuevoContenedorMsg = "Formato no permitido. Usa PNG, JPG o WEBP.";
+            return;
+        }
+
+        var fileName = $"contenedor_{Guid.NewGuid():N}{extension}";
+        var relativePath = Path.Combine("uploads", "contenedores", fileName).Replace("\\", "/");
+        var absolutePath = Path.Combine(HostEnvironment.WebRootPath, relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(absolutePath)!);
+
+        await using var stream = file.OpenReadStream(5 * 1024 * 1024);
+        await using var fileStream = File.Create(absolutePath);
+        await stream.CopyToAsync(fileStream);
+
+        _nuevoContenedorImagenUrl = $"/{relativePath}";
+        _nuevoContenedorImagenArchivo = file.Name;
+        _nuevoContenedorMsg = $"Imagen cargada: {file.Name}";
+    }
+
+    private static readonly HashSet<string> AllowedImageExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".png", ".jpg", ".jpeg", ".webp"
+    };
+
+    // ============================
+    // SUBIR: Sustancia + relaciones H/P/GHS
+    // ============================
+    private async Task SubirSustanciaAsync()
+    {
+        _nuevoSustanciaMsg = null;
+
+        var hasNombre =
+            !string.IsNullOrWhiteSpace(_nuevoSustanciaNombreComercial) ||
+            !string.IsNullOrWhiteSpace(_nuevoSustanciaNombreQuimico);
+
+        if (!hasNombre)
+        {
+            _nuevoSustanciaMsg = "Ingresa al menos Nombre comercial o Nombre químico.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_nuevoSustanciaCategoriaId))
+        {
+            _nuevoSustanciaMsg = "Selecciona una categoría.";
+            return;
+        }
+
+        if (_nuevoSustanciaSubcategoriaIds.Count == 0)
+        {
+            _nuevoSustanciaMsg = "Selecciona al menos una subcategoría.";
+            return;
+        }
+
+
+        var sustanciaId = string.IsNullOrWhiteSpace(_nuevoSustanciaId)
+            ? $"sus_{Guid.NewGuid():N}".Substring(0, 12)
+            : _nuevoSustanciaId!.Trim();
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            // Blindaje: subcat pertenece a reactivo-quimico
+            const string checkSubcats = @"
+    SELECT COUNT(*)
+    FROM subcategorias
+    WHERE subcategoria_id = ANY(@subs)
+      AND categoria_id = @cat";
+            await using (var chk = new NpgsqlCommand(checkSubcats, conn, tx))
+            {
+                chk.Parameters.AddWithValue("subs", _nuevoSustanciaSubcategoriaIds.ToArray());
+                chk.Parameters.AddWithValue("cat", _nuevoSustanciaCategoriaId!);
+
+                var okCount = Convert.ToInt64(await chk.ExecuteScalarAsync());
+                if (okCount != _nuevoSustanciaSubcategoriaIds.Count)
+                {
+                    _nuevoSustanciaMsg = "Hay subcategorías que no pertenecen a la categoría elegida.";
+                    await tx.RollbackAsync();
+                    return;
+                }
+            }
+
+
+            const string sqlSust = @"
+    INSERT INTO sustancias
+    (sustancia_id, nombre_comercial, nombre_quimico, cas, forma_fisica, sustancia_controlada,
+     categoria_id, observaciones, descripcion, imagen_url, laboratorio_id)
+    VALUES (@id, @comercial, @quimico, @cas, @forma, @controlada,
+            @cat, @obs, @descripcion, @imagen, @lab)
+    ON CONFLICT (sustancia_id) DO NOTHING";
+
+
+            int rows;
+            await using (var cmd = new NpgsqlCommand(sqlSust, conn, tx))
+            {
+                cmd.Parameters.AddWithValue("id", sustanciaId);
+                cmd.Parameters.AddWithValue("comercial", string.IsNullOrWhiteSpace(_nuevoSustanciaNombreComercial) ? (object)DBNull.Value : _nuevoSustanciaNombreComercial!);
+                cmd.Parameters.AddWithValue("quimico", string.IsNullOrWhiteSpace(_nuevoSustanciaNombreQuimico) ? (object)DBNull.Value : _nuevoSustanciaNombreQuimico!);
+                cmd.Parameters.AddWithValue("cas", string.IsNullOrWhiteSpace(_nuevoSustanciaCas) ? (object)DBNull.Value : _nuevoSustanciaCas!);
+                cmd.Parameters.AddWithValue("forma", string.IsNullOrWhiteSpace(_nuevoSustanciaFormaFisica) ? (object)DBNull.Value : _nuevoSustanciaFormaFisica!);
+                cmd.Parameters.AddWithValue("controlada", _nuevoSustanciaControlada);
+                cmd.Parameters.AddWithValue("cat", _nuevoSustanciaCategoriaId!);
+                cmd.Parameters.AddWithValue("obs", string.IsNullOrWhiteSpace(_nuevoSustanciaObservaciones) ? (object)DBNull.Value : _nuevoSustanciaObservaciones!);
+                cmd.Parameters.AddWithValue("descripcion", string.IsNullOrWhiteSpace(_nuevoSustanciaDescripcion) ? (object)DBNull.Value : _nuevoSustanciaDescripcion!);
+                cmd.Parameters.AddWithValue("imagen", string.IsNullOrWhiteSpace(_nuevoSustanciaImagenUrl) ? (object)DBNull.Value : _nuevoSustanciaImagenUrl!);
+                cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+
+                rows = await cmd.ExecuteNonQueryAsync();
+            }
+
+            if (rows == 0)
+            {
+                _nuevoSustanciaMsg = $"El ID '{sustanciaId}' ya existe. Usa otro ID o deja el campo vacío.";
+                await tx.RollbackAsync();
+                return;
+            }
+
+            const string insSubcats = @"
+    INSERT INTO sustancias_subcategorias(sustancia_id, subcategoria_id)
+    SELECT @sid, x
+    FROM unnest(@subs::varchar[]) AS x
+    ON CONFLICT DO NOTHING;";
+await using (var cmd2 = new NpgsqlCommand(insSubcats, conn, tx))
+{
+    cmd2.Parameters.AddWithValue("sid", sustanciaId);
+    cmd2.Parameters.AddWithValue("subs", _nuevoSustanciaSubcategoriaIds.ToArray());
+    await cmd2.ExecuteNonQueryAsync();
+}
+
+
+            // Sync relaciones (insertar seleccionados)
+            const string insH = @"INSERT INTO sustancias_h (sustancia_id, h_id) VALUES (@sid, @hid) ON CONFLICT DO NOTHING";
+            foreach (var hid in _nuevoSustanciaHIds)
+            {
+                await using var cmd = new NpgsqlCommand(insH, conn, tx);
+                cmd.Parameters.AddWithValue("sid", sustanciaId);
+                cmd.Parameters.AddWithValue("hid", hid);
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            const string insP = @"INSERT INTO sustancias_p (sustancia_id, p_id) VALUES (@sid, @pid) ON CONFLICT DO NOTHING";
+            foreach (var pid in _nuevoSustanciaPIds)
+            {
+                await using var cmd = new NpgsqlCommand(insP, conn, tx);
+                cmd.Parameters.AddWithValue("sid", sustanciaId);
+                cmd.Parameters.AddWithValue("pid", pid);
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            const string insG = @"INSERT INTO sustancias_pictogramas (sustancia_id, ghs_id) VALUES (@sid, @gid) ON CONFLICT DO NOTHING";
+            foreach (var gid in _nuevoSustanciaGhsIds)
+            {
+                await using var cmd = new NpgsqlCommand(insG, conn, tx);
+                cmd.Parameters.AddWithValue("sid", sustanciaId);
+                cmd.Parameters.AddWithValue("gid", gid);
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            await tx.CommitAsync();
+
+            var cG = _nuevoSustanciaGhsIds.Count;
+            var cH = _nuevoSustanciaHIds.Count;
+            var cP = _nuevoSustanciaPIds.Count;
+
+            // Reset form
+            _nuevoSustanciaId = null;
+            _nuevoSustanciaNombreComercial = null;
+            _nuevoSustanciaNombreQuimico = null;
+            _nuevoSustanciaCas = null;
+            _nuevoSustanciaFormaFisica = null;
+            _nuevoSustanciaSubcategoriaIds.Clear();
+            _nuevoSustanciaDescripcion = null;
+            _nuevoSustanciaImagenUrl = null;
+            _nuevoSustanciaImagenModo = "url";
+            _nuevoSustanciaImagenArchivo = null;
+            _nuevoSustanciaObservaciones = null;
+            _nuevoSustanciaControlada = false;
+
+            _nuevoSustanciaGhsIds.Clear();
+            _nuevoSustanciaHIds.Clear();
+            _nuevoSustanciaPIds.Clear();
+
+            _nuevoSustanciaMsg = $"Sustancia registrada. GHS: {cG} · H: {cH} · P: {cP}";
+
+            await LoadSustanciasLookupAsync();
+            await LoadSustanciasAsync();
+            await LoadContenedoresAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            _nuevoSustanciaMsg = $"Error al registrar: {ex.Message}";
+        }
+    }
+
+    // ============================
+    // SUBIR: Contenedor
+    // ============================
+    private async Task SubirContenedorAsync()
+    {
+        _nuevoContenedorMsg = null;
+
+        if (string.IsNullOrWhiteSpace(_nuevoContenedorSustanciaId))
+        {
+            _nuevoContenedorMsg = "Selecciona una sustancia.";
+            return;
+        }
+
+        // UI obliga ubicación
+        if (string.IsNullOrWhiteSpace(_nuevoContenedorAreaId))
+        {
+            _nuevoContenedorMsg = "Selecciona un área para el contenedor.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_nuevoContenedorMesonId))
+        {
+            _nuevoContenedorMsg = "Selecciona un mesón asociado al área.";
+            return;
+        }
+
+        var contenedorId = string.IsNullOrWhiteSpace(_nuevoContenedorId)
+            ? $"cont_{Guid.NewGuid():N}".Substring(0, 12)
+            : _nuevoContenedorId!.Trim();
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+
+            const string sqlCont = @"
+    INSERT INTO contenedores
+    (cont_id, sustancia_id, marca_id, densidad_g_ml, fecha_compra, proveedor, fecha_recepcion, fecha_vencimiento,
+     masa_envase_vacio_g, masa_tapa_g, color_envase, altura_cm, unidad_id, cantidad_reactivo_nominal,
+     cantidad_reactivo_actual, fecha_apertura, condicion_id, observaciones, area_id, meson_id, nivel, posicion,
+     laboratorio_id, qr, imagen_url)
+    VALUES (@cont, @sus, @marca, @densidad, @fcompra, @proveedor, @frecep, @fvenc,
+            @menvase, @mtapa, @color, @altura_cm, @unidad, @nominal,
+            @actual, @fapertura, @cond, @obs, @area, @meson, @nivel, @posicion,
+            @lab, @qr, @img)";
+
+            await using var cmd = new NpgsqlCommand(sqlCont, conn);
+            cmd.Parameters.AddWithValue("cont", contenedorId);
+            cmd.Parameters.AddWithValue("sus", _nuevoContenedorSustanciaId!);
+            cmd.Parameters.AddWithValue("marca", string.IsNullOrWhiteSpace(_nuevoContenedorMarcaId) ? (object)DBNull.Value : _nuevoContenedorMarcaId!);
+            cmd.Parameters.AddWithValue("densidad", ParseDecimalOrNull(_nuevoContenedorDensidad));
+            cmd.Parameters.AddWithValue("fcompra", ParseDateOrNull(_nuevoContenedorFechaCompra));
+            cmd.Parameters.AddWithValue("proveedor", string.IsNullOrWhiteSpace(_nuevoContenedorProveedor) ? (object)DBNull.Value : _nuevoContenedorProveedor!);
+            cmd.Parameters.AddWithValue("frecep", ParseDateOrNull(_nuevoContenedorFechaRecepcion));
+            cmd.Parameters.AddWithValue("fvenc", ParseDateOrNull(_nuevoContenedorFechaVencimiento));
+            cmd.Parameters.AddWithValue("menvase", ParseDecimalOrNull(_nuevoContenedorMasaEnvase));
+            cmd.Parameters.AddWithValue("mtapa", ParseDecimalOrNull(_nuevoContenedorMasaTapa));
+            cmd.Parameters.AddWithValue("color", string.IsNullOrWhiteSpace(_nuevoContenedorColor) ? (object)DBNull.Value : _nuevoContenedorColor!);
+            cmd.Parameters.AddWithValue("altura_cm", ParseDecimalOrNull(_nuevoContenedorAlturaCm));
+            cmd.Parameters.AddWithValue("unidad", string.IsNullOrWhiteSpace(_nuevoContenedorUnidadId) ? (object)DBNull.Value : _nuevoContenedorUnidadId!);
+            cmd.Parameters.AddWithValue("nominal", ParseDecimalOrNull(_nuevoContenedorCantidadNominal));
+            cmd.Parameters.AddWithValue("actual", ParseDecimalOrNull(_nuevoContenedorCantidad));
+            cmd.Parameters.AddWithValue("fapertura", ParseDateOrNull(_nuevoContenedorFechaApertura));
+            cmd.Parameters.AddWithValue("cond", string.IsNullOrWhiteSpace(_nuevoContenedorCondicionId) ? (object)DBNull.Value : _nuevoContenedorCondicionId!);
+            cmd.Parameters.AddWithValue("obs", string.IsNullOrWhiteSpace(_nuevoContenedorObservaciones) ? (object)DBNull.Value : _nuevoContenedorObservaciones!);
+            cmd.Parameters.AddWithValue("area", _nuevoContenedorAreaId!);
+            cmd.Parameters.AddWithValue("meson", _nuevoContenedorMesonId!);
+            cmd.Parameters.AddWithValue("nivel", ParseIntOrNull(_nuevoContenedorNivel));
+            cmd.Parameters.AddWithValue("posicion", string.IsNullOrWhiteSpace(_nuevoContenedorPosicion) ? (object)DBNull.Value : _nuevoContenedorPosicion!);
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            cmd.Parameters.AddWithValue("qr", string.IsNullOrWhiteSpace(_nuevoContenedorQr) ? (object)DBNull.Value : _nuevoContenedorQr!);
+            cmd.Parameters.AddWithValue("img", string.IsNullOrWhiteSpace(_nuevoContenedorImagenUrl) ? (object)DBNull.Value : _nuevoContenedorImagenUrl!);
+
+            await cmd.ExecuteNonQueryAsync();
+
+            // Reset form
+            _nuevoContenedorId = null;
+            _nuevoContenedorSustanciaId = null;
+            _nuevoContenedorMarcaId = null;
+            _nuevoContenedorDensidad = null;
+            _nuevoContenedorProveedor = null;
+            _nuevoContenedorFechaCompra = null;
+            _nuevoContenedorFechaRecepcion = null;
+            _nuevoContenedorFechaVencimiento = null;
+            _nuevoContenedorFechaApertura = null;
+            _nuevoContenedorMasaEnvase = null;
+            _nuevoContenedorMasaTapa = null;
+            _nuevoContenedorColor = null;
+            _nuevoContenedorAlturaCm = null;
+            _nuevoContenedorUnidadId = null;
+            _nuevoContenedorCantidadNominal = null;
+            _nuevoContenedorCantidad = null;
+            _nuevoContenedorCondicionId = null;
+            _nuevoContenedorObservaciones = null;
+            _nuevoContenedorAreaId = null;
+            _nuevoContenedorMesonId = null;
+            _nuevoContenedorNivel = null;
+            _nuevoContenedorPosicion = null;
+            _nuevoContenedorQr = null;
+            _nuevoContenedorImagenUrl = null;
+            _nuevoContenedorImagenModo = "url";
+            _nuevoContenedorImagenArchivo = null;
+
+            _mesonOptions.Clear();
+            _mesonSummaries.Clear();
+            _mesonVisuals.Clear();
+
+            _nuevoContenedorMsg = "Contenedor registrado.";
+
+            await LoadContenedoresAsync();
+            await LoadSustanciasAsync(); // refresca stock/ubicación
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            _nuevoContenedorMsg = $"Error: {ex.Message}";
+        }
+    }
+
+    // ============================
+    // LOAD: Categorías guía
+    // ============================
+    private async Task LoadCategoriasAsync()
+    {
+        if (categorias.Count > 0) return;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+
+            const string sql = @"
+                SELECT c.categoria_id, c.nombre,
+                       s.subcategoria_id, s.nombre
+                FROM categorias c
+                LEFT JOIN subcategorias s ON s.categoria_id = c.categoria_id
+                WHERE c.categoria_id = ANY(@cats)
+                ORDER BY c.nombre, s.nombre";
+
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("cats", CategoriaReactivoIds);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            var map = new Dictionary<string, CategoriaRow>();
+
+            while (await reader.ReadAsync())
+            {
+                var categoriaId = reader.GetString(0);
+
+                if (!map.TryGetValue(categoriaId, out var categoria))
+                {
+                    categoria = new CategoriaRow(categoriaId, reader.GetString(1));
+                    map.Add(categoriaId, categoria);
+                    categorias.Add(categoria);
+                }
+
+                if (!reader.IsDBNull(2))
+                {
+                    categoria.Subcategorias.Add(new SubcategoriaRow(
+                        reader.GetString(2),
+                        reader.GetString(3)
+                    ));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+    }
+
+    // ============================
+    // LOAD: Lookups
+    // ============================
+    private async Task LoadLookupsAsync()
+    {
+        _subcategoriaReactivoOptions.Clear();
+        _marcaOptions.Clear();
+        _unidadOptions.Clear();
+        _condicionOptions.Clear();
+        _areaOptions.Clear();
+        _categoriaReactivoOptions.Clear();
+        _subcategoriaAllOptions.Clear();
+        _subcategoriasByCategoria.Clear();
+
+        _ghsOptions.Clear();
+        _hCodeOptions.Clear();
+        _pCodeOptions.Clear();
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        // Categorías: reactivo-quimico (o las que pongas en CategoriaReactivoIds)
+        const string catSql = @"
+    SELECT categoria_id, nombre
+    FROM categorias
+    WHERE categoria_id = ANY(@cats)
+    ORDER BY nombre";
+        await using (var cmd = new NpgsqlCommand(catSql, conn))
+        {
+            cmd.Parameters.AddWithValue("cats", CategoriaReactivoIds);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+                _categoriaReactivoOptions.Add(new SelectOption(r.GetString(0), r.GetString(1)));
+        }
+
+        // Subcategorías con “Categoria · Subcategoria”
+        const string subSql = @"
+    SELECT s.categoria_id, c.nombre AS categoria_nombre,
+           s.subcategoria_id, s.nombre AS sub_nombre
+    FROM subcategorias s
+    INNER JOIN categorias c ON c.categoria_id = s.categoria_id
+    WHERE s.categoria_id = ANY(@cats)
+    ORDER BY c.nombre, s.nombre";
+        await using (var cmd = new NpgsqlCommand(subSql, conn))
+        {
+            cmd.Parameters.AddWithValue("cats", CategoriaReactivoIds);
+            await using var r = await cmd.ExecuteReaderAsync();
+
+            while (await r.ReadAsync())
+            {
+                var catId = r.GetString(0);
+                var catName = r.GetString(1);
+                var subId = r.GetString(2);
+                var subName = r.GetString(3);
+
+                // label visible: "Categoria · Subcategoria"
+                var label = $"{catName} · {subName}";
+
+                _subcategoriaAllOptions.Add(new SelectOption(subId, label));
+
+                if (!_subcategoriasByCategoria.TryGetValue(catId, out var list))
+                {
+                    list = new List<SelectOption>();
+                    _subcategoriasByCategoria[catId] = list;
+                }
+
+                // en la lista filtrada guardamos también label completo (así el checkbox “muestra la categoría”)
+                list.Add(new SelectOption(subId, label));
+            }
+        }
+
+        // Default categoría si no está seteada
+        if (string.IsNullOrWhiteSpace(_nuevoSustanciaCategoriaId)
+            || !_categoriaReactivoOptions.Any(c => string.Equals(c.Id, _nuevoSustanciaCategoriaId, StringComparison.OrdinalIgnoreCase)))
+        {
+            _nuevoSustanciaCategoriaId = _categoriaReactivoOptions.FirstOrDefault()?.Id;
+        }
+
+
+        // Marcas (con imagen)
+        await using (var cmd = new NpgsqlCommand("SELECT marca_id, nombre, imagen_url FROM marcas ORDER BY nombre", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+            while (await reader.ReadAsync())
+                _marcaOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2)));
+
+        // Unidades
+        await using (var cmd = new NpgsqlCommand("SELECT unidad_id, nombre, simbolo FROM unidades ORDER BY nombre", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+            while (await reader.ReadAsync())
+                _unidadOptions.Add(new SelectOption(reader.GetString(0), $"{reader.GetString(1)} ({reader.GetString(2)})"));
+
+        // Condiciones
+        await using (var cmd = new NpgsqlCommand("SELECT condicion_id, nombre FROM condiciones ORDER BY nombre", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+            while (await reader.ReadAsync())
+                _condicionOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+
+        // Áreas por laboratorio
+        const string areaSql = @"
+            SELECT area_id, nombre_areas
+            FROM areas
+            WHERE laboratorio_id = @lab
+            ORDER BY nombre_areas";
+        await using (var cmd = new NpgsqlCommand(areaSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                _areaOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+        }
+
+        // GHS
+        await using (var cmd = new NpgsqlCommand(@"
+                SELECT ghs_id, descripcion, icon_url, detalle
+                FROM ghs_pictogramas
+                ORDER BY ghs_id
+            ", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                _ghsOptions.Add(new GhsOption(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetString(2),
+                    reader.IsDBNull(3) ? null : reader.GetString(3)
+                ));
+            }
+        }
+
+        // H
+        await using (var cmd = new NpgsqlCommand(@"
+                SELECT h_id, descripcion, grupo
+                FROM h_codes
+                ORDER BY h_id
+            ", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                _hCodeOptions.Add(new HCodeOption(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetString(2)
+                ));
+            }
+        }
+
+        // P
+        await using (var cmd = new NpgsqlCommand(@"
+                SELECT p_id, descripcion, grupo
+                FROM p_codes
+                ORDER BY p_id
+            ", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                _pCodeOptions.Add(new PCodeOption(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetString(2)
+                ));
+            }
+        }
+    }
+
+    // ============================
+    // LOAD: Sustancias lookup (dropdown contenedor)
+    // ============================
+    private async Task LoadSustanciasLookupAsync()
+    {
+        sustanciasLookup.Clear();
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+        const string sql = @"
+            SELECT sustancia_id,
+                   COALESCE(NULLIF(nombre_comercial, ''), NULLIF(nombre_quimico, ''), sustancia_id) AS nombre
+            FROM sustancias
+            WHERE laboratorio_id = @lab
+            ORDER BY 2";
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            sustanciasLookup.Add(new SustanciaLookup(reader.GetString(0), reader.GetString(1)));
+    }
+    // ============================
+    // LOAD: Sustancias (por subcat o todos) - SIN "BRINCO"
+    // ============================
+    private async Task LoadSustanciasAsync()
+    {
+        // No limpies al inicio -> evita colapso del DOM (mini brinco)
+        string? newError = null;
+        string? newSubcategoriaNombre = null;
+        var newList = new List<SustanciaRow>();
+
+        // Si no hay subcategoría y no está "ver todos", dejamos vacío (UI muestra mensaje)
+        if (!_verTodos && string.IsNullOrWhiteSpace(SubcategoriaId))
+        {
+            sustancias.Clear();
+            subcategoriaNombre = null;
+            loadError = null;
+            return;
+        }
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+
+            // Nombre de la subcategoría cuando aplica (solo para el título)
+            if (!_verTodos && !string.IsNullOrWhiteSpace(SubcategoriaId))
+            {
+                const string sqlSubcategoria = @"SELECT nombre FROM subcategorias WHERE subcategoria_id = @subcategoria";
+                await using var cmdName = new NpgsqlCommand(sqlSubcategoria, conn);
+                cmdName.Parameters.AddWithValue("subcategoria", SubcategoriaId);
+                newSubcategoriaNombre = (await cmdName.ExecuteScalarAsync())?.ToString();
+            }
+
+            const string sql = @"
+SELECT s.sustancia_id,
+       COALESCE(NULLIF(s.nombre_comercial, ''), NULLIF(s.nombre_quimico, ''), s.sustancia_id) AS nombre,
+       COALESCE(s.cas, '') AS cas,
+       COALESCE(c.nombre, '') AS categoria,
+
+       COALESCE(string_agg(DISTINCT (c.nombre || ' · ' || sc.nombre), ', ' ORDER BY (c.nombre || ' · ' || sc.nombre)), '') AS subcategorias,
+
+       s.sustancia_controlada,
+       s.imagen_url,
+
+       COALESCE(stats.cont_count, 0) AS cont_count,
+       COALESCE(stats.stock_total, 0) AS stock_total,
+       COALESCE(u.simbolo, '') AS unidad_simbolo,
+
+       COALESCE(a.nombre_areas, '') AS area,
+       COALESCE(m.nombre_meson, '') AS meson,
+       COALESCE(loc.posicion, '') AS posicion,
+
+       ghs.ghs_ids,
+       ghs.icon_urls
+
+FROM sustancias s
+INNER JOIN categorias c ON c.categoria_id = s.categoria_id
+
+LEFT JOIN sustancias_subcategorias ssc
+       ON ssc.sustancia_id = s.sustancia_id
+LEFT JOIN subcategorias sc
+       ON sc.subcategoria_id = ssc.subcategoria_id
+      AND sc.categoria_id = s.categoria_id
+
+LEFT JOIN LATERAL (
+    SELECT COUNT(*) AS cont_count,
+           SUM(COALESCE(ct.cantidad_reactivo_actual, ct.cantidad_reactivo_nominal)) AS stock_total,
+           CASE WHEN COUNT(DISTINCT ct.unidad_id) = 1 THEN MAX(ct.unidad_id) END AS unidad_id
+    FROM contenedores ct
+    WHERE ct.sustancia_id = s.sustancia_id
+      AND ct.laboratorio_id = @lab
+) stats ON true
+LEFT JOIN unidades u ON u.unidad_id = stats.unidad_id
+
+LEFT JOIN LATERAL (
+    SELECT area_id, meson_id, posicion
+    FROM contenedores
+    WHERE sustancia_id = s.sustancia_id
+      AND laboratorio_id = @lab
+    ORDER BY fecha_apertura DESC NULLS LAST, cont_id
+    LIMIT 1
+) loc ON true
+LEFT JOIN areas a ON a.area_id = loc.area_id
+LEFT JOIN mesones m ON m.meson_id = loc.meson_id
+
+LEFT JOIN LATERAL (
+    SELECT array_agg(sp.ghs_id ORDER BY sp.ghs_id) AS ghs_ids,
+           array_remove(array_agg(g.icon_url ORDER BY sp.ghs_id), NULL) AS icon_urls
+    FROM sustancias_pictogramas sp
+    INNER JOIN ghs_pictogramas g ON g.ghs_id = sp.ghs_id
+    WHERE sp.sustancia_id = s.sustancia_id
+) ghs ON true
+
+WHERE s.laboratorio_id = @lab
+  AND s.categoria_id = ANY(@cats)
+  AND (
+        @subcategoria IS NULL
+        OR EXISTS (
+            SELECT 1
+            FROM sustancias_subcategorias x
+            WHERE x.sustancia_id = s.sustancia_id
+              AND x.subcategoria_id = @subcategoria
+        )
+  )
+
+GROUP BY s.sustancia_id, s.nombre_comercial, s.nombre_quimico, s.cas,
+         c.nombre, s.sustancia_controlada, s.imagen_url,
+         stats.cont_count, stats.stock_total, stats.unidad_id,
+         u.simbolo,
+         a.nombre_areas, m.nombre_meson, loc.posicion,
+         ghs.ghs_ids, ghs.icon_urls
+
+ORDER BY nombre, s.sustancia_id";
+
+
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            cmd.Parameters.AddWithValue("cats", CategoriaReactivoIds);
+
+            var pSub = cmd.Parameters.Add("subcategoria", NpgsqlTypes.NpgsqlDbType.Varchar);
+            pSub.Value = (_verTodos || string.IsNullOrWhiteSpace(SubcategoriaId))
+                ? DBNull.Value
+                : SubcategoriaId!;
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var id = reader.GetString(0);
+                var nombre = reader.GetString(1);
+                var cas = reader.GetString(2);
+                var categoria = reader.GetString(3);
+                var subcat = reader.GetString(4);
+                var controlada = reader.GetBoolean(5);
+                var imagen = reader.IsDBNull(6) ? null : reader.GetString(6);
+
+                var contCount = reader.IsDBNull(7) ? 0 : reader.GetInt64(7);
+                var stockTotal = reader.IsDBNull(8) ? 0m : reader.GetDecimal(8);
+                var unidadSymbol = reader.GetString(9);
+
+                var area = reader.GetString(10);
+                var meson = reader.GetString(11);
+                var posicion = reader.GetString(12);
+
+                string[]? ghsIds = null;
+                string[]? ghsIcons = null;
+
+                if (!reader.IsDBNull(13))
+                    ghsIds = reader.GetFieldValue<string[]>(13);
+
+                if (!reader.IsDBNull(14))
+                    ghsIcons = reader.GetFieldValue<string[]>(14);
+
+                var ubic = BuildUbicacion(area, meson, posicion);
+                var stockLabel = BuildStockLabel(stockTotal, unidadSymbol);
+
+                newList.Add(new SustanciaRow(
+                    Id: id,
+                    Nombre: nombre,
+                    Cas: cas,
+                    Categoria: categoria,
+                    Subcategoria: subcat,
+                    Controlada: controlada,
+                    ContenedoresCount: contCount,
+                    StockTotalLabel: stockLabel,
+                    Ubicacion: ubic,
+                    ImagenUrl: imagen,
+                    GhsIds: ghsIds,
+                    GhsIconUrls: ghsIcons
+                ));
+            }
+        }
+        catch (Exception ex)
+        {
+            newError = ex.Message;
+        }
+
+        // Reemplazo final (no colapsa layout durante fetch)
+        sustancias.Clear();
+        sustancias.AddRange(newList);
+        subcategoriaNombre = newSubcategoriaNombre;
+        loadError = newError;
+    }
+
+
+    // ============================
+    // LOAD: Contenedores (por subcat o todos) - SIN "BRINCO"
+    // ============================
+    private async Task LoadContenedoresAsync()
+    {
+        // No limpies al inicio -> evita colapso del DOM (mini brinco)
+        string? newError = null;
+        var newList = new List<ContenedorRow>();
+
+        // Si no hay subcategoría y no está "ver todos", aquí sí conviene dejarlo vacío
+        // (y en la UI mostrar el mensaje de "elige una subcategoría...")
+        if (!_verTodos && string.IsNullOrWhiteSpace(SubcategoriaId))
+        {
+            contenedores.Clear();
+            contenedoresLoadError = null;
+            return;
+        }
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+
+            const string sql = @"
+SELECT c.cont_id,
+       COALESCE(NULLIF(s.nombre_comercial, ''), NULLIF(s.nombre_quimico, ''), s.sustancia_id) AS reactivo,
+       COALESCE(ma.nombre, '') AS marca_nombre,
+       ma.imagen_url AS marca_imagen,
+       COALESCE(c.cantidad_reactivo_actual, c.cantidad_reactivo_nominal, 0) AS cantidad,
+       COALESCE(u.simbolo, '') AS unidad,
+       COALESCE(cond.nombre, '') AS condicion,
+       COALESCE(a.nombre_areas, '') AS area,
+       COALESCE(m.nombre_meson, '') AS meson,
+              COALESCE(c.posicion, '') AS posicion,
+       c.altura_cm,
+       c.fecha_apertura,
+       c.fecha_vencimiento,
+       COALESCE(c.qr, '') AS qr,
+       c.imagen_url
+FROM contenedores c
+INNER JOIN sustancias s
+        ON s.sustancia_id = c.sustancia_id
+LEFT JOIN marcas ma ON ma.marca_id = c.marca_id
+LEFT JOIN unidades u ON u.unidad_id = c.unidad_id
+LEFT JOIN condiciones cond ON cond.condicion_id = c.condicion_id
+LEFT JOIN areas a ON a.area_id = c.area_id
+LEFT JOIN mesones m ON m.meson_id = c.meson_id
+WHERE c.laboratorio_id = @lab
+  AND s.categoria_id = ANY(@cats)
+  AND (
+        @subcategoria IS NULL
+        OR EXISTS (
+            SELECT 1
+            FROM sustancias_subcategorias x
+            WHERE x.sustancia_id = s.sustancia_id
+              AND x.subcategoria_id = @subcategoria
+        )
+  )
+ORDER BY reactivo, c.cont_id";
+
+
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            cmd.Parameters.AddWithValue("cats", CategoriaReactivoIds);
+
+            var pSub = cmd.Parameters.Add("subcategoria", NpgsqlTypes.NpgsqlDbType.Varchar);
+            pSub.Value = (_verTodos || string.IsNullOrWhiteSpace(SubcategoriaId))
+                ? DBNull.Value
+                : SubcategoriaId!;
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var id = reader.GetString(0);
+                var reactivo = reader.GetString(1);
+
+                var marcaNombre = reader.GetString(2);
+                var marcaImagen = reader.IsDBNull(3) ? null : reader.GetString(3);
+
+                // Cantidad puede venir null dependiendo de tu SQL/DB -> tu query ya COALESCE, así que GetDecimal ok
+                var cantidad = reader.GetDecimal(4);
+                var unidad = reader.GetString(5);
+
+                var condicion = reader.GetString(6);
+
+                var area = reader.GetString(7);
+                var meson = reader.GetString(8);
+                var posicion = reader.GetString(9);
+
+                var alturaCm = reader.IsDBNull(10)
+                    ? null
+                    : reader.GetDecimal(10).ToString(CultureInfo.InvariantCulture);
+
+                var fechaApertura = reader.IsDBNull(11) ? "—" : reader.GetDateTime(11).ToString("dd/MM/yyyy");
+                var fechaVencimiento = reader.IsDBNull(12) ? "—" : reader.GetDateTime(12).ToString("dd/MM/yyyy");
+
+                var qr = reader.GetString(13);
+                var img = reader.IsDBNull(14) ? null : reader.GetString(14);
+
+                newList.Add(new ContenedorRow(
+                    Id: id,
+                    Reactivo: reactivo,
+                    MarcaNombre: marcaNombre,
+                    MarcaImagenUrl: marcaImagen,
+                    Cantidad: $"{cantidad.ToString(CultureInfo.InvariantCulture)} {unidad}".Trim(),
+                    Condicion: condicion,
+                    AlturaCm: alturaCm,
+                    Ubicacion: BuildUbicacion(area, meson, posicion),
+                    FechaApertura: fechaApertura,
+                    FechaVencimiento: fechaVencimiento,
+                    Qr: qr,
+                    ImagenUrl: img
+                ));
+            }
+        }
+        catch (Exception ex)
+        {
+            newError = ex.Message;
+        }
+
+        // Recién aquí reemplazas el contenido -> no colapsa el layout durante la carga
+        contenedores.Clear();
+        contenedores.AddRange(newList);
+        contenedoresLoadError = newError;
+    }
+
+    // ============================
+    // AREA/MESON selection
+    // ============================
+    private async Task OnContenedorAreaChanged(ChangeEventArgs args)
+    {
+        var newArea = args.Value?.ToString();
+
+        if (string.IsNullOrWhiteSpace(newArea))
+        {
+            ClearContenedorAreaSelection();
+            return;
+        }
+
+        if (string.Equals(newArea, _nuevoContenedorAreaId, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        _nuevoContenedorAreaId = newArea;
+        _nuevoContenedorMesonId = null;
+
+        await LoadMesonesAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SelectContenedorAreaFromVisualAsync(string? areaId)
+    {
+        if (string.IsNullOrWhiteSpace(areaId))
+            return;
+
+        if (string.Equals(areaId, _nuevoContenedorAreaId, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        _nuevoContenedorAreaId = areaId;
+        _nuevoContenedorMesonId = null;
+
+        await LoadMesonesAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void ClearContenedorAreaSelection()
+    {
+        _nuevoContenedorAreaId = null;
+        _nuevoContenedorMesonId = null;
+
+        _mesonOptions.Clear();
+        _mesonSummaries.Clear();
+        _mesonVisuals.Clear();
+
+        StateHasChanged();
+    }
+
+    private void ClearContenedorMesonSelection()
+    {
+        _nuevoContenedorMesonId = null;
+        StateHasChanged();
+    }
+
+    private void SelectContenedorMeson(string mesonId)
+    {
+        if (string.Equals(_nuevoContenedorMesonId, mesonId, StringComparison.OrdinalIgnoreCase))
+            _nuevoContenedorMesonId = null;
+        else
+            _nuevoContenedorMesonId = mesonId;
+    }
+
+    private void OnContenedorMesonChanged(ChangeEventArgs args)
+    {
+        var v = args.Value?.ToString();
+        _nuevoContenedorMesonId = string.IsNullOrWhiteSpace(v) ? null : v;
+    }
+
+    private string SelectedAreaLabel =>
+        _areaOptions.FirstOrDefault(a => string.Equals(a.Id, _nuevoContenedorAreaId, StringComparison.OrdinalIgnoreCase))?.Label
+        ?? _nuevoContenedorAreaId
+        ?? "Área";
+
+    private string SelectedMesonLabel =>
+        _mesonOptions.FirstOrDefault(m => string.Equals(m.Id, _nuevoContenedorMesonId, StringComparison.OrdinalIgnoreCase))?.Label
+        ?? _nuevoContenedorMesonId
+        ?? "Mesón";
+
+    private AreaItem? SelectedAreaForMap =>
+        _canvasViews.SelectMany(v => v.Areas)
+            .FirstOrDefault(a => string.Equals(a.AreaId, _nuevoContenedorAreaId, StringComparison.OrdinalIgnoreCase));
+
+    private async Task LoadMesonesAsync()
+    {
+        _mesonOptions.Clear();
+        _mesonSummaries.Clear();
+        _mesonVisuals.Clear();
+
+        if (string.IsNullOrWhiteSpace(_nuevoContenedorAreaId))
+            return;
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        const string mesonSql = @"
+            SELECT m.meson_id,
+                   COALESCE(NULLIF(m.nombre_meson, ''), m.meson_id) AS nombre_meson,
+                   COALESCE(c.reactivos_count, 0) AS reactivos_count,
+                   COALESCE(e.equipos_count, 0) AS equipos_count
+            FROM mesones m
+            INNER JOIN areas a ON a.area_id = m.area_id AND a.laboratorio_id = @lab
+            LEFT JOIN (
+                SELECT meson_id, COUNT(*) AS reactivos_count
+                FROM contenedores
+                WHERE area_id = @area
+                GROUP BY meson_id
+            ) c ON c.meson_id = m.meson_id
+            LEFT JOIN (
+                SELECT meson_id, COUNT(*) AS equipos_count
+                FROM equipos
+                WHERE area_id = @area
+                GROUP BY meson_id
+            ) e ON e.meson_id = m.meson_id
+            WHERE m.area_id = @area
+            ORDER BY nombre_meson";
+
+        await using var cmd = new NpgsqlCommand(mesonSql, conn);
+        cmd.Parameters.AddWithValue("area", _nuevoContenedorAreaId);
+        cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var mesonId = reader.GetString(0);
+            var nombre = reader.GetString(1);
+
+            _mesonOptions.Add(new SelectOption(mesonId, nombre));
+            _mesonSummaries.Add(new MesonSummary(
+                mesonId,
+                nombre,
+                reader.GetInt32(2),
+                reader.GetInt32(3)
+            ));
+        }
+
+        await LoadMesonVisualsAsync();
+    }
+
+    private async Task LoadMesonVisualsAsync()
+    {
+        _mesonVisuals.Clear();
+
+        if (string.IsNullOrWhiteSpace(_nuevoContenedorAreaId))
+            return;
+
+        var area = SelectedAreaForMap;
+        if (area is null)
+            return;
+
+        var mesonLabels = _mesonOptions
+            .GroupBy(m => m.Id, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().Label, StringComparer.OrdinalIgnoreCase);
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        if (!string.IsNullOrWhiteSpace(area.CanvasId) && await TableExistsAsync(conn, "bloques_int"))
+        {
+            const string blockSql = @"
+                SELECT b.bloque_id,
+                       b.meson_id,
+                       b.etiqueta,
+                       b.color_hex,
+                       b.z_order,
+                       b.pos_x,
+                       b.pos_y,
+                       b.ancho,
+                       b.largo,
+                       b.offset_x,
+                       b.offset_y
+                FROM bloques_int b
+                INNER JOIN mesones m ON m.meson_id = b.meson_id
+                WHERE b.canvas_id = @canvas
+                  AND b.meson_id IS NOT NULL
+                  AND m.area_id = @area";
+
+            await using var cmd = new NpgsqlCommand(blockSql, conn);
+            cmd.Parameters.AddWithValue("canvas", area.CanvasId!);
+            cmd.Parameters.AddWithValue("area", _nuevoContenedorAreaId!);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var mesonId = reader.IsDBNull(1) ? null : reader.GetString(1);
+                if (string.IsNullOrWhiteSpace(mesonId))
+                    continue;
+
+                if (!mesonLabels.ContainsKey(mesonId))
+                    continue;
+
+                var label = reader.IsDBNull(2) ? null : reader.GetString(2);
+                if (string.IsNullOrWhiteSpace(label) && mesonLabels.TryGetValue(mesonId, out var mesonLabel))
+                    label = mesonLabel;
+
+                label ??= "MESON";
+
+                var offsetX = reader.IsDBNull(9) ? 0m : reader.GetDecimal(9);
+                var offsetY = reader.IsDBNull(10) ? 0m : reader.GetDecimal(10);
+
+                var width = reader.GetDecimal(7);
+                var height = reader.GetDecimal(8);
+
+                var x = reader.GetDecimal(5);
+                var y = reader.GetDecimal(6);
+
+                if (offsetX != 0m || offsetY != 0m)
+                {
+                    x = area.CenterX + offsetX;
+                    y = area.CenterY + offsetY;
+                }
+
+                var fill = reader.IsDBNull(3) ? "#2563eb" : reader.GetString(3);
+                var zOrder = reader.IsDBNull(4) ? 0 : reader.GetInt32(4);
+
+                _mesonVisuals.Add(new MesonVisual(
+                    mesonId,
+                    label,
+                    x,
+                    y,
+                    width,
+                    height,
+                    fill,
+                    0.45m,
+                    zOrder
+                ));
+            }
+        }
+
+        // Dedup
+        var dedup = new Dictionary<string, MesonVisual>(StringComparer.OrdinalIgnoreCase);
+        foreach (var v in _mesonVisuals.OrderBy(v => v.ZOrder))
+        {
+            if (!dedup.ContainsKey(v.MesonId))
+                dedup[v.MesonId] = v;
+        }
+
+        _mesonVisuals.Clear();
+        _mesonVisuals.AddRange(dedup.Values.OrderBy(v => v.ZOrder));
+    }
+
+    private static async Task<bool> TableExistsAsync(NpgsqlConnection conn, string tableName)
+    {
+        const string sql = "SELECT to_regclass(@name) IS NOT NULL";
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("name", $"public.{tableName}");
+        var result = await cmd.ExecuteScalarAsync();
+        return result is bool b && b;
+    }
+
+    // ============================
+    // Canvas + áreas
+    // ============================
+    private async Task LoadCanvasAreasAsync()
+    {
+        _canvasViews.Clear();
+        _plantasLookup.Clear();
+
+        var previousPlantaId = _currentPlantaId;
+        _currentPlantaId = null;
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        await using (var cmd = new NpgsqlCommand("SELECT planta_id, nombre FROM plantas ORDER BY nombre", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+            while (await reader.ReadAsync())
+                _plantasLookup[reader.GetString(0)] = reader.GetString(1);
+
+        if (!string.IsNullOrWhiteSpace(previousPlantaId) && _plantasLookup.ContainsKey(previousPlantaId))
+            _currentPlantaId = previousPlantaId;
+        else
+            _currentPlantaId = _plantasLookup.Keys.FirstOrDefault();
+
+        const string canvasSql = @"
+            SELECT DISTINCT c.canvas_id, c.nombre, c.ancho_m, c.largo_m
+            FROM canvas_lab c
+            INNER JOIN areas a ON a.canvas_id = c.canvas_id
+            WHERE a.laboratorio_id = @lab
+            ORDER BY c.nombre";
+
+        var canvases = new List<CanvasItem>();
+        await using (var cmd = new NpgsqlCommand(canvasSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                canvases.Add(new CanvasItem(reader.GetString(0), reader.GetString(1), reader.GetDecimal(2), reader.GetDecimal(3)));
+        }
+
+        const string areaSql = @"
+            SELECT area_id, nombre_areas, planta_id, canvas_id
+            FROM areas
+            WHERE laboratorio_id = @lab
+            ORDER BY nombre_areas";
+
+        var areas = new List<AreaItem>();
+        await using (var cmd = new NpgsqlCommand(areaSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                areas.Add(new AreaItem(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetString(2),
+                    reader.IsDBNull(3) ? null : reader.GetString(3)
+                ));
+            }
+        }
+
+        const string polySql = @"
+            SELECT p.poly_id, p.area_id, COALESCE(p.color_hex, '#cbd5f5') AS color_hex, p.z_order
+            FROM poligonos p
+            INNER JOIN areas a ON a.area_id = p.area_id
+            WHERE a.laboratorio_id = @lab
+            ORDER BY p.z_order, p.poly_id";
+
+        var polys = new Dictionary<string, PolygonItem>();
+        await using (var cmd = new NpgsqlCommand(polySql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var polyId = reader.GetString(0);
+                polys[polyId] = new PolygonItem(
+                    polyId,
+                    reader.IsDBNull(1) ? null : reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetInt32(3)
+                );
+            }
+        }
+
+        const string pointsSql = @"
+            SELECT poly_id, orden, x_m, y_m
+            FROM poligonos_puntos
+            ORDER BY poly_id, orden";
+
+        await using (var cmd = new NpgsqlCommand(pointsSql, conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                var polyId = reader.GetString(0);
+                if (!polys.TryGetValue(polyId, out var poly))
+                    continue;
+
+                poly.Points.Add(new PointItem(reader.GetDecimal(2), reader.GetDecimal(3)));
+            }
+        }
+
+        foreach (var area in areas)
+        {
+            var areaPolys = polys.Values
+                .Where(p => string.Equals(p.AreaId, area.AreaId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (areaPolys.Count == 0)
+                continue;
+
+            area.Poligonos.AddRange(areaPolys);
+            area.CalculateBounds();
+        }
+
+        foreach (var canvas in canvases)
+        {
+            var viewAreas = areas
+                .Where(a => string.Equals(a.CanvasId, canvas.CanvasId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (viewAreas.Count == 0)
+                continue;
+
+            _canvasViews.Add(new CanvasView(canvas, viewAreas));
+        }
+
+        EnsurePlantaSelection(areas);
+
+        if (!string.IsNullOrWhiteSpace(_nuevoContenedorAreaId))
+            await LoadMesonVisualsAsync();
+    }
+
+    // ============================
+    // Helpers
+    // ============================
+    private static string BuildUbicacion(string area, string meson, string posicion)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(area)) parts.Add(area);
+        if (!string.IsNullOrWhiteSpace(meson)) parts.Add(meson);
+        if (!string.IsNullOrWhiteSpace(posicion)) parts.Add(posicion);
+        return parts.Count == 0 ? "—" : string.Join(" · ", parts);
+    }
+
+    private static string BuildStockLabel(decimal stockTotal, string? unidadSymbol)
+    {
+        var s = stockTotal.ToString(CultureInfo.InvariantCulture);
+        if (!string.IsNullOrWhiteSpace(unidadSymbol))
+            return $"{s} {unidadSymbol}".Trim();
+
+        return s == "0" ? "0" : $"{s} (unidad mixta)";
+    }
+
+    private static object ParseDecimalOrNull(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return DBNull.Value;
+
+        var s = value.Trim().Replace(",", ".");
+        return decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var d)
+            ? d
+            : DBNull.Value;
+    }
+
+    private static object ParseIntOrNull(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return DBNull.Value;
+
+        return int.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var i)
+            ? i
+            : DBNull.Value;
+    }
+
+    private static object ParseDateOrNull(DateTime? value) =>
+        value ?? (object)DBNull.Value;
+
+    // ============================
+    // SVG helpers
+    // ============================
+    private static string PointsString(PolygonItem poly) =>
+        string.Join(" ", poly.Points.Select(p => $"{p.X.ToString(CultureInfo.InvariantCulture)},{p.Y.ToString(CultureInfo.InvariantCulture)}"));
+
+    private static string FormatSvg(decimal value) => value.ToString(CultureInfo.InvariantCulture);
+
+    private static decimal AreaLabelWidth(AreaItem area) => Math.Max(0.6m, area.Width * 0.85m);
+    private static decimal AreaLabelHeight(AreaItem area) => Math.Max(0.25m, area.Height * 0.25m);
+
+    private static decimal AreaLabelFontSize(AreaItem area)
+    {
+        var baseSize = Math.Min(area.Width, area.Height) * 0.18m;
+        return ClampDecimal(baseSize, 0.18m, 0.55m);
+    }
+
+    private static decimal MesonLabelFontSize(MesonVisual meson)
+    {
+        var baseSize = Math.Min(meson.Width, meson.Height) * 0.45m;
+        return ClampDecimal(baseSize, 0.12m, 0.45m);
+    }
+
+    private static decimal ClampDecimal(decimal value, decimal min, decimal max)
+    {
+        if (value < min) return min;
+        if (value > max) return max;
+        return value;
+    }
+
+    private static string AreaViewBox(AreaItem area)
+    {
+        var padding = 0.4m;
+        var minX = area.MinX - padding;
+        var minY = area.MinY - padding;
+        var width = Math.Max(1m, area.Width + padding * 2m);
+        var height = Math.Max(1m, area.Height + padding * 2m);
+        return $"{FormatSvg(minX)} {FormatSvg(minY)} {FormatSvg(width)} {FormatSvg(height)}";
+    }
+
+    private static (decimal x, decimal y, decimal w, decimal h) AreaViewBoxRect(AreaItem area)
+    {
+        var padding = 0.4m;
+        var x = area.MinX - padding;
+        var y = area.MinY - padding;
+        var w = Math.Max(1m, area.Width + padding * 2m);
+        var h = Math.Max(1m, area.Height + padding * 2m);
+        return (x, y, w, h);
+    }
+
+    private string AreaFill(AreaItem area)
+    {
+        if (!string.IsNullOrWhiteSpace(_nuevoContenedorAreaId)
+            && string.Equals(_nuevoContenedorAreaId, area.AreaId, StringComparison.OrdinalIgnoreCase))
+        {
+            return "#93c5fd";
+        }
+        return area.Poligonos.FirstOrDefault()?.ColorHex ?? "#cbd5f5";
+    }
+
+    private string MesonFill(MesonVisual m)
+    {
+        if (!string.IsNullOrWhiteSpace(_nuevoContenedorMesonId)
+            && string.Equals(_nuevoContenedorMesonId, m.MesonId, StringComparison.OrdinalIgnoreCase))
+            return "#facc15";
+
+        return m.Fill;
+    }
+
+    private decimal MesonOpacity(MesonVisual m)
+    {
+        if (!string.IsNullOrWhiteSpace(_nuevoContenedorMesonId)
+            && string.Equals(_nuevoContenedorMesonId, m.MesonId, StringComparison.OrdinalIgnoreCase))
+            return 0.75m;
+
+        return m.Opacity;
+    }
+
+    private string MesonStroke(MesonVisual m)
+    {
+        if (!string.IsNullOrWhiteSpace(_nuevoContenedorMesonId)
+            && string.Equals(_nuevoContenedorMesonId, m.MesonId, StringComparison.OrdinalIgnoreCase))
+            return "#b45309";
+        return "#1f2937";
+    }
+
+    private decimal MesonStrokeWidth(MesonVisual m)
+    {
+        if (!string.IsNullOrWhiteSpace(_nuevoContenedorMesonId)
+            && string.Equals(_nuevoContenedorMesonId, m.MesonId, StringComparison.OrdinalIgnoreCase))
+            return 0.05m;
+        return 0.03m;
+    }
+    private void OnNuevoSustanciaCategoriaChanged(ChangeEventArgs args)
+    {
+        var v = args.Value?.ToString();
+        _nuevoSustanciaCategoriaId = string.IsNullOrWhiteSpace(v) ? null : v;
+
+        // reset subcats al cambiar categoría
+        _nuevoSustanciaSubcategoriaIds.Clear();
+    }
+
+    private void ToggleNuevoSustanciaSubcategoria(string id, ChangeEventArgs e)
+    {
+        var isChecked =
+            e.Value is bool b ? b :
+            string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+
+        if (isChecked) _nuevoSustanciaSubcategoriaIds.Add(id);
+        else _nuevoSustanciaSubcategoriaIds.Remove(id);
+    }
+
+    private List<SelectOption> NuevoSustanciaSubcategoriasFiltradas
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_nuevoSustanciaCategoriaId)) return new();
+            return _subcategoriasByCategoria.TryGetValue(_nuevoSustanciaCategoriaId, out var list) ? list : new();
+        }
+    }
+
+    private string _nuevoSustanciaSubcatsDropdownLabel =>
+        _nuevoSustanciaSubcategoriaIds.Count == 0
+            ? "Selecciona subcategorías…"
+            : $"Subcategorías seleccionadas: {_nuevoSustanciaSubcategoriaIds.Count}";
+
+    private bool IsAreaInCurrentPlanta(string? plantaId)
+    {
+        if (string.IsNullOrWhiteSpace(_currentPlantaId))
+            return true;
+
+        if (string.IsNullOrWhiteSpace(plantaId))
+            return false;
+
+        return string.Equals(plantaId, _currentPlantaId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void EnsurePlantaSelection(List<AreaItem> areas)
+    {
+        if (areas.Count == 0)
+        {
+            _currentPlantaId = _plantasLookup.Keys.FirstOrDefault();
+            return;
+        }
+
+        var firstAreaPlanta = areas.FirstOrDefault(a => !string.IsNullOrWhiteSpace(a.PlantaId))?.PlantaId;
+        if (string.IsNullOrWhiteSpace(firstAreaPlanta))
+        {
+            _currentPlantaId = null;
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_currentPlantaId)
+            && _plantasLookup.ContainsKey(_currentPlantaId)
+            && areas.Any(a => string.Equals(a.PlantaId, _currentPlantaId, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        _currentPlantaId = firstAreaPlanta ?? _plantasLookup.Keys.FirstOrDefault();
+    }
+
+    // ============================
+    // UI Models
+    // ============================
+    private sealed class CategoriaRow
+    {
+        public CategoriaRow(string id, string nombre) { Id = id; Nombre = nombre; }
+        public string Id { get; }
+        public string Nombre { get; }
+        public List<SubcategoriaRow> Subcategorias { get; } = new();
+    }
+
+    private sealed record SubcategoriaRow(string Id, string Nombre);
+    private sealed record SelectOption(string Id, string Label, string? ImageUrl = null);
+
+    private sealed record SustanciaLookup(string Id, string Nombre);
+
+    private sealed record SustanciaRow(
+        string Id,
+        string Nombre,
+        string Cas,
+        string Categoria,
+        string Subcategoria,
+        bool Controlada,
+        long ContenedoresCount,
+        string StockTotalLabel,
+        string Ubicacion,
+        string? ImagenUrl,
+        string[]? GhsIds,
+        string[]? GhsIconUrls
+    );
+
+    private sealed record ContenedorRow(
+        string Id,
+        string Reactivo,
+        string MarcaNombre,
+        string? MarcaImagenUrl,
+        string Cantidad,
+        string Condicion,
+        string? AlturaCm,
+        string Ubicacion,
+        string FechaApertura,
+        string FechaVencimiento,
+        string Qr,
+        string? ImagenUrl
+    );
+    private sealed record CanvasItem(string CanvasId, string Nombre, decimal Ancho, decimal largo);
+    private sealed record CanvasView(CanvasItem Canvas, List<AreaItem> Areas);
+    private sealed record MesonSummary(string MesonId, string Nombre, int ReactivosCount, int EquiposCount);
+    private sealed record MesonVisual(string MesonId, string Label, decimal X, decimal Y, decimal Width, decimal Height, string Fill, decimal Opacity, int ZOrder);
+
+    private sealed class AreaItem
+    {
+        public AreaItem(string areaId, string nombre, string? plantaId, string? canvasId)
+        {
+            AreaId = areaId;
+            Nombre = nombre;
+            PlantaId = plantaId;
+            CanvasId = canvasId;
+        }
+
+        public string AreaId { get; }
+        public string Nombre { get; }
+        public string? PlantaId { get; }
+        public string? CanvasId { get; }
+        public List<PolygonItem> Poligonos { get; } = new();
+
+        public decimal CenterX { get; private set; }
+        public decimal CenterY { get; private set; }
+        public decimal Width { get; private set; }
+        public decimal Height { get; private set; }
+        public decimal MinX { get; private set; }
+        public decimal MinY { get; private set; }
+        public decimal MaxX { get; private set; }
+        public decimal MaxY { get; private set; }
+
+        public void CalculateBounds()
+        {
+            var points = Poligonos.SelectMany(p => p.Points).ToList();
+            if (points.Count == 0) return;
+
+            var minX = points.Min(p => p.X);
+            var maxX = points.Max(p => p.X);
+            var minY = points.Min(p => p.Y);
+            var maxY = points.Max(p => p.Y);
+
+            MinX = minX; MaxX = maxX;
+            MinY = minY; MaxY = maxY;
+
+            CenterX = (minX + maxX) / 2m;
+            CenterY = (minY + maxY) / 2m;
+            Width = Math.Max(0.2m, maxX - minX);
+            Height = Math.Max(0.2m, maxY - minY);
+        }
+    }
+
+    private sealed class PolygonItem
+    {
+        public PolygonItem(string polyId, string? areaId, string colorHex, int zOrder)
+        {
+            PolyId = polyId;
+            AreaId = areaId;
+            ColorHex = colorHex;
+            ZOrder = zOrder;
+        }
+
+        public string PolyId { get; }
+        public string? AreaId { get; }
+        public string ColorHex { get; }
+        public int ZOrder { get; }
+        public List<PointItem> Points { get; } = new();
+    }
+
+    private sealed record PointItem(decimal X, decimal Y);
+
+    // Opciones GHS/H/P
+    private sealed record GhsOption(string Id, string Nombre, string? IconUrl, string? Detalle);
+    private sealed record HCodeOption(string Id, string Descripcion, string? Grupo);
+    private sealed record PCodeOption(string Id, string Descripcion, string? Grupo);
+}
+
+<style>
+    .page-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+        padding: 1rem;
+        box-shadow: 0 6px 14px rgba(15, 23, 42, 0.04);
+    }
+
+    .category-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+    }
+
+    .category-controls {
+        display: flex;
+        gap: .75rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .form-header {
+        margin-top: 0.75rem;
+        margin-bottom: 0.75rem;
+    }
+
+        .form-header h4 {
+            margin: 0 0 0.25rem 0;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+    .form-hint {
+        margin: 0;
+        color: #64748b;
+        font-size: 0.95rem;
+    }
+
+    .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 0.75rem;
+        align-items: start;
+    }
+
+    .field-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .field-label {
+        font-size: 0.75rem;
+        color: #64748b;
+    }
+
+    .full-span {
+        grid-column: 1 / -1;
+    }
+
+    .form-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-top: 0.25rem;
+    }
+
+    .btn.primary {
+        background: #2563eb;
+        color: #fff;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 0.5rem;
+        font-weight: 600;
+        box-shadow: 0 6px 12px rgba(37, 99, 235, 0.18);
+    }
+
+        .btn.primary:hover {
+            background: #1d4ed8;
+        }
+
+    .btn.link {
+        background: transparent;
+        border: none;
+        color: #1d4ed8;
+        font-weight: 600;
+        cursor: pointer;
+        padding: 0;
+    }
+
+        .btn.link:hover {
+            text-decoration: underline;
+        }
+
+    .area-label {
+        fill: #111827;
+        paint-order: stroke fill;
+        stroke: #ffffff;
+        stroke-width: 0.04;
+    }
+
+    .selector-split {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        align-items: flex-start;
+    }
+
+    .visual-picker {
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        padding: 0.5rem;
+        background: #fff;
+        min-width: 240px;
+        display: grid;
+        gap: 0.5rem;
+    }
+
+    .visual-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        justify-content: space-between;
+    }
+
+    .canvas-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        padding: 0.5rem;
+        background: #f8fafc;
+        display: grid;
+        gap: 0.35rem;
+    }
+
+        .canvas-card svg {
+            width: 100%;
+            height: 180px;
+            background: #fff;
+        }
+
+    .meson-list {
+        list-style: none;
+        padding-left: 0;
+        margin: 0;
+        display: grid;
+        gap: 0.35rem;
+    }
+
+    .meson-item {
+        padding: .35rem .35rem;
+        border-radius: .5rem;
+    }
+
+        .meson-item.selected {
+            background: #fff7ed;
+            outline: 1px solid #f59e0b;
+        }
+
+    .meson-visual {
+        cursor: pointer;
+    }
+
+    .upload-card {
+        border: 1px dashed #d1d5db;
+        padding: 0.6rem;
+        border-radius: 0.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        min-width: 220px;
+    }
+
+    .upload-options {
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .upload-drop {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.6rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        color: #6b7280;
+        cursor: pointer;
+    }
+
+        .upload-drop input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+    .category-select {
+        min-width: 220px;
+        padding: .35rem .6rem;
+        border-radius: 8px;
+        border: 1px solid #cbd5f5;
+        background: #fff;
+        color: #0f172a;
+    }
+
+    .helper {
+        margin: .3rem 0 0;
+        color: #475569;
+        font-size: .95rem;
+    }
+
+    .btn-link {
+        color: #1d4ed8;
+        text-decoration: none;
+        font-weight: 600;
+    }
+
+        .btn-link:hover {
+            text-decoration: underline;
+        }
+
+    .category-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 1rem;
+        margin-top: 1rem;
+    }
+
+    .category-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+        padding: 1rem;
+        box-shadow: 0 6px 14px rgba(15, 23, 42, 0.04);
+    }
+
+    .category-title {
+        font-weight: 700;
+        color: #0f172a;
+        margin-bottom: .5rem;
+    }
+
+    .category-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        gap: .35rem;
+    }
+
+    .category-link {
+        display: inline-flex;
+        padding: .35rem .6rem;
+        border-radius: 999px;
+        background: #f1f5f9;
+        color: #0f172a;
+        text-decoration: none;
+        font-size: .9rem;
+    }
+
+        .category-link.active,
+        .category-link:hover {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+
+    .materials-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: .75rem;
+        flex-wrap: wrap;
+    }
+
+    .materials-title {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+        flex-wrap: wrap;
+    }
+
+    .badge {
+        background: #e2e8f0;
+        color: #0f172a;
+        padding: .2rem .55rem;
+        border-radius: 999px;
+        font-size: .85rem;
+        font-weight: 600;
+    }
+
+    .badge-warn {
+        background: #fff7ed;
+        color: #854d0e;
+        border: 1px solid #fde68a;
+    }
+
+    .empty {
+        padding: .85rem 1rem;
+        border-radius: 10px;
+        background: #fef9c3;
+        border: 1px solid #fde68a;
+        color: #854d0e;
+    }
+
+    .assign-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: center;
+        margin-top: 0.5rem;
+    }
+
+    .table-wrap {
+        overflow-x: auto;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #fff;
+    }
+
+    th, td {
+        padding: 0.6rem;
+        border-bottom: 1px solid #e5e7eb;
+        text-align: left;
+        vertical-align: top;
+    }
+
+    th {
+        background: #f3f4f6;
+        font-weight: 600;
+    }
+
+    .error-note {
+        color: #b91c1c;
+        margin-top: 0.75rem;
+    }
+
+    .search-input-invent {
+        min-width: 280px;
+        flex: 1 1 320px;
+        border-radius: 10px;
+        background: #ffffff;
+        color: #0f172a;
+        border: 1px solid #cbd5e1;
+    }
+
+        .search-input-invent::placeholder {
+            color: #64748b;
+            opacity: 1;
+        }
+
+    .brand-picker {
+        display: flex;
+        gap: .5rem;
+        align-items: center;
+    }
+
+    .cell-media {
+        display: flex;
+        gap: .35rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .thumb {
+        width: 34px;
+        height: 34px;
+        object-fit: contain;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        background: #fff;
+    }
+
+    .thumb-material {
+        width: 44px;
+        height: 44px;
+    }
+
+    .thumb-logo {
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+    }
+
+    .thumb-ghs {
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+    }
+
+    .toggle {
+        display: flex;
+        gap: .45rem;
+        align-items: center;
+        padding: .35rem .6rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 999px;
+        background: #fff;
+        font-size: .9rem;
+        color: #0f172a;
+        user-select: none;
+    }
+    
+    .category-list .category-link.active {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+</style>

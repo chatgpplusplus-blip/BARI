@@ -19,6 +19,43 @@ namespace BARI_web.Features.Espacios.Pages
         [Inject] private NpgsqlDataSource DataSource { get; set; } = default!;
         [Inject] private IJSRuntime JS { get; set; } = default!;
 
+        // ---- Dibujo: entrada manual de vértices ----
+
+        private string _draftInputX = string.Empty;
+        private string _draftInputY = string.Empty;
+
+        private ElementReference _draftXRef;
+        private ElementReference _draftYRef;
+
+        protected override async Task OnAfterRenderAsync(bool firstRender)
+        {
+            await base.OnAfterRenderAsync(firstRender);
+
+            if (_canvas is not null)
+            {
+                try
+                {
+                    await JS.InvokeVoidAsync("bariHud.initDraggableHud");
+
+                    // 👇 Nuevo: inicializar rect del SVG si aún no está listo
+                    if (!_svgRectReady || _svgRect.Width <= 0 || _svgRect.Height <= 0)
+                    {
+                        _svgRect = await JS.InvokeAsync<SvgRect>("bariSvg.getRect", _svgRef);
+                        _svgRectReady = _svgRect.Width > 0 && _svgRect.Height > 0;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error en OnAfterRenderAsync: {ex}");
+                }
+            }
+        }
+
+
+
+
+
+
         // snapshot para mover features pegadas al mover polígono (evita acumulación)
         private Dictionary<string, (decimal x, decimal y)>? _beforeDragDoorXY;
         private Dictionary<string, (decimal x, decimal y)>? _beforeDragWinXY;
@@ -37,6 +74,70 @@ namespace BARI_web.Features.Espacios.Pages
             return _windows.Where(w => string.Equals(w.area_id_a ?? "", p.area_id ?? "", StringComparison.OrdinalIgnoreCase)
                                        && IsWinVisible(w));
         }
+
+        private static bool TryParseFlexible(string? s, out decimal value)
+        {
+            value = 0m;
+            s = (s ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(s)) return false;
+
+            s = s.Replace(" ", "");
+            if (s.Count(ch => ch == ',' || ch == '.') > 1) s = s.Replace(".", "").Replace(",", ".");
+            else s = s.Replace(",", ".");
+
+            return decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out value);
+        }
+
+        private async Task OnDraftXKeyDown(KeyboardEventArgs e)
+        {
+            if (e.Key == "Enter")
+                await HandleDraftEnterAsync(fromX: true);
+        }
+
+        private async Task OnDraftYKeyDown(KeyboardEventArgs e)
+        {
+            if (e.Key == "Enter")
+                await HandleDraftEnterAsync(fromX: false);
+        }
+
+        private async Task HandleDraftEnterAsync(bool fromX)
+        {
+            var hasX = TryParseFlexible(_draftInputX, out var x);
+            var hasY = TryParseFlexible(_draftInputY, out var y);
+
+            var xEmpty = string.IsNullOrWhiteSpace(_draftInputX);
+            var yEmpty = string.IsNullOrWhiteSpace(_draftInputY);
+
+            // Si ambos válidos -> añadir y limpiar + foco a X
+            if (hasX && hasY)
+            {
+                await AddTypedDraftPointInternalAsync(x, y);
+                _draftInputX = "";
+                _draftInputY = "";
+                await InvokeAsync(StateHasChanged);
+                await _draftXRef.FocusAsync();
+                return;
+            }
+
+            // Si presionas Enter en X y Y está vacío -> saltar a Y (y viceversa)
+            if (fromX)
+            {
+                if (yEmpty) { await _draftYRef.FocusAsync(); return; }
+                if (!hasY) { _drawMsg = "Y inválida."; await _draftYRef.FocusAsync(); return; }
+                _drawMsg = xEmpty ? "Ingresa X." : "X inválida.";
+                await _draftXRef.FocusAsync();
+                return;
+            }
+            else
+            {
+                if (xEmpty) { await _draftXRef.FocusAsync(); return; }
+                if (!hasX) { _drawMsg = "X inválida."; await _draftXRef.FocusAsync(); return; }
+                _drawMsg = yEmpty ? "Ingresa Y." : "Y inválida.";
+                await _draftYRef.FocusAsync();
+                return;
+            }
+        }
+
 
         private static void TranslateDoor(Door d, decimal dx, decimal dy)
         {
@@ -77,7 +178,7 @@ namespace BARI_web.Features.Espacios.Pages
         }
 
         // ===== modelos
-        private record CanvasLab(string canvas_id, string nombre, decimal ancho_m, decimal alto_m, decimal margen_m, int? laboratorio_id);
+        private record CanvasLab(string canvas_id, string nombre, decimal ancho_m, decimal largo_m, decimal margen_m, int? laboratorio_id);
         private readonly record struct Point(decimal X, decimal Y);
 
         private class Poly
@@ -88,13 +189,13 @@ namespace BARI_web.Features.Espacios.Pages
             public decimal x_m { get; set; }
             public decimal y_m { get; set; }
             public decimal ancho_m { get; set; }
-            public decimal alto_m { get; set; }
+            public decimal largo_m { get; set; }
             public int z_order { get; set; }
             public string? etiqueta { get; set; }
             public string? color_hex { get; set; }
             public List<Point> puntos { get; set; } = new();
             public Poly Clone() => (Poly)MemberwiseClone();
-            public (decimal L, decimal T, decimal R, decimal B) Bounds() => (x_m, y_m, x_m + ancho_m, y_m + alto_m);
+            public (decimal L, decimal T, decimal R, decimal B) Bounds() => (x_m, y_m, x_m + ancho_m, y_m + largo_m);
         }
 
         private class Door
@@ -126,6 +227,8 @@ namespace BARI_web.Features.Espacios.Pages
             public decimal largo_m { get; set; } = 1.0m;
             public int z_order { get; set; } // UI only (no persist)
         }
+
+
 
         private enum Handle { NW, NE, SW, SE, None }
 
@@ -189,7 +292,7 @@ namespace BARI_web.Features.Espacios.Pages
 
         // dibujo
         private decimal Wm => _canvas?.ancho_m ?? 20m;
-        private decimal Hm => _canvas?.alto_m ?? 10m;
+        private decimal Hm => _canvas?.largo_m ?? 10m;
         private bool _isDrawing = false;
         private readonly List<Point> _draftPoints = new();
         private string? _drawAreaId;
@@ -235,7 +338,7 @@ namespace BARI_web.Features.Espacios.Pages
             if (string.IsNullOrWhiteSpace(label)) return (0, false);
             var pad = 0.18m;
             var availW = Math.Max(0m, p.ancho_m - 2 * pad);
-            var availH = Math.Max(0m, p.alto_m - 2 * pad);
+            var availH = Math.Max(0m, p.largo_m - 2 * pad);
             if (availW <= 0m || availH <= 0m) return (0, false);
             var len = Math.Max(1, label.Length);
             double fsByWidth = (double)availW / (0.55 * len);
@@ -319,7 +422,7 @@ namespace BARI_web.Features.Espacios.Pages
                 c["canvas_id"],
                 c["nombre"],
                 Dec(c["ancho_m"]),
-                Dec(c["alto_m"]),
+                Dec(c["largo_m"]),
                 Dec(c["margen_m"]),
                 IntOrNull(NullIfEmpty(Get(c, "laboratorio_id"))));
             _currentCanvasId = _canvas.canvas_id;
@@ -361,7 +464,7 @@ namespace BARI_web.Features.Espacios.Pages
                     x_m = Dec(Get(r, "x_m", "0")),
                     y_m = Dec(Get(r, "y_m", "0")),
                     ancho_m = Dec(Get(r, "ancho_m", "0")),
-                    alto_m = Dec(Get(r, "alto_m", "0")),
+                    largo_m = Dec(Get(r, "largo_m", "0")),
                     z_order = Int(Get(r, "z_order", "0")),
                     etiqueta = NullIfEmpty(Get(r, "etiqueta")),
                     color_hex = NullIfEmpty(Get(r, "color_hex"))
@@ -502,8 +605,8 @@ namespace BARI_web.Features.Espacios.Pages
             {
                 new Point(p.x_m, p.y_m),
                 new Point(p.x_m + p.ancho_m, p.y_m),
-                new Point(p.x_m + p.ancho_m, p.y_m + p.alto_m),
-                new Point(p.x_m, p.y_m + p.alto_m)
+                new Point(p.x_m + p.ancho_m, p.y_m + p.largo_m),
+                new Point(p.x_m, p.y_m + p.largo_m)
             };
 
         private void UpdateBoundsFromPolyPoints(Poly p)
@@ -516,7 +619,7 @@ namespace BARI_web.Features.Espacios.Pages
             p.x_m = minX;
             p.y_m = minY;
             p.ancho_m = Math.Max(0.1m, maxX - minX);
-            p.alto_m = Math.Max(0.1m, maxY - minY);
+            p.largo_m = Math.Max(0.1m, maxY - minY);
         }
 
         private static (decimal minX, decimal minY, decimal maxX, decimal maxY) BoundsOfPointList(IReadOnlyList<Point> points)
@@ -578,11 +681,11 @@ namespace BARI_web.Features.Espacios.Pages
         {
             if (_sel is null) return;
             _sel.ancho_m = Clamp(0.1m, Wm, _sel.ancho_m);
-            _sel.alto_m = Clamp(0.1m, Hm, _sel.alto_m);
+            _sel.largo_m = Clamp(0.1m, Hm, _sel.largo_m);
             _sel.x_m = Clamp(0, Wm - _sel.ancho_m, _sel.x_m);
-            _sel.y_m = Clamp(0, Hm - _sel.alto_m, _sel.y_m);
+            _sel.y_m = Clamp(0, Hm - _sel.largo_m, _sel.y_m);
             if (noOverlap) ResolveCollisions(_sel, primaryAxis);
-            _sel.x_m = R3(_sel.x_m); _sel.y_m = R3(_sel.y_m); _sel.ancho_m = R3(_sel.ancho_m); _sel.alto_m = R3(_sel.alto_m);
+            _sel.x_m = R3(_sel.x_m); _sel.y_m = R3(_sel.y_m); _sel.ancho_m = R3(_sel.ancho_m); _sel.largo_m = R3(_sel.largo_m);
             if (_sel.z_order < 0) _sel.z_order = 0; if (_sel.z_order > 1_000_000) _sel.z_order = 1_000_000;
         }
 
@@ -604,25 +707,25 @@ namespace BARI_web.Features.Espacios.Pages
                     break;
                 case Handle.NE:
                     target.ancho_m = SnapValue(target.ancho_m);
-                    target.alto_m = SnapValue(target.alto_m);
+                    target.largo_m = SnapValue(target.largo_m);
                     target.x_m = basePoly.x_m;
-                    target.y_m = basePoly.y_m + basePoly.alto_m - target.alto_m;
+                    target.y_m = basePoly.y_m + basePoly.largo_m - target.largo_m;
                     break;
                 case Handle.SE:
                     target.ancho_m = SnapValue(target.ancho_m);
-                    target.alto_m = SnapValue(target.alto_m);
+                    target.largo_m = SnapValue(target.largo_m);
                     target.x_m = basePoly.x_m;
                     target.y_m = basePoly.y_m;
                     break;
                 case Handle.NW:
                     target.ancho_m = SnapValue(target.ancho_m);
-                    target.alto_m = SnapValue(target.alto_m);
+                    target.largo_m = SnapValue(target.largo_m);
                     target.x_m = basePoly.x_m + basePoly.ancho_m - target.ancho_m;
-                    target.y_m = basePoly.y_m + basePoly.alto_m - target.alto_m;
+                    target.y_m = basePoly.y_m + basePoly.largo_m - target.largo_m;
                     break;
                 case Handle.SW:
                     target.ancho_m = SnapValue(target.ancho_m);
-                    target.alto_m = SnapValue(target.alto_m);
+                    target.largo_m = SnapValue(target.largo_m);
                     target.x_m = basePoly.x_m + basePoly.ancho_m - target.ancho_m;
                     target.y_m = basePoly.y_m;
                     break;
@@ -657,7 +760,7 @@ namespace BARI_web.Features.Espacios.Pages
                 }
                 if (!any || bestMag == double.MaxValue) break;
                 p.x_m = Clamp(0m, Wm - p.ancho_m, p.x_m + best.dx);
-                p.y_m = Clamp(0m, Hm - p.alto_m, p.y_m + best.dy);
+                p.y_m = Clamp(0m, Hm - p.largo_m, p.y_m + best.dy);
             }
         }
 
@@ -1012,8 +1115,8 @@ namespace BARI_web.Features.Espacios.Pages
                 foreach (var o in VisiblePolys())
                 {
                     if (o.poly_id == p.poly_id) continue;
-                    var pTop = baseY; var pBottom = baseY + p.alto_m;
-                    if (!RangeOverlap(pTop, pBottom, o.y_m, o.y_m + o.alto_m)) continue;
+                    var pTop = baseY; var pBottom = baseY + p.largo_m;
+                    if (!RangeOverlap(pTop, pBottom, o.y_m, o.y_m + o.largo_m)) continue;
                     if (dx > 0)
                     {
                         var stop = o.x_m - p.ancho_m - EPS;
@@ -1031,7 +1134,7 @@ namespace BARI_web.Features.Espacios.Pages
             var ny = baseY;
             if (dy != 0)
             {
-                var target = Clamp(0m, Hm - p.alto_m, baseY + dy);
+                var target = Clamp(0m, Hm - p.largo_m, baseY + dy);
                 foreach (var o in VisiblePolys())
                 {
                     if (o.poly_id == p.poly_id) continue;
@@ -1039,12 +1142,12 @@ namespace BARI_web.Features.Espacios.Pages
                     if (!RangeOverlap(pLeft, pRight, o.x_m, o.x_m + o.ancho_m)) continue;
                     if (dy > 0)
                     {
-                        var stop = o.y_m - p.alto_m - EPS;
+                        var stop = o.y_m - p.largo_m - EPS;
                         if (ny < o.y_m && target > stop) target = Math.Min(target, stop);
                     }
                     else
                     {
-                        var stop = o.y_m + o.alto_m + EPS;
+                        var stop = o.y_m + o.largo_m + EPS;
                         if (ny > stop && target < stop) target = Math.Max(target, stop);
                     }
                 }
@@ -1059,7 +1162,7 @@ namespace BARI_web.Features.Espacios.Pages
             foreach (var o in VisiblePolys())
             {
                 if (o.poly_id == p.poly_id) continue;
-                if (!RangeOverlap(y, y + p.alto_m, o.y_m, o.y_m + o.alto_m)) continue;
+                if (!RangeOverlap(y, y + p.largo_m, o.y_m, o.y_m + o.largo_m)) continue;
                 var stop = o.x_m - EPS;
                 if (baseX < o.x_m && right > stop) right = Math.Min(right, stop);
             }
@@ -1072,7 +1175,7 @@ namespace BARI_web.Features.Espacios.Pages
             foreach (var o in VisiblePolys())
             {
                 if (o.poly_id == p.poly_id) continue;
-                if (!RangeOverlap(y, y + p.alto_m, o.y_m, o.y_m + o.alto_m)) continue;
+                if (!RangeOverlap(y, y + p.largo_m, o.y_m, o.y_m + o.largo_m)) continue;
                 var stop = o.x_m + o.ancho_m + EPS;
                 if (baseRight > stop && left < stop) left = Math.Max(left, stop);
             }
@@ -1100,7 +1203,7 @@ namespace BARI_web.Features.Espacios.Pages
             {
                 if (o.poly_id == p.poly_id) continue;
                 if (!RangeOverlap(x, x + p.ancho_m, o.x_m, o.x_m + o.ancho_m)) continue;
-                var stop = o.y_m + o.alto_m + EPS;
+                var stop = o.y_m + o.largo_m + EPS;
                 if (baseBottom > stop && top < stop) top = Math.Max(top, stop);
             }
             var newH = baseBottom - top;
@@ -1428,13 +1531,19 @@ namespace BARI_web.Features.Espacios.Pages
             await EnsureSvgRectAsync();
             await CapturePointerAsync(e);
 
+            // Mantener _cursorWorld alineado con el clic
+            var (cx, cy) = ClientToWorld(e.ClientX, e.ClientY);
+            _cursorWorld = (cx, cy);
+
             if (_isDrawing)
             {
                 AddDraftPoint(e);
                 return;
             }
+
             BeginPan(e);
         }
+
 
         private void BeginPan(PointerEventArgs e) { _panStart = (e.ClientX, e.ClientY); _panMoved = false; }
 
@@ -1785,11 +1894,12 @@ namespace BARI_web.Features.Espacios.Pages
                     _saveMsg = "Todos los polígonos deben estar asignados a un área.";
                     return;
                 }
-                if (_polys.Any(p => !IsAreaInCurrentCanvas(p.area_id)))
+                if (_polys.Any(p => !IsAreaInCurrentLab(p.area_id)))
                 {
-                    _saveMsg = "Todos los polígonos deben pertenecer al canvas actual.";
+                    _saveMsg = "Todos los polígonos deben pertenecer al laboratorio actual.";
                     return;
                 }
+
 
                 _saving = true; _saveMsg = "Guardando…"; StateHasChanged();
 
@@ -1805,7 +1915,7 @@ namespace BARI_web.Features.Espacios.Pages
                         ["x_m"] = p.x_m,
                         ["y_m"] = p.y_m,
                         ["ancho_m"] = p.ancho_m,
-                        ["alto_m"] = p.alto_m,
+                        ["largo_m"] = p.largo_m,
                         ["z_order"] = p.z_order,
                         ["etiqueta"] = p.etiqueta ?? (object)DBNull.Value,
                         ["color_hex"] = p.color_hex ?? (object)DBNull.Value
@@ -1820,7 +1930,7 @@ namespace BARI_web.Features.Espacios.Pages
                             ["x_m"] = p.x_m,
                             ["y_m"] = p.y_m,
                             ["ancho_m"] = p.ancho_m,
-                            ["alto_m"] = p.alto_m,
+                            ["largo_m"] = p.largo_m,
                             ["z_order"] = p.z_order,
                             ["etiqueta"] = p.etiqueta,
                             ["color_hex"] = p.color_hex
@@ -2030,7 +2140,7 @@ namespace BARI_web.Features.Espacios.Pages
         // ¿El polígono pertenece a la planta actual?
         private bool IsVisible(Poly p)
             => string.Equals(PlantaOf(p) ?? "", _currentPlantaId ?? "", StringComparison.OrdinalIgnoreCase)
-               && IsAreaInCurrentCanvas(p.area_id);
+               && IsAreaInCurrentLab(p.area_id);
 
         private bool IsDoorVisible(Door d)
         {
@@ -2102,16 +2212,116 @@ namespace BARI_web.Features.Espacios.Pages
             await ReloadCanvasDataAsync();
         }
 
+        private void UndoLastDraftPoint()
+        {
+            if (_draftPoints.Count == 0)
+                return;
+
+            _draftPoints.RemoveAt(_draftPoints.Count - 1);
+
+            if (_draftPoints.Count == 0)
+            {
+                _drawMsg = "Haz clic para colocar el primer punto.";
+                _draftLiveLen = 0m;
+                _draftTotalLen = 0m;
+                _drawDx = 0m;
+                _drawDy = 0m;
+                _drawDist = 0m;
+            }
+            else
+            {
+                _drawMsg = "Haz clic en el primer punto para cerrar.";
+            }
+
+            StateHasChanged();
+        }
+        private async Task AddTypedDraftPoint()
+        {
+            if (!TryParseFlexible(_draftInputX, out var x) || !TryParseFlexible(_draftInputY, out var y))
+            {
+                _drawMsg = "Ingresa X e Y válidas.";
+                StateHasChanged();
+                return;
+            }
+
+            await AddTypedDraftPointInternalAsync(x, y);
+
+            _draftInputX = "";
+            _draftInputY = "";
+            await InvokeAsync(StateHasChanged);
+            await _draftXRef.FocusAsync();
+        }
+        private async Task AddTypedDraftPointInternalAsync(decimal x, decimal y)
+        {
+            if (!_isDrawing)
+            {
+                _drawMsg = "Activa 'Dibujar polígono' primero.";
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(_drawAreaId) || !IsAreaInCurrentPlanta(_drawAreaId))
+            {
+                _drawMsg = "Selecciona un área válida antes de dibujar.";
+                return;
+            }
+
+            // Snap si está activado (consistente con el click)
+            if (_snapToGrid)
+            {
+                x = SnapValue(x);
+                y = SnapValue(y);
+            }
+
+            // Clamp al canvas
+            x = Clamp(0m, Wm, x);
+            y = Clamp(0m, Hm, y);
+
+            // Fijar X/Y respecto al último punto
+            if (_draftPoints.Count > 0)
+            {
+                var last = _draftPoints[^1];
+                if (_drawAxisXOnly) y = last.Y;
+                if (_drawAxisYOnly) x = last.X;
+            }
+
+            var point = new Point(x, y);
+
+            // Cerrar si está cerca del primero
+            if (_draftPoints.Count >= 3 && DistanceBetweenPoints(_draftPoints[0], point) <= DraftCloseRadius())
+            {
+                FinalizeDraftPolygon();
+                return;
+            }
+
+            // Colisión del tramo con otros polígonos
+            if (_draftPoints.Count > 0)
+            {
+                var last = _draftPoints[^1];
+                if (SegmentHitsAnyPoly(last, point))
+                {
+                    _drawMsg = "Colisión: ese tramo entra o cruza otra área. Acércate al borde.";
+                    return;
+                }
+            }
+
+            _draftPoints.Add(point);
+            _drawMsg = "Haz clic en el primer punto para cerrar.";
+            await InvokeAsync(StateHasChanged);
+        }
+
+
         private void StartDrawing()
         {
             _draftPoints.Clear();
-            _drawMsg = null;
+            _drawMsg = "Haz clic para colocar el primer punto.";
             _isDrawing = true;
             _selectedVertexIndex = -1;
             _dragVertexIndex = -1;
+            _draftInputX = "";
+            _draftInputY = "";
             ClearVertexEdit();
-
         }
+
 
         private void CancelDrawing()
         {
@@ -2152,18 +2362,33 @@ namespace BARI_web.Features.Espacios.Pages
                 return;
             }
 
-            var (wx, wy) = ClientToWorld(e.ClientX, e.ClientY);
+            // 👇 Usar las coords del preview si las tenemos
+            decimal wx, wy;
+            if (_cursorWorld is not null)
+            {
+                wx = _cursorWorld.Value.x;
+                wy = _cursorWorld.Value.y;
+            }
+            else
+            {
+                // Por si el usuario hace clic sin mover el ratón antes
+                (wx, wy) = ClientToWorld(e.ClientX, e.ClientY);
+            }
+
             var snapEnabled = _snapToGrid && !e.ShiftKey;
             var x = snapEnabled ? SnapValue(wx) : wx;
             var y = snapEnabled ? SnapValue(wy) : wy;
+
             x = Clamp(0m, Wm, x);
             y = Clamp(0m, Hm, y);
+
             if (_draftPoints.Count > 0)
             {
                 var last = _draftPoints[^1];
                 if (_drawAxisXOnly) y = last.Y;
                 if (_drawAxisYOnly) x = last.X;
             }
+
             var point = new Point(x, y);
 
             if (_draftPoints.Count >= 3 && DistanceBetweenPoints(_draftPoints[0], point) <= DraftCloseRadius())
@@ -2171,6 +2396,7 @@ namespace BARI_web.Features.Espacios.Pages
                 FinalizeDraftPolygon();
                 return;
             }
+
             if (_draftPoints.Count > 0)
             {
                 var last = _draftPoints[^1];
@@ -2184,6 +2410,7 @@ namespace BARI_web.Features.Espacios.Pages
             _draftPoints.Add(point);
             _drawMsg = "Haz clic en el primer punto para cerrar.";
         }
+
 
         private decimal DraftCloseRadius()
             => Math.Max(0.35m, _gridStep * 2);
@@ -2326,7 +2553,7 @@ namespace BARI_web.Features.Espacios.Pages
                 x_m = _snapToGrid ? SnapValue(0.5m) : 0.5m,
                 y_m = _snapToGrid ? SnapValue(0.5m) : 0.5m,
                 ancho_m = 2.0m,
-                alto_m = 2.0m,
+                largo_m = 2.0m,
                 z_order = (_polys.Count == 0) ? 0 : _polys.Max(pp => pp.z_order) + 1,
                 color_hex = "#E6E6E6"
             };
@@ -2511,8 +2738,8 @@ namespace BARI_web.Features.Espacios.Pages
         {
             Handle.NW => (p.x_m, p.y_m),
             Handle.NE => (p.x_m + p.ancho_m, p.y_m),
-            Handle.SW => (p.x_m, p.y_m + p.alto_m),
-            Handle.SE => (p.x_m + p.ancho_m, p.y_m + p.alto_m),
+            Handle.SW => (p.x_m, p.y_m + p.largo_m),
+            Handle.SE => (p.x_m + p.ancho_m, p.y_m + p.largo_m),
             _ => (p.x_m, p.y_m)
         };
 
@@ -2542,7 +2769,7 @@ namespace BARI_web.Features.Espacios.Pages
                     _ = StretchCornerToY(pA, _pickA.Value.h, by);
                     NormalizeSelected(noOverlap: true, primaryAxis: 'y');
                     var (_, ay1) = VertexWorld(pA, _pickA.Value.h);
-                    if (Nearly(ay1, by)) { _joinMsg = "Vértices igualados en Y ✔ (ajustando alto)"; EndJoin(); return; }
+                    if (Nearly(ay1, by)) { _joinMsg = "Vértices igualados en Y ✔ (ajustando largo)"; EndJoin(); return; }
                 }
             }
 
@@ -2562,7 +2789,7 @@ namespace BARI_web.Features.Espacios.Pages
             var snapshot = pA.Clone();
             var ok2 = PlaceFixedVertexExactAndShrink(pA, _pickA.Value.h, tx, ty);
             if (ok2) { NormalizeSelected(); _joinMsg = "Vértices unidos ✔ (A ajustado para alinear)"; }
-            else { pA.x_m = snapshot.x_m; pA.y_m = snapshot.y_m; pA.ancho_m = snapshot.ancho_m; pA.alto_m = snapshot.alto_m; _joinMsg = "No se pueden juntar: habría colisión o salida del lienzo."; }
+            else { pA.x_m = snapshot.x_m; pA.y_m = snapshot.y_m; pA.ancho_m = snapshot.ancho_m; pA.largo_m = snapshot.largo_m; _joinMsg = "No se pueden juntar: habría colisión o salida del lienzo."; }
             EndJoin();
         }
 
@@ -2607,20 +2834,20 @@ namespace BARI_web.Features.Espacios.Pages
 
         private bool StretchCornerToY(Poly p, Handle fixedCorner, decimal ty)
         {
-            var baseTop = p.y_m; var baseBottom = p.y_m + p.alto_m;
+            var baseTop = p.y_m; var baseBottom = p.y_m + p.largo_m;
             switch (fixedCorner)
             {
                 case Handle.NW:
                 case Handle.NE:
                     {
                         var desiredH = baseBottom - ty; var newH = ClampTop(p, p.x_m, baseBottom, desiredH);
-                        if (newH < 0.1m) return false; p.y_m = baseBottom - newH; p.alto_m = newH; return true;
+                        if (newH < 0.1m) return false; p.y_m = baseBottom - newH; p.largo_m = newH; return true;
                     }
                 case Handle.SW:
                 case Handle.SE:
                     {
                         var desiredH = ty - baseTop; var newH = ClampBottom(p, p.x_m, baseTop, desiredH);
-                        if (newH < 0.1m) return false; p.y_m = baseTop; p.alto_m = newH; return true;
+                        if (newH < 0.1m) return false; p.y_m = baseTop; p.largo_m = newH; return true;
                     }
                 default: return false;
             }
@@ -2632,15 +2859,15 @@ namespace BARI_web.Features.Espacios.Pages
             {
                 case Handle.NW: p.x_m = tx; p.y_m = ty; break;
                 case Handle.NE: p.y_m = ty; p.x_m = tx - p.ancho_m; break;
-                case Handle.SW: p.x_m = tx; p.y_m = ty - p.alto_m; break;
-                case Handle.SE: p.x_m = tx - p.ancho_m; p.y_m = ty - p.alto_m; break;
+                case Handle.SW: p.x_m = tx; p.y_m = ty - p.largo_m; break;
+                case Handle.SE: p.x_m = tx - p.ancho_m; p.y_m = ty - p.largo_m; break;
             }
             if (p.x_m < 0m) { var overflow = -p.x_m; if (fixedCorner is Handle.NE or Handle.SE) { p.x_m = 0; p.ancho_m -= overflow; } else p.x_m = 0; }
-            if (p.y_m < 0m) { var overflow = -p.y_m; if (fixedCorner is Handle.SW or Handle.SE) { p.y_m = 0; p.alto_m -= overflow; } else p.y_m = 0; }
+            if (p.y_m < 0m) { var overflow = -p.y_m; if (fixedCorner is Handle.SW or Handle.SE) { p.y_m = 0; p.largo_m -= overflow; } else p.y_m = 0; }
             var W = Wm; var H = Hm;
             if (p.x_m + p.ancho_m > W) { var overflow = p.x_m + p.ancho_m - W; if (fixedCorner is Handle.NW or Handle.SW) p.ancho_m -= overflow; else p.x_m -= overflow; }
-            if (p.y_m + p.alto_m > H) { var overflow = p.y_m + p.alto_m - H; if (fixedCorner is Handle.NW or Handle.NE) p.alto_m -= overflow; else p.y_m -= overflow; }
-            if (p.ancho_m < 0.1m || p.alto_m < 0.1m) return false;
+            if (p.y_m + p.largo_m > H) { var overflow = p.y_m + p.largo_m - H; if (fixedCorner is Handle.NW or Handle.NE) p.largo_m -= overflow; else p.y_m -= overflow; }
+            if (p.ancho_m < 0.1m || p.largo_m < 0.1m) return false;
 
             const int MAX_ITERS = 24;
             for (int k = 0; k < MAX_ITERS; k++)
@@ -2653,15 +2880,15 @@ namespace BARI_web.Features.Espacios.Pages
                 var oW = oR - oL; var oH = oB - oT;
                 if (oW >= oH)
                 {
-                    if (fixedCorner is Handle.NW or Handle.NE) { p.alto_m = Math.Max(0.1m, p.alto_m - oH - EPS); }
-                    else { var cut = oH + EPS; p.y_m += cut; p.alto_m = Math.Max(0.1m, p.alto_m - cut); }
+                    if (fixedCorner is Handle.NW or Handle.NE) { p.largo_m = Math.Max(0.1m, p.largo_m - oH - EPS); }
+                    else { var cut = oH + EPS; p.y_m += cut; p.largo_m = Math.Max(0.1m, p.largo_m - cut); }
                 }
                 else
                 {
                     if (fixedCorner is Handle.NW or Handle.SW) { p.ancho_m = Math.Max(0.1m, p.ancho_m - oW - EPS); }
                     else { var cut = oW + EPS; p.x_m += cut; p.ancho_m = Math.Max(0.1m, p.ancho_m - cut); }
                 }
-                if (p.ancho_m < 0.1m || p.alto_m < 0.1m) return false;
+                if (p.ancho_m < 0.1m || p.largo_m < 0.1m) return false;
             }
             return false;
         }
@@ -2743,7 +2970,7 @@ namespace BARI_web.Features.Espacios.Pages
                 {
                     var p = visibles.First(pp => pp.poly_id == id);
                     p.x_m = Clamp(0m, Wm - p.ancho_m, RoundTo(p.x_m, ROUND_MM));
-                    p.y_m = Clamp(0m, Hm - p.alto_m, RoundTo(p.y_m, ROUND_MM));
+                    p.y_m = Clamp(0m, Hm - p.largo_m, RoundTo(p.y_m, ROUND_MM));
                 }
 
                 foreach (var id in changed.ToArray())
@@ -2769,7 +2996,7 @@ namespace BARI_web.Features.Espacios.Pages
                             ["x_m"] = RoundTo(p.x_m, ROUND_MM),
                             ["y_m"] = RoundTo(p.y_m, ROUND_MM),
                             ["ancho_m"] = RoundTo(p.ancho_m, ROUND_MM),
-                            ["alto_m"] = RoundTo(p.alto_m, ROUND_MM),
+                            ["largo_m"] = RoundTo(p.largo_m, ROUND_MM),
                             ["z_order"] = p.z_order,
                             ["area_id"] = p.area_id ?? (object)DBNull.Value,
                             ["canvas_id"] = p.canvas_id,
@@ -2984,7 +3211,7 @@ namespace BARI_web.Features.Espacios.Pages
         {
             if (p.puntos.Count < 3)
             {
-                return (p.x_m + p.ancho_m / 2m, p.y_m + p.alto_m / 2m);
+                return (p.x_m + p.ancho_m / 2m, p.y_m + p.largo_m / 2m);
             }
             decimal cx = 0m;
             decimal cy = 0m;
@@ -2998,7 +3225,7 @@ namespace BARI_web.Features.Espacios.Pages
                 cx += (a.X + b.X) * cross;
                 cy += (a.Y + b.Y) * cross;
             }
-            if (area == 0) return (p.x_m + p.ancho_m / 2m, p.y_m + p.alto_m / 2m);
+            if (area == 0) return (p.x_m + p.ancho_m / 2m, p.y_m + p.largo_m / 2m);
             area *= 0.5m;
             return (cx / (6m * area), cy / (6m * area));
         }
@@ -3014,7 +3241,7 @@ namespace BARI_web.Features.Espacios.Pages
         {
             if (dx == 0) return true;
             var newX = Clamp(0m, Wm - p.ancho_m, p.x_m + dx);
-            var test = new Poly { poly_id = p.poly_id, x_m = newX, y_m = p.y_m, ancho_m = p.ancho_m, alto_m = p.alto_m };
+            var test = new Poly { poly_id = p.poly_id, x_m = newX, y_m = p.y_m, ancho_m = p.ancho_m, largo_m = p.largo_m };
             foreach (var o in VisiblePolys())
             {
                 if (o.poly_id == p.poly_id) continue;
@@ -3026,8 +3253,9 @@ namespace BARI_web.Features.Espacios.Pages
         private bool IsAreaInCurrentPlanta(string? areaId)
             => !string.IsNullOrWhiteSpace(areaId)
                && _areasMeta.TryGetValue(areaId!, out var meta)
-               && string.Equals(meta.planta_id ?? "", _currentPlantaId ?? "", StringComparison.OrdinalIgnoreCase)
-               && IsCanvasMatch(meta.canvas_id);
+               && meta.laboratorio_id == _canvas?.laboratorio_id
+               && string.Equals(meta.planta_id ?? "", _currentPlantaId ?? "", StringComparison.OrdinalIgnoreCase);
+
 
         private bool IsAreaInCurrentCanvas(string? areaId)
             => !string.IsNullOrWhiteSpace(areaId)
@@ -3155,8 +3383,8 @@ namespace BARI_web.Features.Espacios.Pages
         private bool CanTranslateY(Poly p, decimal dy)
         {
             if (dy == 0) return true;
-            var newY = Clamp(0m, Hm - p.alto_m, p.y_m + dy);
-            var test = new Poly { poly_id = p.poly_id, x_m = p.x_m, y_m = newY, ancho_m = p.ancho_m, alto_m = p.alto_m };
+            var newY = Clamp(0m, Hm - p.largo_m, p.y_m + dy);
+            var test = new Poly { poly_id = p.poly_id, x_m = p.x_m, y_m = newY, ancho_m = p.ancho_m, largo_m = p.largo_m };
             foreach (var o in VisiblePolys())
             {
                 if (o.poly_id == p.poly_id) continue;
@@ -3164,6 +3392,12 @@ namespace BARI_web.Features.Espacios.Pages
             }
             return true;
         }
+
+        private bool IsAreaInCurrentLab(string? areaId)
+    => !string.IsNullOrWhiteSpace(areaId)
+       && _areasMeta.TryGetValue(areaId!, out var meta)
+       && meta.laboratorio_id == _canvas?.laboratorio_id;
+
     }
 }
 

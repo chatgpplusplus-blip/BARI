@@ -1,14 +1,12 @@
-﻿using System.Globalization;
-using System.Linq;
+﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using BARI_web.General_Services.DataBaseConnection;
-using System.Text.Json;
-using System;
-
-
 
 namespace BARI_web.Features.Espacios.Pages
 {
@@ -18,14 +16,39 @@ namespace BARI_web.Features.Espacios.Pages
         [Inject] private PgCrud Pg { get; set; } = default!;
         [Inject] public NavigationManager Nav { get; set; } = default!;
 
-        // ===== Modelos =====
-        private record CanvasLab(string canvas_id, string nombre, decimal ancho_m, decimal alto_m, decimal margen_m);
+        // =========================
+        // Modelos base
+        // =========================
+        private record CanvasLab(string canvas_id, string nombre, decimal ancho_m, decimal largo_m, decimal margen_m);
+
         private readonly record struct Point(decimal X, decimal Y);
-        // snapshot de arrastre/redimensionamiento (base)
-        private (decimal x, decimal y, decimal w, decimal h)? _beforeDragIn;
-        private record Poly(string poly_id, string canvas_id, string? area_id,
-                            decimal x_m, decimal y_m, decimal ancho_m, decimal alto_m,
-                            int z_order, string? etiqueta, string? color_hex, List<Point> puntos);
+
+        private Dictionary<string, string> _subcatsInstLookup = new(StringComparer.OrdinalIgnoreCase);
+
+        // ✅ Categorías reales de instalaciones en tu BD
+        private static readonly string[] CategoriaInstIds = new[]
+        {
+    "ins-agua",
+    "ins-clima",
+    "ins-electrica",
+    "ins-gas",
+    "ins-mobiliario",
+    "ins-teleco"
+};
+
+        private record Poly(
+            string poly_id,
+            string canvas_id,
+            string? area_id,
+            decimal x_m,
+            decimal y_m,
+            decimal ancho_m,
+            decimal largo_m,
+            int z_order,
+            string? etiqueta,
+            string? color_hex,
+            List<Point> puntos
+        );
 
         private class AreaDraw
         {
@@ -40,37 +63,35 @@ namespace BARI_web.Features.Espacios.Pages
             public List<(decimal x1, decimal y1, decimal x2, decimal y2)> Outline { get; } = new();
         }
 
+        // OJO: la tabla poligonos_interiores NO estaba en tu SQL pegado.
+        // Mantengo las columnas que tú ya estabas usando en el proyecto (para no romper el runtime).
         private class InnerItem
         {
             public string poly_in_id { get; set; } = "";
             public string area_poly_id { get; set; } = "";
 
-            // Requeridos por DB (NOT NULL)
-            public string canvas_id { get; set; } = "";  // << NUEVO
-            public string area_id { get; set; } = "";    // << NUEVO
+            // "tenancy"
+            public string canvas_id { get; set; } = "";
+            public string area_id { get; set; } = "";
+
+            // geom (relativo al parent)
             public decimal eje_x_rel_m { get; set; }
             public decimal eje_y_rel_m { get; set; }
-            public decimal eje_z_rel_m { get; set; } = 0m;   // << NUEVO
-            public decimal ancho_m { get; set; }
-            public decimal profundo_m { get; set; } = 0.6m;  // << NUEVO (profundidad por defecto)
-            public decimal alto_m { get; set; }
-            public decimal yaw_deg { get; set; } = 0m;       // << NUEVO
-            public string pivot_kind { get; set; } = "center"; // << NUEVO
-            public decimal offset_x_m { get; set; } = 0m;    // << NUEVO
-            public decimal offset_y_m { get; set; } = 0m;    // << NUEVO
-            public decimal offset_z_m { get; set; } = 0m;    // << NUEVO
-            public int z_order { get; set; } = 0;
 
-            // Opcionales / display
+            public decimal ancho_m { get; set; }
+            public decimal largo_m { get; set; }
+
+            // display
             public string? label { get; set; }
             public string fill { get; set; } = "#4B5563";
             public decimal opacidad { get; set; } = 0.35m;
+            public int z_order { get; set; } = 0;
 
-            // calculados
+            // calculados (absolutos en canvas)
             public decimal abs_x { get; set; }
             public decimal abs_y { get; set; }
 
-            // vínculos opcionales
+            // vínculos (XOR en UI)
             public string? meson_id { get; set; }
             public string? instalacion_id { get; set; }
         }
@@ -79,203 +100,365 @@ namespace BARI_web.Features.Espacios.Pages
         {
             public string bloque_id { get; set; } = "";
             public string canvas_id { get; set; } = "";
-            public string? material_montaje_id { get; set; }
+
+            // XOR: uno u otro
+            public string? instalacion_id { get; set; }
             public string? meson_id { get; set; }
+
             public string? etiqueta { get; set; }
             public string? color_hex { get; set; }
             public int z_order { get; set; }
+
             public decimal pos_x { get; set; }
             public decimal pos_y { get; set; }
             public decimal ancho { get; set; }
-            public decimal alto { get; set; }
+            public decimal largo { get; set; }
+            public decimal? altura { get; set; }   // NUEVO (opcional)
+
             public decimal offset_x { get; set; }
             public decimal offset_y { get; set; }
 
             public decimal abs_x { get; set; }
             public decimal abs_y { get; set; }
         }
-
         private class Door { public decimal x_m, y_m, largo_m; public string orientacion = "E"; }
         private class Win { public decimal x_m, y_m, largo_m; public string orientacion = "E"; }
 
-        // Mesones (resumen de columnas que editamos)
+        // =========================
+        // Mesones / Instalaciones (SEGÚN TU SQL)
+        // =========================
         private class Meson
         {
             public string meson_id { get; set; } = "";
-            public string area_id { get; set; } = "";          // NOT NULL en DB
-            public string nombre_meson { get; set; } = "";      // NOT NULL en DB
-            public int ancho_cm { get; set; }
-            public int largo_cm { get; set; }
-            public int profundidad_cm { get; set; }
-            public int niveles_totales { get; set; }
-        }
-
-        private class MaterialMontaje
-        {
-            public string material_id { get; set; } = "";
             public string area_id { get; set; } = "";
-            public string nombre { get; set; } = "";
-            public string? estado_id { get; set; }
-            public string? posicion { get; set; }
+            public string nombre_meson { get; set; } = "";
+            public int? niveles_totales { get; set; }
             public int laboratorio_id { get; set; }
+
+            public string? imagen_url { get; set; }
+
         }
 
 
-        // Instalaciones (resumen de columnas editables)
         private class Instalacion
         {
             public string instalacion_id { get; set; } = "";
             public string nombre { get; set; } = "";
-            public string? tipo_id { get; set; }
-            public string? notas { get; set; }
-            public bool requiere_mantenimiento { get; set; }
+
+            public string? subcategoria_id { get; set; }
+
+            public int laboratorio_id { get; set; }
+            public string? area_id { get; set; }
+
+            public string? canvas_id { get; set; }
+
+            public string? estado_id { get; set; }
+            public DateTime? fecha_instalacion { get; set; }
+            public DateTime? fecha_ultima_revision { get; set; }
+            public DateTime? fecha_proxima_revision { get; set; }
+
+            public string? proveedor_servicio { get; set; }
+            public string? observaciones { get; set; }
+            public string? descripcion { get; set; }
+            public string? imagen_url { get; set; }
         }
 
-        // ===== Estado =====
+        // =========================
+        // Estado / caches
+        // =========================
         private CanvasLab? _canvas;
         private AreaDraw? _area;
+
         private readonly List<Door> _doors = new();
         private readonly List<Win> _windows = new();
+
         private readonly List<InnerItem> _inners = new();
         private readonly Dictionary<string, InnerItem> _mapIn = new(StringComparer.OrdinalIgnoreCase);
+
         private readonly List<BlockItem> _blocks = new();
         private readonly Dictionary<string, BlockItem> _blocksById = new(StringComparer.OrdinalIgnoreCase);
-        private Dictionary<string, string> _materialesLookup = new(StringComparer.OrdinalIgnoreCase);
-        private Dictionary<string, string> _mesonesLookup = new(StringComparer.OrdinalIgnoreCase);
 
-        // vínculos
         private readonly Dictionary<string, Meson> _mesones = new(StringComparer.OrdinalIgnoreCase);
-        private readonly Dictionary<string, MaterialMontaje> _materialesMontaje = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, Instalacion> _instalaciones = new(StringComparer.OrdinalIgnoreCase);
 
-        // viewbox
+        private readonly Dictionary<string, string> _mesonesLookup = new(StringComparer.OrdinalIgnoreCase);
+
+        private Dictionary<string, string> _estadosLookup = new(StringComparer.OrdinalIgnoreCase);
+
+        // =========================
+        // Viewbox / pan-zoom
+        // =========================
         private decimal VX, VY, VW, VH;
-        private string ViewBox()
-        {
-            var vw = (decimal)((double)Wm / _zoom);
-            var vh = (decimal)((double)Hm / _zoom);
-            return $"{S(_panX)} {S(_panY)} {S(vw)} {S(vh)}";
-        }
-        private string AspectRatioString() { var vw = VW <= 0 ? 1 : VW; var vh = VH <= 0 ? 1 : VH; var ar = (double)vw / (double)vh; return $"{ar:0.###} / 1"; }
-        private decimal AreaCenterX => _area is null ? 0m : (_area.MinX + _area.MaxX) / 2m;
-        private decimal AreaCenterY => _area is null ? 0m : (_area.MinY + _area.MaxY) / 2m;
-
-        // grilla cache
-        private decimal GridStartX, GridEndX, GridStartY, GridEndY;
-
-        // pan/zoom
         private double _zoom = 1.0;
         private decimal _panX = 0m, _panY = 0m;
         private (double x, double y)? _panStart;
         private bool _panMoved = false;
         private ElementReference _svgRef;
 
-        // selección / drag
+        private decimal Wm => _canvas?.ancho_m ?? 20m;
+        private decimal Hm => _canvas?.largo_m ?? 10m;
+
+        private string ViewBox()
+        {
+            var vw = (decimal)((double)Wm / _zoom);
+            var vh = (decimal)((double)Hm / _zoom);
+            return $"{S(_panX)} {S(_panY)} {S(vw)} {S(vh)}";
+        }
+
+        private string AspectRatioString()
+        {
+            var vw = VW <= 0 ? 1 : VW;
+            var vh = VH <= 0 ? 1 : VH;
+            var ar = (double)vw / (double)vh;
+            return $"{ar:0.###} / 1";
+        }
+
+        private decimal AreaCenterX => _area is null ? 0m : (_area.MinX + _area.MaxX) / 2m;
+        private decimal AreaCenterY => _area is null ? 0m : (_area.MinY + _area.MaxY) / 2m;
+
+        private decimal GridStartX, GridEndX, GridStartY, GridEndY;
+
+        // =========================
+        // Selección / drag
+        // =========================
         private string? _selIn;
         private string? _hoverIn;
         private string? _selBlock;
         private string? _hoverBlock;
+
         private (decimal x, decimal y)? _dragStart;
+        private (decimal dx, decimal dy)? _grab;
+
         private InnerItem? _dragIn;
         private Poly? _dragParent;
-        private bool _resizing = false;
+        private (decimal x, decimal y, decimal w, decimal h)? _beforeDragIn;
         private Handle _activeHandle = Handle.None;
+
         private BlockItem? _dragBlock;
         private (decimal x, decimal y, decimal w, decimal h)? _beforeDragBlock;
         private (decimal dx, decimal dy)? _blockGrab;
-        private bool _blockResizing = false;
         private Handle _blockHandle = Handle.None;
 
-        // guardar
+        private enum Handle { NW, NE, SW, SE, None }
+
+        // =========================
+        // Guardar
+        // =========================
         private bool _saving = false;
         private string _saveMsg = "";
 
-        // === UI: paneles bajo el lienzo
-        private bool _showNuevaInstalacionPanel = false;
-        private bool _showTipoInstalacionPanel = false;
+        // =========================
+        // UI: crear bloque (solo asignar existente)
+        // =========================
         private bool _showBlockCreator = false;
+        private bool _newBlockAssignInstalacion = false;
+        private bool _newBlockAssignMeson = false;
 
-        // === Catálogo: tipos de instalación (id -> nombre)
-        private Dictionary<string, string>? _tiposInstalacion;
-
-        // === Formulario: Nueva instalación
-        private string _nuevoIns_TipoId = "";
-        private string _nuevoIns_Nombre = "";
-        private string? _nuevoIns_Notas = null;
-        private bool _nuevoIns_RequiereMantenimiento = false;
-
-        // === Formulario: Nuevo tipo de instalación
-        private string _nuevoTipo_Nombre = "";
-        private string? _nuevoTipo_Descripcion = null;
-
-        private string? _newBlockMaterialId;
+        private string? _newBlockInstalacionId;
         private string? _newBlockMesonId;
-        private bool _newBlockAssignMaterial;
-        private bool _newBlockAssignMeson;
+
         private string _newBlockEtiqueta = "";
         private decimal _newBlockAncho = 0.6m;
-        private decimal _newBlockAlto = 0.4m;
+        private decimal _newBlockLargo = 0.4m;
         private decimal _newBlockOffsetX = 0m;
         private decimal _newBlockOffsetY = 0m;
         private string _newBlockColor = "#2563eb";
         private string? _blockMsg;
 
+        // =========================
+        // UI: crear mesón (SQL)
+        // =========================
         private string _nuevoMesonNombre = "";
-        private int _nuevoMesonAnchoCm = 100;
-        private int _nuevoMesonLargoCm = 200;
-        private int _nuevoMesonProfundidadCm = 60;
-        private int _nuevoMesonNiveles = 1;
+        private int? _nuevoMesonNiveles = null;
         private string? _nuevoMesonMsg;
 
-        private string _nuevoMaterialNombre = "";
-        private string? _nuevoMaterialEstado;
-        private string? _nuevoMaterialPosicion;
-        private string? _nuevoMaterialMsg;
+        private string _nuevoMesonImagenUrl = string.Empty;
+        private decimal? _newBlockAltura = null;
+        public string? imagen_url { get; set; }
 
+        // =========================
+        // UI: crear instalación (SQL)
+        // =========================
+        private string _nuevoIns_Nombre = "";
+        private string? _nuevoIns_SubcategoriaId = "";
+        private string? _nuevoIns_EstadoId = "";
+        private string? _nuevoIns_FechaInstalacion = "";
+        private string? _nuevoIns_FechaUltRev = "";
+        private string? _nuevoIns_FechaProxRev = "";
+        private string? _nuevoIns_ProveedorServicio = "";
+        private string? _nuevoIns_Observaciones = "";
+        private string? _nuevoIns_Descripcion = "";
+        private string? _nuevoIns_ImagenUrl = "";
+        private string? _nuevoIns_Msg;
+        // Esta propiedad actúa como puente entre el Input y el String
+        private DateTime? FechaInstalacionWrapper
+        {
+            get => DateTime.TryParse(_nuevoIns_FechaInstalacion, out var dt) ? dt : null;
+            set => _nuevoIns_FechaInstalacion = value?.ToString("yyyy-MM-dd");
+        }
+
+
+        private DateTime? FechaUltRevWrapper
+        {
+            get => DateTime.TryParse(_nuevoIns_FechaUltRev, out var dt) ? dt : null;
+            set => _nuevoIns_FechaUltRev = value?.ToString("yyyy-MM-dd");
+        }
+
+        private DateTime? FechaProxRevWrapper
+        {
+            get => DateTime.TryParse(_nuevoIns_FechaProxRev, out var dt) ? dt : null;
+            set => _nuevoIns_FechaProxRev = value?.ToString("yyyy-MM-dd");
+        }
+
+        // laboratorio (tenancy)
         private int _laboratorioId = 1;
 
-
-        // ===== Apariencia / tolerancias =====
+        // =========================
+        // Tolerancias / colisiones
+        // =========================
         private const decimal OutlineStroke = 0.28m;
-        private const decimal Tolerance = 0.004m; // 4mm
+        private const decimal EPS_MINW = 0.10m;
+        private const decimal EPS_SEP = 0.002m; // separación mínima en colisión (~2mm)
+        private const decimal PAD_AREA = 0.0005m;
 
-        private enum Handle { NW, NE, SW, SE, None }
+        private enum InnerKind { None, Meson, Instalacion }
 
-        // ================== INIT ==================
+
+        private sealed record TextLayout(decimal FontSize, decimal LineHeight, List<string> Lines);
+
+        private TextLayout LayoutLabel(string text, decimal boxW, decimal boxH)
+        {
+            text = (text ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(text))
+                return new TextLayout(0.18m, 1.15m, new List<string>());
+
+            // “Padding” interno para que no pegue al borde
+            var pad = 0.18m;
+            var availW = Math.Max(0.10m, boxW - pad);
+            var availH = Math.Max(0.10m, boxH - pad);
+
+            var lineHeight = 1.15m;
+
+            // Tamaño máximo razonable según el rect
+            var maxFs = Math.Min(0.45m, Math.Min(availW, availH) * 0.45m);
+            var minFs = 0.12m;
+            var step = 0.02m;
+
+            for (var fs = maxFs; fs >= minFs; fs -= step)
+            {
+                var lines = WrapByWidth(text, availW, fs);
+                var neededH = lines.Count * (fs * lineHeight);
+
+                // Si entra en largo, lo damos por bueno
+                if (neededH <= availH)
+                    return new TextLayout(fs, lineHeight, lines);
+            }
+
+            // Fallback: mínimo size (y si aun así sobran líneas, recorta)
+            var minLines = WrapByWidth(text, availW, minFs);
+            var maxLines = Math.Max(1, (int)Math.Floor(availH / (minFs * lineHeight)));
+
+            if (minLines.Count > maxLines)
+            {
+                minLines = minLines.Take(maxLines).ToList();
+                // opcional: elipsis en la última línea
+                var last = minLines[^1];
+                if (!last.EndsWith("…"))
+                    minLines[^1] = last.Length > 1 ? last[..Math.Max(1, last.Length - 1)] + "…" : "…";
+            }
+
+            return new TextLayout(minFs, lineHeight, minLines);
+        }
+
+        private List<string> WrapByWidth(string text, decimal widthM, decimal fontSizeM)
+        {
+            // aproximación: ancho promedio por carácter ~ 0.55em
+            var charW = fontSizeM * 0.55m;
+            var maxChars = (int)Math.Max(1, Math.Floor(widthM / charW));
+
+            var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var lines = new List<string>();
+            var current = "";
+
+            foreach (var w in words)
+            {
+                if (current.Length == 0)
+                {
+                    current = w;
+                }
+                else if ((current.Length + 1 + w.Length) <= maxChars)
+                {
+                    current += " " + w;
+                }
+                else
+                {
+                    lines.Add(current);
+                    current = w;
+                }
+
+                // Si una palabra sola es más larga que el máximo, la partimos
+                while (current.Length > maxChars)
+                {
+                    lines.Add(current.Substring(0, maxChars));
+                    current = current.Substring(maxChars);
+                }
+            }
+
+            if (current.Length > 0)
+                lines.Add(current);
+
+            return lines;
+        }
+
+
+        // =========================
+        // INIT
+        // =========================
         protected override async Task OnInitializedAsync()
         {
             try
             {
-                // ===== Resolver área desde slug
                 var targetAreaId = await ResolveAreaIdFromSlug(AreaSlug);
                 _laboratorioId = await LoadLaboratorioIdForArea(targetAreaId);
 
-                // ===== Canvas (según área)
                 var canvasIdForArea = await ResolveCanvasForArea(targetAreaId);
+
                 Pg.UseSheet("canvas_lab");
                 var canvases = await Pg.ReadAllAsync();
                 var c = !string.IsNullOrWhiteSpace(canvasIdForArea)
-                    ? canvases.FirstOrDefault(row => string.Equals(row["canvas_id"], canvasIdForArea, StringComparison.OrdinalIgnoreCase))
+                    ? canvases.FirstOrDefault(row => string.Equals(Get(row, "canvas_id"), canvasIdForArea, StringComparison.OrdinalIgnoreCase))
                     : canvases.FirstOrDefault();
-                if (c is null) { _saveMsg = "No hay canvas_lab."; return; }
-                _canvas = new CanvasLab(c["canvas_id"], c["nombre"], Dec(c["ancho_m"]), Dec(c["alto_m"]), Dec(c["margen_m"]));
 
-                // ===== Polígonos del área
-                List<Poly> polys = new();
+                if (c is null)
+                {
+                    _saveMsg = "No hay canvas_lab.";
+                    return;
+                }
+
+                _canvas = new CanvasLab(
+                    Get(c, "canvas_id"),
+                    Get(c, "nombre"),
+                    Dec(Get(c, "ancho_m", "0")),
+                    Dec(Get(c, "largo_m", "0")),
+                    Dec(Get(c, "margen_m", "0"))
+                );
+
+                // Polígonos del área
                 var pointsByPoly = await LoadPolyPointsAsync();
+                List<Poly> polys = new();
+
                 Pg.UseSheet("poligonos");
                 foreach (var r in await Pg.ReadAllAsync())
                 {
                     if (!string.Equals(Get(r, "canvas_id"), _canvas.canvas_id, StringComparison.OrdinalIgnoreCase)) continue;
+
                     var areaId = NullIfEmpty(Get(r, "area_id")) ?? "";
                     if (!string.Equals(areaId, targetAreaId, StringComparison.OrdinalIgnoreCase)) continue;
 
                     var polyId = Get(r, "poly_id");
                     var points = pointsByPoly.TryGetValue(polyId, out var list) ? list : new List<Point>();
-                    decimal x;
-                    decimal y;
-                    decimal w;
-                    decimal h;
+
+                    decimal x, y, w, h;
 
                     if (points.Count >= 3)
                     {
@@ -290,7 +473,7 @@ namespace BARI_web.Features.Espacios.Pages
                         x = Dec(Get(r, "x_m", "0"));
                         y = Dec(Get(r, "y_m", "0"));
                         w = Dec(Get(r, "ancho_m", "0"));
-                        h = Dec(Get(r, "alto_m", "0"));
+                        h = Dec(Get(r, "largo_m", "0"));
 
                         if (w < 0m) { x += w; w = -w; }
                         if (h < 0m) { y += h; h = -h; }
@@ -298,7 +481,9 @@ namespace BARI_web.Features.Espacios.Pages
                     }
 
                     polys.Add(new Poly(
-                        polyId, Get(r, "canvas_id"), areaId,
+                        polyId,
+                        Get(r, "canvas_id"),
+                        areaId,
                         x, y, w, h,
                         Int(Get(r, "z_order", "0")),
                         NullIfEmpty(Get(r, "etiqueta")),
@@ -307,73 +492,204 @@ namespace BARI_web.Features.Espacios.Pages
                     ));
                 }
 
-
-                // ===== Construir AreaDraw (con defensas por polígonos degenerados)
+                // Construir área
                 var a = new AreaDraw { AreaId = targetAreaId };
-                a.Polys.AddRange(polys
-                    .Where(p => p.ancho_m > 0m && p.alto_m > 0m)
-                    .OrderBy(p => p.z_order));
+                a.Polys.AddRange(polys.Where(p => p.ancho_m > 0m && p.largo_m > 0m).OrderBy(p => p.z_order));
 
-                if (a.Polys.Count == 0) { _saveMsg = "Todos los polígonos del área tienen tamaño 0."; return; }
+                if (a.Polys.Count == 0)
+                {
+                    _saveMsg = "No hay polígonos válidos para el área.";
+                    return;
+                }
 
                 a.MinX = a.Polys.Min(p => p.x_m);
                 a.MinY = a.Polys.Min(p => p.y_m);
                 a.MaxX = a.Polys.Max(p => p.x_m + p.ancho_m);
-                a.MaxY = a.Polys.Max(p => p.y_m + p.alto_m);
+                a.MaxY = a.Polys.Max(p => p.y_m + p.largo_m);
 
                 try
                 {
                     var lookup = await Pg.GetLookupAsync("areas", "area_id", "nombre_areas");
                     a.Label = (lookup.TryGetValue(a.AreaId, out var n) ? n : a.AreaId).ToUpperInvariant();
                 }
-                catch { a.Label = targetAreaId.ToUpperInvariant(); }
+                catch
+                {
+                    a.Label = a.AreaId.ToUpperInvariant();
+                }
 
                 a.Fill = a.Polys.Select(p => p.color_hex).FirstOrDefault(s => !string.IsNullOrWhiteSpace(s)) ?? "#E6E6E6";
-
-                // Outline robusto: que nunca falle aunque haya tolerancias raras
-                try { BuildAreaOutlineSafe(a); } catch { a.Outline.Clear(); }
+                BuildAreaOutlineFromPoints(a);
 
                 _area = a;
 
-                // ===== Viewbox / pan-zoom
+                // Pan/zoom
                 FitViewBoxToAreaWithAspect(a, 0.25m);
                 UpdateViewMetrics();
                 CacheGrid();
+
+                // Lookups UI
+                try
+                {
+                    var catNames = await Pg.GetLookupAsync("categorias", "categoria_id", "nombre");
+
+                    Pg.UseSheet("subcategorias");
+                    var rows = await Pg.ReadAllAsync();
+
+                    var instCats = new HashSet<string>(CategoriaInstIds, StringComparer.OrdinalIgnoreCase);
+
+                    _subcatsInstLookup = rows
+                        .Where(r => instCats.Contains(Get(r, "categoria_id").Trim()))
+                        .OrderBy(r =>
+                        {
+                            var cid = Get(r, "categoria_id").Trim();
+                            return catNames.TryGetValue(cid, out var cn) ? cn : cid;
+                        }, StringComparer.OrdinalIgnoreCase)
+                        .ThenBy(r => Get(r, "nombre"), StringComparer.OrdinalIgnoreCase)
+                        .ToDictionary(
+                            r => Get(r, "subcategoria_id"),
+                            r =>
+                            {
+                                var cid = Get(r, "categoria_id").Trim();
+                                var cat = catNames.TryGetValue(cid, out var cn) ? cn : cid;
+                                return $"{cat} · {Get(r, "nombre")}";
+                            },
+                            StringComparer.OrdinalIgnoreCase
+                        );
+                }
+                catch
+                {
+                    _subcatsInstLookup = new(StringComparer.OrdinalIgnoreCase);
+                }
+
+
+                try { _estadosLookup = await Pg.GetLookupAsync("estados_activo", "estado_id", "nombre"); }
+                catch { _estadosLookup = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); }
+
+                // Cargas por área
+                await LoadMesonesForArea(a.AreaId);
+                await LoadInstalacionesForArea(a.AreaId);
+                await LoadInnerItemsForArea(a);
+                await LoadBlocksForCanvas();
+                await LoadDoorsAndWindowsForArea(a);
+
+
                 await InvokeAsync(StateHasChanged);
-                CacheGrid();
-
-                // ===== Cargas dependientes (inners, puertas/ventanas, vínculos)
-                try { await LoadInnerItemsForArea(a); } catch (Exception ex) { Console.Error.WriteLine($"[LoadInnerItemsForArea] {ex}"); }
-                try { await LoadMesonesLinks(); } catch (Exception ex) { Console.Error.WriteLine($"[LoadMesonesLinks] {ex}"); }
-                try { await LoadMesonesLookupForArea(a.AreaId); } catch (Exception ex) { Console.Error.WriteLine($"[LoadMesonesLookupForArea] {ex}"); }
-                try { await LoadBlocksForArea(a); } catch (Exception ex) { Console.Error.WriteLine($"[LoadBlocksForArea] {ex}"); }
-                try { await LoadDoorsAndWindowsForArea(a); } catch (Exception ex) { Console.Error.WriteLine($"[LoadDoorsAndWindowsForArea] {ex}"); }
-                try { await LoadInstalacionesLinks(); } catch (Exception ex) { Console.Error.WriteLine($"[LoadInstalacionesLinks] {ex}"); }
-
-                // Catálogo de tipos
-                try { _tiposInstalacion = await Pg.GetLookupAsync("instalaciones_tipo", "tipo_id", "nombre"); }
-                catch { _tiposInstalacion = new Dictionary<string, string>(); }
             }
             catch (Exception ex)
             {
-                // Si algo rompe, deja un mensaje pero no bloquea el render
                 _saveMsg = "Error al cargar (ver consola).";
                 Console.Error.WriteLine($"[ModificarDetallesArea.OnInitializedAsync] {ex}");
             }
         }
 
+        // =========================
+        // Cargas DB
+        // =========================
+        private async Task LoadMesonesForArea(string areaId)
+        {
+            _mesones.Clear();
+            _mesonesLookup.Clear();
 
-        // ================== CARGAS ==================
+            Pg.UseSheet("mesones");
+            foreach (var r in await Pg.ReadAllAsync())
+            {
+                var rArea = Get(r, "area_id").Trim();
+                if (!string.Equals(rArea, areaId, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                // blindaje por laboratorio
+                var labRaw = Get(r, "laboratorio_id", _laboratorioId.ToString(CultureInfo.InvariantCulture)).Trim();
+                if (int.TryParse(labRaw, out var lab) && lab != _laboratorioId)
+                    continue;
+
+                var id = Get(r, "meson_id").Trim();
+                if (string.IsNullOrWhiteSpace(id)) continue;
+
+                var nombre = Get(r, "nombre_meson").Trim();
+
+                int? niveles = null;
+                var nivelesRaw = NullIfEmpty(Get(r, "niveles_totales"));
+                if (!string.IsNullOrWhiteSpace(nivelesRaw) && int.TryParse(nivelesRaw, out var n))
+                    niveles = n;
+
+                _mesones[id] = new Meson
+                {
+                    meson_id = id,
+                    area_id = areaId,
+                    nombre_meson = nombre,
+                    niveles_totales = niveles,
+                    laboratorio_id = _laboratorioId,
+                    imagen_url = NullIfEmpty(Get(r, "imagen_url")) // ✅ NUEVO
+                };
+
+
+                _mesonesLookup[id] = nombre;
+            }
+        }
+        private IEnumerable<Meson> MesonesDelAreaActual()
+        {
+            if (_area is null) return Enumerable.Empty<Meson>();
+
+            return _mesones.Values
+                .Where(m =>
+                    string.Equals(m.area_id, _area.AreaId, StringComparison.OrdinalIgnoreCase) &&
+                    m.laboratorio_id == _laboratorioId)
+                .OrderBy(m => m.nombre_meson, StringComparer.OrdinalIgnoreCase);
+        }
+
+
+
+        private async Task LoadInstalacionesForArea(string areaId)
+        {
+            _instalaciones.Clear();
+
+            Pg.UseSheet("instalaciones");
+            foreach (var r in await Pg.ReadAllAsync())
+            {
+                if (!string.Equals(NullIfEmpty(Get(r, "area_id")) ?? "", areaId, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var id = Get(r, "instalacion_id");
+                if (string.IsNullOrWhiteSpace(id)) continue;
+
+                _instalaciones[id] = new Instalacion
+                {
+                    instalacion_id = id,
+                    nombre = Get(r, "nombre"),
+                    subcategoria_id = NullIfEmpty(Get(r, "subcategoria_id")),
+                    laboratorio_id = Int(Get(r, "laboratorio_id", _laboratorioId.ToString(CultureInfo.InvariantCulture))),
+                    area_id = NullIfEmpty(Get(r, "area_id")),
+                    canvas_id = NullIfEmpty(Get(r, "canvas_id")),
+                    estado_id = NullIfEmpty(Get(r, "estado_id")),
+                    fecha_instalacion = ParseDate(NullIfEmpty(Get(r, "fecha_instalacion"))),
+                    fecha_ultima_revision = ParseDate(NullIfEmpty(Get(r, "fecha_ultima_revision"))),
+                    fecha_proxima_revision = ParseDate(NullIfEmpty(Get(r, "fecha_proxima_revision"))),
+                    proveedor_servicio = NullIfEmpty(Get(r, "proveedor_servicio")),
+                    observaciones = NullIfEmpty(Get(r, "observaciones")),
+                    descripcion = NullIfEmpty(Get(r, "descripcion")),
+                    imagen_url = NullIfEmpty(Get(r, "imagen_url"))
+                };
+            }
+        }
+
         private async Task LoadInnerItemsForArea(AreaDraw a)
         {
-            _inners.Clear(); _mapIn.Clear();
-            var areaPolys = a.Polys.ToDictionary(p => p.poly_id, p => p);
+            _inners.Clear();
+            _mapIn.Clear();
+
+            var areaPolys = a.Polys.ToDictionary(p => p.poly_id, p => p, StringComparer.OrdinalIgnoreCase);
 
             Pg.UseSheet("poligonos_interiores");
             foreach (var r in await Pg.ReadAllAsync())
             {
                 var area_poly_id = Get(r, "area_poly_id");
                 if (!areaPolys.TryGetValue(area_poly_id, out var parentPoly)) continue;
+
+                var mesonId = NullIfEmpty(Get(r, "meson_id"));
+                var instId = NullIfEmpty(Get(r, "instalacion_id"));
+                // XOR defensivo: si vienen ambos, priorizo mesón
+                if (!string.IsNullOrWhiteSpace(mesonId) && !string.IsNullOrWhiteSpace(instId))
+                    instId = null;
 
                 var it = new InnerItem
                 {
@@ -385,106 +701,104 @@ namespace BARI_web.Features.Espacios.Pages
 
                     eje_x_rel_m = Dec(Get(r, "eje_x_rel_m", "0")),
                     eje_y_rel_m = Dec(Get(r, "eje_y_rel_m", "0")),
-                    eje_z_rel_m = Dec(Get(r, "eje_z_rel_m", "0")),
 
-                    ancho_m = Dec(Get(r, "ancho_m", "0")),
-                    profundo_m = Dec(Get(r, "profundo_m", "0.6")),
-                    alto_m = Dec(Get(r, "alto_m", "0")),
-
-                    yaw_deg = Dec(Get(r, "yaw_deg", "0")),
-                    pivot_kind = NullIfEmpty(Get(r, "pivot_kind")) ?? "center",
-
-                    offset_x_m = Dec(Get(r, "offset_x_m", "0")),
-                    offset_y_m = Dec(Get(r, "offset_y_m", "0")),
-                    offset_z_m = Dec(Get(r, "offset_z_m", "0")),
+                    ancho_m = Dec(Get(r, "ancho_m", "0.6")),
+                    largo_m = Dec(Get(r, "largo_m", "0.4")),
 
                     z_order = Int(Get(r, "z_order", "0")),
-
                     label = NullIfEmpty(Get(r, "etiqueta")),
                     fill = NullIfEmpty(Get(r, "color_hex")) ?? "#4B5563",
                     opacidad = Dec(Get(r, "opacidad_0_1", "0.35")),
 
-                    meson_id = NullIfEmpty(Get(r, "meson_id")),
-                    instalacion_id = NullIfEmpty(Get(r, "instalacion_id"))
+                    meson_id = mesonId,
+                    instalacion_id = instId
                 };
 
+                it.abs_x = parentPoly.x_m + it.eje_x_rel_m;
+                it.abs_y = parentPoly.y_m + it.eje_y_rel_m;
 
-                it.abs_x = parentPoly.x_m + it.eje_x_rel_m + it.offset_x_m;
-                it.abs_y = parentPoly.y_m + it.eje_y_rel_m + it.offset_y_m;
-
+                // clamp real (contorno) + colisiones iniciales
+                var w = Math.Max(EPS_MINW, it.ancho_m);
+                var h = Math.Max(EPS_MINW, it.largo_m);
+                var (cx, cy, newParent) = ClampInnerToAreaAndCollisions(it, parentPoly, it.abs_x, it.abs_y, w, h);
+                it.area_poly_id = newParent.poly_id;
+                it.abs_x = cx;
+                it.abs_y = cy;
+                it.ancho_m = w;
+                it.largo_m = h;
+                it.eje_x_rel_m = Math.Round(it.abs_x - newParent.x_m, 3, MidpointRounding.AwayFromZero);
+                it.eje_y_rel_m = Math.Round(it.abs_y - newParent.y_m, 3, MidpointRounding.AwayFromZero);
 
                 _inners.Add(it);
                 _mapIn[it.poly_in_id] = it;
             }
         }
 
-        private async Task LoadBlocksForArea(AreaDraw a)
+        private void NormalizeInner(InnerItem it)
+        {
+            if (_area is null) return;
+
+            // Parent actual (si no existe, toma el primero)
+            var parent = _area.Polys.FirstOrDefault(p =>
+                string.Equals(p.poly_id, it.area_poly_id, StringComparison.OrdinalIgnoreCase))
+                ?? _area.Polys.First();
+
+            // 1) Tamaños mínimos
+            it.ancho_m = Math.Max(EPS_MINW, it.ancho_m);
+            it.largo_m = Math.Max(EPS_MINW, it.largo_m);
+
+            // 2) Clamp absoluto dentro del contorno real + colisiones (usa tu pipeline existente)
+            var (cx, cy, newParent) = ClampInnerToAreaAndCollisions(it, parent, it.abs_x, it.abs_y, it.ancho_m, it.largo_m);
+
+            it.area_poly_id = newParent.poly_id;
+            it.abs_x = cx;
+            it.abs_y = cy;
+
+            // 3) Recalcular relativos respecto al parent final
+            it.eje_x_rel_m = Math.Round(it.abs_x - newParent.x_m, 3, MidpointRounding.AwayFromZero);
+            it.eje_y_rel_m = Math.Round(it.abs_y - newParent.y_m, 3, MidpointRounding.AwayFromZero);
+
+            
+            StateHasChanged();
+        }
+
+        private async Task LoadBlocksForCanvas()
         {
             _blocks.Clear();
             _blocksById.Clear();
-            _materialesLookup.Clear();
-            _materialesMontaje.Clear();
 
-            Pg.UseSheet("materiales_montaje");
-            foreach (var r in await Pg.ReadAllAsync())
-            {
-                if (!string.Equals(Get(r, "area_id"), a.AreaId, StringComparison.OrdinalIgnoreCase)) continue;
-                var materialId = Get(r, "material_id");
-                if (string.IsNullOrWhiteSpace(materialId)) continue;
-                var nombre = Get(r, "nombre");
-                _materialesLookup[materialId] = nombre;
-                _materialesMontaje[materialId] = new MaterialMontaje
-                {
-                    material_id = materialId,
-                    area_id = a.AreaId,
-                    nombre = nombre,
-                    estado_id = NullIfEmpty(Get(r, "estado_id")),
-                    posicion = NullIfEmpty(Get(r, "posicion")),
-                    laboratorio_id = _laboratorioId
-                };
-            }
+            if (_canvas is null) return;
 
             Pg.UseSheet("bloques_int");
             foreach (var r in await Pg.ReadAllAsync())
             {
-                if (!string.Equals(Get(r, "canvas_id"), _canvas?.canvas_id ?? "", StringComparison.OrdinalIgnoreCase)) continue;
+                if (!string.Equals(Get(r, "canvas_id"), _canvas.canvas_id, StringComparison.OrdinalIgnoreCase))
+                    continue;
 
-                var materialId = NullIfEmpty(Get(r, "material_montaje_id"));
+                var instalacionId = NullIfEmpty(Get(r, "instalacion_id"));
                 var mesonId = NullIfEmpty(Get(r, "meson_id"));
-                if (!string.IsNullOrWhiteSpace(materialId)
-                    && !string.IsNullOrWhiteSpace(mesonId))
-                {
+
+                // XOR defensivo
+                if (!string.IsNullOrWhiteSpace(instalacionId) && !string.IsNullOrWhiteSpace(mesonId))
                     mesonId = null;
-                }
-                if (!string.IsNullOrWhiteSpace(materialId) && !_materialesMontaje.ContainsKey(materialId))
-                {
-                    var fallbackName = _materialesLookup.TryGetValue(materialId, out var name) ? name : materialId;
-                    _materialesMontaje[materialId] = new MaterialMontaje
-                    {
-                        material_id = materialId,
-                        area_id = a.AreaId,
-                        nombre = fallbackName,
-                        laboratorio_id = _laboratorioId
-                    };
-                    _materialesLookup[materialId] = fallbackName;
-                }
 
                 var offsetX = Dec(Get(r, "offset_x", "0"));
                 var offsetY = Dec(Get(r, "offset_y", "0"));
                 var absX = Dec(Get(r, "pos_x", "0"));
                 var absY = Dec(Get(r, "pos_y", "0"));
 
+                // fallback offsets si vienen 0
                 if (offsetX == 0m && offsetY == 0m && (absX != 0m || absY != 0m))
                 {
                     offsetX = absX - AreaCenterX;
                     offsetY = absY - AreaCenterY;
                 }
 
-                var it = new BlockItem
+                var b = new BlockItem
                 {
                     bloque_id = Get(r, "bloque_id"),
                     canvas_id = Get(r, "canvas_id"),
-                    material_montaje_id = materialId,
+                    instalacion_id = instalacionId,
                     meson_id = mesonId,
                     etiqueta = NullIfEmpty(Get(r, "etiqueta")),
                     color_hex = NullIfEmpty(Get(r, "color_hex")) ?? "#2563eb",
@@ -492,27 +806,36 @@ namespace BARI_web.Features.Espacios.Pages
                     pos_x = absX,
                     pos_y = absY,
                     ancho = Dec(Get(r, "ancho", "0.6")),
-                    alto = Dec(Get(r, "alto", "0.4")),
+                    largo = Dec(Get(r, "largo", "0.4")),
+                    altura = ParseNullableDecimal(Get(r, "altura")),
                     offset_x = offsetX,
                     offset_y = offsetY
                 };
-                UpdateBlockAbs(it);
-                _blocks.Add(it);
-                _blocksById[it.bloque_id] = it;
-            }
-        }
 
-        private void UpdateBlockAbs(BlockItem it)
-        {
-            it.abs_x = AreaCenterX + it.offset_x;
-            it.abs_y = AreaCenterY + it.offset_y;
-            it.pos_x = it.abs_x;
-            it.pos_y = it.abs_y;
+                UpdateBlockAbs(b);
+
+                // clamp real al contorno del área si existe
+                if (_area is not null)
+                {
+                    var (nx, ny) = ClampRectInAreaUnion(_area, b.abs_x, b.abs_y, b.ancho, b.largo);
+                    b.abs_x = nx;
+                    b.abs_y = ny;
+                    b.offset_x = b.abs_x - AreaCenterX;
+                    b.offset_y = b.abs_y - AreaCenterY;
+                    b.pos_x = b.abs_x;
+                    b.pos_y = b.abs_y;
+                }
+
+                _blocks.Add(b);
+                _blocksById[b.bloque_id] = b;
+            }
         }
 
         private async Task LoadDoorsAndWindowsForArea(AreaDraw a)
         {
-            _doors.Clear(); _windows.Clear();
+            _doors.Clear();
+            _windows.Clear();
+            if (_canvas is null) return;
 
             static (string orient, decimal len) AxisAndLen(decimal x1, decimal y1, decimal x2, decimal y2)
             {
@@ -522,11 +845,10 @@ namespace BARI_web.Features.Espacios.Pages
                     return ("N", Math.Abs(y2 - y1));
             }
 
-            // puertas
             Pg.UseSheet("puertas");
             foreach (var r in await Pg.ReadAllAsync())
             {
-                if (!string.Equals(r["canvas_id"], _canvas!.canvas_id, StringComparison.OrdinalIgnoreCase)) continue;
+                if (!string.Equals(Get(r, "canvas_id"), _canvas.canvas_id, StringComparison.OrdinalIgnoreCase)) continue;
 
                 var aA = NullIfEmpty(Get(r, "area_a"));
                 var aB = NullIfEmpty(Get(r, "area_b"));
@@ -541,11 +863,10 @@ namespace BARI_web.Features.Espacios.Pages
                 _doors.Add(new Door { x_m = x1, y_m = y1, largo_m = Math.Max(0.4m, len), orientacion = axis });
             }
 
-            // ventanas
             Pg.UseSheet("ventanas");
             foreach (var r in await Pg.ReadAllAsync())
             {
-                if (!string.Equals(r["canvas_id"], _canvas!.canvas_id, StringComparison.OrdinalIgnoreCase)) continue;
+                if (!string.Equals(Get(r, "canvas_id"), _canvas.canvas_id, StringComparison.OrdinalIgnoreCase)) continue;
 
                 var aA = NullIfEmpty(Get(r, "area_a"));
                 var aB = NullIfEmpty(Get(r, "area_b"));
@@ -561,60 +882,6 @@ namespace BARI_web.Features.Espacios.Pages
             }
         }
 
-        private async Task LoadMesonesLinks()
-        {
-            var needed = _inners.Select(i => i.meson_id)
-                                .Where(id => !string.IsNullOrWhiteSpace(id))
-                                .Distinct(StringComparer.OrdinalIgnoreCase)
-                                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-            if (needed.Count == 0) return;
-
-            Pg.UseSheet("mesones");
-            foreach (var r in await Pg.ReadAllAsync())
-            {
-                var id = Get(r, "meson_id");
-                if (!needed.Contains(id)) continue;
-
-                _mesones[id] = new Meson
-                {
-                    meson_id = id,
-                    area_id = Get(r, "area_id"),                      // NOT NULL
-                    nombre_meson = Get(r, "nombre_meson"),            // NOT NULL
-                    ancho_cm = Int(Get(r, "ancho_cm", "0")),
-                    largo_cm = Int(Get(r, "largo_cm", "0")),
-                    profundidad_cm = Int(Get(r, "profundidad_cm", "0")),
-                    niveles_totales = Int(Get(r, "niveles_totales", "0"))
-                };
-            }
-        }
-
-        private async Task LoadMesonesLookupForArea(string areaId)
-        {
-            _mesonesLookup.Clear();
-            Pg.UseSheet("mesones");
-            foreach (var r in await Pg.ReadAllAsync())
-            {
-                if (!string.Equals(Get(r, "area_id"), areaId, StringComparison.OrdinalIgnoreCase)) continue;
-                var id = Get(r, "meson_id");
-                if (string.IsNullOrWhiteSpace(id)) continue;
-                var nombre = Get(r, "nombre_meson");
-                _mesonesLookup[id] = nombre;
-                if (!_mesones.ContainsKey(id))
-                {
-                    _mesones[id] = new Meson
-                    {
-                        meson_id = id,
-                        area_id = Get(r, "area_id"),
-                        nombre_meson = nombre,
-                        ancho_cm = Int(Get(r, "ancho_cm", "0")),
-                        largo_cm = Int(Get(r, "largo_cm", "0")),
-                        profundidad_cm = Int(Get(r, "profundidad_cm", "0")),
-                        niveles_totales = Int(Get(r, "niveles_totales", "0"))
-                    };
-                }
-            }
-        }
-
         private async Task<int> LoadLaboratorioIdForArea(string areaId)
         {
             try
@@ -627,225 +894,347 @@ namespace BARI_web.Features.Espacios.Pages
                     if (int.TryParse(labRaw, out var labId)) return labId;
                 }
             }
-            catch
-            {
-                // ignore y usa default
-            }
+            catch { }
             return 1;
         }
 
-
-        private async Task LoadInstalacionesLinks()
+        // =========================
+        // UI helpers (vínculos)
+        // =========================
+        private void SeleccionarPorMeson(string mesonId)
         {
-            var needed = _inners.Select(i => i.instalacion_id)
-                                .Where(id => !string.IsNullOrWhiteSpace(id))
-                                .Distinct(StringComparer.OrdinalIgnoreCase)
-                                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-            if (needed.Count == 0) return;
+            var inner = _inners.FirstOrDefault(i => string.Equals(i.meson_id, mesonId, StringComparison.OrdinalIgnoreCase));
+            if (inner is null) return;
 
-            Pg.UseSheet("instalaciones");
-            foreach (var r in await Pg.ReadAllAsync())
+            _selIn = inner.poly_in_id;
+            _selBlock = null;
+            _showBlockCreator = false;
+            StateHasChanged();
+        }
+
+        private void SeleccionarPorInstalacion(string insId)
+        {
+            var inner = _inners.FirstOrDefault(i => string.Equals(i.instalacion_id, insId, StringComparison.OrdinalIgnoreCase));
+            if (inner is null) return;
+
+            _selIn = inner.poly_in_id;
+            _selBlock = null;
+            _showBlockCreator = false;
+            StateHasChanged();
+        }
+
+        private void AssignInnerMeson(InnerItem it, string? mesonId)
+        {
+            var id = string.IsNullOrWhiteSpace(mesonId) ? null : mesonId;
+            it.meson_id = id;
+            if (id is not null) it.instalacion_id = null; // XOR
+            StateHasChanged();
+        }
+
+        private void AssignInnerInstalacion(InnerItem it, string? instalacionId)
+        {
+            var id = string.IsNullOrWhiteSpace(instalacionId) ? null : instalacionId;
+            it.instalacion_id = id;
+            if (id is not null) it.meson_id = null; // XOR
+            StateHasChanged();
+        }
+
+        // =========================
+        // Crear mesón / instalación (SQL)
+        // =========================
+        private void CrearMesonRegistro()
+        {
+            if (_area is null) return;
+
+            var nombre = (_nuevoMesonNombre ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(nombre))
+                nombre = PickNombreUnico(_area.AreaId, _mesones.Values);
+
+            var mesonId = $"mes_{Guid.NewGuid():N}".Substring(0, 12);
+
+            _mesones[mesonId] = new Meson
             {
-                var id = Get(r, "instalacion_id"); // PK correcta
-                if (!needed.Contains(id)) continue;
+                meson_id = mesonId,
+                area_id = _area.AreaId,
+                nombre_meson = nombre,
+                niveles_totales = _nuevoMesonNiveles,
+                laboratorio_id = _laboratorioId,
+                imagen_url = string.IsNullOrWhiteSpace(_nuevoMesonImagenUrl) ? null : _nuevoMesonImagenUrl.Trim() // ✅ NUEVO
+            };
 
-                _instalaciones[id] = new Instalacion
-                {
-                    instalacion_id = id,
-                    nombre = Get(r, "nombre"),
-                    tipo_id = NullIfEmpty(Get(r, "tipo_id")),
-                    notas = NullIfEmpty(Get(r, "notas")),
-                    requiere_mantenimiento = string.Equals(Get(r, "requiere_mantenimiento", "false"), "true", StringComparison.OrdinalIgnoreCase)
-                };
-            }
+            _mesonesLookup[mesonId] = nombre;
+
+            _nuevoMesonNombre = "";
+            _nuevoMesonImagenUrl = "";
+            _nuevoMesonNiveles = null;
+            _nuevoMesonMsg = "Mesón registrado (recuerda guardar).";
+            StateHasChanged();
         }
 
-
-
-
-        // ================== Canvas helpers ==================
-        private decimal Wm => _canvas?.ancho_m ?? 20m;
-        private decimal Hm => _canvas?.alto_m ?? 10m;
-
-        private void FitViewBoxToAreaWithAspect(AreaDraw a, decimal pad)
+        private void CrearInstalacionRegistro()
         {
-            var minX = Math.Max(0m, a.MinX - pad);
-            var minY = Math.Max(0m, a.MinY - pad);
-            var maxX = Math.Min(Wm, a.MaxX + pad);
-            var maxY = Math.Min(Hm, a.MaxY + pad);
+            if (_area is null || _canvas is null) return;
 
-            var bboxW = Math.Max(0.001m, maxX - minX);
-            var bboxH = Math.Max(0.001m, maxY - minY);
-            var cx = (minX + maxX) / 2m;
-            var cy = (minY + maxY) / 2m;
-
-            var canvasRatio = Wm / Hm;
-            var areaRatio = bboxW / bboxH;
-
-            decimal vw, vh;
-            if (areaRatio > canvasRatio) { vw = bboxW; vh = vw / canvasRatio; }
-            else { vh = bboxH; vw = vh * canvasRatio; }
-
-            var vx = cx - vw / 2m;
-            var vy = cy - vh / 2m;
-
-            if (vx < 0m) vx = 0m;
-            if (vy < 0m) vy = 0m;
-            if (vx + vw > Wm) vx = Math.Max(0m, Wm - vw);
-            if (vy + vh > Hm) vy = Math.Max(0m, Hm - vh);
-
-            // <<< CLAVE: en vez de VX/VY/VW/VH, setea pan/zoom reales del viewBox >>>
-            _panX = vx;
-            _panY = vy;
-            _zoom = (double)((vw <= 0m) ? 1m : (Wm / vw));
-        }
-
-
-        private void CacheGrid()
-        {
-            var vw = (decimal)((double)Wm / _zoom);
-            var vh = (decimal)((double)Hm / _zoom);
-
-            GridStartX = (decimal)Math.Floor((double)_panX);
-            GridEndX = (decimal)Math.Ceiling((double)(_panX + vw));
-            GridStartY = (decimal)Math.Floor((double)_panY);
-            GridEndY = (decimal)Math.Ceiling((double)(_panY + vh));
-        }
-
-
-        private void ClampPanToBounds()
-        {
-            var vw = (decimal)((double)Wm / _zoom);
-            var vh = (decimal)((double)Hm / _zoom);
-            _panX = Clamp(0m, Math.Max(0m, Wm - vw), _panX);
-            _panY = Clamp(0m, Math.Max(0m, Hm - vh), _panY);
-        }
-
-
-        private void CenterView()
-        {
-            ClampPanToBounds();
-            UpdateViewMetrics();
-        }
-
-
-        // ================== Outline (del área) ==================
-        private static decimal RoundTol(decimal v) => Math.Round(v / Tolerance) * Tolerance;
-        private static void BuildAreaOutlineSafe(AreaDraw a)
-        {
-            if (a.Polys.Any(p => p.puntos.Count >= 3))
+            var nombre = (_nuevoIns_Nombre ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(nombre))
             {
-                BuildAreaOutlineFromPoints(a);
+                _nuevoIns_Msg = "Ingresa un nombre.";
                 return;
             }
 
-            const decimal Tol = Tolerance; // 0.004m
-            static decimal RT(decimal v) => Math.Round(v / Tol) * Tol;
+            var id = $"ins_{Guid.NewGuid():N}".Substring(0, 12);
 
-            var H = new Dictionary<decimal, List<(decimal x1, decimal x2)>>();
-            var V = new Dictionary<decimal, List<(decimal y1, decimal y2)>>();
-
-            foreach (var p in a.Polys)
+            _instalaciones[id] = new Instalacion
             {
-                if (p.ancho_m <= 0m || p.alto_m <= 0m) continue;
+                instalacion_id = id,
+                nombre = nombre,
+                subcategoria_id = string.IsNullOrWhiteSpace(_nuevoIns_SubcategoriaId) ? null : _nuevoIns_SubcategoriaId,
+                laboratorio_id = _laboratorioId,
+                area_id = _area.AreaId,
+                canvas_id = _canvas.canvas_id,
+                estado_id = string.IsNullOrWhiteSpace(_nuevoIns_EstadoId) ? null : _nuevoIns_EstadoId,
+                fecha_instalacion = ParseDate(_nuevoIns_FechaInstalacion),
+                fecha_ultima_revision = ParseDate(_nuevoIns_FechaUltRev),
+                fecha_proxima_revision = ParseDate(_nuevoIns_FechaProxRev),
+                proveedor_servicio = string.IsNullOrWhiteSpace(_nuevoIns_ProveedorServicio) ? null : _nuevoIns_ProveedorServicio,
+                observaciones = string.IsNullOrWhiteSpace(_nuevoIns_Observaciones) ? null : _nuevoIns_Observaciones,
+                descripcion = string.IsNullOrWhiteSpace(_nuevoIns_Descripcion) ? null : _nuevoIns_Descripcion,
+                imagen_url = string.IsNullOrWhiteSpace(_nuevoIns_ImagenUrl) ? null : _nuevoIns_ImagenUrl
+            };
 
-                var L = p.x_m; var T = p.y_m; var R = p.x_m + p.ancho_m; var B = p.y_m + p.alto_m;
-
-                var yTop = RT(T); var yBot = RT(B);
-                var xLft = RT(L); var xRgt = RT(R);
-
-                var x1 = RT(Math.Min(L, R)); var x2 = RT(Math.Max(L, R));
-                var y1 = RT(Math.Min(T, B)); var y2 = RT(Math.Max(T, B));
-
-                if (!H.ContainsKey(yTop)) H[yTop] = new(); if (!H.ContainsKey(yBot)) H[yBot] = new();
-                H[yTop].Add((x1, x2)); H[yBot].Add((x1, x2));
-
-                if (!V.ContainsKey(xLft)) V[xLft] = new(); if (!V.ContainsKey(xRgt)) V[xRgt] = new();
-                V[xLft].Add((y1, y2)); V[xRgt].Add((y1, y2));
-            }
-
-            a.Outline.Clear();
-
-            void SweepHoriz()
-            {
-                foreach (var (y, spans) in H)
-                {
-                    if (spans.Count == 0) continue;
-                    var xs = new SortedSet<decimal>();
-                    foreach (var (a1, a2) in spans) { var lo = Math.Min(a1, a2); var hi = Math.Max(a1, a2); xs.Add(lo); xs.Add(hi); }
-                    var xList = xs.ToList();
-                    for (int i = 0; i < xList.Count - 1; i++)
-                    {
-                        var s = xList[i]; var e = xList[i + 1];
-                        if (e <= s + Tol / 10m) continue;
-                        int count = 0;
-                        foreach (var (a1, a2) in spans)
-                        {
-                            var lo = Math.Min(a1, a2); var hi = Math.Max(a1, a2);
-                            if (s >= lo - Tol / 2m && e <= hi + Tol / 2m) count++;
-                        }
-                        if ((count % 2) == 1) a.Outline.Add((s, y, e, y));
-                    }
-                }
-            }
-
-            void SweepVert()
-            {
-                foreach (var (x, spans) in V)
-                {
-                    if (spans.Count == 0) continue;
-                    var ys = new SortedSet<decimal>();
-                    foreach (var (b1, b2) in spans) { var lo = Math.Min(b1, b2); var hi = Math.Max(b1, b2); ys.Add(lo); ys.Add(hi); }
-                    var yList = ys.ToList();
-                    for (int i = 0; i < yList.Count - 1; i++)
-                    {
-                        var s = yList[i]; var e = yList[i + 1];
-                        if (e <= s + Tol / 10m) continue;
-                        int count = 0;
-                        foreach (var (b1, b2) in spans)
-                        {
-                            var lo = Math.Min(b1, b2); var hi = Math.Max(b1, b2);
-                            if (s >= lo - Tol / 2m && e <= hi + Tol / 2m) count++;
-                        }
-                        if ((count % 2) == 1) a.Outline.Add((x, s, x, e));
-                    }
-                }
-            }
-
-            try { SweepHoriz(); SweepVert(); }
-            catch { a.Outline.Clear(); }
+            _nuevoIns_Nombre = "";
+            _nuevoIns_SubcategoriaId = "";
+            _nuevoIns_EstadoId = "";
+            _nuevoIns_FechaInstalacion = "";
+            _nuevoIns_FechaUltRev = "";
+            _nuevoIns_FechaProxRev = "";
+            _nuevoIns_ProveedorServicio = "";
+            _nuevoIns_Observaciones = "";
+            _nuevoIns_Descripcion = "";
+            _nuevoIns_ImagenUrl = "";
+            _nuevoIns_Msg = "Instalación registrada (recuerda guardar).";
+            StateHasChanged();
         }
 
-        private static void BuildAreaOutlineFromPoints(AreaDraw a)
+        // =========================
+        // Bloques: disponibles + update XOR
+        // =========================
+        private IEnumerable<KeyValuePair<string, string>> MesonesDisponiblesParaBloque(string? bloqueId)
         {
-            a.Outline.Clear();
-            foreach (var p in a.Polys)
-            {
-                var points = p.puntos.Count >= 3
-                    ? p.puntos
-                    : BuildRectPoints(p.x_m, p.y_m, p.ancho_m, p.alto_m);
+            var usados = _blocks
+                .Where(b => !string.Equals(b.bloque_id, bloqueId, StringComparison.OrdinalIgnoreCase))
+                .Where(b => !string.IsNullOrWhiteSpace(b.meson_id))
+                .Select(b => b.meson_id!)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-                if (points.Count < 2) continue;
-                for (int i = 0; i < points.Count; i++)
-                {
-                    var start = points[i];
-                    var end = points[(i + 1) % points.Count];
-                    if (start.X == end.X && start.Y == end.Y) continue;
-                    a.Outline.Add((start.X, start.Y, end.X, end.Y));
-                }
+            return _mesonesLookup.Where(kv => !usados.Contains(kv.Key));
+        }
+
+        private IEnumerable<KeyValuePair<string, string>> InstalacionesDisponiblesParaBloque(string? bloqueId)
+        {
+            var usados = _blocks
+                .Where(b => !string.Equals(b.bloque_id, bloqueId, StringComparison.OrdinalIgnoreCase))
+                .Where(b => !string.IsNullOrWhiteSpace(b.instalacion_id))
+                .Select(b => b.instalacion_id!)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            return _instalaciones
+                .Where(kv => !usados.Contains(kv.Key))
+                .OrderBy(kv => kv.Value.nombre)
+                .Select(kv => new KeyValuePair<string, string>(kv.Key, kv.Value.nombre));
+        }
+
+        private void ToggleNewBlockAssignInstalacion(bool v)
+        {
+            _newBlockAssignInstalacion = v;
+            if (v)
+            {
+                _newBlockAssignMeson = false;
+                _newBlockMesonId = null;
+            }
+            if (!v) _newBlockInstalacionId = null;
+        }
+
+        private void ToggleNewBlockAssignMeson(bool v)
+        {
+            _newBlockAssignMeson = v;
+            if (v)
+            {
+                _newBlockAssignInstalacion = false;
+                _newBlockInstalacionId = null;
+            }
+            if (!v) _newBlockMesonId = null;
+        }
+
+        private void OnSelectBlockInstalacion(string? value)
+        {
+            _newBlockInstalacionId = string.IsNullOrWhiteSpace(value) ? null : value;
+            if (_newBlockInstalacionId is not null)
+            {
+                _newBlockMesonId = null;
+                _newBlockAssignInstalacion = true;
+                _newBlockAssignMeson = false;
             }
         }
 
+        private void OnSelectBlockMeson(string? value)
+        {
+            _newBlockMesonId = string.IsNullOrWhiteSpace(value) ? null : value;
+            if (_newBlockMesonId is not null)
+            {
+                _newBlockInstalacionId = null;
+                _newBlockAssignMeson = true;
+                _newBlockAssignInstalacion = false;
+            }
+        }
 
-        // ================== Interacción ==================
+        private void UpdateBlockInstalacion(BlockItem block, string? value)
+        {
+            var selected = string.IsNullOrWhiteSpace(value) ? null : value;
+
+            if (!string.IsNullOrWhiteSpace(selected) &&
+                _blocks.Any(b => !string.Equals(b.bloque_id, block.bloque_id, StringComparison.OrdinalIgnoreCase)
+                              && string.Equals(b.instalacion_id, selected, StringComparison.OrdinalIgnoreCase)))
+            {
+                _blockMsg = "Esa instalación ya tiene un bloque asociado.";
+                return;
+            }
+
+            block.instalacion_id = selected;
+            if (selected is not null) block.meson_id = null;
+            _blockMsg = null;
+        }
+
+        private void UpdateBlockMeson(BlockItem block, string? value)
+        {
+            var selected = string.IsNullOrWhiteSpace(value) ? null : value;
+
+            if (!string.IsNullOrWhiteSpace(selected) &&
+                _blocks.Any(b => !string.Equals(b.bloque_id, block.bloque_id, StringComparison.OrdinalIgnoreCase)
+                              && string.Equals(b.meson_id, selected, StringComparison.OrdinalIgnoreCase)))
+            {
+                _blockMsg = "Ese mesón ya tiene un bloque asociado.";
+                return;
+            }
+
+            block.meson_id = selected;
+            if (selected is not null) block.instalacion_id = null;
+            _blockMsg = null;
+        }
+
+        private void MostrarNuevoBloque()
+        {
+            _showBlockCreator = true;
+            _selBlock = null;
+            _selIn = null;
+            _blockMsg = null;
+
+            _newBlockAssignInstalacion = false;
+            _newBlockAssignMeson = false;
+            _newBlockInstalacionId = null;
+            _newBlockMesonId = null;
+        }
+
+        private void AgregarBloque()
+        {
+            if (_canvas is null || _area is null)
+            {
+                _blockMsg = "No hay canvas/área activa.";
+                return;
+            }
+
+            if (_newBlockAssignInstalacion && _newBlockAssignMeson)
+            {
+                _blockMsg = "Selecciona solo una opción (instalación o mesón).";
+                return;
+            }
+
+            if (!_newBlockAssignInstalacion && !_newBlockAssignMeson)
+            {
+                _blockMsg = "Selecciona si el bloque se asocia a una instalación o a un mesón.";
+                return;
+            }
+
+            if (_newBlockAssignInstalacion && string.IsNullOrWhiteSpace(_newBlockInstalacionId))
+            {
+                _blockMsg = "Selecciona una instalación.";
+                return;
+            }
+
+            if (_newBlockAssignMeson && string.IsNullOrWhiteSpace(_newBlockMesonId))
+            {
+                _blockMsg = "Selecciona un mesón.";
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_newBlockInstalacionId) &&
+                _blocks.Any(b => string.Equals(b.instalacion_id, _newBlockInstalacionId, StringComparison.OrdinalIgnoreCase)))
+            {
+                _blockMsg = "Esa instalación ya tiene un bloque asociado.";
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_newBlockMesonId) &&
+                _blocks.Any(b => string.Equals(b.meson_id, _newBlockMesonId, StringComparison.OrdinalIgnoreCase)))
+            {
+                _blockMsg = "Ese mesón ya tiene un bloque asociado.";
+                return;
+            }
+
+            var it = new BlockItem
+            {
+                bloque_id = $"block_{Guid.NewGuid():N}".Substring(0, 12),
+                canvas_id = _canvas.canvas_id,
+                instalacion_id = _newBlockAssignInstalacion ? _newBlockInstalacionId : null,
+                meson_id = _newBlockAssignMeson ? _newBlockMesonId : null,
+                etiqueta = string.IsNullOrWhiteSpace(_newBlockEtiqueta) ? null : _newBlockEtiqueta.Trim(),
+                color_hex = string.IsNullOrWhiteSpace(_newBlockColor) ? "#2563eb" : _newBlockColor,
+                z_order = _blocks.Count == 0 ? 0 : _blocks.Max(b => b.z_order) + 1,
+                ancho = Clamp(EPS_MINW, 10m, _newBlockAncho),
+                largo = Clamp(EPS_MINW, 10m, _newBlockLargo),
+                altura = _newBlockAltura, // ✅ NUEVO
+                offset_x = _newBlockOffsetX,
+                offset_y = _newBlockOffsetY
+            };
+
+            UpdateBlockAbs(it);
+
+            // clamp contorno real
+            var (nx, ny) = ClampRectInAreaUnion(_area, it.abs_x, it.abs_y, it.ancho, it.largo);
+            it.abs_x = nx;
+            it.abs_y = ny;
+            it.offset_x = it.abs_x - AreaCenterX;
+            it.offset_y = it.abs_y - AreaCenterY;
+            it.pos_x = it.abs_x;
+            it.pos_y = it.abs_y;
+            _blocks.Add(it);
+            _blocksById[it.bloque_id] = it;
+
+            
+
+            _showBlockCreator = false;
+            _selBlock = it.bloque_id;
+            _selIn = null;
+
+            _blockMsg = "Bloque agregado (recuerda guardar).";
+        }
+
+        private void UpdateBlockAbs(BlockItem it)
+        {
+            it.abs_x = AreaCenterX + it.offset_x;
+            it.abs_y = AreaCenterY + it.offset_y;
+            it.pos_x = it.abs_x;
+            it.pos_y = it.abs_y;
+        }
+
+        // =========================
+        // RenderFragments (handles)
+        // =========================
         private RenderFragment CornerHandle(InnerItem it, decimal lx, decimal ly, Handle h) => builder =>
         {
-            // OJO: el <g> padre ya está en translate(abs_x, abs_y),
-            // así que aquí usamos coordenadas LOCALES (0..ancho, 0..alto).
             var size = 0.30m;
             var x = lx - size / 2m;
             var y = ly - size / 2m;
-            int seq = 0;
 
             var cursor = h switch
             {
@@ -856,6 +1245,7 @@ namespace BARI_web.Features.Espacios.Pages
                 _ => "nwse-resize"
             };
 
+            int seq = 0;
             builder.OpenElement(seq++, "rect");
             builder.AddAttribute(seq++, "x", S(x));
             builder.AddAttribute(seq++, "y", S(y));
@@ -868,8 +1258,7 @@ namespace BARI_web.Features.Espacios.Pages
             builder.AddAttribute(seq++, "onpointerdown:preventDefault", true);
             builder.AddAttribute(seq++, "onpointerdown:stopPropagation", true);
             builder.AddAttribute(seq++, "onpointerdown",
-                EventCallback.Factory.Create<PointerEventArgs>(this,
-                    (PointerEventArgs e) => OnPointerDownResizeInner(e, it.poly_in_id, h)));
+                EventCallback.Factory.Create<PointerEventArgs>(this, (PointerEventArgs e) => OnPointerDownResizeInner(e, it.poly_in_id, h)));
             builder.CloseElement();
         };
 
@@ -878,7 +1267,6 @@ namespace BARI_web.Features.Espacios.Pages
             var size = 0.30m;
             var rx = x - size / 2m;
             var ry = y - size / 2m;
-            int seq = 0;
 
             var cursor = h switch
             {
@@ -889,6 +1277,7 @@ namespace BARI_web.Features.Espacios.Pages
                 _ => "nwse-resize"
             };
 
+            int seq = 0;
             builder.OpenElement(seq++, "rect");
             builder.AddAttribute(seq++, "x", S(rx));
             builder.AddAttribute(seq++, "y", S(ry));
@@ -901,50 +1290,50 @@ namespace BARI_web.Features.Espacios.Pages
             builder.AddAttribute(seq++, "onpointerdown:preventDefault", true);
             builder.AddAttribute(seq++, "onpointerdown:stopPropagation", true);
             builder.AddAttribute(seq++, "onpointerdown",
-                EventCallback.Factory.Create<PointerEventArgs>(this,
-                    (PointerEventArgs e) => OnPointerDownResizeBlock(e, it.bloque_id, h)));
+                EventCallback.Factory.Create<PointerEventArgs>(this, (PointerEventArgs e) => OnPointerDownResizeBlock(e, it.bloque_id, h)));
             builder.CloseElement();
         };
 
-
-
+        // =========================
+        // Pointer: iniciar drag
+        // =========================
         private void OnPointerDownMoveInner(PointerEventArgs e, string id)
         {
+            if (_area is null) return;
+            if (!_mapIn.TryGetValue(id, out var it)) return;
+
             _selIn = id;
             _selBlock = null;
             _showBlockCreator = false;
-            _dragIn = _mapIn[id];
-            _dragParent = _area!.Polys.First(p => p.poly_id == _dragIn.area_poly_id);
+
+            _dragIn = it;
+            _dragParent = _area.Polys.First(p => string.Equals(p.poly_id, it.area_poly_id, StringComparison.OrdinalIgnoreCase));
             _activeHandle = Handle.None;
 
             var (wx, wy) = ScreenToWorld(e.OffsetX, e.OffsetY);
             _dragStart = (wx, wy);
-
-            // SNAPSHOT BASE EN ABS (¡no rel!)
-            _beforeDragIn = (_dragIn.abs_x, _dragIn.abs_y, _dragIn.ancho_m, _dragIn.alto_m);
-
-            // offset para seguir el cursor
-            _grab = (wx - _dragIn.abs_x, wy - _dragIn.abs_y);
+            _beforeDragIn = (it.abs_x, it.abs_y, it.ancho_m, it.largo_m);
+            _grab = (wx - it.abs_x, wy - it.abs_y);
 
             StateHasChanged();
         }
 
         private void OnPointerDownResizeInner(PointerEventArgs e, string id, Handle h)
         {
+            if (_area is null) return;
+            if (!_mapIn.TryGetValue(id, out var it)) return;
+
             _selIn = id;
             _selBlock = null;
             _showBlockCreator = false;
-            _dragIn = _mapIn[id];
-            _dragParent = _area!.Polys.First(p => p.poly_id == _dragIn.area_poly_id);
-            _activeHandle = h; _resizing = true;
+
+            _dragIn = it;
+            _dragParent = _area.Polys.First(p => string.Equals(p.poly_id, it.area_poly_id, StringComparison.OrdinalIgnoreCase));
+            _activeHandle = h;
 
             var (wx, wy) = ScreenToWorld(e.OffsetX, e.OffsetY);
             _dragStart = (wx, wy);
-
-            // SNAPSHOT BASE EN ABS (¡no rel!)
-            _beforeDragIn = (_dragIn.abs_x, _dragIn.abs_y, _dragIn.ancho_m, _dragIn.alto_m);
-
-            // en resize no usamos grab
+            _beforeDragIn = (it.abs_x, it.abs_y, it.ancho_m, it.largo_m);
             _grab = null;
 
             StateHasChanged();
@@ -952,52 +1341,72 @@ namespace BARI_web.Features.Espacios.Pages
 
         private void OnPointerDownMoveBlock(PointerEventArgs e, string id)
         {
-            if (!_blocksById.TryGetValue(id, out var block)) return;
+            if (_area is null) return;
+            if (!_blocksById.TryGetValue(id, out var b)) return;
+
             _selBlock = id;
             _selIn = null;
             _showBlockCreator = false;
-            _dragBlock = block;
+
+            _dragBlock = b;
             _blockHandle = Handle.None;
-            _blockResizing = false;
-            _blockMsg = null;
 
             var (wx, wy) = ScreenToWorld(e.OffsetX, e.OffsetY);
             _dragStart = (wx, wy);
-            _beforeDragBlock = (block.abs_x, block.abs_y, block.ancho, block.alto);
-            _blockGrab = (wx - block.abs_x, wy - block.abs_y);
+            _beforeDragBlock = (b.abs_x, b.abs_y, b.ancho, b.largo);
+            _blockGrab = (wx - b.abs_x, wy - b.abs_y);
+
+            _blockMsg = null;
             StateHasChanged();
         }
 
         private void OnPointerDownResizeBlock(PointerEventArgs e, string id, Handle h)
         {
-            if (!_blocksById.TryGetValue(id, out var block)) return;
+            if (_area is null) return;
+            if (!_blocksById.TryGetValue(id, out var b)) return;
+
             _selBlock = id;
             _selIn = null;
             _showBlockCreator = false;
-            _dragBlock = block;
+
+            _dragBlock = b;
             _blockHandle = h;
-            _blockResizing = true;
-            _blockMsg = null;
 
             var (wx, wy) = ScreenToWorld(e.OffsetX, e.OffsetY);
             _dragStart = (wx, wy);
-            _beforeDragBlock = (block.abs_x, block.abs_y, block.ancho, block.alto);
+            _beforeDragBlock = (b.abs_x, b.abs_y, b.ancho, b.largo);
             _blockGrab = null;
+
+            _blockMsg = null;
             StateHasChanged();
         }
 
+        private void OnPointerDownBackground(PointerEventArgs e)
+        {
+            _selIn = null;
+            _selBlock = null;
+            _showBlockCreator = false;
+            BeginPan(e);
+        }
 
-        // tolerancias
-        const decimal EPS_JOIN = 0.012m; // ~1.2 cm de tolerancia 
-        const decimal EPS_MINW = 0.10m;    // tamaño mínimo
+        private void BeginPan(PointerEventArgs e)
+        {
+            _panStart = (e.OffsetX, e.OffsetY);
+            _panMoved = false;
+        }
 
+        // =========================
+        // Pointer: move (PAN / DRAG / RESIZE)
+        // =========================
         private void OnPointerMove(PointerEventArgs e)
         {
             // ===== Pan =====
             if (_panStart is not null && _dragIn is null && _dragBlock is null)
             {
                 var (sx, sy) = _panStart.Value;
-                var dxPx = e.OffsetX - sx; var dyPx = e.OffsetY - sy;
+                var dxPx = e.OffsetX - sx;
+                var dyPx = e.OffsetY - sy;
+
                 if (!_panMoved && (Math.Abs(dxPx) > 3 || Math.Abs(dyPx) > 3)) _panMoved = true;
                 _panStart = (e.OffsetX, e.OffsetY);
 
@@ -1006,38 +1415,43 @@ namespace BARI_web.Features.Espacios.Pages
 
                 var vw = (decimal)((double)Wm / _zoom);
                 var vh = (decimal)((double)Hm / _zoom);
-                _panX = Clamp(0m, Wm - vw, _panX - metersX);
-                _panY = Clamp(0m, Hm - vh, _panY - metersY);
+
+                _panX = Clamp(0m, Math.Max(0m, Wm - vw), _panX - metersX);
+                _panY = Clamp(0m, Math.Max(0m, Hm - vh), _panY - metersY);
+
+                UpdateViewMetrics();
                 StateHasChanged();
                 return;
             }
 
-            // ===== Drag bloque =====
+            // ===== Drag/Resize BLOQUE =====
             if (_dragBlock is not null && _dragStart is not null && _beforeDragBlock is not null && _area is not null)
             {
-                var (blockWx, blockWy) = ScreenToWorld(e.OffsetX, e.OffsetY);
-                var blockDx = blockWx - _dragStart.Value.x;
-                var blockDy = blockWy - _dragStart.Value.y;
+                var (wx, wy) = ScreenToWorld(e.OffsetX, e.OffsetY);
+                var dx = wx - _dragStart.Value.x;
+                var dy = wy - _dragStart.Value.y;
 
-                var blockBaseAbsX = _beforeDragBlock.Value.x;
-                var blockBaseAbsY = _beforeDragBlock.Value.y;
+                var blockBaseX = _beforeDragBlock.Value.x;
+                var blockBaseY = _beforeDragBlock.Value.y;
                 var blockBaseW = _beforeDragBlock.Value.w;
                 var blockBaseH = _beforeDragBlock.Value.h;
 
-                decimal blockPropAbsX = blockBaseAbsX, blockPropAbsY = blockBaseAbsY;
-                decimal blockPropW = blockBaseW, blockPropH = blockBaseH;
+                decimal blockPropX = blockBaseX;
+                decimal blockPropY = blockBaseY;
+                decimal blockPropW = blockBaseW;
+                decimal blockPropH = blockBaseH;
 
                 if (_blockHandle == Handle.None)
                 {
                     if (_blockGrab is not null)
                     {
-                        blockPropAbsX = blockWx - _blockGrab.Value.dx;
-                        blockPropAbsY = blockWy - _blockGrab.Value.dy;
+                        blockPropX = wx - _blockGrab.Value.dx;
+                        blockPropY = wy - _blockGrab.Value.dy;
                     }
                     else
                     {
-                        blockPropAbsX = blockBaseAbsX + blockDx;
-                        blockPropAbsY = blockBaseAbsY + blockDy;
+                        blockPropX = blockBaseX + dx;
+                        blockPropY = blockBaseY + dy;
                     }
                 }
                 else
@@ -1046,225 +1460,188 @@ namespace BARI_web.Features.Espacios.Pages
                     {
                         case Handle.NE:
                             {
-                                var bottom = blockBaseAbsY + blockBaseH;
-                                blockPropW = Math.Max(EPS_MINW, blockBaseW + blockDx);
-                                blockPropH = Math.Max(EPS_MINW, blockBaseH - blockDy);
-                                blockPropAbsX = blockBaseAbsX;
-                                blockPropAbsY = bottom - blockPropH;
+                                var bottom = blockBaseY + blockBaseH;
+                                blockPropW = Math.Max(EPS_MINW, blockBaseW + dx);
+                                blockPropH = Math.Max(EPS_MINW, blockBaseH - dy);
+                                blockPropX = blockBaseX;
+                                blockPropY = bottom - blockPropH;
                                 break;
                             }
                         case Handle.SE:
                             {
-                                blockPropW = Math.Max(EPS_MINW, blockBaseW + blockDx);
-                                blockPropH = Math.Max(EPS_MINW, blockBaseH + blockDy);
-                                blockPropAbsX = blockBaseAbsX;
-                                blockPropAbsY = blockBaseAbsY;
+                                blockPropW = Math.Max(EPS_MINW, blockBaseW + dx);
+                                blockPropH = Math.Max(EPS_MINW, blockBaseH + dy);
+                                blockPropX = blockBaseX;
+                                blockPropY = blockBaseY;
                                 break;
                             }
                         case Handle.NW:
                             {
-                                var right = blockBaseAbsX + blockBaseW;
-                                var bottom = blockBaseAbsY + blockBaseH;
-                                blockPropW = Math.Max(EPS_MINW, blockBaseW - blockDx);
-                                blockPropH = Math.Max(EPS_MINW, blockBaseH - blockDy);
-                                blockPropAbsX = right - blockPropW;
-                                blockPropAbsY = bottom - blockPropH;
+                                var right = blockBaseX + blockBaseW;
+                                var bottom = blockBaseY + blockBaseH;
+                                blockPropW = Math.Max(EPS_MINW, blockBaseW - dx);
+                                blockPropH = Math.Max(EPS_MINW, blockBaseH - dy);
+                                blockPropX = right - blockPropW;
+                                blockPropY = bottom - blockPropH;
                                 break;
                             }
                         case Handle.SW:
                             {
-                                var right = blockBaseAbsX + blockBaseW;
-                                blockPropW = Math.Max(EPS_MINW, blockBaseW - blockDx);
-                                blockPropH = Math.Max(EPS_MINW, blockBaseH + blockDy);
-                                blockPropAbsX = right - blockPropW;
-                                blockPropAbsY = blockBaseAbsY;
+                                var right = blockBaseX + blockBaseW;
+                                blockPropW = Math.Max(EPS_MINW, blockBaseW - dx);
+                                blockPropH = Math.Max(EPS_MINW, blockBaseH + dy);
+                                blockPropX = right - blockPropW;
+                                blockPropY = blockBaseY;
                                 break;
                             }
                     }
                 }
 
-                var minX = _area.MinX;
-                var minY = _area.MinY;
-                var maxX = _area.MaxX - blockPropW;
-                var maxY = _area.MaxY - blockPropH;
-
-                var blockClampedX = Clamp(minX, maxX, blockPropAbsX);
-                var blockClampedY = Clamp(minY, maxY, blockPropAbsY);
+                var (clampedX, clampedY) = ClampRectInAreaUnion(_area, blockPropX, blockPropY, blockPropW, blockPropH);
 
                 _dragBlock.ancho = blockPropW;
-                _dragBlock.alto = blockPropH;
-                _dragBlock.abs_x = blockClampedX;
-                _dragBlock.abs_y = blockClampedY;
-                _dragBlock.offset_x = blockClampedX - AreaCenterX;
-                _dragBlock.offset_y = blockClampedY - AreaCenterY;
+                _dragBlock.largo = blockPropH;
+                _dragBlock.abs_x = clampedX;
+                _dragBlock.abs_y = clampedY;
+
+                _dragBlock.offset_x = clampedX - AreaCenterX;
+                _dragBlock.offset_y = clampedY - AreaCenterY;
+
                 _dragBlock.pos_x = _dragBlock.abs_x;
                 _dragBlock.pos_y = _dragBlock.abs_y;
 
+                
                 StateHasChanged();
                 return;
+
             }
 
-            // ===== Nada que arrastrar =====
-            if (_dragIn is null || _dragParent is null || _dragStart is null || _beforeDragIn is null || _area is null) return;
+            // ===== Drag/Resize INNER =====
+            if (_dragIn is null || _dragParent is null || _dragStart is null || _beforeDragIn is null || _area is null)
+                return;
 
-            var (wx, wy) = ScreenToWorld(e.OffsetX, e.OffsetY);
-            var dx = wx - _dragStart.Value.x;
-            var dy = wy - _dragStart.Value.y;
+            var (wxIn, wyIn) = ScreenToWorld(e.OffsetX, e.OffsetY);
+            var dxIn = wxIn - _dragStart.Value.x;
+            var dyIn = wyIn - _dragStart.Value.y;
 
-            var baseAbsX = _beforeDragIn.Value.x;
-            var baseAbsY = _beforeDragIn.Value.y;
-            var baseW = _beforeDragIn.Value.w;
-            var baseH = _beforeDragIn.Value.h;
+            var innerBaseAbsX = _beforeDragIn.Value.x;
+            var innerBaseAbsY = _beforeDragIn.Value.y;
+            var innerBaseW = _beforeDragIn.Value.w;
+            var innerBaseH = _beforeDragIn.Value.h;
 
-            decimal propAbsX = baseAbsX, propAbsY = baseAbsY;
-            decimal propW = baseW, propH = baseH;
+            decimal innerPropAbsX = innerBaseAbsX;
+            decimal innerPropAbsY = innerBaseAbsY;
+            decimal innerPropW = innerBaseW;
+            decimal innerPropH = innerBaseH;
 
             if (_activeHandle == Handle.None)
             {
-                // MOVE: seguir cursor usando ABS + grab
                 if (_grab is not null)
                 {
-                    propAbsX = wx - _grab.Value.dx;
-                    propAbsY = wy - _grab.Value.dy;
+                    innerPropAbsX = wxIn - _grab.Value.dx;
+                    innerPropAbsY = wyIn - _grab.Value.dy;
                 }
                 else
                 {
-                    propAbsX = baseAbsX + dx;
-                    propAbsY = baseAbsY + dy;
+                    innerPropAbsX = innerBaseAbsX + dxIn;
+                    innerPropAbsY = innerBaseAbsY + dyIn;
                 }
             }
             else
             {
-                // RESIZE: calcula desde ABS base
                 switch (_activeHandle)
                 {
                     case Handle.NE:
                         {
-                            var bottom = baseAbsY + baseH;
-                            propW = Math.Max(EPS_MINW, baseW + dx);
-                            propH = Math.Max(EPS_MINW, baseH - dy);
-                            propAbsX = baseAbsX;
-                            propAbsY = bottom - propH;
+                            var bottom = innerBaseAbsY + innerBaseH;
+                            innerPropW = Math.Max(EPS_MINW, innerBaseW + dxIn);
+                            innerPropH = Math.Max(EPS_MINW, innerBaseH - dyIn);
+                            innerPropAbsX = innerBaseAbsX;
+                            innerPropAbsY = bottom - innerPropH;
                             break;
                         }
                     case Handle.SE:
                         {
-                            propW = Math.Max(EPS_MINW, baseW + dx);
-                            propH = Math.Max(EPS_MINW, baseH + dy);
-                            propAbsX = baseAbsX;
-                            propAbsY = baseAbsY;
+                            innerPropW = Math.Max(EPS_MINW, innerBaseW + dxIn);
+                            innerPropH = Math.Max(EPS_MINW, innerBaseH + dyIn);
+                            innerPropAbsX = innerBaseAbsX;
+                            innerPropAbsY = innerBaseAbsY;
                             break;
                         }
                     case Handle.NW:
                         {
-                            var right = baseAbsX + baseW;
-                            var bottom = baseAbsY + baseH;
-                            propW = Math.Max(EPS_MINW, baseW - dx);
-                            propH = Math.Max(EPS_MINW, baseH - dy);
-                            propAbsX = right - propW;
-                            propAbsY = bottom - propH;
+                            var right = innerBaseAbsX + innerBaseW;
+                            var bottom = innerBaseAbsY + innerBaseH;
+                            innerPropW = Math.Max(EPS_MINW, innerBaseW - dxIn);
+                            innerPropH = Math.Max(EPS_MINW, innerBaseH - dyIn);
+                            innerPropAbsX = right - innerPropW;
+                            innerPropAbsY = bottom - innerPropH;
                             break;
                         }
                     case Handle.SW:
                         {
-                            var right = baseAbsX + baseW;
-                            propW = Math.Max(EPS_MINW, baseW - dx);
-                            propH = Math.Max(EPS_MINW, baseH + dy);
-                            propAbsX = right - propW;
-                            propAbsY = baseAbsY;
+                            var right = innerBaseAbsX + innerBaseW;
+                            innerPropW = Math.Max(EPS_MINW, innerBaseW - dxIn);
+                            innerPropH = Math.Max(EPS_MINW, innerBaseH + dyIn);
+                            innerPropAbsX = right - innerPropW;
+                            innerPropAbsY = innerBaseAbsY;
                             break;
                         }
                 }
             }
 
-            // 1) Coord deseada en ABS (seguir puntero)
-            var desiredX = propAbsX;
-            var desiredY = propAbsY;
+            var (cx2, cy2, newParent) = ClampInnerToAreaAndCollisions(_dragIn, _dragParent, innerPropAbsX, innerPropAbsY, innerPropW, innerPropH);
 
-            // 2) Solo elegimos el mejor padre para “pintar” el frame, SIN clampear
-            var (best, _, _) = SoftClampToAreaUnion(_area!, desiredX, desiredY, propW, propH, _dragParent!);
+            _dragIn.area_poly_id = newParent.poly_id;
+            _dragIn.abs_x = cx2;
+            _dragIn.abs_y = cy2;
+            _dragIn.ancho_m = innerPropW;
+            _dragIn.largo_m = innerPropH;
 
-            // 2.5) Clamp duro al polígono elegido para respetar paredes durante el drag
-            var (clampedX, clampedY) = ClampRectIn(best, desiredX, desiredY, propW, propH);
+            _dragIn.eje_x_rel_m = Math.Round(_dragIn.abs_x - newParent.x_m, 3, MidpointRounding.AwayFromZero);
+            _dragIn.eje_y_rel_m = Math.Round(_dragIn.abs_y - newParent.y_m, 3, MidpointRounding.AwayFromZero);
 
-            // 3) Actualiza la pose dentro del área
-            CommitToUnion(_dragIn!, _area!, best, clampedX, clampedY, propW, propH, allowRehome: false);
-
-            // 4) Que el “padre de drag” siga al cursor (así ves cruzar el seam)
-            _dragParent = best;
+            _dragParent = newParent;
 
             StateHasChanged();
         }
 
 
-
-
-
-
-        private static string PickNombreUnico(string areaId, IEnumerable<Meson> existentes)
-        {
-            var usados = existentes.Where(m => string.Equals(m.area_id, areaId, StringComparison.OrdinalIgnoreCase))
-                                   .Select(m => m.nombre_meson)
-                                   .Where(s => !string.IsNullOrWhiteSpace(s))
-                                   .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-            const string baseName = "MESON";
-            if (!usados.Contains(baseName)) return baseName;
-            for (int i = 2; i < 999; i++)
-            {
-                var cand = $"{baseName} {i:00}";
-                if (!usados.Contains(cand)) return cand;
-            }
-            return $"{baseName}_{Guid.NewGuid():N}".Substring(0, 14);
-        }
-
-
         private void OnPointerUp(PointerEventArgs e)
         {
-            var finishing = _dragIn;
-            var parent = _dragParent;
+            var finishingInner = _dragIn;
+            var finishingParent = _dragParent;
             var finishingBlock = _dragBlock;
 
-            // limpia estados de drag
-            _dragStart = null; _dragIn = null; _dragParent = null; _resizing = false; _activeHandle = Handle.None;
-            _beforeDragIn = null; _grab = null;
-            _dragBlock = null; _beforeDragBlock = null; _blockGrab = null; _blockResizing = false; _blockHandle = Handle.None;
+            _dragStart = null;
+            _dragIn = null;
+            _dragParent = null;
+            _beforeDragIn = null;
+            _grab = null;
+            _activeHandle = Handle.None;
 
-            if (_panStart is not null && !_panMoved) { _selIn = null; _selBlock = null; _showBlockCreator = false; }
+            _dragBlock = null;
+            _beforeDragBlock = null;
+            _blockGrab = null;
+            _blockHandle = Handle.None;
+
+            if (_panStart is not null && !_panMoved)
+            {
+                _selIn = null;
+                _selBlock = null;
+                _showBlockCreator = false;
+            }
             _panStart = null;
 
-            if (finishing is not null && _area is not null && parent is not null)
+            // harden rel coords al soltar
+            if (finishingInner is not null && finishingParent is not null)
             {
-                // Clamp duro para que nunca quede fuera del área al soltar.
-                var (cx, cy) = ClampRectIn(parent, finishing.abs_x, finishing.abs_y,
-                                          finishing.ancho_m, finishing.alto_m);
-
-                var relHardX = Math.Round(cx - parent.x_m, 3, MidpointRounding.AwayFromZero);
-                var relHardY = Math.Round(cy - parent.y_m, 3, MidpointRounding.AwayFromZero);
-
-                // Actualiza ABS y elimina offset (queda dentro del área)
-                finishing.abs_x = cx;
-                finishing.abs_y = cy;
-                finishing.offset_x_m = 0m;
-                finishing.offset_y_m = 0m;
-
-                // Guarda el padre y las relativas "válidas"
-                finishing.area_poly_id = parent.poly_id;
-                finishing.eje_x_rel_m = relHardX;
-                finishing.eje_y_rel_m = relHardY;
-
-                // OJO: no llames NormalizeInner(finishing) aquí (no queremos mover abs)
+                finishingInner.eje_x_rel_m = Math.Round(finishingInner.abs_x - finishingParent.x_m, 3, MidpointRounding.AwayFromZero);
+                finishingInner.eje_y_rel_m = Math.Round(finishingInner.abs_y - finishingParent.y_m, 3, MidpointRounding.AwayFromZero);
             }
 
-            if (finishingBlock is not null && _area is not null)
+            if (finishingBlock is not null)
             {
-                var minX = _area.MinX;
-                var minY = _area.MinY;
-                var maxX = _area.MaxX - finishingBlock.ancho;
-                var maxY = _area.MaxY - finishingBlock.alto;
-
-                finishingBlock.abs_x = Clamp(minX, maxX, finishingBlock.abs_x);
-                finishingBlock.abs_y = Clamp(minY, maxY, finishingBlock.abs_y);
                 finishingBlock.offset_x = finishingBlock.abs_x - AreaCenterX;
                 finishingBlock.offset_y = finishingBlock.abs_y - AreaCenterY;
                 finishingBlock.pos_x = finishingBlock.abs_x;
@@ -1274,512 +1651,127 @@ namespace BARI_web.Features.Espacios.Pages
             StateHasChanged();
         }
 
-        // Solape (área) entre rect (absX,absY,w,h) y polígono p
-        private static decimal OverlapWithPoly(Poly p, decimal absX, decimal absY, decimal w, decimal h)
-        {
-            var a = (L: absX, T: absY, R: absX + w, B: absY + h);
-            var b = (L: p.x_m, T: p.y_m, R: p.x_m + p.ancho_m, B: p.y_m + p.alto_m);
-            var x1 = Math.Max(a.L, b.L);
-            var y1 = Math.Max(a.T, b.T);
-            var x2 = Math.Min(a.R, b.R);
-            var y2 = Math.Min(a.B, b.B);
-            var W = x2 - x1;
-            var H = y2 - y1;
-            return (W > 0m && H > 0m) ? (W * H) : 0m;
-        }
-
-        private (Poly best, decimal ovBest, decimal ovCurrent) BestPolyByOverlap(AreaDraw area, Poly current, decimal absX, decimal absY, decimal w, decimal h)
-        {
-            Poly best = current;
-            decimal bestOv = OverlapWithPoly(current, absX, absY, w, h);
-            foreach (var p in area.Polys)
-            {
-                var ov = OverlapWithPoly(p, absX, absY, w, h);
-                if (ov > bestOv) { bestOv = ov; best = p; }
-            }
-            var ovCur = OverlapWithPoly(current, absX, absY, w, h);
-            return (best, bestOv, ovCur);
-        }
-
-        // Regla de histéresis:
-        // - Requiere que el centro caiga dentro del candidato
-        // - Y que el solape nuevo supere al actual por un delta:
-        //   delta = max(12% del área del item, 0.015 m² aprox)  <-- ajusta si quieres
-        private bool ShouldRehome(AreaDraw area, Poly current, Poly candidate, decimal absX, decimal absY, decimal w, decimal h, decimal ovCur, decimal ovNew)
-        {
-            if (candidate.poly_id == current.poly_id) return false;
-
-            var cx = absX + w / 2m;
-            var cy = absY + h / 2m;
-            if (!PointInsidePoly(candidate, cx, cy, 0m))
-                return false;
-
-            var itemArea = Math.Max(0m, w * h);
-            var delta = Math.Max(itemArea * 0.12m, 0.015m); // 12% ó ~150 cm²
-            return ovNew > (ovCur + delta);
-        }
-
-
-
-
-        private void OnPointerDownBackground(PointerEventArgs e)
-        {
-            // Deselect al clickear fondo y comenzar pan
-            _selIn = null;
-            _selBlock = null;
-            _showBlockCreator = false;
-            BeginPan(e);
-        }
-        private void BeginPan(PointerEventArgs e) { _panStart = (e.OffsetX, e.OffsetY); _panMoved = false; }
-
+        // =========================
+        // Wheel / zoom
+        // =========================
         private void OnWheel(WheelEventArgs e)
         {
             var f = Math.Sign(e.DeltaY) < 0 ? 1.1 : (1 / 1.1);
             _zoom = Math.Clamp(_zoom * f, 0.3, 6.0);
-            CenterView();
+            ClampPanToBounds();
+            UpdateViewMetrics();
             StateHasChanged();
-        }
-        private void UpdateViewMetrics()
-        {
-            // tamaños visibles (en metros) con el zoom actual
-            VW = (decimal)((double)Wm / _zoom);
-            VH = (decimal)((double)Hm / _zoom);
-
-            // origen visible
-            VX = _panX;
-            VY = _panY;
-
-            CacheGrid();   // ya usa _panX/_panY/_zoom
         }
 
         private void ZoomOut()
         {
             _zoom = Math.Clamp(_zoom / 1.1, 0.3, 6.0);
-            CenterView();
+            ClampPanToBounds();
+            UpdateViewMetrics();
             StateHasChanged();
         }
+
         private void ZoomIn()
         {
             _zoom = Math.Clamp(_zoom * 1.1, 0.3, 6.0);
-            CenterView();
+            ClampPanToBounds();
+            UpdateViewMetrics();
             StateHasChanged();
         }
 
-
-        // ================== Lógica de movimiento/resize ==================
-        private void MoveInnerClamped(InnerItem it, Poly currentParent, decimal nxRel, decimal nyRel)
+        private void CenterView()
         {
-            var area = _area!;                   // misma área en pantalla
-            var w = it.ancho_m; var h = it.alto_m;
-
-            // destino absoluto pedido (respecto al padre actual)
-            var targetAbsX = currentParent.x_m + nxRel;
-            var targetAbsY = currentParent.y_m + nyRel;
-
-            // elegir polígono destino dentro de la MISMA área
-            var dest = PickPolyForInnerRect(area, targetAbsX, targetAbsY, w, h);
-
-            // clamping final dentro del polígono elegido
-            var (absX, absY) = ClampRectIn(dest, targetAbsX, targetAbsY, w, h);
-
-            // actualizar parent + coords relativas
-            it.area_poly_id = dest.poly_id;
-            it.eje_x_rel_m = Math.Round(absX - dest.x_m, 3, MidpointRounding.AwayFromZero);
-            it.eje_y_rel_m = Math.Round(absY - dest.y_m, 3, MidpointRounding.AwayFromZero);
-            it.abs_x = absX; it.abs_y = absY;
+            ClampPanToBounds();
+            UpdateViewMetrics();
+            StateHasChanged();
         }
 
-        private void ResizeInnerClamped(InnerItem it, Poly parent, decimal dx, decimal dy, Handle h)
+        private void UpdateViewMetrics()
         {
-            var baseX = it.eje_x_rel_m; var baseY = it.eje_y_rel_m;
-            var baseW = it.ancho_m; var baseH = it.alto_m;
+            VW = (decimal)((double)Wm / _zoom);
+            VH = (decimal)((double)Hm / _zoom);
 
-            decimal newX = baseX, newY = baseY, newW = baseW, newH = baseH;
+            VX = _panX;
+            VY = _panY;
 
-            switch (h)
-            {
-                case Handle.NE:
-                    newW = baseW + dx; newY = baseY + dy; newH = baseH - dy; break;
-                case Handle.SE:
-                    newW = baseW + dx; newH = baseH + dy; break;
-                case Handle.NW:
-                    newX = baseX + dx; newW = baseW - dx; newY = baseY + dy; newH = baseH - dy; break;
-                case Handle.SW:
-                    newX = baseX + dx; newW = baseW - dx; newH = baseH + dy; break;
-            }
-
-            // mínimos y clamps a los bordes del parent
-            newW = Math.Max(0.10m, newW);
-            newH = Math.Max(0.10m, newH);
-
-            // Clamp para que (newX,newY,newW,newH) no salgan del parent
-            if (newX < 0m) { newW += newX; newX = 0m; }
-            if (newY < 0m) { newH += newY; newY = 0m; }
-            if (newX + newW > parent.ancho_m) newW = parent.ancho_m - newX;
-            if (newY + newH > parent.alto_m) newH = parent.alto_m - newY;
-
-            it.eje_x_rel_m = Math.Round(newX, 3, MidpointRounding.AwayFromZero);
-            it.eje_y_rel_m = Math.Round(newY, 3, MidpointRounding.AwayFromZero);
-            it.ancho_m = Math.Round(newW, 3, MidpointRounding.AwayFromZero);
-            it.alto_m = Math.Round(newH, 3, MidpointRounding.AwayFromZero);
-            it.abs_x = parent.x_m + it.eje_x_rel_m;
-            it.abs_y = parent.y_m + it.eje_y_rel_m;
+            CacheGrid();
         }
 
-        private void NormalizeInner(InnerItem it)
+        private void CacheGrid()
         {
-            var parent = _area!.Polys.First(p => p.poly_id == it.area_poly_id);
-            it.area_id = _area.AreaId;
-            if (_canvas is not null) it.canvas_id = _canvas.canvas_id;
+            var vw = (decimal)((double)Wm / _zoom);
+            var vh = (decimal)((double)Hm / _zoom);
 
-            // NO mover abs_x/abs_y aquí
-            // Solo recomputa relativas desde ABS (permitiendo “respirar” en memoria)
-            var relX = it.abs_x - parent.x_m;
-            var relY = it.abs_y - parent.y_m;
-
-            // No clamp duro; si quieres, limita suave en memoria:
-            const decimal BREATH = EPS_JOIN; // ~1.2 cm
-            var maxX = parent.ancho_m - it.ancho_m;
-            var maxY = parent.alto_m - it.alto_m;
-
-            relX = Clamp(-BREATH, maxX + BREATH, relX);
-            relY = Clamp(-BREATH, maxY + BREATH, relY);
-
-            it.eje_x_rel_m = Math.Round(relX, 3, MidpointRounding.AwayFromZero);
-            it.eje_y_rel_m = Math.Round(relY, 3, MidpointRounding.AwayFromZero);
-
-            // Mantén tamaño acotado pero sin recolocar:
-            it.ancho_m = Clamp(0.10m, parent.ancho_m, it.ancho_m);
-            it.alto_m = Clamp(0.10m, parent.alto_m, it.alto_m);
+            GridStartX = (decimal)Math.Floor((double)_panX);
+            GridEndX = (decimal)Math.Ceiling((double)(_panX + vw));
+            GridStartY = (decimal)Math.Floor((double)_panY);
+            GridEndY = (decimal)Math.Ceiling((double)(_panY + vh));
         }
 
-
-
-        // ================== CRUD Inner ==================
-
-
-        private async Task EliminarInner()
+        private void ClampPanToBounds()
         {
-            if (_selIn is null) return;
-
-            if (_mapIn.TryGetValue(_selIn, out var it))
-            {
-                // Si está vinculado a mesón: eliminar el mesón también
-                if (!string.IsNullOrWhiteSpace(it.meson_id))
-                {
-                    try
-                    {
-                        Pg.UseSheet("mesones");
-                        await Pg.DeleteByIdAsync("meson_id", it.meson_id);
-                        _mesones.Remove(it.meson_id);
-                        _mesonesLookup.Remove(it.meson_id);
-                    }
-                    catch { /* silenciar: si no existía aún en DB no pasa nada */ }
-                }
-
-            }
-
-            // Borrar el polígono interior
-            try
-            {
-                Pg.UseSheet("poligonos_interiores");
-                await Pg.DeleteByIdAsync("poly_in_id", _selIn);
-            }
-            catch { }
-
-            _inners.RemoveAll(i => i.poly_in_id == _selIn);
-            _mapIn.Remove(_selIn);
-            _selIn = null; _saveMsg = "Elemento interior eliminado";
+            var vw = (decimal)((double)Wm / _zoom);
+            var vh = (decimal)((double)Hm / _zoom);
+            _panX = Clamp(0m, Math.Max(0m, Wm - vw), _panX);
+            _panY = Clamp(0m, Math.Max(0m, Hm - vh), _panY);
         }
 
-        private async Task EliminarBloque(string bloqueId)
-        {
-            if (string.IsNullOrWhiteSpace(bloqueId)) return;
-            try
-            {
-                Pg.UseSheet("bloques_int");
-                await Pg.DeleteByIdAsync("bloque_id", bloqueId);
-            }
-            catch { }
-
-            _blocks.RemoveAll(b => b.bloque_id == bloqueId);
-            _blocksById.Remove(bloqueId);
-            if (string.Equals(_selBlock, bloqueId, StringComparison.OrdinalIgnoreCase))
-            {
-                _selBlock = null;
-            }
-            _blockMsg = "Bloque eliminado.";
-        }
-
-        private void EliminarBloqueSeleccionado()
-        {
-            if (!string.IsNullOrWhiteSpace(_selBlock))
-            {
-                _ = EliminarBloque(_selBlock);
-            }
-        }
-
-        private void MostrarNuevoBloque()
-        {
-            _showBlockCreator = true;
-            _selBlock = null;
-            _selIn = null;
-            _blockMsg = null;
-            _newBlockAssignMaterial = false;
-            _newBlockAssignMeson = false;
-        }
-
-        private void AgregarBloque()
-        {
-            if (_canvas is null || _area is null)
-            {
-                _blockMsg = "No hay canvas/área activa.";
-                return;
-            }
-
-            var ancho = Clamp(0.1m, 10m, _newBlockAncho);
-            var alto = Clamp(0.1m, 10m, _newBlockAlto);
-            var offsetX = _newBlockOffsetX;
-            var offsetY = _newBlockOffsetY;
-
-            if (_newBlockAssignMaterial && _newBlockAssignMeson)
-            {
-                _blockMsg = "Selecciona solo una opción para asociar el bloque.";
-                return;
-            }
-
-            if (_newBlockAssignMaterial && string.IsNullOrWhiteSpace(_newBlockMaterialId))
-            {
-                _blockMsg = "Selecciona un material de montaje para asociar.";
-                return;
-            }
-
-            if (_newBlockAssignMeson && string.IsNullOrWhiteSpace(_newBlockMesonId))
-            {
-                _blockMsg = "Selecciona un mesón para asociar.";
-                return;
-            }
-
-            if (!string.IsNullOrWhiteSpace(_newBlockMaterialId)
-                && _blocks.Any(b => string.Equals(b.material_montaje_id, _newBlockMaterialId, StringComparison.OrdinalIgnoreCase)))
-            {
-                _blockMsg = "Ese material ya tiene un bloque asociado.";
-                return;
-            }
-            if (!string.IsNullOrWhiteSpace(_newBlockMesonId)
-                && _blocks.Any(b => string.Equals(b.meson_id, _newBlockMesonId, StringComparison.OrdinalIgnoreCase)))
-            {
-                _blockMsg = "Ese mesón ya tiene un bloque asociado.";
-                return;
-            }
-
-            var it = new BlockItem
-            {
-                bloque_id = $"block_{Guid.NewGuid():N}".Substring(0, 12),
-                canvas_id = _canvas.canvas_id,
-                material_montaje_id = string.IsNullOrWhiteSpace(_newBlockMaterialId) ? null : _newBlockMaterialId,
-                meson_id = string.IsNullOrWhiteSpace(_newBlockMesonId) ? null : _newBlockMesonId,
-                etiqueta = string.IsNullOrWhiteSpace(_newBlockEtiqueta) ? null : _newBlockEtiqueta.Trim(),
-                color_hex = string.IsNullOrWhiteSpace(_newBlockColor) ? "#2563eb" : _newBlockColor,
-                z_order = _blocks.Count == 0 ? 0 : _blocks.Max(b => b.z_order) + 1,
-                ancho = ancho,
-                alto = alto,
-                offset_x = offsetX,
-                offset_y = offsetY
-            };
-            UpdateBlockAbs(it);
-
-            _blocks.Add(it);
-            _blocksById[it.bloque_id] = it;
-            _blockMsg = "Bloque agregado (recuerda guardar).";
-            _newBlockMaterialId = null;
-            _newBlockMesonId = null;
-            _newBlockAssignMaterial = false;
-            _newBlockAssignMeson = false;
-            _showBlockCreator = false;
-            _selBlock = it.bloque_id;
-            _selIn = null;
-        }
-
-        private IEnumerable<KeyValuePair<string, string>> MaterialesMontajeDisponibles()
-        {
-            var usados = _blocks
-                .Where(b => !string.IsNullOrWhiteSpace(b.material_montaje_id))
-                .Select(b => b.material_montaje_id!)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-            return _materialesLookup.Where(kv => !usados.Contains(kv.Key));
-        }
-
-        private IEnumerable<KeyValuePair<string, string>> MesonesDisponibles()
-        {
-            var usados = _blocks
-                .Where(b => !string.IsNullOrWhiteSpace(b.meson_id))
-                .Select(b => b.meson_id!)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-            return _mesonesLookup.Where(kv => !usados.Contains(kv.Key));
-        }
-
-        private void ToggleNewBlockAssignMaterial(bool isChecked)
-        {
-            _newBlockAssignMaterial = isChecked;
-            if (isChecked)
-            {
-                _newBlockAssignMeson = false;
-                _newBlockMesonId = null;
-            }
-            if (!isChecked)
-            {
-                _newBlockMaterialId = null;
-            }
-        }
-
-        private void ToggleNewBlockAssignMeson(bool isChecked)
-        {
-            _newBlockAssignMeson = isChecked;
-            if (isChecked)
-            {
-                _newBlockAssignMaterial = false;
-                _newBlockMaterialId = null;
-            }
-            if (!isChecked)
-            {
-                _newBlockMesonId = null;
-            }
-        }
-
-        private void OnSelectBlockMaterial(string? value)
-        {
-            var selected = string.IsNullOrWhiteSpace(value) ? null : value;
-            _newBlockMaterialId = selected;
-            if (!string.IsNullOrWhiteSpace(selected))
-            {
-                _newBlockMesonId = null;
-                _newBlockAssignMaterial = true;
-                _newBlockAssignMeson = false;
-            }
-        }
-
-        private void OnSelectBlockMeson(string? value)
-        {
-            var selected = string.IsNullOrWhiteSpace(value) ? null : value;
-            _newBlockMesonId = selected;
-            if (!string.IsNullOrWhiteSpace(selected))
-            {
-                _newBlockMaterialId = null;
-                _newBlockAssignMeson = true;
-                _newBlockAssignMaterial = false;
-            }
-        }
-
-        private void UpdateBlockMaterial(BlockItem block, string? value)
-        {
-            var selected = string.IsNullOrWhiteSpace(value) ? null : value;
-            if (!string.IsNullOrWhiteSpace(selected)
-                && _blocks.Any(b => !string.Equals(b.bloque_id, block.bloque_id, StringComparison.OrdinalIgnoreCase)
-                                    && string.Equals(b.material_montaje_id, selected, StringComparison.OrdinalIgnoreCase)))
-            {
-                _blockMsg = "Ese material ya tiene un bloque asociado.";
-                return;
-            }
-            block.material_montaje_id = selected;
-            if (!string.IsNullOrWhiteSpace(selected))
-            {
-                block.meson_id = null;
-            }
-            _blockMsg = null;
-        }
-
-        private void UpdateBlockMeson(BlockItem block, string? value)
-        {
-            var selected = string.IsNullOrWhiteSpace(value) ? null : value;
-            if (!string.IsNullOrWhiteSpace(selected)
-                && _blocks.Any(b => !string.Equals(b.bloque_id, block.bloque_id, StringComparison.OrdinalIgnoreCase)
-                                    && string.Equals(b.meson_id, selected, StringComparison.OrdinalIgnoreCase)))
-            {
-                _blockMsg = "Ese mesón ya tiene un bloque asociado.";
-                return;
-            }
-            block.meson_id = selected;
-            if (!string.IsNullOrWhiteSpace(selected))
-            {
-                block.material_montaje_id = null;
-            }
-            _blockMsg = null;
-        }
-
-
-
-        // ================== Guardar ==================
+        // =========================
+        // Guardar (DB)
+        // =========================
         private async Task Guardar()
         {
             try
             {
-                _saving = true; _saveMsg = "Guardando…"; StateHasChanged();
+                if (_area is null || _canvas is null)
+                {
+                    _saveMsg = "No hay área/canvas.";
+                    return;
+                }
 
-                // 1) — MESONES (padre)
+                _saving = true;
+                _saveMsg = "Guardando…";
+                StateHasChanged();
+
+                // 1) MESONES
                 if (_mesones.Count > 0)
-                    // 1) — MESONES (padre)
-                    if (_mesones.Count > 0)
+                {
+                    // asegurar nombres únicos por área
+                    foreach (var g in _mesones.Values.GroupBy(m => m.area_id, StringComparer.OrdinalIgnoreCase))
                     {
-                        // antes del foreach (defensa extra por si llega repetido)
-                        foreach (var g in _mesones.Values.GroupBy(m => m.area_id, StringComparer.OrdinalIgnoreCase))
+                        var vistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        foreach (var m in g)
                         {
-                            var vistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                            foreach (var m in g)
-                                if (string.IsNullOrWhiteSpace(m.nombre_meson) || !vistos.Add(m.nombre_meson))
-                                    m.nombre_meson = PickNombreUnico(g.Key, _mesones.Values);
+                            if (string.IsNullOrWhiteSpace(m.nombre_meson) || !vistos.Add(m.nombre_meson))
+                                m.nombre_meson = PickNombreUnico(g.Key, _mesones.Values);
                         }
-
-                        Pg.UseSheet("mesones");
-                        foreach (var m in _mesones.Values)
-                        {
-                            var toSave = new Dictionary<string, object>
-                            {
-                                ["area_id"] = m.area_id,
-                                ["nombre_meson"] = m.nombre_meson,
-                                ["ancho_cm"] = m.ancho_cm,
-                                ["largo_cm"] = m.largo_cm,
-                                ["profundidad_cm"] = m.profundidad_cm,
-                                ["niveles_totales"] = m.niveles_totales,
-                                ["laboratorio_id"] = _laboratorioId
-                            };
-
-                            var ok = await Pg.UpdateByIdAsync("meson_id", m.meson_id, toSave);
-                            if (!ok)
-                            {
-                                toSave["meson_id"] = m.meson_id;   // <-- importante
-                                await Pg.CreateAsync(toSave);
-                            }
-                        }
-
                     }
 
-                // 1.5) — MATERIALES DE MONTAJE
-                if (_materialesMontaje.Count > 0)
-                {
-                    Pg.UseSheet("materiales_montaje");
-                    foreach (var mat in _materialesMontaje.Values)
+                    Pg.UseSheet("mesones");
+                    foreach (var m in _mesones.Values)
                     {
                         var toSave = new Dictionary<string, object>
                         {
-                            ["nombre"] = mat.nombre,
-                            ["estado_id"] = string.IsNullOrWhiteSpace(mat.estado_id) ? (object)DBNull.Value : mat.estado_id!,
-                            ["area_id"] = mat.area_id,
-                            ["posicion"] = string.IsNullOrWhiteSpace(mat.posicion) ? (object)DBNull.Value : mat.posicion!,
-                            ["laboratorio_id"] = mat.laboratorio_id
+                            ["area_id"] = m.area_id,
+                            ["nombre_meson"] = m.nombre_meson,
+                            ["niveles_totales"] = m.niveles_totales.HasValue ? m.niveles_totales.Value : (object)DBNull.Value,
+                            ["laboratorio_id"] = _laboratorioId,
+                            ["imagen_url"] = string.IsNullOrWhiteSpace(m.imagen_url) ? (object)DBNull.Value : m.imagen_url! // ✅ NUEVO
                         };
 
-                        var ok = await Pg.UpdateByIdAsync("material_id", mat.material_id, toSave);
+
+                        var ok = await Pg.UpdateByIdAsync("meson_id", m.meson_id, toSave);
                         if (!ok)
                         {
-                            toSave["material_id"] = mat.material_id;
+                            toSave["meson_id"] = m.meson_id;
                             await Pg.CreateAsync(toSave);
                         }
+
+                        _mesonesLookup[m.meson_id] = m.nombre_meson;
                     }
                 }
 
-
-                // 2) — INSTALACIONES (padre)
+                // 2) INSTALACIONES
                 if (_instalaciones.Count > 0)
                 {
                     Pg.UseSheet("instalaciones");
@@ -1788,12 +1780,24 @@ namespace BARI_web.Features.Espacios.Pages
                         var toSave = new Dictionary<string, object>
                         {
                             ["nombre"] = ins.nombre,
-                            ["tipo_id"] = string.IsNullOrWhiteSpace(ins.tipo_id) ? (object)DBNull.Value : ins.tipo_id!,
-                            ["notas"] = ins.notas ?? (object)DBNull.Value,
-                            ["requiere_mantenimiento"] = ins.requiere_mantenimiento
+
+                            ["subcategoria_id"] = string.IsNullOrWhiteSpace(ins.subcategoria_id) ? (object)DBNull.Value : ins.subcategoria_id!,
+                            ["laboratorio_id"] = _laboratorioId,
+                            ["area_id"] = string.IsNullOrWhiteSpace(ins.area_id) ? (object)DBNull.Value : ins.area_id!,
+                            ["canvas_id"] = string.IsNullOrWhiteSpace(ins.canvas_id) ? (object)DBNull.Value : ins.canvas_id!,
+
+
+                            ["estado_id"] = string.IsNullOrWhiteSpace(ins.estado_id) ? (object)DBNull.Value : ins.estado_id!,
+                            ["fecha_instalacion"] = ins.fecha_instalacion.HasValue ? ins.fecha_instalacion.Value.Date : (object)DBNull.Value,
+                            ["fecha_ultima_revision"] = ins.fecha_ultima_revision.HasValue ? ins.fecha_ultima_revision.Value.Date : (object)DBNull.Value,
+                            ["fecha_proxima_revision"] = ins.fecha_proxima_revision.HasValue ? ins.fecha_proxima_revision.Value.Date : (object)DBNull.Value,
+
+                            ["proveedor_servicio"] = string.IsNullOrWhiteSpace(ins.proveedor_servicio) ? (object)DBNull.Value : ins.proveedor_servicio!,
+                            ["observaciones"] = string.IsNullOrWhiteSpace(ins.observaciones) ? (object)DBNull.Value : ins.observaciones!,
+                            ["descripcion"] = string.IsNullOrWhiteSpace(ins.descripcion) ? (object)DBNull.Value : ins.descripcion!,
+                            ["imagen_url"] = string.IsNullOrWhiteSpace(ins.imagen_url) ? (object)DBNull.Value : ins.imagen_url!
                         };
 
-                        // PK real: instalacion_id
                         var ok = await Pg.UpdateByIdAsync("instalacion_id", ins.instalacion_id, toSave);
                         if (!ok)
                         {
@@ -1803,16 +1807,25 @@ namespace BARI_web.Features.Espacios.Pages
                     }
                 }
 
-                // 3) — POLIGONOS_INTERIORES (hijo) — AHORA SI
+                // 3) POLIGONOS_INTERIORES
                 Pg.UseSheet("poligonos_interiores");
                 foreach (var it in _inners)
                 {
-                    var parent = _area!.Polys.First(p => p.poly_id == it.area_poly_id);
+                    // XOR fuerte al guardar
+                    if (!string.IsNullOrWhiteSpace(it.meson_id))
+                        it.instalacion_id = null;
+                    else if (!string.IsNullOrWhiteSpace(it.instalacion_id))
+                        it.meson_id = null;
 
-                    // Clamp SUAVE a ±EPS_JOIN SOLO para persistir
-                    var (cx, cy) = ClampRectInSoft(parent, it.abs_x, it.abs_y, it.ancho_m, it.alto_m, EPS_JOIN);
-                    var relX = Math.Round(cx - parent.x_m, 3, MidpointRounding.AwayFromZero);
-                    var relY = Math.Round(cy - parent.y_m, 3, MidpointRounding.AwayFromZero);
+                    var parent = _area.Polys.First(p => string.Equals(p.poly_id, it.area_poly_id, StringComparison.OrdinalIgnoreCase));
+
+                    // clamp final (contorno real + colisiones)
+                    var (cx, cy, newParent) = ClampInnerToAreaAndCollisions(it, parent, it.abs_x, it.abs_y, it.ancho_m, it.largo_m);
+                    it.area_poly_id = newParent.poly_id;
+                    it.abs_x = cx;
+                    it.abs_y = cy;
+                    it.eje_x_rel_m = Math.Round(it.abs_x - newParent.x_m, 3, MidpointRounding.AwayFromZero);
+                    it.eje_y_rel_m = Math.Round(it.abs_y - newParent.y_m, 3, MidpointRounding.AwayFromZero);
 
                     var toSave = new Dictionary<string, object>
                     {
@@ -1820,23 +1833,14 @@ namespace BARI_web.Features.Espacios.Pages
                         ["canvas_id"] = it.canvas_id,
                         ["area_id"] = it.area_id,
 
-                        ["eje_x_rel_m"] = relX,
-                        ["eje_y_rel_m"] = relY,
-                        ["eje_z_rel_m"] = it.eje_z_rel_m,
+                        ["eje_x_rel_m"] = it.eje_x_rel_m,
+                        ["eje_y_rel_m"] = it.eje_y_rel_m,
 
                         ["ancho_m"] = it.ancho_m,
-                        ["profundo_m"] = it.profundo_m,
-                        ["alto_m"] = it.alto_m,
-
-                        ["yaw_deg"] = it.yaw_deg,
-                        ["pivot_kind"] = it.pivot_kind,
-
-                        ["offset_x_m"] = it.offset_x_m,
-                        ["offset_y_m"] = it.offset_y_m,
-                        ["offset_z_m"] = it.offset_z_m,
+                        ["largo_m"] = it.largo_m,
 
                         ["z_order"] = it.z_order,
-                        ["etiqueta"] = it.label ?? (object)DBNull.Value,
+                        ["etiqueta"] = string.IsNullOrWhiteSpace(it.label) ? (object)DBNull.Value : it.label!,
                         ["color_hex"] = it.fill,
                         ["opacidad_0_1"] = it.opacidad,
 
@@ -1845,19 +1849,38 @@ namespace BARI_web.Features.Espacios.Pages
                     };
 
                     var ok = await Pg.UpdateByIdAsync("poly_in_id", it.poly_in_id, toSave);
-                    if (!ok) { toSave["poly_in_id"] = it.poly_in_id; await Pg.CreateAsync(toSave); }
+                    if (!ok)
+                    {
+                        toSave["poly_in_id"] = it.poly_in_id;
+                        await Pg.CreateAsync(toSave);
+                    }
                 }
 
-                // 4) — BLOQUES INTERNOS (materiales_montaje)
+                // 4) BLOQUES
                 Pg.UseSheet("bloques_int");
                 foreach (var b in _blocks)
                 {
+                    // XOR fuerte al guardar
+                    if (!string.IsNullOrWhiteSpace(b.meson_id))
+                        b.instalacion_id = null;
+                    else if (!string.IsNullOrWhiteSpace(b.instalacion_id))
+                        b.meson_id = null;
+
                     UpdateBlockAbs(b);
+
+                    // clamp contorno real
+                    var (bx, by) = ClampRectInAreaUnion(_area, b.abs_x, b.abs_y, b.ancho, b.largo);
+                    b.abs_x = bx;
+                    b.abs_y = by;
+                    b.offset_x = b.abs_x - AreaCenterX;
+                    b.offset_y = b.abs_y - AreaCenterY;
+                    b.pos_x = b.abs_x;
+                    b.pos_y = b.abs_y;
 
                     var toSave = new Dictionary<string, object>
                     {
                         ["canvas_id"] = b.canvas_id,
-                        ["material_montaje_id"] = string.IsNullOrWhiteSpace(b.material_montaje_id) ? (object)DBNull.Value : b.material_montaje_id!,
+                        ["instalacion_id"] = string.IsNullOrWhiteSpace(b.instalacion_id) ? (object)DBNull.Value : b.instalacion_id!,
                         ["meson_id"] = string.IsNullOrWhiteSpace(b.meson_id) ? (object)DBNull.Value : b.meson_id!,
                         ["etiqueta"] = string.IsNullOrWhiteSpace(b.etiqueta) ? (object)DBNull.Value : b.etiqueta!,
                         ["color_hex"] = string.IsNullOrWhiteSpace(b.color_hex) ? (object)DBNull.Value : b.color_hex!,
@@ -1865,7 +1888,8 @@ namespace BARI_web.Features.Espacios.Pages
                         ["pos_x"] = b.pos_x,
                         ["pos_y"] = b.pos_y,
                         ["ancho"] = b.ancho,
-                        ["alto"] = b.alto,
+                        ["largo"] = b.largo,
+                        ["altura"] = b.altura.HasValue ? b.altura.Value : (object)DBNull.Value,
                         ["offset_x"] = b.offset_x,
                         ["offset_y"] = b.offset_y
                     };
@@ -1878,7 +1902,6 @@ namespace BARI_web.Features.Espacios.Pages
                     }
                 }
 
-
                 _saveMsg = "Guardado ✔";
             }
             catch (Exception ex)
@@ -1886,63 +1909,371 @@ namespace BARI_web.Features.Espacios.Pages
                 Console.Error.WriteLine($"[ModificarDetallesArea.Guardar] {ex}");
                 _saveMsg = "Error al guardar (ver consola).";
             }
-            finally { _saving = false; StateHasChanged(); }
+            finally
+            {
+                _saving = false;
+                StateHasChanged();
+            }
         }
 
-
-        // ================== Helpers ==================
-        private double PxPerM() { const double nominalSvgPx = 1000.0; return nominalSvgPx / (double)Wm; }
-        private (decimal x, decimal y) ScreenToWorld(double offsetX, double offsetY)
-            => (_panX + (decimal)(offsetX / (PxPerM() * _zoom)),
-                _panY + (decimal)(offsetY / (PxPerM() * _zoom)));
-        private static bool RangeOverlap(decimal a1, decimal a2, decimal b1, decimal b2)
+        // =========================
+        // Eliminar
+        // =========================
+        private async Task EliminarInner()
         {
-            if (a1 > a2) (a1, a2) = (a2, a1);
-            if (b1 > b2) (b1, b2) = (b2, b1);
-            return a1 < b2 && a2 > b1;
+            if (_selIn is null) return;
+
+            try
+            {
+                Pg.UseSheet("poligonos_interiores");
+                await Pg.DeleteByIdAsync("poly_in_id", _selIn);
+            }
+            catch { }
+
+            _inners.RemoveAll(i => string.Equals(i.poly_in_id, _selIn, StringComparison.OrdinalIgnoreCase));
+            _mapIn.Remove(_selIn);
+            _selIn = null;
+            _saveMsg = "Elemento interior eliminado.";
+            StateHasChanged();
         }
 
-        // Redimensionar hacia la derecha manteniendo X base (no salir del parent)
-        private decimal ClampRightInner(InnerItem it, Poly parent, decimal baseX, decimal baseY, decimal widthTarget)
+        private async Task EliminarBloque(string bloqueId)
         {
-            var right = Math.Min(baseX + widthTarget, parent.ancho_m);
-            // (Si en el futuro hubiera otros inners que actuaran de obstáculo, aquí se revisarían)
-            return Math.Max(0.10m, right - baseX);
+            if (string.IsNullOrWhiteSpace(bloqueId)) return;
+
+            try
+            {
+                Pg.UseSheet("bloques_int");
+                await Pg.DeleteByIdAsync("bloque_id", bloqueId);
+            }
+            catch { }
+
+            _blocks.RemoveAll(b => string.Equals(b.bloque_id, bloqueId, StringComparison.OrdinalIgnoreCase));
+            _blocksById.Remove(bloqueId);
+
+            if (string.Equals(_selBlock, bloqueId, StringComparison.OrdinalIgnoreCase))
+                _selBlock = null;
+
+            _blockMsg = "Bloque eliminado.";
+            StateHasChanged();
         }
 
-        // Redimensionar hacia la izquierda moviendo X para mantener el borde derecho fijo
-        private decimal ClampLeftInner(InnerItem it, Poly parent, decimal baseRight, decimal baseY, decimal widthTarget)
+        private async Task EliminarBloqueSeleccionado()
         {
-            var left = Math.Max(baseRight - widthTarget, 0m);
-            return Math.Max(0.10m, baseRight - left);
+            if (string.IsNullOrWhiteSpace(_selBlock)) return;
+            await EliminarBloque(_selBlock);
         }
 
-        // Redimensionar hacia abajo manteniendo Y base (no salir del parent)
-        private decimal ClampBottomInner(InnerItem it, Poly parent, decimal baseX, decimal baseY, decimal heightTarget)
+        // =========================
+        // Colisiones + contorno real
+        // =========================
+        private InnerKind GetKind(InnerItem it)
         {
-            var bottom = Math.Min(baseY + heightTarget, parent.alto_m);
-            return Math.Max(0.10m, bottom - baseY);
+            if (!string.IsNullOrWhiteSpace(it.meson_id)) return InnerKind.Meson;
+            if (!string.IsNullOrWhiteSpace(it.instalacion_id)) return InnerKind.Instalacion;
+            return InnerKind.None;
         }
 
-        // Redimensionar hacia arriba moviendo Y para mantener el borde inferior fijo
-        private decimal ClampTopInner(InnerItem it, Poly parent, decimal baseX, decimal baseBottom, decimal heightTarget)
+        private (decimal x, decimal y, Poly parent) ClampInnerToAreaAndCollisions(InnerItem it, Poly currentParent, decimal absX, decimal absY, decimal w, decimal h)
         {
-            var top = Math.Max(baseBottom - heightTarget, 0m);
-            return Math.Max(0.10m, baseBottom - top);
+            if (_area is null) return (absX, absY, currentParent);
+
+            // 1) rehome: escoger el mejor poly por intersección de bbox
+            var parent = BestPolyForRect(_area, absX, absY, w, h, currentParent);
+
+            // 2) clamp al contorno real del parent (si es polígono real)
+            var (cx, cy) = ClampRectToPolyShape(parent, absX, absY, w, h);
+
+            // 3) colisiones (solo con el mismo tipo: mesón-mesón / instalación-instalación)
+            var kind = GetKind(it);
+            if (kind != InnerKind.None)
+            {
+                (cx, cy) = ResolveSameTypeCollisions(it.poly_in_id, kind, parent, cx, cy, w, h);
+            }
+
+            // 4) clamp final al contorno real (por si colisión lo movió)
+            (cx, cy) = ClampRectToPolyShape(parent, cx, cy, w, h);
+
+            return (cx, cy, parent);
         }
 
-        private static decimal Clamp(decimal min, decimal max, decimal v) => Math.Max(min, Math.Min(max, v));
-        private static string S(decimal v) => v.ToString(CultureInfo.InvariantCulture);
-        private static decimal Dec(string s) => decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : 0m;
-        private static int Int(object? o) => int.TryParse(o?.ToString(), out var n) ? n : 0;
-        private static int Int(string s) => int.TryParse(s, out var n) ? n : 0;
-        private static string? NullIfEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s;
-        private static string Get(Dictionary<string, string> d, string key, string fallback = "") => d.TryGetValue(key, out var v) ? v : fallback;
+        private (decimal x, decimal y) ResolveSameTypeCollisions(string movingId, InnerKind kind, Poly parent, decimal x, decimal y, decimal w, decimal h)
+        {
+            // iteración simple: empuja afuera por mínima penetración
+            for (int pass = 0; pass < 12; pass++)
+            {
+                var hit = FindFirstOverlapSameType(movingId, kind, x, y, w, h);
+                if (hit is null) break;
 
-        private static decimal DoorEndX(Door d) => d.x_m + ((d.orientacion is "E" or "W") ? d.largo_m : 0m);
-        private static decimal DoorEndY(Door d) => d.y_m + ((d.orientacion is "N" or "S") ? d.largo_m : 0m);
-        private static decimal WinEndX(Win w) => w.x_m + ((w.orientacion is "E" or "W") ? w.largo_m : 0m);
-        private static decimal WinEndY(Win w) => w.y_m + ((w.orientacion is "N" or "S") ? w.largo_m : 0m);
+                var (ox, oy, ow, oh) = hit.Value;
+
+                var aL = x; var aT = y; var aR = x + w; var aB = y + h;
+                var bL = ox; var bT = oy; var bR = ox + ow; var bB = oy + oh;
+
+                var overlapX = Math.Min(aR, bR) - Math.Max(aL, bL);
+                var overlapY = Math.Min(aB, bB) - Math.Max(aT, bT);
+
+                if (overlapX <= 0m || overlapY <= 0m) break;
+
+                var aCx = aL + w / 2m;
+                var aCy = aT + h / 2m;
+                var bCx = bL + ow / 2m;
+                var bCy = bT + oh / 2m;
+
+                if (overlapX < overlapY)
+                {
+                    // mover en X
+                    if (aCx < bCx) x -= (overlapX + EPS_SEP);
+                    else x += (overlapX + EPS_SEP);
+                }
+                else
+                {
+                    // mover en Y
+                    if (aCy < bCy) y -= (overlapY + EPS_SEP);
+                    else y += (overlapY + EPS_SEP);
+                }
+
+                // clamp dentro del parent (contorno real)
+                (x, y) = ClampRectToPolyShape(parent, x, y, w, h);
+            }
+
+            return (x, y);
+        }
+
+        private (decimal x, decimal y, decimal w, decimal h)? FindFirstOverlapSameType(string movingId, InnerKind kind, decimal x, decimal y, decimal w, decimal h)
+        {
+            foreach (var other in _inners)
+            {
+                if (string.Equals(other.poly_in_id, movingId, StringComparison.OrdinalIgnoreCase)) continue;
+                if (GetKind(other) != kind) continue;
+
+                var ox = other.abs_x;
+                var oy = other.abs_y;
+                var ow = other.ancho_m;
+                var oh = other.largo_m;
+
+                if (RectsOverlap(x, y, w, h, ox, oy, ow, oh))
+                    return (ox, oy, ow, oh);
+            }
+            return null;
+        }
+
+        private static bool RectsOverlap(decimal ax, decimal ay, decimal aw, decimal ah, decimal bx, decimal by, decimal bw, decimal bh)
+        {
+            return ax < (bx + bw) && (ax + aw) > bx && ay < (by + bh) && (ay + ah) > by;
+        }
+
+        private (decimal x, decimal y) ClampRectInAreaUnion(AreaDraw area, decimal x, decimal y, decimal w, decimal h)
+        {
+            // Estrategia:
+            // 1) clamp al bbox del mejor poly (rápido)
+            var best = BestPolyForRect(area, x, y, w, h, current: null);
+            var (cx, cy) = ClampRectToPolyShape(best, x, y, w, h);
+
+            // 2) Si por contorno real todavía no está dentro de la unión, intenta acercar al centro del poly
+            if (!RectInsideAreaUnion(area, cx, cy, w, h))
+            {
+                var (tx, ty) = NudgeRectTowardsPolyInterior(best, cx, cy, w, h);
+                cx = tx; cy = ty;
+            }
+
+            // 3) fallback: clamp bbox del área (para no volarse lejos)
+            if (!RectInsideAreaUnion(area, cx, cy, w, h))
+            {
+                var minX = area.MinX;
+                var minY = area.MinY;
+                var maxX = area.MaxX - w;
+                var maxY = area.MaxY - h;
+                cx = Clamp(minX, maxX, cx);
+                cy = Clamp(minY, maxY, cy);
+            }
+
+            return (cx, cy);
+        }
+
+        private (decimal x, decimal y) ClampRectToPolyShape(Poly p, decimal x, decimal y, decimal w, decimal h)
+        {
+            // clamp primero a bbox del poly
+            var minX = p.x_m;
+            var minY = p.y_m;
+            var maxX = p.x_m + Math.Max(0m, p.ancho_m - w);
+            var maxY = p.y_m + Math.Max(0m, p.largo_m - h);
+
+            x = Clamp(minX, maxX, x);
+            y = Clamp(minY, maxY, y);
+
+            // si es polígono real, exigimos 4 esquinas dentro
+            if (p.puntos.Count >= 3)
+            {
+                if (RectInsidePoly(p, x, y, w, h)) return (x, y);
+
+                // nudges hacia el centro del polígono
+                var (nx, ny) = NudgeRectTowardsPolyInterior(p, x, y, w, h);
+                nx = Clamp(minX, maxX, nx);
+                ny = Clamp(minY, maxY, ny);
+
+                // si todavía no, último clamp bbox (ya está)
+                return (nx, ny);
+            }
+
+            return (x, y);
+        }
+
+        private (decimal x, decimal y) NudgeRectTowardsPolyInterior(Poly p, decimal x, decimal y, decimal w, decimal h)
+        {
+            var (cxPoly, cyPoly) = PolyCentroidApprox(p);
+            var step = 0.03m;
+
+            var minX = p.x_m;
+            var minY = p.y_m;
+            var maxX = p.x_m + Math.Max(0m, p.ancho_m - w);
+            var maxY = p.y_m + Math.Max(0m, p.largo_m - h);
+
+            decimal curX = x, curY = y;
+
+            for (int i = 0; i < 30; i++)
+            {
+                if (RectInsidePoly(p, curX, curY, w, h)) break;
+
+                var rcx = curX + w / 2m;
+                var rcy = curY + h / 2m;
+
+                var dirX = Math.Sign(cxPoly - rcx);
+                var dirY = Math.Sign(cyPoly - rcy);
+
+                // intenta mover en el eje "más necesario"
+                if (dirX != 0) curX += dirX * step;
+                if (dirY != 0) curY += dirY * step;
+
+                curX = Clamp(minX, maxX, curX);
+                curY = Clamp(minY, maxY, curY);
+            }
+
+            return (curX, curY);
+        }
+
+        private static (decimal cx, decimal cy) PolyCentroidApprox(Poly p)
+        {
+            if (p.puntos.Count < 3)
+            {
+                return (p.x_m + p.ancho_m / 2m, p.y_m + p.largo_m / 2m);
+            }
+
+            // centroide simple promedio (suficiente para "nudge")
+            decimal sx = 0m, sy = 0m;
+            foreach (var pt in p.puntos) { sx += pt.X; sy += pt.Y; }
+            return (sx / p.puntos.Count, sy / p.puntos.Count);
+        }
+
+        private bool RectInsideAreaUnion(AreaDraw area, decimal x, decimal y, decimal w, decimal h)
+        {
+            // 4 esquinas dentro de la unión
+            return IsPointInsideAreaUnion(area, x + PAD_AREA, y + PAD_AREA)
+                && IsPointInsideAreaUnion(area, x + w - PAD_AREA, y + PAD_AREA)
+                && IsPointInsideAreaUnion(area, x + PAD_AREA, y + h - PAD_AREA)
+                && IsPointInsideAreaUnion(area, x + w - PAD_AREA, y + h - PAD_AREA);
+        }
+
+        private bool IsPointInsideAreaUnion(AreaDraw area, decimal x, decimal y)
+        {
+            foreach (var p in area.Polys)
+            {
+                if (PointInsidePoly(p, x, y)) return true;
+            }
+            return false;
+        }
+
+        private static bool RectInsidePoly(Poly p, decimal x, decimal y, decimal w, decimal h)
+        {
+            // 4 esquinas dentro del poly
+            return PointInsidePoly(p, x + PAD_AREA, y + PAD_AREA)
+                && PointInsidePoly(p, x + w - PAD_AREA, y + PAD_AREA)
+                && PointInsidePoly(p, x + PAD_AREA, y + h - PAD_AREA)
+                && PointInsidePoly(p, x + w - PAD_AREA, y + h - PAD_AREA);
+        }
+
+        private static bool PointInsidePoly(Poly p, decimal x, decimal y)
+        {
+            if (p.puntos.Count < 3)
+            {
+                return x >= p.x_m && x <= p.x_m + p.ancho_m
+                    && y >= p.y_m && y <= p.y_m + p.largo_m;
+            }
+
+            // Ray casting
+            var pts = p.puntos;
+            bool inside = false;
+            for (int i = 0, j = pts.Count - 1; i < pts.Count; j = i++)
+            {
+                var xi = pts[i].X; var yi = pts[i].Y;
+                var xj = pts[j].X; var yj = pts[j].Y;
+
+                var intersect = ((yi > y) != (yj > y)) &&
+                                (x < (xj - xi) * (y - yi) / ((yj - yi) == 0m ? 0.0000001m : (yj - yi)) + xi);
+                if (intersect) inside = !inside;
+            }
+            return inside;
+        }
+
+        private static Poly BestPolyForRect(AreaDraw area, decimal absX, decimal absY, decimal w, decimal h, Poly? current)
+        {
+            Poly best = current ?? area.Polys[0];
+            decimal bestScore = -1m;
+
+            var rect = (L: absX, T: absY, R: absX + w, B: absY + h);
+
+            foreach (var p in area.Polys)
+            {
+                var pb = (L: p.x_m, T: p.y_m, R: p.x_m + p.ancho_m, B: p.y_m + p.largo_m);
+                var inter = RectIntersectArea(pb, rect);
+
+                // bias suave para mantener el current
+                if (current is not null && string.Equals(p.poly_id, current.poly_id, StringComparison.OrdinalIgnoreCase))
+                    inter *= 1.10m;
+
+                if (inter > bestScore)
+                {
+                    bestScore = inter;
+                    best = p;
+                }
+            }
+
+            return best;
+        }
+
+        private static decimal RectIntersectArea(
+            (decimal L, decimal T, decimal R, decimal B) a,
+            (decimal L, decimal T, decimal R, decimal B) b)
+        {
+            var x1 = Math.Max(a.L, b.L);
+            var y1 = Math.Max(a.T, b.T);
+            var x2 = Math.Min(a.R, b.R);
+            var y2 = Math.Min(a.B, b.B);
+            var W = x2 - x1;
+            var H = y2 - y1;
+            return (W > 0m && H > 0m) ? (W * H) : 0m;
+        }
+
+
+        // =========================
+        // Helpers geometría / texto
+        // =========================
+        private static decimal FitInnerText(InnerItem it)
+        {
+            var pad = 0.10m;
+            var w = Math.Max(0.10m, it.ancho_m - 2 * pad);
+            var h = Math.Max(0.10m, it.largo_m - 2 * pad);
+            var len = Math.Max(1, it.label?.Length ?? 1);
+
+            var fsByH = h * 0.60m;
+            var fsByW = (decimal)w / (decimal)(0.65 * len);
+            var fs = Math.Min(fsByH, fsByW);
+
+            return Clamp(0.18m, 5m, fs);
+        }
+
+        private string PointsString(IEnumerable<Point> points)
+            => string.Join(" ", points.Select(p => $"{S(p.X)},{S(p.Y)}"));
 
         private static List<Point> BuildRectPoints(decimal x, decimal y, decimal w, decimal h)
             => new()
@@ -1962,444 +2293,84 @@ namespace BARI_web.Features.Espacios.Pages
             return (minX, minY, maxX, maxY);
         }
 
-        private async Task<Dictionary<string, List<Point>>> LoadPolyPointsAsync()
+        private static void BuildAreaOutlineFromPoints(AreaDraw a)
         {
-            var pointsByPoly = new Dictionary<string, List<(int orden, Point point)>>(StringComparer.OrdinalIgnoreCase);
-            Pg.UseSheet("poligonos_puntos");
-            foreach (var row in await Pg.ReadAllAsync())
+            a.Outline.Clear();
+            foreach (var p in a.Polys)
             {
-                var polyId = Get(row, "poly_id");
-                if (string.IsNullOrWhiteSpace(polyId)) continue;
-                var orden = Int(Get(row, "orden", "0"));
-                var x = Dec(Get(row, "x_m", "0"));
-                var y = Dec(Get(row, "y_m", "0"));
-                if (!pointsByPoly.TryGetValue(polyId, out var list))
+                var points = p.puntos.Count >= 3
+                    ? p.puntos
+                    : BuildRectPoints(p.x_m, p.y_m, p.ancho_m, p.largo_m);
+
+                if (points.Count < 2) continue;
+                for (int i = 0; i < points.Count; i++)
                 {
-                    list = new List<(int, Point)>();
-                    pointsByPoly[polyId] = list;
-                }
-                list.Add((orden, new Point(x, y)));
-            }
-
-            return pointsByPoly.ToDictionary(
-                pair => pair.Key,
-                pair => pair.Value.OrderBy(item => item.orden).Select(item => item.point).ToList(),
-                StringComparer.OrdinalIgnoreCase);
-        }
-
-        private string PointsString(IEnumerable<Point> points)
-            => string.Join(" ", points.Select(p => $"{S(p.X)},{S(p.Y)}"));
-
-        private void CrearMesonRegistro()
-        {
-            if (_area is null) return;
-
-            var mesonId = $"mes_{Guid.NewGuid():N}".Substring(0, 12);
-            var nombre = string.IsNullOrWhiteSpace(_nuevoMesonNombre)
-                ? PickNombreUnico(_area.AreaId, _mesones.Values)
-                : _nuevoMesonNombre.Trim();
-
-            _mesones[mesonId] = new Meson
-            {
-                meson_id = mesonId,
-                area_id = _area.AreaId,
-                nombre_meson = nombre,
-                ancho_cm = _nuevoMesonAnchoCm,
-                largo_cm = _nuevoMesonLargoCm,
-                profundidad_cm = _nuevoMesonProfundidadCm,
-                niveles_totales = _nuevoMesonNiveles
-            };
-            _mesonesLookup[mesonId] = nombre;
-
-            _nuevoMesonNombre = "";
-            _nuevoMesonMsg = "Mesón registrado (recuerda guardar).";
-            StateHasChanged();
-        }
-
-        private void CrearMaterialMontaje()
-        {
-            if (_area is null) return;
-
-            var nombre = (_nuevoMaterialNombre ?? "").Trim();
-            if (string.IsNullOrWhiteSpace(nombre))
-            {
-                _nuevoMaterialMsg = "Ingresa un nombre para el material.";
-                return;
-            }
-
-            var materialId = $"mat_{Guid.NewGuid():N}".Substring(0, 12);
-            _materialesMontaje[materialId] = new MaterialMontaje
-            {
-                material_id = materialId,
-                area_id = _area.AreaId,
-                nombre = nombre,
-                estado_id = string.IsNullOrWhiteSpace(_nuevoMaterialEstado) ? null : _nuevoMaterialEstado.Trim(),
-                posicion = string.IsNullOrWhiteSpace(_nuevoMaterialPosicion) ? null : _nuevoMaterialPosicion.Trim(),
-                laboratorio_id = _laboratorioId
-            };
-            _materialesLookup[materialId] = nombre;
-
-            _nuevoMaterialNombre = "";
-            _nuevoMaterialEstado = null;
-            _nuevoMaterialPosicion = null;
-            _nuevoMaterialMsg = "Material registrado (recuerda guardar).";
-            StateHasChanged();
-        }
-
-
-
-
-        private async Task AgregarInstalacion()
-        {
-            if (_area is null || _area.Polys.Count == 0 || _canvas is null) return;
-
-            if (_tiposInstalacion is null || _tiposInstalacion.Count == 0)
-            {
-                try { _tiposInstalacion = await Pg.GetLookupAsync("instalaciones_tipo", "tipo_id", "nombre"); }
-                catch { _tiposInstalacion = new Dictionary<string, string>(); }
-            }
-
-            var parent = _area.Polys[0];
-
-            var w = Math.Min(1.0m, parent.ancho_m * 0.35m);
-            var h = Math.Min(1.0m, parent.alto_m * 0.35m);
-            var rx = Math.Max(0m, (parent.ancho_m - w) / 2m);
-            var ry = Math.Max(0m, (parent.alto_m - h) / 2m);
-
-            var innerId = $"pin_{Guid.NewGuid():N}".Substring(0, 12);
-            var instId = $"ins_{Guid.NewGuid():N}".Substring(0, 12);
-            string? defaultTipoId = _tiposInstalacion.Count > 0 ? _tiposInstalacion.First().Key : null;
-
-            var it = new InnerItem
-            {
-                poly_in_id = innerId,
-                area_poly_id = parent.poly_id,
-
-                canvas_id = _canvas.canvas_id,
-                area_id = _area.AreaId,
-
-                eje_x_rel_m = rx,
-                eje_y_rel_m = ry,
-                eje_z_rel_m = 0m,
-
-                ancho_m = w,
-                profundo_m = 0.6m,
-                alto_m = h,
-
-                yaw_deg = 0m,
-                pivot_kind = "center",
-                offset_x_m = 0m,
-                offset_y_m = 0m,
-                offset_z_m = 0m,
-
-                z_order = 50,
-
-                label = "INSTALACIÓN",
-                fill = "#10B981",
-                opacidad = 0.35m,
-
-                meson_id = null,
-                instalacion_id = instId
-            };
-            it.abs_x = parent.x_m + it.eje_x_rel_m;
-            it.abs_y = parent.y_m + it.eje_y_rel_m;
-
-            _inners.Add(it);
-            _mapIn[it.poly_in_id] = it;
-            _selIn = it.poly_in_id;
-
-            _instalaciones[instId] = new Instalacion
-            {
-                instalacion_id = instId,
-                nombre = "Nueva instalación",
-                tipo_id = defaultTipoId,
-                notas = null,
-                requiere_mantenimiento = false
-            };
-
-            StateHasChanged();
-        }
-
-
-        private static bool RectTouchesPoly(Poly p, decimal x, decimal y, decimal w, decimal h, decimal pad)
-        {
-            var L = p.x_m - pad; var T = p.y_m - pad;
-            var R = p.x_m + p.ancho_m + pad; var B = p.y_m + p.alto_m + pad;
-
-            var aL = x; var aT = y; var aR = x + w; var aB = y + h;
-            return (aL < R && aR > L && aT < B && aB > T);
-        }
-
-        // Clamp “suave”: permite ±pad al entrar/salir por juntas para evitar pegotes
-        private static (decimal cx, decimal cy) ClampRectInSoft(Poly p, decimal absX, decimal absY, decimal w, decimal h, decimal pad)
-        {
-            var minX = p.x_m - pad;
-            var minY = p.y_m - pad;
-            var maxX = p.x_m + p.ancho_m + pad - w;
-            var maxY = p.y_m + p.alto_m + pad - h;
-
-            var cx = absX; if (cx < minX) cx = minX; if (cx > maxX) cx = maxX;
-            var cy = absY; if (cy < minY) cy = minY; if (cy > maxY) cy = maxY;
-            return (cx, cy);
-        }
-
-        // Escribe en el inner sin NormalizeInner, con clamp relativo SUAVE y reposición abs coherente
-        private static void CommitToParent(InnerItem it, Poly parent, decimal absX, decimal absY, decimal w, decimal h)
-        {
-            var relX = absX - parent.x_m;
-            var relY = absY - parent.y_m;
-
-            var maxX = parent.ancho_m - w;
-            var maxY = parent.alto_m - h;
-
-            // permite pequeña “respiración” +-EPS_JOIN y luego clamp duro a [0,max]
-            if (relX < -EPS_JOIN) relX = -EPS_JOIN;
-            if (relY < -EPS_JOIN) relY = -EPS_JOIN;
-            if (relX > maxX + EPS_JOIN) relX = maxX + EPS_JOIN;
-            if (relY > maxY + EPS_JOIN) relY = maxY + EPS_JOIN;
-
-            var relXHard = Clamp(0m, maxX, relX);
-            var relYHard = Clamp(0m, maxY, relY);
-
-            it.area_poly_id = parent.poly_id;
-            it.eje_x_rel_m = Math.Round(relXHard, 3, MidpointRounding.AwayFromZero);
-            it.eje_y_rel_m = Math.Round(relYHard, 3, MidpointRounding.AwayFromZero);
-            it.ancho_m = Math.Round(w, 3, MidpointRounding.AwayFromZero);
-            it.alto_m = Math.Round(h, 3, MidpointRounding.AwayFromZero);
-
-            it.abs_x = parent.x_m + it.eje_x_rel_m;
-            it.abs_y = parent.y_m + it.eje_y_rel_m;
-        }
-
-        // Elije el polígono con menor desplazamiento desde la propuesta ABS
-        private static (Poly poly, decimal cx, decimal cy) SoftClampToAreaUnion(AreaDraw area, decimal absX, decimal absY, decimal w, decimal h, Poly current)
-        {
-            Poly best = current;
-            decimal bestX = absX, bestY = absY;
-            double bestCost = double.MaxValue;
-
-            foreach (var p in area.Polys)
-            {
-                var (cx, cy) = ClampRectInSoft(p, absX, absY, w, h, EPS_JOIN);
-                var dx = (double)(cx - absX);
-                var dy = (double)(cy - absY);
-
-                // sesgo para mantener el padre actual si el costo es parecido
-                var bias = (p.poly_id == current.poly_id) ? 0.80 : 1.00;
-                var cost = (dx * dx + dy * dy) * bias;
-
-                if (cost < bestCost)
-                {
-                    bestCost = cost;
-                    best = p;
-                    bestX = cx; bestY = cy;
+                    var start = points[i];
+                    var end = points[(i + 1) % points.Count];
+                    if (start.X == end.X && start.Y == end.Y) continue;
+                    a.Outline.Add((start.X, start.Y, end.X, end.Y));
                 }
             }
-            return (best, bestX, bestY);
         }
 
-
-
-        private void AbrirNuevoTipoInstalacion()
+        // =========================
+        // Helpers canvas conversion
+        // =========================
+        private double PxPerM()
         {
-            _nuevoTipo_Nombre = "";
-            _nuevoTipo_Descripcion = null;
-            _showTipoInstalacionPanel = true;
+            const double nominalSvgPx = 1000.0;
+            return nominalSvgPx / (double)Wm;
         }
 
-        private async Task ConfirmarCrearTipoInstalacion()
+        private (decimal x, decimal y) ScreenToWorld(double offsetX, double offsetY)
+            => (_panX + (decimal)(offsetX / (PxPerM() * _zoom)),
+                _panY + (decimal)(offsetY / (PxPerM() * _zoom)));
+
+        // =========================
+        // Helpers puertas/ventanas
+        // =========================
+        private static decimal DoorEndX(Door d) => d.x_m + ((d.orientacion is "E" or "W") ? d.largo_m : 0m);
+        private static decimal DoorEndY(Door d) => d.y_m + ((d.orientacion is "N" or "S") ? d.largo_m : 0m);
+        private static decimal WinEndX(Win w) => w.x_m + ((w.orientacion is "E" or "W") ? w.largo_m : 0m);
+        private static decimal WinEndY(Win w) => w.y_m + ((w.orientacion is "N" or "S") ? w.largo_m : 0m);
+
+        // =========================
+        // Helpers DB / parsing
+        // =========================
+        private static decimal Clamp(decimal min, decimal max, decimal v) => Math.Max(min, Math.Min(max, v));
+        private static string S(decimal v) => v.ToString(CultureInfo.InvariantCulture);
+        private static decimal Dec(string s) => decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : 0m;
+        private static int Int(string s) => int.TryParse(s, out var n) ? n : 0;
+        private static int Int(object? o) => int.TryParse(o?.ToString(), out var n) ? n : 0;
+        private static string? NullIfEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s;
+
+        private static string Get(Dictionary<string, string> d, string key, string fallback = "")
+            => d.TryGetValue(key, out var v) ? (v ?? fallback) : fallback;
+
+        private static decimal? ParseNullableDecimal(string? s)
         {
-            try
-            {
-                Pg.UseSheet("instalaciones_tipo");
-                var newId = $"tipo_{Guid.NewGuid():N}".Substring(0, 12);
-
-                var toSave = new Dictionary<string, object>
-                {
-                    ["tipo_id"] = newId,
-                    ["nombre"] = _nuevoTipo_Nombre,
-                    ["notas"] = string.IsNullOrWhiteSpace(_nuevoTipo_Descripcion) ? (object)DBNull.Value : _nuevoTipo_Descripcion!
-                };
-                await Pg.CreateAsync(toSave);
-
-                // actualizar catálogo local
-                _tiposInstalacion ??= new Dictionary<string, string>();
-                _tiposInstalacion[newId] = _nuevoTipo_Nombre;
-
-                if (_showNuevaInstalacionPanel)
-                    _nuevoIns_TipoId = newId;
-
-                _showTipoInstalacionPanel = false;
-                _saveMsg = "Tipo de instalación creado ✔";
-                StateHasChanged();
-            }
-            catch
-            {
-                _saveMsg = "No se pudo crear el tipo en 'instalaciones_tipo'.";
-                StateHasChanged();
-            }
+            s = (s ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(s)) return null;
+            if (decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var d)) return d;
+            return null;
         }
 
-        private async Task CrearMesonParaSeleccion()
+        private static DateTime? ParseDate(string? s)
         {
-            if (_selIn is null || !_mapIn.TryGetValue(_selIn, out var it) || _area is null) return;
-
-            var newId = $"mes_{Guid.NewGuid():N}".Substring(0, 12);
-
-            // Nombre por defecto único dentro del área (evita UNIQUE area_id+nombre_meson)
-            string BaseName(string area) => "MESON";
-            string PickName(string area)
-            {
-                var prefix = BaseName(area);
-                var existing = _mesones.Values.Where(m => string.Equals(m.area_id, area, StringComparison.OrdinalIgnoreCase))
-                                              .Select(m => m.nombre_meson)
-                                              .ToHashSet(StringComparer.OrdinalIgnoreCase);
-                if (!existing.Contains(prefix)) return prefix;
-                for (int i = 2; i < 999; i++)
-                {
-                    var candidate = $"{prefix} {i:00}";
-                    if (!existing.Contains(candidate)) return candidate;
-                }
-                return $"{prefix} {Guid.NewGuid():N}".Substring(0, 8);
-            }
-
-            var areaId = _area.AreaId;
-            var nombre = PickName(areaId);
-
-            // Cache local (todavía sin escribir en DB hasta Guardar)
-            _mesones[newId] = new Meson
-            {
-                meson_id = newId,
-                area_id = areaId,              // NOT NULL
-                nombre_meson = nombre,         // NOT NULL
-                ancho_cm = 100,
-                largo_cm = 200,
-                profundidad_cm = 60,
-                niveles_totales = 1
-            };
-
-            // Vincular al inner recién creado/seleccionado
-            it.meson_id = newId;
-
-            StateHasChanged();
+            if (string.IsNullOrWhiteSpace(s)) return null;
+            if (DateTime.TryParse(s, out var d)) return d.Date;
+            return null;
         }
 
-        // offset cursor vs. origen ABS del item al comenzar drag
-        private (decimal dx, decimal dy)? _grab;
+        private static string DateToInput(DateTime? d)
+    => d.HasValue ? d.Value.ToString("yyyy-MM-dd") : "";
 
-
-        // Guarda ABS como fuente de verdad y relativas con margen suave al padre elegido.
-        // ¡NO recalcula abs desde rel! así el rect puede “asomar” por la junta durante el drag.
-        // firma nueva: allowRehome por defecto = false
-        private void CommitToUnion(InnerItem it, AreaDraw area, Poly parent,
-                           decimal absX, decimal absY, decimal w, decimal h,
-                           bool allowRehome = false)
+        // ✅ Normaliza URL (http o ruta relativa tipo /uploads/...)
+        private static string ResolveUrl(string? url)
         {
-            if (!allowRehome)
-            {
-                // DURANTE DRAG: no clamp a ningún polígono
-                it.abs_x = absX;
-                it.abs_y = absY;
-                it.ancho_m = w;
-                it.alto_m = h;
-
-                // Mantén coords relativas coherentes al padre “visual” del frame
-                it.eje_x_rel_m = Math.Round(absX - parent.x_m, 3, MidpointRounding.AwayFromZero);
-                it.eje_y_rel_m = Math.Round(absY - parent.y_m, 3, MidpointRounding.AwayFromZero);
-                // OJO: NO tocar area_poly_id aquí.
-                return;
-            }
-
-            // DROP: clamp suave al padre definitivo y re-home real
-            var (cx, cy) = ClampRectInSoft(parent, absX, absY, w, h, EPS_JOIN);
-
-            it.abs_x = cx;
-            it.abs_y = cy;
-            it.ancho_m = w;
-            it.alto_m = h;
-
-            // Recalcula relativas respecto al padre final
-            it.eje_x_rel_m = Math.Round(cx - parent.x_m, 3, MidpointRounding.AwayFromZero);
-            it.eje_y_rel_m = Math.Round(cy - parent.y_m, 3, MidpointRounding.AwayFromZero);
-
-            if (!string.Equals(it.area_poly_id, parent.poly_id, StringComparison.OrdinalIgnoreCase))
-            {
-                it.area_poly_id = parent.poly_id;
-            }
-        }
-
-
-
-
-        private async Task CrearInstalacionParaSeleccion()
-        {
-            if (_selIn is null || !_mapIn.TryGetValue(_selIn, out var it)) return;
-
-            var newId = $"ins_{Guid.NewGuid():N}".Substring(0, 12);
-
-            // TIP: si tienes una tabla de tipos, reemplaza null por el id “default”
-            var tipoId = (string?)null;
-
-            Pg.UseSheet("instalaciones");
-            var toSave = new Dictionary<string, object>
-            {
-                ["instalacion_id"] = newId,
-                ["nombre"] = "Nueva instalación",
-                ["tipo_id"] = (object?)tipoId ?? DBNull.Value,
-                ["notas"] = DBNull.Value,
-                ["requiere_mantenimiento"] = false
-            };
-            await Pg.CreateAsync(toSave);
-
-            it.instalacion_id = newId;
-            _instalaciones[newId] = new Instalacion
-            {
-                instalacion_id = newId,
-                nombre = "Nueva instalación",
-                tipo_id = tipoId,
-                notas = null,
-                requiere_mantenimiento = false
-            };
-
-            StateHasChanged();
-        }
-
-        private async Task CrearTipoInstalacion()
-        {
-            try
-            {
-                Pg.UseSheet("instalaciones_tipo");
-                var newId = $"tipo_{Guid.NewGuid():N}".Substring(0, 12);
-
-                var toSave = new Dictionary<string, object>
-                {
-                    ["tipo_id"] = newId,
-                    ["nombre"] = "Tipo nuevo",
-                    ["notas"] = DBNull.Value
-                };
-                await Pg.CreateAsync(toSave);
-
-                _saveMsg = "Tipo de instalación creado ✔";
-            }
-            catch
-            {
-                _saveMsg = "No se pudo crear el tipo en 'instalaciones_tipo'.";
-            }
-            finally
-            {
-                StateHasChanged();
-            }
-        }
-
-
-        private static decimal ParseFlexible(object? v)
-        {
-            var s = (v?.ToString() ?? "").Trim();
-            if (string.IsNullOrEmpty(s)) return 0m;
-            s = s.Replace(" ", "");
-            if (s.Count(ch => ch == ',' || ch == '.') > 1) s = s.Replace(".", "").Replace(",", ".");
-            else s = s.Replace(",", ".");
-            return decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : 0m;
+            if (string.IsNullOrWhiteSpace(url)) return "";
+            if (url.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return url;
+            return url.StartsWith("/", StringComparison.OrdinalIgnoreCase) ? url : $"/{url}";
         }
 
         private static bool Bool(object? value)
@@ -2412,10 +2383,50 @@ namespace BARI_web.Features.Espacios.Pages
             };
         }
 
+        private static decimal ParseFlexible(object? v)
+        {
+            var s = (v?.ToString() ?? "").Trim();
+            if (string.IsNullOrEmpty(s)) return 0m;
+            s = s.Replace(" ", "");
+            if (s.Count(ch => ch == ',' || ch == '.') > 1) s = s.Replace(".", "").Replace(",", ".");
+            else s = s.Replace(",", ".");
+            return decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : 0m;
+        }
+
+        private async Task<Dictionary<string, List<Point>>> LoadPolyPointsAsync()
+        {
+            var pointsByPoly = new Dictionary<string, List<(int orden, Point point)>>(StringComparer.OrdinalIgnoreCase);
+
+            Pg.UseSheet("poligonos_puntos");
+            foreach (var row in await Pg.ReadAllAsync())
+            {
+                var polyId = Get(row, "poly_id");
+                if (string.IsNullOrWhiteSpace(polyId)) continue;
+
+                var orden = Int(Get(row, "orden", "0"));
+                var x = Dec(Get(row, "x_m", "0"));
+                var y = Dec(Get(row, "y_m", "0"));
+
+                if (!pointsByPoly.TryGetValue(polyId, out var list))
+                {
+                    list = new List<(int, Point)>();
+                    pointsByPoly[polyId] = list;
+                }
+                list.Add((orden, new Point(x, y)));
+            }
+
+            return pointsByPoly.ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value.OrderBy(item => item.orden).Select(item => item.point).ToList(),
+                StringComparer.OrdinalIgnoreCase
+            );
+        }
+
         private async Task<string> ResolveAreaIdFromSlug(string slugFromUrl)
         {
             var slug = Slugify((slugFromUrl ?? "").Trim());
             var candidate = slug.Replace('-', '_');
+
             var nameLookup = await Pg.GetLookupAsync("areas", "area_id", "nombre_areas");
             foreach (var kv in nameLookup)
             {
@@ -2429,6 +2440,7 @@ namespace BARI_web.Features.Espacios.Pages
         private async Task<string?> ResolveCanvasForArea(string areaId)
         {
             if (string.IsNullOrWhiteSpace(areaId)) return null;
+
             try
             {
                 Pg.UseSheet("areas");
@@ -2442,189 +2454,85 @@ namespace BARI_web.Features.Espacios.Pages
             return null;
         }
 
-
-       
-
-        // ---- Re-home helpers para moverte entre polígonos de la misma área
-        private static (decimal L, decimal T, decimal R, decimal B) Bounds(Poly p)
-            => (p.x_m, p.y_m, p.x_m + p.ancho_m, p.y_m + p.alto_m);
-
-        private static decimal RectIntersectArea(
-            (decimal L, decimal T, decimal R, decimal B) a,
-            (decimal L, decimal T, decimal R, decimal B) b)
-        {
-            var x1 = Math.Max(a.L, b.L);
-            var y1 = Math.Max(a.T, b.T);
-            var x2 = Math.Min(a.R, b.R);
-            var y2 = Math.Min(a.B, b.B);
-            var w = x2 - x1;
-            var h = y2 - y1;
-            return (w > 0m && h > 0m) ? (w * h) : 0m;
-        }
-
-        private static bool RectInside((decimal L, decimal T, decimal R, decimal B) outer,
-                                       decimal x, decimal y, decimal w, decimal h, decimal pad = 0m)
-        {
-            return (x >= outer.L - pad) && (y >= outer.T - pad)
-                && (x + w <= outer.R + pad) && (y + h <= outer.B + pad);
-        }
-
-        // Devuelve el polígono del área que mejor “contiene” el rect (x,y,w,h) en absolutos.
-        // Preferimos el que lo contiene totalmente; si ninguno, el de mayor solape.
-        private Poly BestPolyForRect(AreaDraw area, decimal absX, decimal absY, decimal w, decimal h)
-        {
-            Poly? best = null;
-            decimal bestScore = -1m;
-
-            var rect = (L: absX, T: absY, R: absX + w, B: absY + h);
-
-            foreach (var p in area.Polys)
-            {
-                var pb = Bounds(p);
-
-                // primero: ¿cabe completo?
-                if (RectInside(pb, absX, absY, w, h, 0m))
-                {
-                    // puntuamos por “margen” (más grande = mejor, para evitar bordes)
-                    var margin = Math.Min(
-                        Math.Min(absX - pb.L, pb.R - (absX + w)),
-                        Math.Min(absY - pb.T, pb.B - (absY + h))
-                    );
-                    var score = 1_000_000m + Math.Max(0m, margin);
-                    if (score > bestScore) { bestScore = score; best = p; }
-                    continue;
-                }
-
-                // si no cabe, medimos solape
-                var inter = RectIntersectArea(pb, rect);
-                if (inter > bestScore)
-                {
-                    bestScore = inter;
-                    best = p;
-                }
-            }
-
-            // Como fallback, si por alguna razón no hay ninguno, vuelve al primero
-            return best ?? area.Polys[0];
-        }
-
-        // Reubica el inner en el polígono adecuado según una posición absoluta deseada.
-        // Hace el clamp en ese nuevo padre y actualiza _dragParent.
-        private void RehomeAndClampInner(InnerItem it, decimal desiredAbsX, decimal desiredAbsY)
-        {
-            if (_area is null) return;
-
-            // Elegir el mejor padre para esa posición
-            var newParent = BestPolyForRect(_area, desiredAbsX, desiredAbsY, it.ancho_m, it.alto_m);
-
-            // Coordenadas relativas al NUEVO padre
-            var rx = desiredAbsX - newParent.x_m;
-            var ry = desiredAbsY - newParent.y_m;
-
-            // Clamp dentro del NUEVO padre
-            var minX = 0m; var minY = 0m;
-            var maxX = Math.Max(0m, newParent.ancho_m - it.ancho_m);
-            var maxY = Math.Max(0m, newParent.alto_m - it.alto_m);
-
-            it.eje_x_rel_m = Clamp(minX, maxX, rx);
-            it.eje_y_rel_m = Clamp(minY, maxY, ry);
-
-            // Absolutos a partir del nuevo padre
-            it.abs_x = newParent.x_m + it.eje_x_rel_m;
-            it.abs_y = newParent.y_m + it.eje_y_rel_m;
-
-            // Actualiza el padre de drag
-            _dragParent = newParent;
-
-            // Normalización final por si el tamaño cambió en otro flujo
-            NormalizeInner(it);
-        }
-
         private static string Slugify(string s)
         {
             if (string.IsNullOrWhiteSpace(s)) return "sin-area";
             var normalized = s.Trim().ToLowerInvariant();
-            var formD = normalized.Normalize(System.Text.NormalizationForm.FormD);
-            var sb = new System.Text.StringBuilder();
+            var formD = normalized.Normalize(NormalizationForm.FormD);
+
+            var sb = new StringBuilder();
             foreach (var ch in formD)
             {
-                var cat = System.Globalization.CharUnicodeInfo.GetUnicodeCategory(ch);
-                if (cat != System.Globalization.UnicodeCategory.NonSpacingMark) sb.Append(ch);
+                var cat = CharUnicodeInfo.GetUnicodeCategory(ch);
+                if (cat != UnicodeCategory.NonSpacingMark) sb.Append(ch);
             }
-            var cleaned = sb.ToString().Normalize(System.Text.NormalizationForm.FormC);
 
-            var sb2 = new System.Text.StringBuilder(cleaned.Length);
+            var cleaned = sb.ToString().Normalize(NormalizationForm.FormC);
+
+            var sb2 = new StringBuilder(cleaned.Length);
             foreach (var ch in cleaned)
             {
                 if ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-') sb2.Append(ch);
                 else if (char.IsWhiteSpace(ch) || ch == '_' || ch == '/') sb2.Append('-');
             }
+
             var slug = sb2.ToString().Trim('-');
             return string.IsNullOrEmpty(slug) ? "sin-area" : slug;
         }
-        private static bool PointInsidePoly(Poly p, decimal x, decimal y, decimal pad = 0m)
+
+        private static string PickNombreUnico(string areaId, IEnumerable<Meson> existentes)
         {
-            return x >= p.x_m - pad && x <= p.x_m + p.ancho_m + pad
-                && y >= p.y_m - pad && y <= p.y_m + p.alto_m + pad;
-        }
+            var usados = existentes
+                .Where(m => string.Equals(m.area_id, areaId, StringComparison.OrdinalIgnoreCase))
+                .Select(m => m.nombre_meson)
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        // Tamaño de fuente ajustado a alto y ancho del elemento interior
-        private static decimal FitInnerText(InnerItem it)
-        {
-            var pad = 0.10m;
-            var w = Math.Max(0.10m, it.ancho_m - 2 * pad);
-            var h = Math.Max(0.10m, it.alto_m - 2 * pad);
-            var len = Math.Max(1, it.label?.Length ?? 1);
+            const string baseName = "MESON";
+            if (!usados.Contains(baseName)) return baseName;
 
-            // La altura manda, pero limitamos por ancho para textos largos
-            var fsByH = h * 0.60m;
-            var fsByW = (decimal)w / (decimal)(0.65 * len);
-            var fs = Math.Min(fsByH, fsByW);
-
-            return Clamp(0.18m, 5m, fs);
-        }
-
-        // ¿Cabe completamente el rectángulo (absX,absY,w,h) dentro de p?
-        private static bool RectFitsIn(Poly p, decimal absX, decimal absY, decimal w, decimal h, decimal eps = 0.0005m)
-        {
-            var L = p.x_m + eps; var T = p.y_m + eps;
-            var R = p.x_m + p.ancho_m - eps; var B = p.y_m + p.alto_m - eps;
-            return absX >= L && absY >= T && (absX + w) <= R && (absY + h) <= B;
-        }
-
-        // Devuelve la mejor posición clamp dentro de p para un rectángulo (absX,absY,w,h)
-        private static (decimal x, decimal y) ClampRectIn(Poly p, decimal absX, decimal absY, decimal w, decimal h)
-        {
-            var minX = p.x_m; var minY = p.y_m;
-            var maxX = p.x_m + Math.Max(0m, p.ancho_m - w);
-            var maxY = p.y_m + Math.Max(0m, p.alto_m - h);
-            return (Clamp(minX, maxX, absX), Clamp(minY, maxY, absY));
-        }
-
-        // Elige el polígono destino para el inner: 1) el que LO CONTIENE completo
-        // 2) si ninguno lo contiene, el que deja el centro más cerca tras hacer clamp.
-        private Poly PickPolyForInnerRect(AreaDraw area, decimal targetAbsX, decimal targetAbsY, decimal w, decimal h)
-        {
-            // 1) preferir el que lo contiene
-            foreach (var p in area.Polys)
-                if (RectFitsIn(p, targetAbsX, targetAbsY, w, h)) return p;
-
-            // 2) si no cabe completo en ninguno, escoger el mejor clamp por distancia al centro deseado
-            var cx = targetAbsX + w / 2m; var cy = targetAbsY + h / 2m;
-            Poly? best = null; double bestDist2 = double.MaxValue;
-
-            foreach (var p in area.Polys)
+            for (int i = 2; i < 999; i++)
             {
-                var (nx, ny) = ClampRectIn(p, targetAbsX, targetAbsY, w, h);
-                var ncx = nx + w / 2m; var ncy = ny + h / 2m;
-                var d2 = (double)((ncx - cx) * (ncx - cx) + (ncy - cy) * (ncy - cy));
-                if (d2 < bestDist2) { bestDist2 = d2; best = p; }
+                var cand = $"{baseName} {i:00}";
+                if (!usados.Contains(cand)) return cand;
             }
-            return best ?? area.Polys[0];
+            return $"{baseName}_{Guid.NewGuid():N}".Substring(0, 14);
         }
 
+        // =========================
+        // Fit view to area
+        // =========================
+        private void FitViewBoxToAreaWithAspect(AreaDraw a, decimal pad)
+        {
+            var minX = Math.Max(0m, a.MinX - pad);
+            var minY = Math.Max(0m, a.MinY - pad);
+            var maxX = Math.Min(Wm, a.MaxX + pad);
+            var maxY = Math.Min(Hm, a.MaxY + pad);
 
+            var bboxW = Math.Max(0.001m, maxX - minX);
+            var bboxH = Math.Max(0.001m, maxY - minY);
 
+            var cx = (minX + maxX) / 2m;
+            var cy = (minY + maxY) / 2m;
 
+            var canvasRatio = Wm / Hm;
+            var areaRatio = bboxW / bboxH;
+
+            decimal vw, vh;
+            if (areaRatio > canvasRatio) { vw = bboxW; vh = vw / canvasRatio; }
+            else { vh = bboxH; vw = vh * canvasRatio; }
+
+            var vx = cx - vw / 2m;
+            var vy = cy - vh / 2m;
+
+            if (vx < 0m) vx = 0m;
+            if (vy < 0m) vy = 0m;
+            if (vx + vw > Wm) vx = Math.Max(0m, Wm - vw);
+            if (vy + vh > Hm) vy = Math.Max(0m, Hm - vh);
+
+            _panX = vx;
+            _panY = vy;
+            _zoom = (double)((vw <= 0m) ? 1m : (Wm / vw));
+        }
     }
 }

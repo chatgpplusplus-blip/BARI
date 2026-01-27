@@ -1,87 +1,119 @@
 ﻿.bb-shell {
-    display: grid;
-    grid-template-rows: auto 1fr auto;
-    height: calc(100vh - 140px);
-    min-height: 520px;
-    max-width: 1100px;
-    margin: 0 auto;
+    max-width: 900px;
+    margin: 18px auto;
+    border: 1px solid rgba(0,0,0,.08);
     border-radius: 16px;
     overflow: hidden;
-    border: 1px solid rgba(255,255,255,0.08);
-    background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
-    box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+    background: rgba(255,255,255,.85);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 10px 30px rgba(0,0,0,.08);
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    min-height: calc(80vh - 36px);
 }
 
 .bb-header {
     display: flex;
-    align-items: center;
     justify-content: space-between;
-    padding: 14px 18px;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
-    backdrop-filter: blur(10px);
+    align-items: center;
+    padding: 14px 16px;
+    background: linear-gradient(180deg, rgba(0,0,0,.03), rgba(0,0,0,0));
+    border-bottom: 1px solid rgba(0,0,0,.06);
 }
 
 .bb-title {
-    display: grid;
-    gap: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
 }
 
 .bb-badge {
     display: inline-flex;
     width: fit-content;
+    font-weight: 700;
     padding: 6px 10px;
     border-radius: 999px;
-    font-weight: 700;
-    letter-spacing: 0.3px;
-    background: rgba(255,255,255,0.08);
+    background: rgba(0,0,0,.07);
+    letter-spacing: .2px;
 }
 
 .bb-subtitle {
-    opacity: 0.75;
-    font-size: 0.92rem;
+    opacity: .75;
+    font-size: .92rem;
+}
+
+.bb-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
 .bb-status {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     gap: 8px;
-    opacity: 0.85;
-    font-size: 0.92rem;
+    font-size: .92rem;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(0,0,0,.04);
 }
 
 .bb-dot {
     width: 10px;
     height: 10px;
-    border-radius: 999px;
+    border-radius: 50%;
     display: inline-block;
 }
 
-.bb-dot--ok {
-    background: rgba(70, 200, 120, 0.9);
+.bb-dot--busy {
+    background: rgba(255, 140, 0, .9);
+    box-shadow: 0 0 0 4px rgba(255,140,0,.18);
 }
 
-.bb-dot--busy {
-    background: rgba(255, 190, 90, 0.95);
+.bb-dot--ok {
+    background: rgba(35, 175, 90, .9);
+    box-shadow: 0 0 0 4px rgba(35,175,90,.16);
+}
+
+.bb-btn {
+    border: 1px solid rgba(0,0,0,.12);
+    background: rgba(255,255,255,.8);
+    padding: 8px 10px;
+    border-radius: 10px;
+    cursor: pointer;
+}
+
+    .bb-btn:disabled {
+        opacity: .5;
+        cursor: not-allowed;
+    }
+
+.bb-btn--ghost {
+    background: transparent;
 }
 
 .bb-body {
-    padding: 18px;
+    padding: 16px 14px 18px;
     overflow: auto;
-    display: grid;
-    gap: 14px;
+    background: radial-gradient(900px 500px at 20% 0%, rgba(0,0,0,.03), transparent 60%), radial-gradient(700px 450px at 80% 10%, rgba(0,0,0,.02), transparent 60%);
 }
 
 .bb-empty {
-    padding: 18px;
-    border: 1px dashed rgba(255,255,255,0.18);
+    border: 1px dashed rgba(0,0,0,.12);
     border-radius: 14px;
-    background: rgba(255,255,255,0.03);
+    padding: 16px;
+    background: rgba(255,255,255,.65);
 }
 
 .bb-empty-title {
     font-weight: 650;
     margin-bottom: 10px;
-    opacity: 0.9;
+}
+
+.bb-empty-hint {
+    margin-top: 12px;
+    opacity: .75;
+    font-size: .92rem;
 }
 
 .bb-chips {
@@ -91,22 +123,22 @@
 }
 
 .bb-chip {
-    border: 1px solid rgba(255,255,255,0.12);
-    background: rgba(255,255,255,0.05);
-    padding: 8px 12px;
-    border-radius: 999px;
     cursor: pointer;
-    transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+    border: 1px solid rgba(0,0,0,.12);
+    background: rgba(255,255,255,.8);
+    padding: 10px 12px;
+    border-radius: 999px;
+    font-size: .92rem;
 }
 
     .bb-chip:hover {
-        transform: translateY(-1px);
-        background: rgba(255,255,255,0.08);
-        border-color: rgba(255,255,255,0.22);
+        background: rgba(255,255,255,.95);
     }
 
 .bb-row {
     display: flex;
+    margin: 10px 0;
+    animation: bb-pop .12s ease-out;
 }
 
 .bb-row--me {
@@ -117,137 +149,216 @@
     justify-content: flex-start;
 }
 
+@keyframes bb-pop {
+    from {
+        transform: translateY(4px);
+        opacity: .6;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
 .bb-bubble {
-    max-width: min(760px, 92%);
-    padding: 12px 14px;
-    border-radius: 14px;
-    border: 1px solid rgba(255,255,255,0.10);
-    background: rgba(255,255,255,0.04);
-    position: relative;
+    max-width: min(760px, 82%);
+    border-radius: 16px;
+    padding: 10px 12px;
+    border: 1px solid rgba(0,0,0,.08);
+    box-shadow: 0 6px 18px rgba(0,0,0,.06);
 }
 
 .bb-bubble--me {
-    background: rgba(120, 180, 255, 0.10);
-    border-color: rgba(120, 180, 255, 0.18);
+    background: rgba(20, 110, 255, .09);
+    border-color: rgba(20,110,255,.18);
 }
 
 .bb-bubble--bot {
-    background: rgba(255,255,255,0.04);
+    background: rgba(255,255,255,.92);
 }
 
 .bb-bubble-meta {
     display: flex;
+    justify-content: space-between;
+    align-items: center;
     gap: 10px;
-    align-items: baseline;
+    font-size: .82rem;
+    opacity: .72;
     margin-bottom: 6px;
-    opacity: 0.8;
-    font-size: 0.82rem;
 }
 
 .bb-who {
     font-weight: 650;
+    opacity: .92;
 }
 
 .bb-time {
-    opacity: 0.75;
+    white-space: nowrap;
 }
 
 .bb-bubble-text {
-    white-space: pre-wrap;
-    line-height: 1.35rem;
+    line-height: 1.55;
+    font-size: 1rem;
+    word-break: break-word;
+}
+
+.bb-bubble-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 10px;
 }
 
 .bb-pill {
-    margin-top: 10px;
-    display: inline-flex;
-    font-size: 0.78rem;
-    padding: 4px 10px;
+    font-size: .75rem;
+    padding: 4px 8px;
     border-radius: 999px;
-    background: rgba(70, 200, 120, 0.12);
-    border: 1px solid rgba(70, 200, 120, 0.18);
-    width: fit-content;
-    opacity: 0.95;
+    border: 1px solid rgba(0,0,0,.14);
+    background: rgba(0,0,0,.04);
+}
+
+.bb-mini {
+    font-size: .82rem;
+    padding: 6px 10px;
+    border-radius: 10px;
+    border: 1px solid rgba(0,0,0,.12);
+    background: rgba(255,255,255,.85);
+    cursor: pointer;
+}
+
+    .bb-mini:hover {
+        background: rgba(255,255,255,.98);
+    }
+
+.bb-bubble--typing {
+    background: rgba(255,255,255,.78);
+}
+
+.bb-typing {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 0;
+}
+
+.bb-dots {
+    display: inline-flex;
+    gap: 6px;
+}
+
+.bb-dotdot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: rgba(0,0,0,.45);
+    display: inline-block;
+    animation: bb-bounce 1s infinite ease-in-out;
+}
+
+    .bb-dotdot:nth-child(2) {
+        animation-delay: .12s;
+    }
+
+    .bb-dotdot:nth-child(3) {
+        animation-delay: .24s;
+    }
+
+@keyframes bb-bounce {
+    0%, 80%, 100% {
+        transform: translateY(0);
+        opacity: .45;
+    }
+
+    40% {
+        transform: translateY(-4px);
+        opacity: .9;
+    }
+}
+
+.bb-code {
+    margin: 10px 0 4px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    overflow: auto;
+    border: 1px solid rgba(0,0,0,.1);
+    background: rgba(0,0,0,.04);
+    font-size: .92rem;
+}
+
+    .bb-code code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+
+.bb-link {
+    text-decoration: underline;
+    word-break: break-all;
 }
 
 .bb-error {
-    padding: 12px 14px;
+    margin-top: 12px;
+    padding: 12px;
     border-radius: 12px;
-    border: 1px solid rgba(255, 90, 90, 0.25);
-    background: rgba(255, 90, 90, 0.10);
+    border: 1px solid rgba(220, 53, 69, .35);
+    background: rgba(220, 53, 69, .10);
 }
 
 .bb-footer {
-    border-top: 1px solid rgba(255,255,255,0.08);
-    padding: 14px 16px;
-    display: grid;
-    gap: 10px;
-    background: rgba(0,0,0,0.10);
+    border-top: 1px solid rgba(0,0,0,.06);
+    padding: 12px;
+    background: linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.03));
 }
 
 .bb-input-wrap {
-    display: grid;
-    grid-template-columns: 1fr auto;
+    display: flex;
     gap: 10px;
     align-items: stretch;
 }
 
 .bb-input {
-    width: 100%;
-    min-height: 46px;
-    max-height: 120px;
+    flex: 1;
+    min-height: 56px;
+    max-height: 160px;
     resize: vertical;
+    padding: 10px 12px;
     border-radius: 12px;
-    padding: 12px 12px;
-    border: 1px solid rgba(255,255,255,0.14);
-    background: rgba(255,255,255,0.04);
-    color: inherit;
+    border: 1px solid rgba(0,0,0,.12);
+    background: rgba(255,255,255,.9);
     outline: none;
 }
 
     .bb-input:focus {
-        border-color: rgba(120, 180, 255, 0.35);
-        box-shadow: 0 0 0 4px rgba(120, 180, 255, 0.10);
+        border-color: rgba(20,110,255,.35);
+        box-shadow: 0 0 0 4px rgba(20,110,255,.12);
     }
 
 .bb-send {
-    border-radius: 12px;
-    border: 1px solid rgba(255,255,255,0.14);
-    background: rgba(255,255,255,0.06);
-    padding: 0 14px;
-    min-width: 110px;
-    cursor: pointer;
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 10px;
-    transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+    gap: 8px;
+    padding: 0 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(0,0,0,.12);
+    background: rgba(0,0,0,.06);
+    cursor: pointer;
 }
 
-    .bb-send:hover {
-        transform: translateY(-1px);
-        background: rgba(255,255,255,0.09);
-        border-color: rgba(255,255,255,0.22);
-    }
-
     .bb-send:disabled {
-        opacity: 0.6;
+        opacity: .55;
         cursor: not-allowed;
-        transform: none;
     }
 
 .bb-send-icon {
     font-size: 1.05rem;
-    opacity: 0.9;
 }
 
 .bb-hint {
-    opacity: 0.75;
-    font-size: 0.9rem;
+    margin-top: 10px;
+    opacity: .75;
+    font-size: .92rem;
 }
 
-    .bb-hint code {
-        border: 1px solid rgba(255,255,255,0.14);
-        background: rgba(255,255,255,0.06);
-        padding: 2px 6px;
-        border-radius: 8px;
-    }
+.bb-bottom {
+    height: 1px;
+}

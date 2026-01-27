@@ -11,6 +11,7 @@ public sealed class ChatMessage
 
 public sealed class RouterDecision
 {
+
     [JsonPropertyName("intent")]
     public string Intent { get; set; } = "db_query"; // db_query | general_help | needs_clarification
 

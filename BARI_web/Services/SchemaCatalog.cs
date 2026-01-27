@@ -112,6 +112,7 @@ ORDER BY table_schema, table_name;", conn);
                 var name = r.GetString(1);
                 var t = new DbTable { Schema = sch, Name = name };
                 schema.Tables[t.FullName] = t;
+
                 // También index por nombre simple si no colisiona
                 if (!schema.Tables.ContainsKey(name))
                     schema.Tables[name] = t;
@@ -173,26 +174,34 @@ ORDER BY tc.table_schema, tc.table_name, kcu.ordinal_position;", conn);
             }
         }
 
-        // 4) Foreign Keys
+        // 4) Foreign Keys (✅ soporta FKs compuestas correctamente)
+        // Mapea cada columna de la FK con su columna referenciada usando position_in_unique_constraint.
         var fkCmd = new NpgsqlCommand(@"
 SELECT
   tc.constraint_name,
-  tc.table_schema,
-  tc.table_name,
-  kcu.column_name,
-  ccu.table_schema AS foreign_table_schema,
-  ccu.table_name   AS foreign_table_name,
-  ccu.column_name  AS foreign_column_name
+  tc.table_schema    AS from_schema,
+  tc.table_name      AS from_table,
+  kcu.column_name    AS from_column,
+
+  kcu2.table_schema  AS to_schema,
+  kcu2.table_name    AS to_table,
+  kcu2.column_name   AS to_column,
+
+  kcu.ordinal_position
 FROM information_schema.table_constraints tc
 JOIN information_schema.key_column_usage kcu
   ON tc.constraint_name = kcu.constraint_name
- AND tc.table_schema = kcu.table_schema
-JOIN information_schema.constraint_column_usage ccu
-  ON ccu.constraint_name = tc.constraint_name
- AND ccu.constraint_schema = tc.table_schema
+ AND tc.table_schema    = kcu.table_schema
+JOIN information_schema.referential_constraints rc
+  ON rc.constraint_name   = tc.constraint_name
+ AND rc.constraint_schema = tc.table_schema
+JOIN information_schema.key_column_usage kcu2
+  ON kcu2.constraint_name = rc.unique_constraint_name
+ AND kcu2.table_schema    = rc.unique_constraint_schema
+ AND kcu.position_in_unique_constraint = kcu2.ordinal_position
 WHERE tc.constraint_type = 'FOREIGN KEY'
   AND tc.table_schema NOT IN ('pg_catalog','information_schema')
-ORDER BY tc.table_schema, tc.table_name;", conn);
+ORDER BY from_schema, from_table, tc.constraint_name, kcu.ordinal_position;", conn);
 
         await using (var r = await fkCmd.ExecuteReaderAsync(ct))
         {
@@ -224,6 +233,62 @@ ORDER BY tc.table_schema, tc.table_name;", conn);
         return schema;
     }
 
+    private static readonly Dictionary<string, string[]> KeywordToTables = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // Documentos
+        ["documento"] = new[] { "documentos", "categorias", "subcategorias", "marcas" },
+        ["manual"] = new[] { "documentos", "equipos", "modelos_equipo" },
+        ["sop"] = new[] { "documentos" },
+        ["protocolo"] = new[] { "documentos" },
+        ["norma"] = new[] { "documentos" },
+
+        // Sustancias / reactivos (✅ agrega M:N subcategorías)
+        ["reactivo"] = new[]
+        {
+            "sustancias", "contenedores",
+            "sustancias_h", "h_codes",
+            "sustancias_p", "p_codes",
+            "sustancias_pictogramas", "ghs_pictogramas",
+            "sustancia_subcategorias", "subcategorias", "categorias"
+        },
+        ["cas"] = new[] { "sustancias" },
+        ["venc"] = new[] { "contenedores" },
+        ["vencimiento"] = new[] { "contenedores" },
+
+        // Inventario físico (✅ agrega M:N subcategorías de modelos)
+        ["equipo"] = new[]
+        {
+            "equipos", "modelos_equipo",
+            "modelo_equipo_subcategorias", "subcategorias", "categorias",
+            "marcas", "estados_activo", "calibraciones"
+        },
+
+        // Materiales (✅ agrega M:N subcategorías)
+        ["material"] = new[]
+        {
+            "materiales",
+            "material_subcategorias", "subcategorias", "categorias",
+            "marcas", "estados_activo"
+        },
+
+        // Ubicación / espacios
+        ["área"] = new[] { "areas", "laboratorios", "mesones", "canvas_lab" },
+        ["area"] = new[] { "areas", "laboratorios", "mesones", "canvas_lab" },
+        ["meson"] = new[] { "mesones", "areas", "laboratorios", "bloques_int" },
+        ["mesón"] = new[] { "mesones", "areas", "laboratorios", "bloques_int" },
+        ["planta"] = new[] { "plantas", "areas" },
+
+        // Infraestructura (nota: ubicación visual ahora suele pasar por bloques_int)
+        ["instalacion"] = new[] { "instalaciones", "subcategorias", "areas", "laboratorios", "bloques_int" },
+        ["ducha"] = new[] { "instalaciones", "subcategorias", "bloques_int" },
+        ["tomacorriente"] = new[] { "instalaciones", "subcategorias", "bloques_int" },
+        ["gas"] = new[] { "instalaciones", "subcategorias", "bloques_int" },
+
+        // Plano / dibujo
+        ["canvas"] = new[] { "canvas_lab", "poligonos", "poligonos_puntos", "puertas", "ventanas", "bloques_int" },
+        ["plano"] = new[] { "canvas_lab", "poligonos", "poligonos_puntos", "puertas", "ventanas", "bloques_int" },
+    };
+
     /// <summary>
     /// Construye un "slice" de esquema relevante para una pregunta (para no mandar TODAS las tablas al LLM).
     /// El bot igual tiene acceso a toda la BD porque el executor es genérico; el slice es solo para planear.
@@ -235,6 +300,19 @@ ORDER BY tc.table_schema, tc.table_name;", conn);
         var tokens = Tokenize(userQuestion);
         var scored = new List<(DbTable t, int score)>();
 
+        var preferred = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var tok in tokens)
+        {
+            foreach (var kv in KeywordToTables)
+            {
+                if (tok.Contains(kv.Key, StringComparison.OrdinalIgnoreCase) || kv.Key.Contains(tok, StringComparison.OrdinalIgnoreCase))
+                {
+                    foreach (var tbl in kv.Value)
+                        preferred.Add(tbl);
+                }
+            }
+        }
+
         // Score por match con nombre tabla/columnas
         var uniqueTables = db.Tables.Values.DistinctBy(t => t.FullName).ToList();
         foreach (var t in uniqueTables)
@@ -244,6 +322,7 @@ ORDER BY tc.table_schema, tc.table_name;", conn);
             {
                 if (t.Name.Contains(tok, StringComparison.OrdinalIgnoreCase)) score += 8;
                 if (t.FullName.Contains(tok, StringComparison.OrdinalIgnoreCase)) score += 10;
+                if (preferred.Contains(t.Name)) score += 25;
 
                 // columnas
                 foreach (var c in t.Columns)
@@ -252,7 +331,7 @@ ORDER BY tc.table_schema, tc.table_name;", conn);
                 }
             }
 
-            // Boost si la pregunta menciona "cuántos", "lista", etc. (suele ser conteo/lista)
+            // Boost si la pregunta menciona "cuántos", "lista", etc.
             if (score > 0 && (userQuestion.Contains("cuánt", StringComparison.OrdinalIgnoreCase) ||
                               userQuestion.Contains("lista", StringComparison.OrdinalIgnoreCase) ||
                               userQuestion.Contains("mostrar", StringComparison.OrdinalIgnoreCase)))

@@ -19,7 +19,7 @@ namespace BARI_web.Features.Espacios.Pages
         private bool IsLoading { get; set; } = true;
 
         // ===== Model / data records =====
-        private record CanvasLab(string canvas_id, string nombre, decimal ancho_m, decimal alto_m, decimal margen_m, int? laboratorio_id);
+        private record CanvasLab(string canvas_id, string nombre, decimal ancho_m, decimal largo_m, decimal margen_m, int? laboratorio_id);
         private readonly record struct Point(decimal X, decimal Y);
         private class Poly
         {
@@ -29,7 +29,7 @@ namespace BARI_web.Features.Espacios.Pages
             public decimal x_m { get; set; }
             public decimal y_m { get; set; }
             public decimal ancho_m { get; set; }
-            public decimal alto_m { get; set; }
+            public decimal largo_m { get; set; }
             public int z_order { get; init; }
             public string? etiqueta { get; init; }
             public string? color_hex { get; init; }
@@ -104,10 +104,10 @@ namespace BARI_web.Features.Espacios.Pages
         private const decimal Tolerance = 0.004m; // 4 mm
         private static decimal RoundToTolerance(decimal v) => Math.Round(v / Tolerance) * Tolerance;
 
-        private static string ViewBox(CanvasLab canvas) => $"0 0 {S(canvas.ancho_m)} {S(canvas.alto_m)}";
+        private static string ViewBox(CanvasLab canvas) => $"0 0 {S(canvas.ancho_m)} {S(canvas.largo_m)}";
         private static string AspectRatioString(CanvasLab canvas)
         {
-            var ar = (double)canvas.ancho_m / (double)canvas.alto_m;
+            var ar = (double)canvas.ancho_m / (double)canvas.largo_m;
             return $"{ar:0.###} / 1";
         }
 
@@ -165,7 +165,7 @@ namespace BARI_web.Features.Espacios.Pages
                     Get(r, "canvas_id"),
                     Get(r, "nombre"),
                     Dec(Get(r, "ancho_m", "0")),
-                    Dec(Get(r, "alto_m", "0")),
+                    Dec(Get(r, "largo_m", "0")),
                     Dec(Get(r, "margen_m", "0")),
                     IntOrNull(Get(r, "laboratorio_id"))))
                 .Where(c => c.laboratorio_id == labId)
@@ -256,7 +256,7 @@ namespace BARI_web.Features.Espacios.Pages
                     x_m = Dec(Get(r, "x_m", "0")),
                     y_m = Dec(Get(r, "y_m", "0")),
                     ancho_m = Dec(Get(r, "ancho_m", "0")),
-                    alto_m = Dec(Get(r, "alto_m", "0")),
+                    largo_m = Dec(Get(r, "largo_m", "0")),
                     z_order = Int(Get(r, "z_order", "0")),
                     etiqueta = NullIfEmpty(Get(r, "etiqueta")),
                     color_hex = NullIfEmpty(Get(r, "color_hex"))
@@ -466,7 +466,7 @@ namespace BARI_web.Features.Espacios.Pages
 
             foreach (var p in a.Polys)
             {
-                var L = p.x_m; var T = p.y_m; var R = p.x_m + p.ancho_m; var B = p.y_m + p.alto_m;
+                var L = p.x_m; var T = p.y_m; var R = p.x_m + p.ancho_m; var B = p.y_m + p.largo_m;
 
                 var yTop = RoundToTolerance(T);
                 var yBot = RoundToTolerance(B);
@@ -596,8 +596,8 @@ namespace BARI_web.Features.Espacios.Pages
             {
                 new Point(p.x_m, p.y_m),
                 new Point(p.x_m + p.ancho_m, p.y_m),
-                new Point(p.x_m + p.ancho_m, p.y_m + p.alto_m),
-                new Point(p.x_m, p.y_m + p.alto_m)
+                new Point(p.x_m + p.ancho_m, p.y_m + p.largo_m),
+                new Point(p.x_m, p.y_m + p.largo_m)
             };
 
         private static void UpdateBoundsFromPoints(Poly p)
@@ -610,7 +610,7 @@ namespace BARI_web.Features.Espacios.Pages
             p.x_m = minX;
             p.y_m = minY;
             p.ancho_m = Math.Max(0.1m, maxX - minX);
-            p.alto_m = Math.Max(0.1m, maxY - minY);
+            p.largo_m = Math.Max(0.1m, maxY - minY);
         }
 
         private string PointsString(Poly p)
@@ -658,7 +658,7 @@ namespace BARI_web.Features.Espacios.Pages
             Nav.NavigateTo($"/detalles/{slug}");
         }
 
-        private (decimal fs, decimal pillW, decimal pillH) FitLabel(AreaDraw a)
+        private (decimal fs, decimal pillW, decimal pillH) FitLabel(AreaDraw a, int lenForW, bool twoLines)
         {
             var bboxW = (a.MaxX - a.MinX);
             var bboxH = (a.MaxY - a.MinY);
@@ -667,16 +667,18 @@ namespace BARI_web.Features.Espacios.Pages
             var targetW = Clamp(0.6m, bboxW, bboxW * 0.82m);
             var targetH = Clamp(0.35m, bboxH, bboxH * 0.26m);
 
-            var len = System.Math.Max(1, a.Label.Length);
-            var fsByW = (decimal)targetW / (decimal)(0.55 * len);
-            var fsByH = (decimal)targetH * 0.65m;
-            var fs = Clamp(0.28m, 3m, System.Math.Min(fsByW, fsByH));
+            var len = Math.Max(1, lenForW);
 
-            var pillH = Clamp(0.45m, targetH, fs * 1.9m);
-            var pillW = Clamp(0.8m, targetW, (decimal)(0.55 * len) * fs + 2 * TextPad);
+            var fsByW = targetW / (0.55m * len);
+            var fsByH = targetH * (twoLines ? 0.55m : 0.65m);
+            var fs = Clamp(0.28m, 3m, Math.Min(fsByW, fsByH));
+
+            var pillH = Clamp(0.45m, targetH, fs * (twoLines ? 2.6m : 1.9m));
+            var pillW = Clamp(0.8m, targetW, (0.55m * len) * fs + 2 * TextPad);
 
             return (fs, pillW, pillH);
         }
+
 
         // ===== Door/Window helpers =====
         private static decimal DoorEndX(Door d) => d.x_m + ((d.orientacion is "E" or "W") ? d.largo_m : 0m);

@@ -1,0 +1,3349 @@
+﻿@page "/inventario-equipo"
+@page "/inventario-equipo/categoria/{SubcategoriaId}"
+@page "/inventario-equipo/todos"
+
+@using Npgsql
+@using System.Globalization
+@using System.IO
+@using System.Linq
+@using Microsoft.AspNetCore.Components.Forms
+@using BARI_web.General_Services
+
+@inject NpgsqlDataSource DataSource
+@inject LaboratorioState LaboratorioState
+@inject NavigationManager Nav
+@inject IWebHostEnvironment HostEnvironment
+@implements IDisposable
+
+<PageTitle>Inventario de Equipos</PageTitle>
+
+<section class="page-card">
+    <h2>Inventario de Equipos</h2>
+    <p>
+        Gestión de inventario con dos niveles:
+        <b>Modelo</b> (concepto abstracto: marca, categoría, manual, subcategorías, si es calibrable) y
+        <b>Equipo físico</b> (instancia: estado, ubicación, serie, fechas, calibraciones).
+    </p>
+    <LaboratorioSelector />
+</section>
+
+<!-- =========================================================
+     1) SUBIR MODELO (ABSTRACTO)
+     ========================================================= -->
+<section class="page-card" style="margin-top:1.5rem;">
+    <details>
+        <summary style="cursor:pointer; font-weight:600;">Subir modelo de equipo (abstracto)</summary>
+
+        <div class="form-header">
+            <h4>Modelo (modelos_equipo)</h4>
+            <p class="form-hint">
+                El modelo representa el equipo como producto (marca, categoría, manual, si es calibrable).
+                Luego podrás registrar uno o más equipos físicos basados en este modelo.
+            </p>
+        </div>
+
+        <div class="assign-row form-grid">
+            <input class="border p-1" placeholder="ID modelo (opcional)" @bind="_nuevoModeloId" />
+            <input class="border p-1" placeholder="Nombre del modelo (obligatorio)" @bind="_nuevoModeloNombre" />
+
+            <div class="brand-picker">
+                <select class="border p-1" @bind="_nuevoModeloMarcaId">
+                    <option value="">Marca (opcional)</option>
+                    @foreach (var m in _marcaOptions)
+                    {
+                        <option value="@m.Id">@m.Label</option>
+                    }
+                </select>
+
+                @if (!string.IsNullOrWhiteSpace(SelectedModeloMarcaLogoUrl))
+                {
+                    <img class="thumb thumb-logo" src="@ResolveUrl(SelectedModeloMarcaLogoUrl)" alt="Logo marca" />
+                }
+            </div>
+
+            <select class="border p-1" value="@_nuevoModeloCategoriaId" @onchange="OnNuevoModeloCategoriaChanged">
+                <option value="">Categoría (obligatorio)</option>
+                @foreach (var cat in _categoriaEquipoOptions)
+                {
+                    <option value="@cat.Id">@cat.Label</option>
+                }
+            </select>
+
+            <label class="text-sm text-gray-600">
+                <input type="checkbox" @bind="_nuevoModeloEsCalibrable" />
+                Es calibrable (modelo)
+            </label>
+
+            <!-- ✅ NUEVO: altura del modelo -->
+            <input class="border p-1" placeholder="Altura (cm) (opcional)" type="number" step="any" @bind="_nuevoModeloAlturaCm" />
+
+            <div class="full-span">
+                <select class="border p-1" @bind="_nuevoModeloManualDocTemplateId">
+                    <option value="">Manual (opcional) · seleccionar documento (alcance EQUIPO)</option>
+                    @foreach (var d in _manualDocTemplates)
+                    {
+                        <option value="@d.Id">@d.Label</option>
+                    }
+                </select>
+
+                <div class="text-xs text-gray-500" style="margin-top:.25rem;">
+                    ¿No está el manual?
+                    <NavLink class="btn-link" href="/documentaciones">Ir a Documentaciones</NavLink>
+                    <span class="text-xs text-gray-500">· crea uno con alcance <b>EQUIPO</b> y luego podrás usarlo como plantilla.</span>
+                </div>
+            </div>
+
+            <input class="border p-1" placeholder="Descripción (opcional)" @bind="_nuevoModeloDescripcion" />
+            <input class="border p-1" placeholder="Notas (opcional)" @bind="_nuevoModeloNotas" />
+
+            <!-- Subcategorías (checkbox) -->
+            <div class="upload-card full-span" style="min-width:0; width:100%; max-width:100%;">
+
+                <details style="width:100%; max-width:100%; overflow:hidden;">
+                    <summary style="cursor:pointer; font-weight:600; display:block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                        @_nuevoModeloSubcatsDropdownLabel
+                    </summary>
+
+                    <div style="display:grid; gap:.35rem; padding-top:.5rem; max-height:240px; overflow:auto; max-width:100%;">
+                        @if (string.IsNullOrWhiteSpace(_nuevoModeloCategoriaId))
+                        {
+                            <div class="text-xs text-gray-500">Selecciona una categoría primero.</div>
+                        }
+                        else if (NuevoModeloSubcategoriasFiltradas.Count == 0)
+                        {
+                            <div class="text-xs text-gray-500">No hay subcategorías disponibles.</div>
+                        }
+                        else
+                        {
+                            @foreach (var sc in NuevoModeloSubcategoriasFiltradas)
+                            {
+                                <label style="display:flex; gap:.5rem; align-items:flex-start; width:100%; max-width:100%;">
+                                    <input type="checkbox"
+                                           style="margin-top:.2rem;"
+                                           checked="@_nuevoModeloSubcategoriaIds.Contains(sc.Id)"
+                                           @onchange="(e) => ToggleNuevoModeloSubcategoria(sc.Id, e)" />
+
+                                    <div style="min-width:0; width:100%; max-width:100%;">
+                                        <span style="font-weight:700;">@sc.Label</span>
+                                        <span class="text-xs text-gray-500" style="margin-left:.35rem;">(@sc.Id)</span>
+                                    </div>
+                                </label>
+                            }
+                        }
+                    </div>
+                </details>
+            </div>
+
+            <!-- Imagen modelo -->
+            <div class="upload-card full-span">
+                <div class="upload-options">
+                    <label class="text-sm">
+                        <input type="radio"
+                               name="modeloImagenModo"
+                               value="url"
+                               checked="@(_nuevoModeloImagenModo == "url")"
+                               @onchange="OnModeloImagenModoChanged" />
+                        Colocar un URL
+                    </label>
+                    <label class="text-sm">
+                        <input type="radio"
+                               name="modeloImagenModo"
+                               value="archivo"
+                               checked="@(_nuevoModeloImagenModo == "archivo")"
+                               @onchange="OnModeloImagenModoChanged" />
+                        Subir archivo
+                    </label>
+                </div>
+
+                @if (_nuevoModeloImagenModo == "url")
+                {
+                    <input class="border p-1" placeholder="Imagen URL (o ruta relativa)" @bind="_nuevoModeloImagenUrl" />
+                }
+                else
+                {
+                    <label class="upload-drop">
+                        <InputFile OnChange="OnModeloImagenArchivoSeleccionado" accept="image/png,image/jpeg,image/jpg,image/webp" />
+                        <span>Arrastra una imagen o haz clic para buscar</span>
+                    </label>
+                    @if (!string.IsNullOrWhiteSpace(_nuevoModeloImagenArchivo))
+                    {
+                        <div class="text-xs text-gray-500">Archivo: @_nuevoModeloImagenArchivo</div>
+                    }
+                }
+
+                @if (!string.IsNullOrWhiteSpace(_nuevoModeloImagenUrl))
+                {
+                    <div class="preview-row">
+                        <div class="text-xs text-gray-500">Preview:</div>
+                        <img class="material-img-sm"
+                             src="@ResolveUrl(_nuevoModeloImagenUrl)"
+                             alt="Preview"
+                             onerror="this.style.display='none';" />
+                        <div class="text-xs text-gray-500">Guardará: <code>@_nuevoModeloImagenUrl</code></div>
+                    </div>
+                }
+            </div>
+
+            <div class="form-actions full-span">
+                <button class="btn primary" @onclick="SubirModeloAsync">Subir modelo</button>
+                @if (!string.IsNullOrWhiteSpace(_nuevoModeloMsg))
+                {
+                    <span class="text-sm text-gray-500">@_nuevoModeloMsg</span>
+                }
+            </div>
+        </div>
+    </details>
+</section>
+
+<!-- =========================================================
+     2) SUBIR EQUIPO (FÍSICO)
+     ========================================================= -->
+<section class="page-card" style="margin-top:1rem;">
+    <details>
+        <summary style="cursor:pointer; font-weight:600;">Subir equipo físico (instancia)</summary>
+
+        <div class="form-header">
+            <h4>Equipo físico (equipos)</h4>
+            <p class="form-hint">
+                El equipo es la unidad real. Se recomienda elegir un modelo (para mantener subcategorías y marca coherentes).
+                Área y mesón son obligatorios.
+            </p>
+        </div>
+
+        <div class="assign-row form-grid">
+            <input class="border p-1" placeholder="ID equipo (opcional)" @bind="_nuevoEquipoId" />
+            <input class="border p-1" placeholder="Nombre del equipo (obligatorio)" @bind="_nuevoEquipoNombre" />
+
+            <div class="brand-picker">
+                <select class="border p-1" value="@_nuevoEquipoModeloId" @onchange="OnEquipoModeloChanged">
+                    <option value="">Modelo </option>
+                    @foreach (var opt in _modeloLookupOptions)
+                    {
+                        <option value="@opt.Id">@opt.Label</option>
+                    }
+                </select>
+
+                @if (!string.IsNullOrWhiteSpace(SelectedEquipoModeloMarcaLogoUrl))
+                {
+                    <img class="thumb thumb-logo" src="@ResolveUrl(SelectedEquipoModeloMarcaLogoUrl)" alt="Logo marca" />
+                }
+            </div>
+
+            <input class="border p-1" placeholder="Serie (opcional)" @bind="_nuevoEquipoSerie" />
+
+            <select class="border p-1" @bind="_nuevoEquipoEstadoId">
+                <option value="">Estado (opcional)</option>
+                @foreach (var estado in _estadoOptions)
+                {
+                    <option value="@estado.Id">@estado.Label</option>
+                }
+            </select>
+
+            <!-- Área: dropdown + mapa -->
+            <div class="selector-split full-span">
+                <select class="border p-1"
+                        value="@_nuevoEquipoAreaId"
+                        @onchange="OnAreaChanged">
+                    <option value="">Área (obligatorio)</option>
+                    @foreach (var area in _areaOptions)
+                    {
+                        <option value="@area.Id">@area.Label</option>
+                    }
+                </select>
+
+                <div class="visual-picker">
+                    <div class="visual-toolbar">
+                        <label class="text-xs text-gray-500">Mapa de áreas</label>
+
+                        <select class="border p-1 text-xs" @bind="_currentPlantaId">
+                            <option value="">Todas</option>
+                            @foreach (var planta in _plantasLookup)
+                            {
+                                <option value="@planta.Key">@planta.Value</option>
+                            }
+                        </select>
+                    </div>
+
+                    @if (_canvasViews.Count == 0)
+                    {
+                        <div class="text-xs text-gray-500">Sin mapas disponibles.</div>
+                    }
+                    else
+                    {
+                        @foreach (var view in _canvasViews)
+                        {
+                            var areasPorPlanta = view.Areas.Where(a => IsAreaInCurrentPlanta(a.PlantaId)).ToList();
+                            if (areasPorPlanta.Count == 0)
+                                continue;
+
+                            <div class="canvas-card">
+                                <div class="text-xs text-gray-500">@view.Canvas.Nombre</div>
+
+                                <svg width="100%" height="100%"
+                                     viewBox="0 0 @view.Canvas.Ancho @view.Canvas.largo"
+                                     preserveAspectRatio="xMidYMid meet">
+
+                                    <rect x="0" y="0"
+                                          width="@FormatSvg(view.Canvas.Ancho)"
+                                          height="@FormatSvg(view.Canvas.largo)"
+                                          fill="transparent"
+                                          style="pointer-events:all"
+                                          @onclick="ClearAreaSelection" />
+
+                                    @foreach (var area in areasPorPlanta)
+                                    {
+                                        foreach (var poly in area.Poligonos.OrderBy(p => p.ZOrder))
+                                        {
+                                            <polygon points="@PointsString(poly)"
+                                                     fill="@AreaFill(area)"
+                                                     stroke="#111827" stroke-width="0.03"
+                                                     style="cursor:pointer"
+                                                     @onclick:stopPropagation="true"
+                                                     @onclick="@(() => SelectAreaFromVisualAsync(area.AreaId))" />
+                                        }
+
+                                        @if (!string.IsNullOrWhiteSpace(area.Nombre))
+                                        {
+                                            var labelWidth = AreaLabelWidth(area);
+                                            var labelHeight = AreaLabelHeight(area);
+                                            var fontSize = AreaLabelFontSize(area);
+
+                                            <svg:rect x="@FormatSvg(area.CenterX - labelWidth / 2m)"
+                                                      y="@FormatSvg(area.CenterY - labelHeight / 2m)"
+                                                      width="@FormatSvg(labelWidth)"
+                                                      height="@FormatSvg(labelHeight)"
+                                                      fill="#ffffff" opacity="0.8" rx="0.15" ry="0.15"
+                                                      @onclick:stopPropagation="true" />
+
+                                            <svg:text class="area-label"
+                                                      x="@FormatSvg(area.CenterX)" y="@FormatSvg(area.CenterY)"
+                                                      text-anchor="middle" dominant-baseline="middle"
+                                                      font-size="@FormatSvg(fontSize)"
+                                                      @onclick:stopPropagation="true">
+                                                @area.Nombre
+                                            </svg:text>
+                                        }
+                                    }
+                                </svg>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+
+            <!-- Mesón: dropdown + mapa -->
+            <div class="selector-split full-span">
+                <select class="border p-1"
+                        value="@_nuevoEquipoMesonId"
+                        @onchange="OnMesonChanged"
+                        disabled="@string.IsNullOrWhiteSpace(_nuevoEquipoAreaId)">
+                    <option value="">Mesón (obligatorio)</option>
+                    @foreach (var meson in _mesonOptions)
+                    {
+                        <option value="@meson.Id">@meson.Label</option>
+                    }
+                </select>
+
+                <div class="visual-picker">
+                    <div class="text-xs text-gray-500">Mesones del área seleccionada</div>
+
+                    @if (SelectedAreaForMap is not null)
+                    {
+                        var selectedArea = SelectedAreaForMap;
+                        var vb = AreaViewBoxRect(selectedArea);
+
+                        <div class="canvas-card">
+                            <div class="text-xs text-gray-500">@SelectedAreaLabel</div>
+                            <svg width="100%" height="100%"
+                                 viewBox="@AreaViewBox(selectedArea)"
+                                 preserveAspectRatio="xMidYMid meet">
+
+                                <rect x="@FormatSvg(vb.x)" y="@FormatSvg(vb.y)"
+                                      width="@FormatSvg(vb.w)" height="@FormatSvg(vb.h)"
+                                      fill="transparent"
+                                      style="pointer-events:all"
+                                      @onclick="ClearMesonSelection" />
+
+                                @foreach (var poly in selectedArea.Poligonos.OrderBy(p => p.ZOrder))
+                                {
+                                    <polygon points="@PointsString(poly)"
+                                             fill="@AreaFill(selectedArea)"
+                                             stroke="#111827" stroke-width="0.03"
+                                             @onclick:stopPropagation="true" />
+                                }
+
+                                @foreach (var meson in _mesonVisuals.OrderBy(m => m.ZOrder))
+                                {
+                                    <g class="meson-visual"
+                                       style="cursor:pointer"
+                                       @onclick:stopPropagation="true"
+                                       @onclick="@(() => SelectMeson(meson.MesonId))">
+
+                                        <rect x="@FormatSvg(meson.X)"
+                                              y="@FormatSvg(meson.Y)"
+                                              width="@FormatSvg(meson.Width)"
+                                              height="@FormatSvg(meson.Height)"
+                                              fill="@MesonFill(meson)"
+                                              opacity="@FormatSvg(MesonOpacity(meson))"
+                                              stroke="@MesonStroke(meson)"
+                                              stroke-width="@FormatSvg(MesonStrokeWidth(meson))" />
+
+                                        <svg:text x="@FormatSvg(meson.X + meson.Width / 2m)"
+                                                  y="@FormatSvg(meson.Y + meson.Height / 2m)"
+                                                  text-anchor="middle"
+                                                  dominant-baseline="middle"
+                                                  font-size="@FormatSvg(MesonLabelFontSize(meson))"
+                                                  fill="#111827">
+                                            @meson.Label
+                                        </svg:text>
+                                    </g>
+                                }
+                            </svg>
+                        </div>
+                    }
+
+                    @if (_mesonSummaries.Count == 0)
+                    {
+                        <div class="text-xs text-gray-500">Sin mesones disponibles.</div>
+                    }
+                    else
+                    {
+                        <ul class="meson-list">
+                            @foreach (var meson in _mesonSummaries)
+                            {
+                                var isSel = string.Equals(meson.MesonId, _nuevoEquipoMesonId, StringComparison.OrdinalIgnoreCase);
+
+                                <li class="@(isSel ? "meson-item selected" : "meson-item")">
+                                    <button type="button" class="btn link"
+                                            @onclick="@(() => SelectMeson(meson.MesonId))">
+                                        @meson.Nombre
+                                    </button>
+                                    <div class="text-xs text-gray-500">
+                                        Reactivos: @meson.ReactivosCount · Equipos: @meson.EquiposCount
+                                    </div>
+                                </li>
+                            }
+                        </ul>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(_nuevoEquipoMesonId))
+                    {
+                        <div class="text-xs text-gray-500">
+                            Seleccionado: @SelectedAreaLabel · @SelectedMesonLabel
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <input class="border p-1" placeholder="Nivel (número)" @bind="_nuevoEquipoNivel" />
+            <input class="border p-1" placeholder="Posición (opcional)" @bind="_nuevoEquipoPosicion" />
+
+            <div class="field-stack">
+                <label class="field-label">Fecha de compra</label>
+                <input class="border p-1" type="date" @bind-value="_nuevoEquipoFechaCompra" @bind-value:format="yyyy-MM-dd" />
+            </div>
+
+            <div class="field-stack">
+                <label class="field-label">Garantía hasta</label>
+                <input class="border p-1" type="date" @bind-value="_nuevoEquipoGarantiaHasta" @bind-value:format="yyyy-MM-dd" />
+            </div>
+
+            <input class="border p-1" placeholder="Observaciones" @bind="_nuevoEquipoObservaciones" />
+
+            <!-- Imagen equipo -->
+            <div class="upload-card full-span">
+                <div class="upload-options">
+                    <label class="text-sm">
+                        <input type="radio"
+                               name="equipoImagenModo"
+                               value="url"
+                               checked="@(_nuevoEquipoImagenModo == "url")"
+                               @onchange="OnEquipoImagenModoChanged" />
+                        URL
+                    </label>
+                    <label class="text-sm">
+                        <input type="radio"
+                               name="equipoImagenModo"
+                               value="archivo"
+                               checked="@(_nuevoEquipoImagenModo == "archivo")"
+                               @onchange="OnEquipoImagenModoChanged" />
+                        Archivo
+                    </label>
+                </div>
+
+                @if (_nuevoEquipoImagenModo == "url")
+                {
+                    <input class="border p-1" placeholder="Imagen URL (o ruta relativa)" @bind="_nuevoEquipoImagenUrl" />
+                }
+                else
+                {
+                    <label class="upload-drop">
+                        <InputFile OnChange="OnEquipoImagenArchivoSeleccionado" accept="image/png,image/jpeg,image/jpg,image/webp" />
+                        <span>Arrastra una imagen o haz clic para buscar</span>
+                    </label>
+                    @if (!string.IsNullOrWhiteSpace(_nuevoEquipoImagenArchivo))
+                    {
+                        <div class="text-xs text-gray-500">Archivo: @_nuevoEquipoImagenArchivo</div>
+                    }
+                }
+
+                @if (!string.IsNullOrWhiteSpace(_nuevoEquipoImagenUrl))
+                {
+                    <div class="preview-row">
+                        <div class="text-xs text-gray-500">Preview:</div>
+                        <img class="material-img-sm"
+                             src="@ResolveUrl(_nuevoEquipoImagenUrl)"
+                             alt="Preview"
+                             onerror="this.style.display='none';" />
+                        <div class="text-xs text-gray-500">Guardará: <code>@_nuevoEquipoImagenUrl</code></div>
+                    </div>
+                }
+            </div>
+
+            <label class="text-sm text-gray-600">
+                <input type="checkbox" @bind="_nuevoEquipoRequiereCalibracion" />
+                Requiere calibración (instancia)
+            </label>
+
+            <div class="form-actions full-span">
+                <button class="btn primary" @onclick="SubirEquipoAsync">Subir equipo</button>
+                @if (!string.IsNullOrWhiteSpace(_nuevoEquipoMsg))
+                {
+                    <span class="text-sm text-gray-500">@_nuevoEquipoMsg</span>
+                }
+            </div>
+        </div>
+    </details>
+</section>
+
+<!-- =========================================================
+     3) GUÍA CATEGORÍAS + FILTRO + VER TODOS
+     ========================================================= -->
+<section class="page-card" style="margin-top:1.5rem;">
+    <div class="category-header">
+        <div>
+            <h3>Guía base (equipos)</h3>
+            <p class="helper">Selecciona una subcategoría para ver modelos/equipos, o activa “Ver todos”.</p>
+        </div>
+
+        <div class="category-controls">
+            <label class="toggle">
+                <input type="checkbox"
+                       checked="@_verTodos"
+                       @onchange="OnVerTodosToggleAsync" />
+                <span>Ver todo</span>
+            </label>
+
+            <select class="category-select"
+                    @onchange="OnSubcategoriaChanged"
+                    value="@(_verTodos ? "" : SubcategoriaId)">
+                <option value="">Todas las subcategorías</option>
+                @foreach (var categoria in categorias)
+                {
+                    <optgroup label="@categoria.Nombre">
+                        @foreach (var subcategoria in categoria.Subcategorias)
+                        {
+                            <option value="@subcategoria.Id">@subcategoria.Nombre</option>
+                        }
+                    </optgroup>
+                }
+            </select>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(SubcategoriaId))
+        {
+            <NavLink class="btn-link" href="/inventario-equipo">Ver todas</NavLink>
+        }
+    </div>
+
+    @if (categorias.Count == 0)
+    {
+        <p><em>Cargando categorías…</em></p>
+    }
+    else
+    {
+        <div class="category-grid">
+            @foreach (var categoria in categorias)
+            {
+                <div class="category-card">
+                    <div class="category-title">@categoria.Nombre</div>
+                    <ul class="category-list">
+                        @foreach (var subcategoria in categoria.Subcategorias)
+                        {
+                            <li>
+                                <NavLink href="@($"/inventario-equipo/categoria/{subcategoria.Id}")" class="category-link">
+                                    @subcategoria.Nombre
+                                </NavLink>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            }
+        </div>
+    }
+</section>
+
+<!-- =========================================================
+     4) LISTA: MODELOS (abstractos)
+     ========================================================= -->
+<section class="page-card" style="margin-top:1.5rem;">
+    <div class="materials-header">
+        <div class="materials-title">
+            <h3>
+                @(_verTodos
+                    ? "Modelos · (todos)"
+                    : (string.IsNullOrWhiteSpace(SubcategoriaId)
+                    ? "Modelos"
+                    : $"Modelos · {subcategoriaNombre ?? SubcategoriaId}"))
+            </h3>
+
+            @if (_verTodos || !string.IsNullOrWhiteSpace(SubcategoriaId))
+            {
+                <span class="badge">@ModelosCountLabel</span>
+            }
+        </div>
+
+        <input class="border p-1 search-input-invent"
+               placeholder="Buscar (modelo, marca, categoría, subcategoría, altura, manual)..."
+               @bind="_searchModelosText"
+               @bind:event="oninput"
+               disabled="@(!(_verTodos || !string.IsNullOrWhiteSpace(SubcategoriaId)))" />
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(modelosLoadError))
+    {
+        <p class="error-note">No se pudieron cargar modelos: @modelosLoadError</p>
+    }
+    else if (string.IsNullOrWhiteSpace(SubcategoriaId) && !_verTodos)
+    {
+        <div class="empty">
+            <div class="helper">Elige una subcategoría o activa “Ver todo” para listar modelos.</div>
+        </div>
+    }
+    else if (modelos.Count == 0)
+    {
+        <div class="empty">No hay modelos registrados para este filtro.</div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Modelo</th>
+                        <th>Marca</th>
+                        <th>Categoría</th>
+                        <th>Subcategorías</th>
+                        <th>Altura (cm)</th>
+                        <th>Calibrable</th>
+                        <th>Equipos (en lab)</th>
+                        <th>Ubicación (último equipo)</th>
+                        <th>Imagen</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var m in ModelosFiltrados)
+                    {
+                        <tr>
+                            <td>
+                                <NavLink href="@($"/inventario-equipos/modelo/{m.Id}")">
+                                    @m.Id
+                                </NavLink>
+                            </td>
+                            <td>
+                                <NavLink href="@($"/inventario-equipos/modelo/{m.Id}")">
+                                    @m.Nombre
+                                </NavLink>
+                            </td>
+
+                            <td>
+                                <div class="cell-media">
+                                    @if (!string.IsNullOrWhiteSpace(m.MarcaImagenUrl))
+                                    {
+                                        <img class="thumb thumb-logo" src="@ResolveUrl(m.MarcaImagenUrl)" alt="Logo marca" />
+                                    }
+                                    <span>@(string.IsNullOrWhiteSpace(m.MarcaNombre) ? "—" : m.MarcaNombre)</span>
+                                </div>
+                            </td>
+
+                            <td>@(string.IsNullOrWhiteSpace(m.Categoria) ? "—" : m.Categoria)</td>
+                            <td>@(string.IsNullOrWhiteSpace(m.Subcategorias) ? "—" : m.Subcategorias)</td>
+                            <td>@FormatAltura(m.AlturaCm)</td>
+
+                            <td>
+                                @if (m.EsCalibrable)
+                                {
+                                    <span class="badge badge-warn">Sí</span>
+                                }
+                                else
+                                {
+                                    <span class="text-xs text-gray-500">No</span>
+                                }
+                            </td>
+
+                            <td>@m.EquiposCount</td>
+                            <td>@(string.IsNullOrWhiteSpace(m.Ubicacion) ? "—" : m.Ubicacion)</td>
+
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(m.ImagenUrl))
+                                {
+                                    <img class="thumb thumb-material" src="@ResolveUrl(m.ImagenUrl)" alt="Imagen modelo" />
+                                }
+                                else
+                                {
+                                    <span class="text-xs text-gray-500">—</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+<!-- =========================================================
+     5) LISTA: EQUIPOS (instancias físicas)
+     ========================================================= -->
+<section class="page-card" style="margin-top:1.5rem;">
+    <div class="materials-header">
+        <div class="materials-title">
+            <h3>
+                @(_verTodos
+                    ? "Equipos · (todos)"
+                    : (string.IsNullOrWhiteSpace(SubcategoriaId)
+                    ? "Equipos"
+                    : $"Equipos · {subcategoriaNombre ?? SubcategoriaId}"))
+            </h3>
+
+            @if (_verTodos || !string.IsNullOrWhiteSpace(SubcategoriaId))
+            {
+                <span class="badge">@EquiposCountLabel</span>
+            }
+        </div>
+
+        <input class="border p-1 search-input-invent"
+               placeholder="Buscar (nombre, serie, modelo, marca, estado, área, altura, calibración)..."
+               @bind="_searchEquiposText"
+               @bind:event="oninput"
+               disabled="@(!(_verTodos || !string.IsNullOrWhiteSpace(SubcategoriaId)))" />
+
+        @if (_verTodos)
+        {
+            <NavLink class="btn-link" href="/inventario-equipo">Volver a categorías</NavLink>
+        }
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(equiposLoadError))
+    {
+        <p class="error-note">No se pudieron cargar equipos: @equiposLoadError</p>
+    }
+    else if (string.IsNullOrWhiteSpace(SubcategoriaId) && !_verTodos)
+    {
+        <div class="empty">
+            <div class="helper">Elige una subcategoría o activa “Ver todo” para listar equipos.</div>
+        </div>
+    }
+    else if (equipos.Count == 0)
+    {
+        <div class="empty">No hay equipos registrados para este filtro.</div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Equipo</th>
+                        <th>Serie</th>
+                        <th>Modelo</th>
+                        <th>Marca</th>
+                        <th>Categoría</th>
+                        <th>Subcategorías</th>
+                        <th>Altura (cm)</th>
+                        <th>Estado</th>
+                        <th>Ubicación</th>
+                        <th>Calibración</th>
+                        <th>Imagen</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var e in EquiposFiltrados)
+                    {
+                        <tr>
+                            <td>@e.Id</td>
+                            <td>
+                                <NavLink href="@($"/inventario-equipo/item/{e.Id}")">@e.Nombre</NavLink>
+                            </td>
+                            <td>@(string.IsNullOrWhiteSpace(e.Serie) ? "—" : e.Serie)</td>
+                            <td>@(string.IsNullOrWhiteSpace(e.Modelo) ? "—" : e.Modelo)</td>
+
+                            <td>
+                                <div class="cell-media">
+                                    @if (!string.IsNullOrWhiteSpace(e.MarcaImagenUrl))
+                                    {
+                                        <img class="thumb thumb-logo" src="@ResolveUrl(e.MarcaImagenUrl)" alt="Logo marca" />
+                                    }
+                                    <span>@(string.IsNullOrWhiteSpace(e.MarcaNombre) ? "—" : e.MarcaNombre)</span>
+                                </div>
+                            </td>
+
+                            <td>@(string.IsNullOrWhiteSpace(e.Categoria) ? "—" : e.Categoria)</td>
+                            <td>@(string.IsNullOrWhiteSpace(e.Subcategorias) ? "—" : e.Subcategorias)</td>
+                            <td>@FormatAltura(e.AlturaCm)</td>
+                            <td>@(string.IsNullOrWhiteSpace(e.Estado) ? "—" : e.Estado)</td>
+                            <td>@(string.IsNullOrWhiteSpace(e.Ubicacion) ? "—" : e.Ubicacion)</td>
+                            <td>@e.Calibracion</td>
+
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(e.ImagenUrl))
+                                {
+                                    <img class="thumb thumb-material" src="@ResolveUrl(e.ImagenUrl)" alt="Imagen equipo" />
+                                }
+                                else
+                                {
+                                    <span class="text-xs text-gray-500">—</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter] public string? SubcategoriaId { get; set; }
+
+    // Categorías reales de equipos (según tu seed actual)
+    private static readonly string[] CategoriaEquipoIds = new[]
+    {
+        "equipo-medicion",
+        "equipo-operacion",
+        "equipo-mixto"
+    };
+
+    // ============================
+    // Estado UI general
+    // ============================
+    private bool _verTodos;
+    private string? subcategoriaNombre;
+
+    private string? modelosLoadError;
+    private string? equiposLoadError;
+
+    private string? _searchModelosText;
+    private string? _searchEquiposText;
+
+    // ============================
+    // Colecciones
+    // ============================
+    private readonly List<CategoriaRow> categorias = new();
+
+    private readonly List<ModeloRow> modelos = new();
+    private readonly List<EquipoRow> equipos = new();
+
+    // Lookups
+    private readonly List<SelectOption> _categoriaEquipoOptions = new();
+    private readonly List<SelectOption> _marcaOptions = new();
+    private readonly List<SelectOption> _estadoOptions = new();
+    private readonly List<SelectOption> _areaOptions = new();
+
+    // Subcats: label "Categoria · Subcategoria"
+    private readonly List<SelectOption> _subcategoriaAllOptions = new();
+    private readonly Dictionary<string, List<SelectOption>> _subcategoriasByCategoria =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    // Modelos lookup (para crear equipo físico)
+    private readonly List<ModeloLookupOption> _modeloLookupOptions = new();
+
+    // Mesones + visual
+    private readonly List<SelectOption> _mesonOptions = new();
+    private readonly List<MesonSummary> _mesonSummaries = new();
+    private readonly List<MesonVisual> _mesonVisuals = new();
+
+    // Canvas / mapas
+    private readonly List<CanvasView> _canvasViews = new();
+    private readonly Dictionary<string, string> _plantasLookup = new(StringComparer.OrdinalIgnoreCase);
+    private string? _currentPlantaId;
+
+    // ============================
+    // Form: Modelo (abstracto)
+    // ============================
+    private string? _nuevoModeloId;
+    private string? _nuevoModeloNombre;
+    private string? _nuevoModeloMarcaId;
+    private string? _nuevoModeloCategoriaId = "equipo-mixto";
+    private bool _nuevoModeloEsCalibrable;
+
+    // ✅ NUEVO: altura_cm (string para bind)
+    private string? _nuevoModeloAlturaCm;
+
+    // Manual (selección por documento, como plantilla)
+    private string? _nuevoModeloManualDocTemplateId;
+
+    // Opciones de docs que sirven como “plantilla de manual”
+    private readonly List<SelectOption> _manualDocTemplates = new();
+    private string? _nuevoModeloDescripcion;
+    private string? _nuevoModeloNotas;
+
+    private readonly HashSet<string> _nuevoModeloSubcategoriaIds = new(StringComparer.OrdinalIgnoreCase);
+
+    private string? _nuevoModeloImagenUrl;
+    private string _nuevoModeloImagenModo = "url";
+    private string? _nuevoModeloImagenArchivo;
+
+    private string? _nuevoModeloMsg;
+
+    // ============================
+    // Form: Equipo (físico)
+    // ============================
+    private string? _nuevoEquipoId;
+    private string? _nuevoEquipoNombre;
+    private string? _nuevoEquipoModeloId;
+    private string? _nuevoEquipoSerie;
+    private string? _nuevoEquipoEstadoId;
+
+    private string? _nuevoEquipoAreaId;
+    private string? _nuevoEquipoMesonId;
+    private string? _nuevoEquipoNivel;
+    private string? _nuevoEquipoPosicion;
+
+    private DateTime? _nuevoEquipoFechaCompra;
+    private DateTime? _nuevoEquipoGarantiaHasta;
+
+    private bool _nuevoEquipoRequiereCalibracion;
+    private string? _nuevoEquipoObservaciones;
+
+    private string? _nuevoEquipoImagenUrl;
+    private string _nuevoEquipoImagenModo = "url";
+    private string? _nuevoEquipoImagenArchivo;
+
+    private string? _nuevoEquipoMsg;
+
+    // ============================
+    // Lifecycle
+    // ============================
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _verTodos = ComputeVerTodos();
+
+        modelosLoadError = null;
+        equiposLoadError = null;
+        subcategoriaNombre = null;
+
+        await LoadCategoriasAsync();          // guía
+        await LoadLookupsAsync();             // marcas, estados, áreas, cats, subcats, modelos lookup
+        await LoadCanvasAreasAsync();         // mapas
+
+        await LoadSubcategoriaNombreAsync();  // título
+        await LoadModelosAsync();             // modelos (abstractos)
+        await LoadEquiposAsync();             // equipos (físicos)
+    }
+
+    private void HandleLaboratorioChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            _nuevoEquipoAreaId = null;
+            _nuevoEquipoMesonId = null;
+
+            _mesonOptions.Clear();
+            _mesonSummaries.Clear();
+            _mesonVisuals.Clear();
+
+            _canvasViews.Clear();
+            _plantasLookup.Clear();
+            _currentPlantaId = null;
+
+            _searchModelosText = null;
+            _searchEquiposText = null;
+
+            modelosLoadError = null;
+            equiposLoadError = null;
+
+            await LoadLookupsAsync();
+            await LoadCanvasAreasAsync();
+            await LoadSubcategoriaNombreAsync();
+            await LoadModelosAsync();
+            await LoadEquiposAsync();
+
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
+
+    // ============================
+    // Navigation / filtros
+    // ============================
+    private bool ComputeVerTodos()
+    {
+        var path = new Uri(Nav.Uri).AbsolutePath.TrimEnd('/');
+        return path.EndsWith("/inventario-equipo/todos", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void OnSubcategoriaChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            Nav.NavigateTo("/inventario-equipo");
+            return;
+        }
+
+        Nav.NavigateTo($"/inventario-equipo/categoria/{value}");
+    }
+
+    private async Task OnVerTodosToggleAsync(ChangeEventArgs args)
+    {
+        var isChecked =
+            args.Value is bool b ? b :
+            string.Equals(args.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+
+        // Caso base (SubcategoriaId null) -> recarga sin esperar al route param
+        if (string.IsNullOrWhiteSpace(SubcategoriaId))
+        {
+            _verTodos = isChecked;
+            await LoadSubcategoriaNombreAsync();
+            await LoadModelosAsync();
+            await LoadEquiposAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+
+        Nav.NavigateTo(isChecked ? "/inventario-equipo/todos" : "/inventario-equipo");
+    }
+
+    private async Task LoadSubcategoriaNombreAsync()
+    {
+        subcategoriaNombre = null;
+
+        if (_verTodos || string.IsNullOrWhiteSpace(SubcategoriaId))
+            return;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"SELECT nombre FROM subcategorias WHERE subcategoria_id = @sub";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("sub", SubcategoriaId!);
+            subcategoriaNombre = (await cmd.ExecuteScalarAsync())?.ToString();
+        }
+        catch
+        {
+            subcategoriaNombre = null;
+        }
+    }
+
+    // ============================
+    // Lookups
+    // ============================
+    private async Task LoadLookupsAsync()
+    {
+        _manualDocTemplates.Clear();
+        _categoriaEquipoOptions.Clear();
+        _marcaOptions.Clear();
+        _estadoOptions.Clear();
+        _areaOptions.Clear();
+
+        _subcategoriaAllOptions.Clear();
+        _subcategoriasByCategoria.Clear();
+
+        _modeloLookupOptions.Clear();
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        // Categorías de equipo
+        const string catSql = @"
+            SELECT categoria_id, nombre
+            FROM categorias
+            WHERE categoria_id = ANY(@cats)
+            ORDER BY nombre";
+        await using (var cmd = new NpgsqlCommand(catSql, conn))
+        {
+            cmd.Parameters.AddWithValue("cats", CategoriaEquipoIds);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+                _categoriaEquipoOptions.Add(new SelectOption(r.GetString(0), r.GetString(1)));
+        }
+
+        // Subcategorías con label "Categoria · Subcategoria"
+        const string subSql = @"
+            SELECT s.categoria_id, c.nombre AS categoria_nombre,
+                   s.subcategoria_id, s.nombre AS sub_nombre
+            FROM subcategorias s
+            INNER JOIN categorias c ON c.categoria_id = s.categoria_id
+            WHERE s.categoria_id = ANY(@cats)
+            ORDER BY c.nombre, s.nombre";
+        await using (var cmd = new NpgsqlCommand(subSql, conn))
+        {
+            cmd.Parameters.AddWithValue("cats", CategoriaEquipoIds);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                var catId = r.GetString(0);
+                var catName = r.GetString(1);
+                var subId = r.GetString(2);
+                var subName = r.GetString(3);
+
+                var label = $"{catName} · {subName}";
+                _subcategoriaAllOptions.Add(new SelectOption(subId, label));
+
+                if (!_subcategoriasByCategoria.TryGetValue(catId, out var list))
+                {
+                    list = new List<SelectOption>();
+                    _subcategoriasByCategoria[catId] = list;
+                }
+                list.Add(new SelectOption(subId, label));
+            }
+        }
+
+        // Marcas
+        await using (var cmd = new NpgsqlCommand("SELECT marca_id, nombre, imagen_url FROM marcas ORDER BY nombre", conn))
+        await using (var r = await cmd.ExecuteReaderAsync())
+        {
+            while (await r.ReadAsync())
+                _marcaOptions.Add(new SelectOption(
+                    r.GetString(0),
+                    r.GetString(1),
+                    r.IsDBNull(2) ? null : r.GetString(2)
+                ));
+        }
+
+        // Docs de tipo EQUIPO (manuales) para usar como plantilla
+        const string manualDocsSql = @"
+    SELECT d.documento_id,
+           COALESCE(NULLIF(d.titulo,''), d.documento_id) AS titulo,
+           COALESCE(me.nombre_modelo,'') AS modelo_nombre,
+           COALESCE(d.modelo_equipo_id,'') AS modelo_id,
+           d.laboratorio_contexto_id
+    FROM documentos d
+    LEFT JOIN modelos_equipo me ON me.modelo_id = d.modelo_equipo_id
+    WHERE d.alcance = 'EQUIPO'
+      AND (d.laboratorio_contexto_id = @lab OR d.laboratorio_contexto_id IS NULL)
+    ORDER BY titulo, d.documento_id;";
+
+        await using (var cmd = new NpgsqlCommand(manualDocsSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                var docId = r.GetString(0);
+                var titulo = r.GetString(1);
+
+                var modeloNombre = r.GetString(2);
+                var modeloId = r.GetString(3);
+                var isGlobal = r.IsDBNull(4);
+
+                var modeloLabel = !string.IsNullOrWhiteSpace(modeloNombre) ? modeloNombre : modeloId;
+                var ctx = isGlobal ? "GLOBAL" : "LAB";
+
+                var label = string.IsNullOrWhiteSpace(modeloLabel)
+                    ? $"{titulo} · {ctx}"
+                    : $"{titulo} · {modeloLabel} · {ctx}";
+
+                _manualDocTemplates.Add(new SelectOption(docId, label));
+            }
+        }
+
+        // Estados
+        await using (var cmd = new NpgsqlCommand("SELECT estado_id, nombre FROM estados_activo ORDER BY nombre", conn))
+        await using (var r = await cmd.ExecuteReaderAsync())
+        {
+            while (await r.ReadAsync())
+                _estadoOptions.Add(new SelectOption(r.GetString(0), r.GetString(1)));
+        }
+
+        // Áreas por laboratorio
+        const string areaSql = @"
+            SELECT area_id, nombre_areas
+            FROM areas
+            WHERE laboratorio_id = @lab
+            ORDER BY nombre_areas";
+        await using (var cmd = new NpgsqlCommand(areaSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+                _areaOptions.Add(new SelectOption(r.GetString(0), r.GetString(1)));
+        }
+
+        // ✅ Lookup modelos (para crear equipo) incluye altura_cm como propiedad
+        const string modSql = @"
+            SELECT me.modelo_id,
+                   me.nombre_modelo,
+                   me.categoria_id,
+                   me.es_calibrable,
+                   me.altura_cm,
+                   COALESCE(ma.nombre,'') AS marca_nombre,
+                   ma.imagen_url AS marca_imagen
+            FROM modelos_equipo me
+            LEFT JOIN marcas ma ON ma.marca_id = me.marca_id
+            WHERE me.categoria_id = ANY(@cats)
+            ORDER BY me.nombre_modelo, me.modelo_id";
+        await using (var cmd = new NpgsqlCommand(modSql, conn))
+        {
+            cmd.Parameters.AddWithValue("cats", CategoriaEquipoIds);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                var id = r.GetString(0);
+                var nombre = r.GetString(1);
+                var catId = r.IsDBNull(2) ? "" : r.GetString(2);
+                var esCal = !r.IsDBNull(3) && r.GetBoolean(3);
+
+                decimal? altura = r.IsDBNull(4) ? (decimal?)null : r.GetDecimal(4);
+
+                var marcaNom = r.IsDBNull(5) ? "" : r.GetString(5);
+                var marcaImg = r.IsDBNull(6) ? null : r.GetString(6);
+
+                var parts = new List<string> { nombre };
+                if (!string.IsNullOrWhiteSpace(marcaNom)) parts.Add(marcaNom);
+                if (altura is not null) parts.Add($"{altura.Value.ToString(CultureInfo.InvariantCulture)} cm");
+
+                var label = string.Join(" · ", parts);
+
+                _modeloLookupOptions.Add(new ModeloLookupOption(
+                    Id: id,
+                    Label: label,
+                    CategoriaId: catId,
+                    EsCalibrable: esCal,
+                    AlturaCm: altura,
+                    MarcaNombre: marcaNom,
+                    MarcaImagenUrl: marcaImg
+                ));
+            }
+        }
+
+        // Defaults
+        if (string.IsNullOrWhiteSpace(_nuevoModeloCategoriaId)
+            || !_categoriaEquipoOptions.Any(c => string.Equals(c.Id, _nuevoModeloCategoriaId, StringComparison.OrdinalIgnoreCase)))
+        {
+            _nuevoModeloCategoriaId = _categoriaEquipoOptions.FirstOrDefault()?.Id;
+        }
+    }
+
+    // ============================
+    // Cargar guía categorías
+    // ============================
+    private async Task LoadCategoriasAsync()
+    {
+        if (categorias.Count > 0) return;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+                SELECT c.categoria_id, c.nombre,
+                       s.subcategoria_id, s.nombre
+                FROM categorias c
+                LEFT JOIN subcategorias s ON s.categoria_id = c.categoria_id
+                WHERE c.categoria_id = ANY(@cats)
+                ORDER BY c.nombre, s.nombre";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("cats", CategoriaEquipoIds);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            var map = new Dictionary<string, CategoriaRow>(StringComparer.OrdinalIgnoreCase);
+
+            while (await reader.ReadAsync())
+            {
+                var categoriaId = reader.GetString(0);
+                if (!map.TryGetValue(categoriaId, out var categoria))
+                {
+                    categoria = new CategoriaRow(categoriaId, reader.GetString(1));
+                    map[categoriaId] = categoria;
+                    categorias.Add(categoria);
+                }
+
+                if (!reader.IsDBNull(2))
+                    categoria.Subcategorias.Add(new SubcategoriaRow(reader.GetString(2), reader.GetString(3)));
+            }
+        }
+        catch (Exception ex)
+        {
+            modelosLoadError ??= ex.Message;
+        }
+    }
+
+    // ============================
+    // Subir Modelo
+    // ============================
+    private void OnNuevoModeloCategoriaChanged(ChangeEventArgs args)
+    {
+        var v = args.Value?.ToString();
+        _nuevoModeloCategoriaId = string.IsNullOrWhiteSpace(v) ? null : v;
+        _nuevoModeloSubcategoriaIds.Clear();
+    }
+
+    private List<SelectOption> NuevoModeloSubcategoriasFiltradas
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_nuevoModeloCategoriaId)) return new();
+
+            if (string.Equals(_nuevoModeloCategoriaId, "equipo-mixto", StringComparison.OrdinalIgnoreCase))
+                return _subcategoriaAllOptions;
+
+            return _subcategoriasByCategoria.TryGetValue(_nuevoModeloCategoriaId, out var list) ? list : new();
+        }
+    }
+
+    private string _nuevoModeloSubcatsDropdownLabel =>
+        _nuevoModeloSubcategoriaIds.Count == 0
+            ? "Selecciona subcategorías…"
+            : $"Subcategorías seleccionadas: {_nuevoModeloSubcategoriaIds.Count}";
+
+    private void ToggleNuevoModeloSubcategoria(string id, ChangeEventArgs e)
+    {
+        var isChecked =
+            e.Value is bool b ? b :
+            string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+
+        if (isChecked) _nuevoModeloSubcategoriaIds.Add(id);
+        else _nuevoModeloSubcategoriaIds.Remove(id);
+    }
+
+    private string? SelectedModeloMarcaLogoUrl =>
+        _marcaOptions.FirstOrDefault(m => string.Equals(m.Id, _nuevoModeloMarcaId, StringComparison.OrdinalIgnoreCase))?.ImageUrl;
+
+    private void OnModeloImagenModoChanged(ChangeEventArgs args)
+    {
+        var v = args.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(v))
+            _nuevoModeloImagenModo = v;
+
+        if (_nuevoModeloImagenModo == "url")
+            _nuevoModeloImagenArchivo = null;
+        else
+            _nuevoModeloImagenUrl = null;
+    }
+
+    private async Task OnModeloImagenArchivoSeleccionado(InputFileChangeEventArgs args)
+    {
+        _nuevoModeloMsg = null;
+        if (args.FileCount == 0) return;
+
+        var file = args.File;
+        var ext = Path.GetExtension(file.Name).ToLowerInvariant();
+        if (!AllowedImageExtensions.Contains(ext))
+        {
+            _nuevoModeloMsg = "Formato no permitido. Usa PNG, JPG o WEBP.";
+            return;
+        }
+
+        var fileName = $"modelo_{Guid.NewGuid():N}{ext}";
+        var relativePath = Path.Combine("uploads", "modelos_equipo", fileName).Replace("\\", "/");
+        var absolutePath = Path.Combine(HostEnvironment.WebRootPath, relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(absolutePath)!);
+
+        await using var stream = file.OpenReadStream(8 * 1024 * 1024);
+        await using var fs = File.Create(absolutePath);
+        await stream.CopyToAsync(fs);
+
+        _nuevoModeloImagenUrl = $"/{relativePath}";
+        _nuevoModeloImagenArchivo = file.Name;
+        _nuevoModeloMsg = $"Imagen cargada: {file.Name}";
+    }
+
+    private async Task SubirModeloAsync()
+    {
+        _nuevoModeloMsg = null;
+
+        if (string.IsNullOrWhiteSpace(_nuevoModeloNombre))
+        {
+            _nuevoModeloMsg = "Ingresa el nombre del modelo (obligatorio).";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_nuevoModeloCategoriaId))
+        {
+            _nuevoModeloMsg = "Selecciona una categoría (obligatorio).";
+            return;
+        }
+
+        if (_nuevoModeloSubcategoriaIds.Count == 0)
+        {
+            _nuevoModeloMsg = "Selecciona al menos una subcategoría (obligatorio).";
+            return;
+        }
+
+        // ✅ Parse altura_cm
+        decimal? alturaCm = null;
+        if (!string.IsNullOrWhiteSpace(_nuevoModeloAlturaCm))
+        {
+            if (!decimal.TryParse(_nuevoModeloAlturaCm, NumberStyles.Any, CultureInfo.InvariantCulture, out var alt))
+            {
+                _nuevoModeloMsg = "Altura (cm) inválida.";
+                return;
+            }
+            alturaCm = alt;
+        }
+
+        var modeloId = string.IsNullOrWhiteSpace(_nuevoModeloId)
+            ? $"mod_{Guid.NewGuid():N}".Substring(0, 12)
+            : _nuevoModeloId!.Trim();
+
+        var selectedSubs = _nuevoModeloSubcategoriaIds.ToArray();
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            const string checkSubsSame = @"
+                SELECT COUNT(*)
+                FROM subcategorias
+                WHERE subcategoria_id = ANY(@subs)
+                  AND categoria_id = @cat;";
+
+            const string checkSubsAny = @"
+                SELECT COUNT(*)
+                FROM subcategorias
+                WHERE subcategoria_id = ANY(@subs)
+                  AND categoria_id = ANY(@cats);";
+
+            var isMixto = string.Equals(_nuevoModeloCategoriaId, "equipo-mixto", StringComparison.OrdinalIgnoreCase);
+
+            await using (var chk = new NpgsqlCommand(isMixto ? checkSubsAny : checkSubsSame, conn, tx))
+            {
+                chk.Parameters.AddWithValue("subs", selectedSubs);
+
+                if (isMixto)
+                    chk.Parameters.AddWithValue("cats", CategoriaEquipoIds);
+                else
+                    chk.Parameters.AddWithValue("cat", _nuevoModeloCategoriaId!);
+
+                var okCount = Convert.ToInt64(await chk.ExecuteScalarAsync());
+                if (okCount != selectedSubs.Length)
+                {
+                    _nuevoModeloMsg = "Hay subcategorías inválidas (no pertenecen a las categorías permitidas).";
+                    await tx.RollbackAsync();
+                    return;
+                }
+            }
+
+            // ✅ INSERT incluye altura_cm
+            const string sqlIns = @"
+                INSERT INTO modelos_equipo
+                (modelo_id, marca_id, categoria_id, nombre_modelo, es_calibrable,
+                 manual_url, notas, descripcion, imagen_url, altura_cm)
+                VALUES
+                (@id, @marca, @cat, @nombre, @cal,
+                 @manual, @notas, @desc, @img, @altura_cm)
+                ON CONFLICT (modelo_id) DO NOTHING;";
+
+            int rows;
+            await using (var cmd = new NpgsqlCommand(sqlIns, conn, tx))
+            {
+                cmd.Parameters.AddWithValue("id", modeloId);
+                cmd.Parameters.AddWithValue("marca", string.IsNullOrWhiteSpace(_nuevoModeloMarcaId) ? (object)DBNull.Value : _nuevoModeloMarcaId!);
+                cmd.Parameters.AddWithValue("cat", _nuevoModeloCategoriaId!);
+                cmd.Parameters.AddWithValue("nombre", _nuevoModeloNombre!.Trim());
+                cmd.Parameters.AddWithValue("cal", _nuevoModeloEsCalibrable);
+
+                cmd.Parameters.AddWithValue("manual", DBNull.Value);
+                cmd.Parameters.AddWithValue("notas", string.IsNullOrWhiteSpace(_nuevoModeloNotas) ? (object)DBNull.Value : _nuevoModeloNotas!.Trim());
+                cmd.Parameters.AddWithValue("desc", string.IsNullOrWhiteSpace(_nuevoModeloDescripcion) ? (object)DBNull.Value : _nuevoModeloDescripcion!.Trim());
+                cmd.Parameters.AddWithValue("img", string.IsNullOrWhiteSpace(_nuevoModeloImagenUrl) ? (object)DBNull.Value : _nuevoModeloImagenUrl!.Trim());
+
+                cmd.Parameters.AddWithValue("altura_cm", alturaCm is null ? (object)DBNull.Value : alturaCm.Value);
+
+                rows = await cmd.ExecuteNonQueryAsync();
+            }
+
+            if (rows == 0)
+            {
+                _nuevoModeloMsg = $"El ID '{modeloId}' ya existe. Usa otro ID o deja el campo vacío.";
+                await tx.RollbackAsync();
+                return;
+            }
+
+            const string sqlSubs = @"
+                INSERT INTO modelo_equipo_subcategorias (modelo_id, subcategoria_id)
+                SELECT @mid, x
+                FROM unnest(@subs::varchar[]) AS x
+                ON CONFLICT DO NOTHING;";
+
+            await using (var cmd = new NpgsqlCommand(sqlSubs, conn, tx))
+            {
+                cmd.Parameters.AddWithValue("mid", modeloId);
+                cmd.Parameters.AddWithValue("subs", selectedSubs);
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            // Si eligió un “manual plantilla”, clonarlo y pegarlo a este nuevo modelo
+            if (!string.IsNullOrWhiteSpace(_nuevoModeloManualDocTemplateId))
+            {
+                var newManualDocId = await CloneManualDocForModeloAsync(
+                    conn, tx,
+                    templateDocId: _nuevoModeloManualDocTemplateId!,
+                    modeloId: modeloId,
+                    modeloNombre: _nuevoModeloNombre!.Trim(),
+                    marcaId: _nuevoModeloMarcaId
+                );
+
+                const string upManual = @"UPDATE modelos_equipo SET manual_url = @doc WHERE modelo_id = @mid;";
+                await using (var up = new NpgsqlCommand(upManual, conn, tx))
+                {
+                    up.Parameters.AddWithValue("doc", newManualDocId);
+                    up.Parameters.AddWithValue("mid", modeloId);
+                    await up.ExecuteNonQueryAsync();
+                }
+            }
+
+            await tx.CommitAsync();
+
+            // Reset form modelo
+            _nuevoModeloId = null;
+            _nuevoModeloNombre = null;
+            _nuevoModeloMarcaId = null;
+            _nuevoModeloCategoriaId = "equipo-mixto";
+            _nuevoModeloEsCalibrable = false;
+
+            _nuevoModeloAlturaCm = null;
+
+            _nuevoModeloManualDocTemplateId = null;
+            _nuevoModeloDescripcion = null;
+            _nuevoModeloNotas = null;
+            _nuevoModeloSubcategoriaIds.Clear();
+            _nuevoModeloImagenUrl = null;
+            _nuevoModeloImagenModo = "url";
+            _nuevoModeloImagenArchivo = null;
+
+            _nuevoModeloMsg = "Modelo registrado.";
+
+            // refrescar lookups y listas
+            await LoadLookupsAsync();
+            await LoadModelosAsync();
+            await LoadEquiposAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            _nuevoModeloMsg = $"Error al registrar modelo: {ex.Message}";
+        }
+    }
+
+    // ============================
+    // Subir Equipo (instancia)
+    // ============================
+    private string? SelectedEquipoModeloMarcaLogoUrl =>
+        _modeloLookupOptions.FirstOrDefault(m => string.Equals(m.Id, _nuevoEquipoModeloId, StringComparison.OrdinalIgnoreCase))?.MarcaImagenUrl;
+
+    private void OnEquipoModeloChanged(ChangeEventArgs args)
+    {
+        var v = args.Value?.ToString();
+        _nuevoEquipoModeloId = string.IsNullOrWhiteSpace(v) ? null : v;
+
+        if (!string.IsNullOrWhiteSpace(_nuevoEquipoModeloId))
+        {
+            var m = _modeloLookupOptions.FirstOrDefault(x =>
+                string.Equals(x.Id, _nuevoEquipoModeloId, StringComparison.OrdinalIgnoreCase));
+
+            if (m is not null)
+                _nuevoEquipoRequiereCalibracion = m.EsCalibrable;
+        }
+    }
+
+    private void OnEquipoImagenModoChanged(ChangeEventArgs args)
+    {
+        var v = args.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(v))
+            _nuevoEquipoImagenModo = v;
+
+        if (_nuevoEquipoImagenModo == "url")
+            _nuevoEquipoImagenArchivo = null;
+        else
+            _nuevoEquipoImagenUrl = null;
+    }
+
+    private static async Task<string> CloneManualDocForModeloAsync(
+        NpgsqlConnection conn,
+        NpgsqlTransaction tx,
+        string templateDocId,
+        string modeloId,
+        string modeloNombre,
+        string? marcaId)
+    {
+        string tituloBase, catId, subId;
+        string? desc, url, archivo, notas, img, marcaTpl, proc;
+        int? labctx;
+
+        const string sel = @"
+        SELECT titulo, categoria_id, subcategoria_id,
+               descripcion_detalle, url, archivo_local, notas, imagen_url,
+               marca_id, procedencia, laboratorio_contexto_id
+        FROM documentos
+        WHERE documento_id = @id
+          AND alcance = 'EQUIPO'
+        LIMIT 1;";
+
+        await using (var cmd = new NpgsqlCommand(sel, conn, tx))
+        {
+            cmd.Parameters.AddWithValue("id", templateDocId);
+            await using var r = await cmd.ExecuteReaderAsync();
+
+            if (!await r.ReadAsync())
+                throw new Exception("El documento seleccionado no existe o no es de alcance EQUIPO.");
+
+            tituloBase = r.GetString(0);
+            catId = r.GetString(1);
+            subId = r.GetString(2);
+
+            desc = r.IsDBNull(3) ? null : r.GetString(3);
+            url = r.IsDBNull(4) ? null : r.GetString(4);
+            archivo = r.IsDBNull(5) ? null : r.GetString(5);
+            notas = r.IsDBNull(6) ? null : r.GetString(6);
+            img = r.IsDBNull(7) ? null : r.GetString(7);
+
+            marcaTpl = r.IsDBNull(8) ? null : r.GetString(8);
+            proc = r.IsDBNull(9) ? null : r.GetString(9);
+
+            labctx = r.IsDBNull(10) ? (int?)null : r.GetInt32(10);
+        }
+
+        var newDocId = $"doc_{Guid.NewGuid():N}".Substring(0, 12);
+        var titulo = $"Manual · {modeloNombre}".Trim();
+
+        const string ins = @"
+        INSERT INTO documentos
+        (documento_id, titulo,
+         categoria_id, subcategoria_id,
+         descripcion_detalle, url, archivo_local, notas, imagen_url,
+         marca_id, procedencia,
+         laboratorio_contexto_id,
+         alcance,
+         laboratorio_id, laboratorio_realizado_id,
+         asignatura_id, experiencia_id,
+         modelo_equipo_id, material_id, sustancia_id, cont_id)
+        VALUES
+        (@id, @titulo,
+         @cat, @sub,
+         @desc, @url, @archivo, @notas, @img,
+         @marca, @proc,
+         @labctx,
+         'EQUIPO',
+         NULL, NULL,
+         NULL, NULL,
+         @modelo, NULL, NULL, NULL);";
+
+        await using (var cmd = new NpgsqlCommand(ins, conn, tx))
+        {
+            cmd.Parameters.AddWithValue("id", newDocId);
+            cmd.Parameters.AddWithValue("titulo", titulo);
+
+            cmd.Parameters.AddWithValue("cat", catId);
+            cmd.Parameters.AddWithValue("sub", subId);
+
+            cmd.Parameters.AddWithValue("desc", string.IsNullOrWhiteSpace(desc) ? (object)DBNull.Value : desc);
+            cmd.Parameters.AddWithValue("url", string.IsNullOrWhiteSpace(url) ? (object)DBNull.Value : url);
+            cmd.Parameters.AddWithValue("archivo", string.IsNullOrWhiteSpace(archivo) ? (object)DBNull.Value : archivo);
+            cmd.Parameters.AddWithValue("notas", string.IsNullOrWhiteSpace(notas) ? (object)DBNull.Value : notas);
+            cmd.Parameters.AddWithValue("img", string.IsNullOrWhiteSpace(img) ? (object)DBNull.Value : img);
+
+            var marcaFinal = !string.IsNullOrWhiteSpace(marcaTpl) ? marcaTpl : (string.IsNullOrWhiteSpace(marcaId) ? null : marcaId);
+            cmd.Parameters.AddWithValue("marca", string.IsNullOrWhiteSpace(marcaFinal) ? (object)DBNull.Value : marcaFinal);
+
+            var procFinal = !string.IsNullOrWhiteSpace(proc) ? proc : (string.IsNullOrWhiteSpace(marcaFinal) ? "INTERNO LABORATORIO" : "INSTITUCION INTERNACIONAL");
+            cmd.Parameters.AddWithValue("proc", procFinal);
+
+            cmd.Parameters.AddWithValue("labctx", labctx is null ? (object)DBNull.Value : labctx.Value);
+
+            cmd.Parameters.AddWithValue("modelo", modeloId);
+
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        return newDocId;
+    }
+
+    private async Task OnEquipoImagenArchivoSeleccionado(InputFileChangeEventArgs args)
+    {
+        _nuevoEquipoMsg = null;
+        if (args.FileCount == 0) return;
+
+        var file = args.File;
+        var ext = Path.GetExtension(file.Name).ToLowerInvariant();
+        if (!AllowedImageExtensions.Contains(ext))
+        {
+            _nuevoEquipoMsg = "Formato no permitido. Usa PNG, JPG o WEBP.";
+            return;
+        }
+
+        var fileName = $"equipo_{Guid.NewGuid():N}{ext}";
+        var relativePath = Path.Combine("uploads", "equipos", fileName).Replace("\\", "/");
+        var absolutePath = Path.Combine(HostEnvironment.WebRootPath, relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(absolutePath)!);
+
+        await using var stream = file.OpenReadStream(8 * 1024 * 1024);
+        await using var fs = File.Create(absolutePath);
+        await stream.CopyToAsync(fs);
+
+        _nuevoEquipoImagenUrl = $"/{relativePath}";
+        _nuevoEquipoImagenArchivo = file.Name;
+        _nuevoEquipoMsg = $"Imagen cargada: {file.Name}";
+    }
+
+    private async Task SubirEquipoAsync()
+    {
+        _nuevoEquipoMsg = null;
+
+        if (string.IsNullOrWhiteSpace(_nuevoEquipoNombre))
+        {
+            _nuevoEquipoMsg = "Ingresa el nombre del equipo (obligatorio).";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_nuevoEquipoAreaId))
+        {
+            _nuevoEquipoMsg = "Selecciona un área (obligatorio).";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_nuevoEquipoMesonId))
+        {
+            _nuevoEquipoMsg = "Selecciona un mesón (obligatorio).";
+            return;
+        }
+
+        var equipoId = string.IsNullOrWhiteSpace(_nuevoEquipoId)
+            ? $"eq_{Guid.NewGuid():N}".Substring(0, 12)
+            : _nuevoEquipoId!.Trim();
+
+        var canvasId = SelectedAreaForMap?.CanvasId;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            const string checkMeson = @"
+            SELECT COUNT(*)
+            FROM mesones m
+            INNER JOIN areas a ON a.area_id = m.area_id
+            WHERE m.meson_id = @meson
+              AND m.area_id = @area
+              AND a.laboratorio_id = @lab";
+            await using (var chk = new NpgsqlCommand(checkMeson, conn, tx))
+            {
+                chk.Parameters.AddWithValue("meson", _nuevoEquipoMesonId!);
+                chk.Parameters.AddWithValue("area", _nuevoEquipoAreaId!);
+                chk.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+
+                var ok = Convert.ToInt64(await chk.ExecuteScalarAsync()) > 0;
+                if (!ok)
+                {
+                    _nuevoEquipoMsg = "El mesón no pertenece al área seleccionada (o no es del laboratorio).";
+                    await tx.RollbackAsync();
+                    return;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(_nuevoEquipoModeloId))
+            {
+                const string checkModelo = @"SELECT COUNT(*) FROM modelos_equipo WHERE modelo_id = @mid";
+                await using var chkM = new NpgsqlCommand(checkModelo, conn, tx);
+                chkM.Parameters.AddWithValue("mid", _nuevoEquipoModeloId!);
+                var okModelo = Convert.ToInt64(await chkM.ExecuteScalarAsync()) > 0;
+
+                if (!okModelo)
+                {
+                    _nuevoEquipoMsg = "El modelo seleccionado no existe (refresca la página o vuelve a elegir).";
+                    await tx.RollbackAsync();
+                    return;
+                }
+            }
+
+            const string sqlIns = @"
+            INSERT INTO equipos
+            (equipo_id, nombre, modelo_id, serie, estado_id,
+             area_id, meson_id, nivel, posicion, canvas_id,
+             fecha_compra, garantia_hasta, requiere_calibracion,
+             laboratorio_id, observaciones, imagen_url)
+            VALUES
+            (@equipo_id, @nombre, @modelo_id, @serie, @estado_id,
+             @area_id, @meson_id, @nivel, @posicion, @canvas_id,
+             @fecha_compra, @garantia_hasta, @requiere_calibracion,
+             @laboratorio_id, @observaciones, @imagen_url)
+            ON CONFLICT (equipo_id) DO NOTHING;";
+
+            int rows;
+            await using (var cmd = new NpgsqlCommand(sqlIns, conn, tx))
+            {
+                cmd.Parameters.AddWithValue("equipo_id", equipoId);
+                cmd.Parameters.AddWithValue("nombre", _nuevoEquipoNombre!.Trim());
+
+                cmd.Parameters.AddWithValue("modelo_id",
+                    string.IsNullOrWhiteSpace(_nuevoEquipoModeloId) ? (object)DBNull.Value : _nuevoEquipoModeloId!.Trim());
+
+                cmd.Parameters.AddWithValue("serie",
+                    string.IsNullOrWhiteSpace(_nuevoEquipoSerie) ? (object)DBNull.Value : _nuevoEquipoSerie!.Trim());
+
+                cmd.Parameters.AddWithValue("estado_id",
+                    string.IsNullOrWhiteSpace(_nuevoEquipoEstadoId) ? (object)DBNull.Value : _nuevoEquipoEstadoId!.Trim());
+
+                cmd.Parameters.AddWithValue("area_id", _nuevoEquipoAreaId!.Trim());
+                cmd.Parameters.AddWithValue("meson_id", _nuevoEquipoMesonId!.Trim());
+
+                cmd.Parameters.AddWithValue("nivel", ParseIntOrNull(_nuevoEquipoNivel));
+
+                cmd.Parameters.AddWithValue("posicion",
+                    string.IsNullOrWhiteSpace(_nuevoEquipoPosicion) ? (object)DBNull.Value : _nuevoEquipoPosicion!.Trim());
+
+                cmd.Parameters.AddWithValue("canvas_id",
+                    string.IsNullOrWhiteSpace(canvasId) ? (object)DBNull.Value : canvasId!.Trim());
+
+                cmd.Parameters.AddWithValue("fecha_compra", ParseDateOrNull(_nuevoEquipoFechaCompra));
+                cmd.Parameters.AddWithValue("garantia_hasta", ParseDateOrNull(_nuevoEquipoGarantiaHasta));
+
+                cmd.Parameters.AddWithValue("requiere_calibracion", _nuevoEquipoRequiereCalibracion);
+                cmd.Parameters.AddWithValue("laboratorio_id", LaboratorioState.LaboratorioId);
+
+                cmd.Parameters.AddWithValue("observaciones",
+                    string.IsNullOrWhiteSpace(_nuevoEquipoObservaciones) ? (object)DBNull.Value : _nuevoEquipoObservaciones!.Trim());
+
+                cmd.Parameters.AddWithValue("imagen_url",
+                    string.IsNullOrWhiteSpace(_nuevoEquipoImagenUrl) ? (object)DBNull.Value : _nuevoEquipoImagenUrl!.Trim());
+
+                rows = await cmd.ExecuteNonQueryAsync();
+            }
+
+            if (rows == 0)
+            {
+                _nuevoEquipoMsg = $"El ID '{equipoId}' ya existe. Usa otro ID o deja el campo vacío.";
+                await tx.RollbackAsync();
+                return;
+            }
+
+            await tx.CommitAsync();
+
+            _nuevoEquipoId = null;
+            _nuevoEquipoNombre = null;
+            _nuevoEquipoModeloId = null;
+            _nuevoEquipoSerie = null;
+            _nuevoEquipoEstadoId = null;
+
+            _nuevoEquipoAreaId = null;
+            _nuevoEquipoMesonId = null;
+            _nuevoEquipoNivel = null;
+            _nuevoEquipoPosicion = null;
+
+            _nuevoEquipoFechaCompra = null;
+            _nuevoEquipoGarantiaHasta = null;
+            _nuevoEquipoObservaciones = null;
+
+            _nuevoEquipoRequiereCalibracion = false;
+
+            _nuevoEquipoImagenUrl = null;
+            _nuevoEquipoImagenModo = "url";
+            _nuevoEquipoImagenArchivo = null;
+
+            _mesonOptions.Clear();
+            _mesonSummaries.Clear();
+            _mesonVisuals.Clear();
+
+            _nuevoEquipoMsg = "Equipo registrado.";
+
+            await LoadEquiposAsync();
+            await LoadModelosAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            _nuevoEquipoMsg = $"Error al registrar equipo: {ex.Message}";
+        }
+    }
+
+    // ============================
+    // LOAD: Modelos (lista)
+    // ============================
+    private async Task LoadModelosAsync()
+    {
+        string? newError = null;
+        var newList = new List<ModeloRow>();
+
+        if (!_verTodos && string.IsNullOrWhiteSpace(SubcategoriaId))
+        {
+            modelos.Clear();
+            modelosLoadError = null;
+            return;
+        }
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+
+            // ✅ incluye me.altura_cm
+            const string sql = @"
+SELECT me.modelo_id,
+       me.nombre_modelo,
+       COALESCE(ma.nombre,'') AS marca_nombre,
+       ma.imagen_url AS marca_imagen,
+       COALESCE(c.nombre,'') AS categoria_nombre,
+       me.es_calibrable,
+       me.manual_url,
+       me.imagen_url,
+       me.altura_cm,
+
+       COALESCE(string_agg(DISTINCT (c2.nombre || ' · ' || sc.nombre), ', ' ORDER BY (c2.nombre || ' · ' || sc.nombre)), '') AS subcats,
+
+       COALESCE(stats.eq_count, 0) AS eq_count,
+
+       COALESCE(a.nombre_areas,'') AS area,
+       COALESCE(ms.nombre_meson,'') AS meson,
+       COALESCE(loc.posicion,'') AS posicion,
+       loc.nivel
+
+FROM modelos_equipo me
+LEFT JOIN marcas ma ON ma.marca_id = me.marca_id
+LEFT JOIN categorias c ON c.categoria_id = me.categoria_id
+
+LEFT JOIN modelo_equipo_subcategorias mesc ON mesc.modelo_id = me.modelo_id
+LEFT JOIN subcategorias sc ON sc.subcategoria_id = mesc.subcategoria_id
+LEFT JOIN categorias c2 ON c2.categoria_id = sc.categoria_id
+
+LEFT JOIN LATERAL (
+    SELECT COUNT(*) AS eq_count
+    FROM equipos e
+    WHERE e.modelo_id = me.modelo_id
+      AND e.laboratorio_id = @lab
+) stats ON true
+
+LEFT JOIN LATERAL (
+    SELECT area_id, meson_id, posicion, nivel
+    FROM equipos e
+    WHERE e.modelo_id = me.modelo_id
+      AND e.laboratorio_id = @lab
+    ORDER BY e.fecha_compra DESC NULLS LAST, e.equipo_id
+    LIMIT 1
+) loc ON true
+LEFT JOIN areas a ON a.area_id = loc.area_id
+LEFT JOIN mesones ms ON ms.meson_id = loc.meson_id
+
+WHERE me.categoria_id = ANY(@cats)
+  AND (
+        @subcategoria IS NULL
+        OR EXISTS (
+            SELECT 1
+            FROM modelo_equipo_subcategorias x
+            WHERE x.modelo_id = me.modelo_id
+              AND x.subcategoria_id = @subcategoria
+        )
+  )
+
+GROUP BY me.modelo_id, me.nombre_modelo, ma.nombre, ma.imagen_url, c.nombre,
+         me.es_calibrable, me.manual_url, me.imagen_url, me.altura_cm,
+         stats.eq_count,
+         a.nombre_areas, ms.nombre_meson, loc.posicion, loc.nivel
+
+ORDER BY me.nombre_modelo, me.modelo_id;";
+
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            cmd.Parameters.AddWithValue("cats", CategoriaEquipoIds);
+
+            var pSub = cmd.Parameters.Add("subcategoria", NpgsqlTypes.NpgsqlDbType.Varchar);
+            pSub.Value = (_verTodos || string.IsNullOrWhiteSpace(SubcategoriaId))
+                ? DBNull.Value
+                : SubcategoriaId!;
+
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                var id = r.GetString(0);
+                var nombre = r.GetString(1);
+                var marcaNom = r.GetString(2);
+                var marcaImg = r.IsDBNull(3) ? null : r.GetString(3);
+                var catNom = r.GetString(4);
+                var esCal = r.GetBoolean(5);
+                var manual = r.IsDBNull(6) ? null : r.GetString(6);
+                var img = r.IsDBNull(7) ? null : r.GetString(7);
+
+                decimal? altura = r.IsDBNull(8) ? (decimal?)null : r.GetDecimal(8);
+
+                var subcats = r.GetString(9);
+                var eqCount = r.IsDBNull(10) ? 0 : r.GetInt64(10);
+
+                var area = r.GetString(11);
+                var meson = r.GetString(12);
+                var pos = r.GetString(13);
+                var nivel = r.IsDBNull(14) ? (int?)null : r.GetInt32(14);
+
+                var ubic = BuildUbicacion(area, meson, nivel, pos);
+
+                newList.Add(new ModeloRow(
+                    Id: id,
+                    Nombre: nombre,
+                    MarcaNombre: marcaNom,
+                    MarcaImagenUrl: marcaImg,
+                    Categoria: catNom,
+                    Subcategorias: subcats,
+                    AlturaCm: altura,
+                    EsCalibrable: esCal,
+                    ManualUrl: manual,
+                    EquiposCount: eqCount,
+                    Ubicacion: ubic,
+                    ImagenUrl: img
+                ));
+            }
+        }
+        catch (Exception ex)
+        {
+            newError = ex.Message;
+        }
+
+        modelos.Clear();
+        modelos.AddRange(newList);
+        modelosLoadError = newError;
+    }
+
+    // ============================
+    // LOAD: Equipos (lista)
+    // ============================
+    private async Task LoadEquiposAsync()
+    {
+        string? newError = null;
+        var newList = new List<EquipoRow>();
+
+        if (!_verTodos && string.IsNullOrWhiteSpace(SubcategoriaId))
+        {
+            equipos.Clear();
+            equiposLoadError = null;
+            return;
+        }
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+
+            // ✅ incluye me.altura_cm
+            const string sql = @"
+SELECT e.equipo_id,
+       COALESCE(NULLIF(e.nombre,''), e.equipo_id) AS equipo_nombre,
+       COALESCE(e.serie,'') AS serie,
+
+       COALESCE(me.nombre_modelo,'') AS modelo_nombre,
+       COALESCE(ma.nombre,'') AS marca_nombre,
+       ma.imagen_url AS marca_imagen,
+
+       COALESCE(cModel.nombre, '') AS categoria_nombre,
+       me.altura_cm,
+
+       COALESCE(subs.subcats, '') AS subcats,
+
+       COALESCE(ea.nombre,'') AS estado,
+
+       COALESCE(a.nombre_areas,'') AS area,
+       COALESCE(ms.nombre_meson,'') AS meson,
+       COALESCE(e.posicion,'') AS posicion,
+       e.nivel,
+
+       e.requiere_calibracion,
+       cal.proxima_fecha,
+
+       e.imagen_url
+
+FROM equipos e
+LEFT JOIN modelos_equipo me ON me.modelo_id = e.modelo_id
+LEFT JOIN marcas ma ON ma.marca_id = me.marca_id
+
+LEFT JOIN categorias cModel ON cModel.categoria_id = me.categoria_id
+
+LEFT JOIN LATERAL (
+    SELECT string_agg(DISTINCT (c3.nombre || ' · ' || sc.nombre), ', ' ORDER BY (c3.nombre || ' · ' || sc.nombre)) AS subcats
+    FROM modelo_equipo_subcategorias mesc
+    INNER JOIN subcategorias sc ON sc.subcategoria_id = mesc.subcategoria_id
+    INNER JOIN categorias c3 ON c3.categoria_id = sc.categoria_id
+    WHERE mesc.modelo_id = me.modelo_id
+) subs ON true
+
+LEFT JOIN estados_activo ea ON ea.estado_id = e.estado_id
+LEFT JOIN areas a ON a.area_id = e.area_id
+LEFT JOIN mesones ms ON ms.meson_id = e.meson_id
+
+LEFT JOIN (
+    SELECT equipo_id, MAX(proxima_fecha) AS proxima_fecha
+    FROM calibraciones
+    GROUP BY equipo_id
+) cal ON cal.equipo_id = e.equipo_id
+
+WHERE e.laboratorio_id = @lab
+  AND me.categoria_id = ANY(@cats)
+  AND (
+        @subcategoria IS NULL
+        OR EXISTS (
+            SELECT 1
+            FROM modelo_equipo_subcategorias x
+            WHERE x.modelo_id = e.modelo_id
+              AND x.subcategoria_id = @subcategoria
+        )
+  )
+
+ORDER BY equipo_nombre, e.equipo_id;";
+
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            cmd.Parameters.AddWithValue("cats", CategoriaEquipoIds);
+
+            var pSub = cmd.Parameters.Add("subcategoria", NpgsqlTypes.NpgsqlDbType.Varchar);
+            pSub.Value = (_verTodos || string.IsNullOrWhiteSpace(SubcategoriaId))
+                ? DBNull.Value
+                : SubcategoriaId!;
+
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                var id = r.GetString(0);
+                var nombre = r.GetString(1);
+                var serie = r.GetString(2);
+
+                var modelo = r.GetString(3);
+                var marcaNom = r.GetString(4);
+                var marcaImg = r.IsDBNull(5) ? null : r.GetString(5);
+
+                var catNom = r.GetString(6);
+
+                decimal? altura = r.IsDBNull(7) ? (decimal?)null : r.GetDecimal(7);
+
+                var subcats = r.GetString(8);
+
+                var estado = r.GetString(9);
+
+                var area = r.GetString(10);
+                var meson = r.GetString(11);
+                var pos = r.GetString(12);
+                var nivel = r.IsDBNull(13) ? (int?)null : r.GetInt32(13);
+
+                var requiere = r.GetBoolean(14);
+                var proxima = r.IsDBNull(15) ? (DateTime?)null : r.GetDateTime(15);
+
+                var img = r.IsDBNull(16) ? null : r.GetString(16);
+
+                var ubic = BuildUbicacion(area, meson, nivel, pos);
+                var calLabel = BuildCalibracion(requiere, proxima);
+
+                newList.Add(new EquipoRow(
+                    Id: id,
+                    Nombre: nombre,
+                    Serie: serie,
+                    Modelo: modelo,
+                    MarcaNombre: marcaNom,
+                    MarcaImagenUrl: marcaImg,
+                    Categoria: catNom,
+                    Subcategorias: subcats,
+                    AlturaCm: altura,
+                    Estado: estado,
+                    Ubicacion: ubic,
+                    Calibracion: calLabel,
+                    ImagenUrl: img
+                ));
+            }
+        }
+        catch (Exception ex)
+        {
+            newError = ex.Message;
+        }
+
+        equipos.Clear();
+        equipos.AddRange(newList);
+        equiposLoadError = newError;
+    }
+
+    // ============================
+    // Filtrado + conteos
+    // ============================
+    private IEnumerable<ModeloRow> ModelosFiltrados
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_searchModelosText))
+                return modelos;
+
+            var q = _searchModelosText.Trim();
+
+            bool Hit(string? s) =>
+                !string.IsNullOrWhiteSpace(s) &&
+                s.Contains(q, StringComparison.OrdinalIgnoreCase);
+
+            return modelos.Where(m =>
+                Hit(m.Id) ||
+                Hit(m.Nombre) ||
+                Hit(m.MarcaNombre) ||
+                Hit(m.Categoria) ||
+                Hit(m.Subcategorias) ||
+                Hit(m.AlturaCm?.ToString(CultureInfo.InvariantCulture)) ||
+                Hit(m.ManualUrl) ||
+                Hit(m.Ubicacion)
+            );
+        }
+    }
+
+    private IEnumerable<EquipoRow> EquiposFiltrados
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_searchEquiposText))
+                return equipos;
+
+            var q = _searchEquiposText.Trim();
+
+            bool Hit(string? s) =>
+                !string.IsNullOrWhiteSpace(s) &&
+                s.Contains(q, StringComparison.OrdinalIgnoreCase);
+
+            return equipos.Where(e =>
+                Hit(e.Id) ||
+                Hit(e.Nombre) ||
+                Hit(e.Serie) ||
+                Hit(e.Modelo) ||
+                Hit(e.MarcaNombre) ||
+                Hit(e.Categoria) ||
+                Hit(e.Subcategorias) ||
+                Hit(e.AlturaCm?.ToString(CultureInfo.InvariantCulture)) ||
+                Hit(e.Estado) ||
+                Hit(e.Ubicacion) ||
+                Hit(e.Calibracion)
+            );
+        }
+    }
+
+    private string ModelosCountLabel
+    {
+        get
+        {
+            var total = modelos.Count;
+            if (string.IsNullOrWhiteSpace(_searchModelosText))
+                return $"{total} modelos";
+
+            var filtered = ModelosFiltrados.Count();
+            return $"{filtered} de {total}";
+        }
+    }
+
+    private string EquiposCountLabel
+    {
+        get
+        {
+            var total = equipos.Count;
+            if (string.IsNullOrWhiteSpace(_searchEquiposText))
+                return $"{total} equipos";
+
+            var filtered = EquiposFiltrados.Count();
+            return $"{filtered} de {total}";
+        }
+    }
+
+    // ============================
+    // Área / Mesón selección
+    // ============================
+    private async Task OnAreaChanged(ChangeEventArgs args)
+    {
+        var newArea = args.Value?.ToString();
+
+        if (string.IsNullOrWhiteSpace(newArea))
+        {
+            ClearAreaSelection();
+            return;
+        }
+
+        if (string.Equals(newArea, _nuevoEquipoAreaId, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        _nuevoEquipoAreaId = newArea;
+        _nuevoEquipoMesonId = null;
+
+        await LoadMesonesAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SelectAreaFromVisualAsync(string? areaId)
+    {
+        if (string.IsNullOrWhiteSpace(areaId))
+            return;
+
+        if (string.Equals(areaId, _nuevoEquipoAreaId, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        _nuevoEquipoAreaId = areaId;
+        _nuevoEquipoMesonId = null;
+
+        await LoadMesonesAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void ClearAreaSelection()
+    {
+        _nuevoEquipoAreaId = null;
+        _nuevoEquipoMesonId = null;
+
+        _mesonOptions.Clear();
+        _mesonSummaries.Clear();
+        _mesonVisuals.Clear();
+
+        StateHasChanged();
+    }
+
+    private void ClearMesonSelection()
+    {
+        _nuevoEquipoMesonId = null;
+        StateHasChanged();
+    }
+
+    private void SelectMeson(string mesonId)
+    {
+        if (string.Equals(_nuevoEquipoMesonId, mesonId, StringComparison.OrdinalIgnoreCase))
+            _nuevoEquipoMesonId = null;
+        else
+            _nuevoEquipoMesonId = mesonId;
+    }
+
+    private void OnMesonChanged(ChangeEventArgs args)
+    {
+        var v = args.Value?.ToString();
+        _nuevoEquipoMesonId = string.IsNullOrWhiteSpace(v) ? null : v;
+    }
+
+    private string SelectedAreaLabel =>
+        _areaOptions.FirstOrDefault(a => string.Equals(a.Id, _nuevoEquipoAreaId, StringComparison.OrdinalIgnoreCase))?.Label
+        ?? _nuevoEquipoAreaId
+        ?? "Área";
+
+    private string SelectedMesonLabel =>
+        _mesonOptions.FirstOrDefault(m => string.Equals(m.Id, _nuevoEquipoMesonId, StringComparison.OrdinalIgnoreCase))?.Label
+        ?? _nuevoEquipoMesonId
+        ?? "Mesón";
+
+    private AreaItem? SelectedAreaForMap =>
+        _canvasViews.SelectMany(v => v.Areas)
+            .FirstOrDefault(a => string.Equals(a.AreaId, _nuevoEquipoAreaId, StringComparison.OrdinalIgnoreCase));
+
+    private async Task LoadMesonesAsync()
+    {
+        _mesonOptions.Clear();
+        _mesonSummaries.Clear();
+        _mesonVisuals.Clear();
+
+        if (string.IsNullOrWhiteSpace(_nuevoEquipoAreaId))
+            return;
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        const string mesonSql = @"
+            SELECT m.meson_id,
+                   COALESCE(NULLIF(m.nombre_meson, ''), m.meson_id) AS nombre_meson,
+                   COALESCE(c.reactivos_count, 0) AS reactivos_count,
+                   COALESCE(e.equipos_count, 0) AS equipos_count
+            FROM mesones m
+            INNER JOIN areas a ON a.area_id = m.area_id AND a.laboratorio_id = @lab
+            LEFT JOIN (
+                SELECT meson_id, COUNT(*) AS reactivos_count
+                FROM contenedores
+                WHERE area_id = @area
+                GROUP BY meson_id
+            ) c ON c.meson_id = m.meson_id
+            LEFT JOIN (
+                SELECT meson_id, COUNT(*) AS equipos_count
+                FROM equipos
+                WHERE area_id = @area
+                GROUP BY meson_id
+            ) e ON e.meson_id = m.meson_id
+            WHERE m.area_id = @area
+            ORDER BY nombre_meson";
+
+        await using var cmd = new NpgsqlCommand(mesonSql, conn);
+        cmd.Parameters.AddWithValue("area", _nuevoEquipoAreaId!);
+        cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var mesonId = reader.GetString(0);
+            var nombre = reader.GetString(1);
+
+            _mesonOptions.Add(new SelectOption(mesonId, nombre));
+            _mesonSummaries.Add(new MesonSummary(
+                mesonId,
+                nombre,
+                reader.GetInt32(2),
+                reader.GetInt32(3)
+            ));
+        }
+
+        await LoadMesonVisualsAsync();
+    }
+
+    private async Task LoadMesonVisualsAsync()
+    {
+        _mesonVisuals.Clear();
+
+        if (string.IsNullOrWhiteSpace(_nuevoEquipoAreaId))
+            return;
+
+        var area = SelectedAreaForMap;
+        if (area is null)
+            return;
+
+        var mesonLabels = _mesonOptions
+            .GroupBy(m => m.Id, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().Label, StringComparer.OrdinalIgnoreCase);
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        if (!string.IsNullOrWhiteSpace(area.CanvasId) && await TableExistsAsync(conn, "bloques_int"))
+        {
+            const string blockSql = @"
+                SELECT b.bloque_id,
+                       b.meson_id,
+                       b.etiqueta,
+                       b.color_hex,
+                       b.z_order,
+                       b.pos_x,
+                       b.pos_y,
+                       b.ancho,
+                       b.largo,
+                       b.offset_x,
+                       b.offset_y
+                FROM bloques_int b
+                INNER JOIN mesones m ON m.meson_id = b.meson_id
+                WHERE b.canvas_id = @canvas
+                  AND b.meson_id IS NOT NULL
+                  AND m.area_id = @area";
+
+            await using var cmd = new NpgsqlCommand(blockSql, conn);
+            cmd.Parameters.AddWithValue("canvas", area.CanvasId!);
+            cmd.Parameters.AddWithValue("area", _nuevoEquipoAreaId!);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var mesonId = reader.IsDBNull(1) ? null : reader.GetString(1);
+                if (string.IsNullOrWhiteSpace(mesonId))
+                    continue;
+
+                if (!mesonLabels.ContainsKey(mesonId))
+                    continue;
+
+                var label = reader.IsDBNull(2) ? null : reader.GetString(2);
+                if (string.IsNullOrWhiteSpace(label) && mesonLabels.TryGetValue(mesonId, out var mesonLabel))
+                    label = mesonLabel;
+
+                label ??= "MESON";
+
+                var offsetX = reader.IsDBNull(9) ? 0m : reader.GetDecimal(9);
+                var offsetY = reader.IsDBNull(10) ? 0m : reader.GetDecimal(10);
+
+                var width = reader.GetDecimal(7);
+                var height = reader.GetDecimal(8);
+
+                var x = reader.GetDecimal(5);
+                var y = reader.GetDecimal(6);
+
+                if (offsetX != 0m || offsetY != 0m)
+                {
+                    x = area.CenterX + offsetX;
+                    y = area.CenterY + offsetY;
+                }
+
+                var fill = reader.IsDBNull(3) ? "#2563eb" : reader.GetString(3);
+                var zOrder = reader.IsDBNull(4) ? 0 : reader.GetInt32(4);
+
+                _mesonVisuals.Add(new MesonVisual(
+                    mesonId,
+                    label,
+                    x,
+                    y,
+                    width,
+                    height,
+                    fill,
+                    0.45m,
+                    zOrder
+                ));
+            }
+        }
+
+        var dedup = new Dictionary<string, MesonVisual>(StringComparer.OrdinalIgnoreCase);
+        foreach (var v in _mesonVisuals.OrderBy(v => v.ZOrder))
+        {
+            if (!dedup.ContainsKey(v.MesonId))
+                dedup[v.MesonId] = v;
+        }
+
+        _mesonVisuals.Clear();
+        _mesonVisuals.AddRange(dedup.Values.OrderBy(v => v.ZOrder));
+    }
+
+    private static async Task<bool> TableExistsAsync(NpgsqlConnection conn, string tableName)
+    {
+        const string sql = "SELECT to_regclass(@name) IS NOT NULL";
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("name", $"public.{tableName}");
+        var result = await cmd.ExecuteScalarAsync();
+        return result is bool b && b;
+    }
+
+    // ============================
+    // Canvas + áreas (igual patrón que sustancias)
+    // ============================
+    private async Task LoadCanvasAreasAsync()
+    {
+        _canvasViews.Clear();
+        _plantasLookup.Clear();
+
+        var previousPlantaId = _currentPlantaId;
+        _currentPlantaId = null;
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        await using (var cmd = new NpgsqlCommand("SELECT planta_id, nombre FROM plantas ORDER BY nombre", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+            while (await reader.ReadAsync())
+                _plantasLookup[reader.GetString(0)] = reader.GetString(1);
+
+        if (!string.IsNullOrWhiteSpace(previousPlantaId) && _plantasLookup.ContainsKey(previousPlantaId))
+            _currentPlantaId = previousPlantaId;
+        else
+            _currentPlantaId = _plantasLookup.Keys.FirstOrDefault();
+
+        const string canvasSql = @"
+            SELECT DISTINCT c.canvas_id, c.nombre, c.ancho_m, c.largo_m
+            FROM canvas_lab c
+            INNER JOIN areas a ON a.canvas_id = c.canvas_id
+            WHERE a.laboratorio_id = @lab
+            ORDER BY c.nombre";
+
+        var canvases = new List<CanvasItem>();
+        await using (var cmd = new NpgsqlCommand(canvasSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                canvases.Add(new CanvasItem(reader.GetString(0), reader.GetString(1), reader.GetDecimal(2), reader.GetDecimal(3)));
+        }
+
+        const string areaSql = @"
+            SELECT area_id, nombre_areas, planta_id, canvas_id
+            FROM areas
+            WHERE laboratorio_id = @lab
+            ORDER BY nombre_areas";
+
+        var areas = new List<AreaItem>();
+        await using (var cmd = new NpgsqlCommand(areaSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                areas.Add(new AreaItem(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetString(2),
+                    reader.IsDBNull(3) ? null : reader.GetString(3)
+                ));
+            }
+        }
+
+        const string polySql = @"
+            SELECT p.poly_id, p.area_id, COALESCE(p.color_hex, '#cbd5f5') AS color_hex, p.z_order
+            FROM poligonos p
+            INNER JOIN areas a ON a.area_id = p.area_id
+            WHERE a.laboratorio_id = @lab
+            ORDER BY p.z_order, p.poly_id";
+
+        var polys = new Dictionary<string, PolygonItem>(StringComparer.OrdinalIgnoreCase);
+        await using (var cmd = new NpgsqlCommand(polySql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var polyId = reader.GetString(0);
+                polys[polyId] = new PolygonItem(
+                    polyId,
+                    reader.IsDBNull(1) ? null : reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetInt32(3)
+                );
+            }
+        }
+
+        const string pointsSql = @"
+            SELECT poly_id, orden, x_m, y_m
+            FROM poligonos_puntos
+            ORDER BY poly_id, orden";
+
+        await using (var cmd = new NpgsqlCommand(pointsSql, conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                var polyId = reader.GetString(0);
+                if (!polys.TryGetValue(polyId, out var poly))
+                    continue;
+
+                poly.Points.Add(new PointItem(reader.GetDecimal(2), reader.GetDecimal(3)));
+            }
+        }
+
+        foreach (var area in areas)
+        {
+            var areaPolys = polys.Values
+                .Where(p => string.Equals(p.AreaId, area.AreaId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (areaPolys.Count == 0)
+                continue;
+
+            area.Poligonos.AddRange(areaPolys);
+            area.CalculateBounds();
+        }
+
+        foreach (var canvas in canvases)
+        {
+            var viewAreas = areas
+                .Where(a => string.Equals(a.CanvasId, canvas.CanvasId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (viewAreas.Count == 0)
+                continue;
+
+            _canvasViews.Add(new CanvasView(canvas, viewAreas));
+        }
+
+        EnsurePlantaSelection(areas);
+
+        if (!string.IsNullOrWhiteSpace(_nuevoEquipoAreaId))
+            await LoadMesonVisualsAsync();
+    }
+
+    // ============================
+    // Helpers generales
+    // ============================
+    private static object ParseIntOrNull(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return DBNull.Value;
+
+        return int.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var i)
+            ? i
+            : DBNull.Value;
+    }
+
+    private static object ParseDateOrNull(DateTime? value) =>
+        value ?? (object)DBNull.Value;
+
+    private static string BuildUbicacion(string area, string meson, int? nivel, string posicion)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(area)) parts.Add(area);
+        if (!string.IsNullOrWhiteSpace(meson)) parts.Add(meson);
+        if (nivel is not null) parts.Add($"Nivel {nivel}");
+        if (!string.IsNullOrWhiteSpace(posicion)) parts.Add(posicion);
+        return parts.Count == 0 ? "—" : string.Join(" · ", parts);
+    }
+
+    private static string FormatAltura(decimal? alturaCm)
+    {
+        if (alturaCm is null) return "—";
+        return alturaCm.Value.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static string BuildCalibracion(bool requiereCalibracion, DateTime? proximaFecha)
+    {
+        if (!requiereCalibracion) return "No aplica";
+        if (proximaFecha is null) return "Requiere calibración";
+        return proximaFecha.Value.Date < DateTime.Today
+            ? $"Vencida ({proximaFecha:dd/MM/yyyy})"
+            : $"OK (próx. {proximaFecha:dd/MM/yyyy})";
+    }
+
+    private static string ResolveUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return "";
+        if (url.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return url;
+        return url.StartsWith("/", StringComparison.OrdinalIgnoreCase) ? url : $"/{url}";
+    }
+
+    private static readonly HashSet<string> AllowedImageExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".png", ".jpg", ".jpeg", ".webp"
+    };
+
+    // ============================
+    // SVG helpers
+    // ============================
+    private static string PointsString(PolygonItem poly) =>
+        string.Join(" ", poly.Points.Select(p => $"{p.X.ToString(CultureInfo.InvariantCulture)},{p.Y.ToString(CultureInfo.InvariantCulture)}"));
+
+    private static string FormatSvg(decimal value) => value.ToString(CultureInfo.InvariantCulture);
+
+    private static decimal AreaLabelWidth(AreaItem area) => Math.Max(0.6m, area.Width * 0.85m);
+    private static decimal AreaLabelHeight(AreaItem area) => Math.Max(0.25m, area.Height * 0.25m);
+
+    private static decimal AreaLabelFontSize(AreaItem area)
+    {
+        var baseSize = Math.Min(area.Width, area.Height) * 0.18m;
+        return ClampDecimal(baseSize, 0.18m, 0.55m);
+    }
+
+    private static decimal MesonLabelFontSize(MesonVisual meson)
+    {
+        var baseSize = Math.Min(meson.Width, meson.Height) * 0.45m;
+        return ClampDecimal(baseSize, 0.12m, 0.45m);
+    }
+
+    private static decimal ClampDecimal(decimal value, decimal min, decimal max)
+    {
+        if (value < min) return min;
+        if (value > max) return max;
+        return value;
+    }
+
+    private static string AreaViewBox(AreaItem area)
+    {
+        var padding = 0.4m;
+        var minX = area.MinX - padding;
+        var minY = area.MinY - padding;
+        var width = Math.Max(1m, area.Width + padding * 2m);
+        var height = Math.Max(1m, area.Height + padding * 2m);
+        return $"{FormatSvg(minX)} {FormatSvg(minY)} {FormatSvg(width)} {FormatSvg(height)}";
+    }
+
+    private static (decimal x, decimal y, decimal w, decimal h) AreaViewBoxRect(AreaItem area)
+    {
+        var padding = 0.4m;
+        var x = area.MinX - padding;
+        var y = area.MinY - padding;
+        var w = Math.Max(1m, area.Width + padding * 2m);
+        var h = Math.Max(1m, area.Height + padding * 2m);
+        return (x, y, w, h);
+    }
+
+    private string AreaFill(AreaItem area)
+    {
+        if (!string.IsNullOrWhiteSpace(_nuevoEquipoAreaId)
+            && string.Equals(_nuevoEquipoAreaId, area.AreaId, StringComparison.OrdinalIgnoreCase))
+        {
+            return "#93c5fd";
+        }
+        return area.Poligonos.FirstOrDefault()?.ColorHex ?? "#cbd5f5";
+    }
+
+    private string MesonFill(MesonVisual m)
+    {
+        if (!string.IsNullOrWhiteSpace(_nuevoEquipoMesonId)
+            && string.Equals(_nuevoEquipoMesonId, m.MesonId, StringComparison.OrdinalIgnoreCase))
+            return "#facc15";
+
+        return m.Fill;
+    }
+
+    private decimal MesonOpacity(MesonVisual m)
+    {
+        if (!string.IsNullOrWhiteSpace(_nuevoEquipoMesonId)
+            && string.Equals(_nuevoEquipoMesonId, m.MesonId, StringComparison.OrdinalIgnoreCase))
+            return 0.75m;
+
+        return m.Opacity;
+    }
+
+    private string MesonStroke(MesonVisual m)
+    {
+        if (!string.IsNullOrWhiteSpace(_nuevoEquipoMesonId)
+            && string.Equals(_nuevoEquipoMesonId, m.MesonId, StringComparison.OrdinalIgnoreCase))
+            return "#b45309";
+        return "#1f2937";
+    }
+
+    private decimal MesonStrokeWidth(MesonVisual m)
+    {
+        if (!string.IsNullOrWhiteSpace(_nuevoEquipoMesonId)
+            && string.Equals(_nuevoEquipoMesonId, m.MesonId, StringComparison.OrdinalIgnoreCase))
+            return 0.05m;
+        return 0.03m;
+    }
+
+    private bool IsAreaInCurrentPlanta(string? plantaId)
+    {
+        if (string.IsNullOrWhiteSpace(_currentPlantaId))
+            return true;
+
+        if (string.IsNullOrWhiteSpace(plantaId))
+            return false;
+
+        return string.Equals(plantaId, _currentPlantaId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void EnsurePlantaSelection(List<AreaItem> areas)
+    {
+        if (areas.Count == 0)
+        {
+            _currentPlantaId = _plantasLookup.Keys.FirstOrDefault();
+            return;
+        }
+
+        var firstAreaPlanta = areas.FirstOrDefault(a => !string.IsNullOrWhiteSpace(a.PlantaId))?.PlantaId;
+        if (string.IsNullOrWhiteSpace(firstAreaPlanta))
+        {
+            _currentPlantaId = null;
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_currentPlantaId)
+            && _plantasLookup.ContainsKey(_currentPlantaId)
+            && areas.Any(a => string.Equals(a.PlantaId, _currentPlantaId, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        _currentPlantaId = firstAreaPlanta ?? _plantasLookup.Keys.FirstOrDefault();
+    }
+
+    // ============================
+    // UI Models
+    // ============================
+    private sealed class CategoriaRow
+    {
+        public CategoriaRow(string id, string nombre) { Id = id; Nombre = nombre; }
+        public string Id { get; }
+        public string Nombre { get; }
+        public List<SubcategoriaRow> Subcategorias { get; } = new();
+    }
+
+    private sealed record SubcategoriaRow(string Id, string Nombre);
+
+    private sealed record SelectOption(string Id, string Label, string? ImageUrl = null);
+
+    private sealed record ModeloLookupOption(
+        string Id,
+        string Label,
+        string CategoriaId,
+        bool EsCalibrable,
+        decimal? AlturaCm,
+        string MarcaNombre,
+        string? MarcaImagenUrl
+    );
+
+    private sealed record ModeloRow(
+        string Id,
+        string Nombre,
+        string MarcaNombre,
+        string? MarcaImagenUrl,
+        string Categoria,
+        string Subcategorias,
+        decimal? AlturaCm,
+        bool EsCalibrable,
+        string? ManualUrl,
+        long EquiposCount,
+        string Ubicacion,
+        string? ImagenUrl
+    );
+
+    private sealed record EquipoRow(
+        string Id,
+        string Nombre,
+        string Serie,
+        string Modelo,
+        string MarcaNombre,
+        string? MarcaImagenUrl,
+        string Categoria,
+        string Subcategorias,
+        decimal? AlturaCm,
+        string Estado,
+        string Ubicacion,
+        string Calibracion,
+        string? ImagenUrl
+    );
+
+    private sealed record CanvasItem(string CanvasId, string Nombre, decimal Ancho, decimal largo);
+    private sealed record CanvasView(CanvasItem Canvas, List<AreaItem> Areas);
+    private sealed record MesonSummary(string MesonId, string Nombre, int ReactivosCount, int EquiposCount);
+    private sealed record MesonVisual(string MesonId, string Label, decimal X, decimal Y, decimal Width, decimal Height, string Fill, decimal Opacity, int ZOrder);
+
+    private sealed class AreaItem
+    {
+        public AreaItem(string areaId, string nombre, string? plantaId, string? canvasId)
+        {
+            AreaId = areaId;
+            Nombre = nombre;
+            PlantaId = plantaId;
+            CanvasId = canvasId;
+        }
+
+        public string AreaId { get; }
+        public string Nombre { get; }
+        public string? PlantaId { get; }
+        public string? CanvasId { get; }
+        public List<PolygonItem> Poligonos { get; } = new();
+
+        public decimal CenterX { get; private set; }
+        public decimal CenterY { get; private set; }
+        public decimal Width { get; private set; }
+        public decimal Height { get; private set; }
+        public decimal MinX { get; private set; }
+        public decimal MinY { get; private set; }
+        public decimal MaxX { get; private set; }
+        public decimal MaxY { get; private set; }
+
+        public void CalculateBounds()
+        {
+            var points = Poligonos.SelectMany(p => p.Points).ToList();
+            if (points.Count == 0) return;
+
+            var minX = points.Min(p => p.X);
+            var maxX = points.Max(p => p.X);
+            var minY = points.Min(p => p.Y);
+            var maxY = points.Max(p => p.Y);
+
+            MinX = minX; MaxX = maxX;
+            MinY = minY; MaxY = maxY;
+
+            CenterX = (minX + maxX) / 2m;
+            CenterY = (minY + maxY) / 2m;
+            Width = Math.Max(0.2m, maxX - minX);
+            Height = Math.Max(0.2m, maxY - minY);
+        }
+    }
+
+    private sealed class PolygonItem
+    {
+        public PolygonItem(string polyId, string? areaId, string colorHex, int zOrder)
+        {
+            PolyId = polyId;
+            AreaId = areaId;
+            ColorHex = colorHex;
+            ZOrder = zOrder;
+        }
+
+        public string PolyId { get; }
+        public string? AreaId { get; }
+        public string ColorHex { get; }
+        public int ZOrder { get; }
+        public List<PointItem> Points { get; } = new();
+    }
+
+    private sealed record PointItem(decimal X, decimal Y);
+}
+
+<style>
+    .page-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+        padding: 1rem;
+        box-shadow: 0 6px 14px rgba(15, 23, 42, 0.04);
+    }
+
+    .category-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .category-controls {
+        display: flex;
+        gap: .75rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .form-header {
+        margin-top: 0.75rem;
+        margin-bottom: 0.75rem;
+    }
+
+        .form-header h4 {
+            margin: 0 0 0.25rem 0;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+    .form-hint {
+        margin: 0;
+        color: #64748b;
+        font-size: 0.95rem;
+    }
+
+    .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 0.75rem;
+        align-items: start;
+    }
+
+    .field-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .field-label {
+        font-size: 0.75rem;
+        color: #64748b;
+    }
+
+    .full-span {
+        grid-column: 1 / -1;
+    }
+
+    .form-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-top: 0.25rem;
+    }
+
+    .btn.primary {
+        background: #2563eb;
+        color: #fff;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 0.5rem;
+        font-weight: 600;
+        box-shadow: 0 6px 12px rgba(37, 99, 235, 0.18);
+    }
+
+        .btn.primary:hover {
+            background: #1d4ed8;
+        }
+
+    .btn.link {
+        background: transparent;
+        border: none;
+        color: #1d4ed8;
+        font-weight: 600;
+        cursor: pointer;
+        padding: 0;
+    }
+
+        .btn.link:hover {
+            text-decoration: underline;
+        }
+
+    .category-select {
+        min-width: 220px;
+        padding: .35rem .6rem;
+        border-radius: 8px;
+        border: 1px solid #cbd5f5;
+        background: #fff;
+        color: #0f172a;
+    }
+
+    .helper {
+        margin: .3rem 0 0;
+        color: #475569;
+        font-size: .95rem;
+    }
+
+    .btn-link {
+        color: #1d4ed8;
+        text-decoration: none;
+        font-weight: 600;
+    }
+
+        .btn-link:hover {
+            text-decoration: underline;
+        }
+
+    .category-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 1rem;
+        margin-top: 1rem;
+    }
+
+    .category-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+        padding: 1rem;
+        box-shadow: 0 6px 14px rgba(15, 23, 42, 0.04);
+    }
+
+    .category-title {
+        font-weight: 700;
+        color: #0f172a;
+        margin-bottom: .5rem;
+    }
+
+    .category-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        gap: .35rem;
+    }
+
+    .category-link {
+        display: inline-flex;
+        padding: .35rem .6rem;
+        border-radius: 999px;
+        background: #f1f5f9;
+        color: #0f172a;
+        text-decoration: none;
+        font-size: .9rem;
+    }
+
+        .category-link.active,
+        .category-link:hover {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+
+    .materials-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: .75rem;
+        flex-wrap: wrap;
+    }
+
+    .materials-title {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+        flex-wrap: wrap;
+    }
+
+    .badge {
+        background: #e2e8f0;
+        color: #0f172a;
+        padding: .2rem .55rem;
+        border-radius: 999px;
+        font-size: .85rem;
+        font-weight: 600;
+    }
+
+    .badge-warn {
+        background: #fff7ed;
+        color: #854d0e;
+        border: 1px solid #fde68a;
+    }
+
+    .empty {
+        padding: .85rem 1rem;
+        border-radius: 10px;
+        background: #fef9c3;
+        border: 1px solid #fde68a;
+        color: #854d0e;
+    }
+
+    .error-note {
+        color: #b91c1c;
+        margin-top: 0.75rem;
+    }
+
+    .search-input-invent {
+        min-width: 280px;
+        flex: 1 1 320px;
+        border-radius: 10px;
+        background: #ffffff;
+        color: #0f172a;
+        border: 1px solid #cbd5e1;
+    }
+
+        .search-input-invent::placeholder {
+            color: #64748b;
+            opacity: 1;
+        }
+
+    .table-wrap {
+        overflow-x: auto;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #fff;
+    }
+
+    th, td {
+        padding: 0.6rem;
+        border-bottom: 1px solid #e5e7eb;
+        text-align: left;
+        vertical-align: top;
+    }
+
+    th {
+        background: #f3f4f6;
+        font-weight: 600;
+    }
+
+    .selector-split {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        align-items: flex-start;
+    }
+
+    .visual-picker {
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        padding: 0.5rem;
+        background: #fff;
+        min-width: 240px;
+        display: grid;
+        gap: 0.5rem;
+    }
+
+    .visual-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        justify-content: space-between;
+    }
+
+    .canvas-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        padding: 0.5rem;
+        background: #f8fafc;
+        display: grid;
+        gap: 0.35rem;
+    }
+
+        .canvas-card svg {
+            width: 100%;
+            height: 180px;
+            background: #fff;
+        }
+
+    .meson-list {
+        list-style: none;
+        padding-left: 0;
+        margin: 0;
+        display: grid;
+        gap: 0.35rem;
+    }
+
+    .meson-item {
+        padding: .35rem .35rem;
+        border-radius: .5rem;
+    }
+
+        .meson-item.selected {
+            background: #fff7ed;
+            outline: 1px solid #f59e0b;
+        }
+
+    .upload-card {
+        border: 1px dashed #d1d5db;
+        padding: 0.6rem;
+        border-radius: 0.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        min-width: 220px;
+    }
+
+    .upload-options {
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .upload-drop {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.6rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        color: #6b7280;
+        cursor: pointer;
+    }
+
+        .upload-drop input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+    .preview-row {
+        display: flex;
+        gap: .5rem;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-top: .25rem;
+    }
+
+    .material-img-sm {
+        width: 180px;
+        height: 120px;
+        object-fit: contain;
+        border-radius: 10px;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+    }
+
+    .brand-picker {
+        display: flex;
+        gap: .5rem;
+        align-items: center;
+    }
+
+    .cell-media {
+        display: flex;
+        gap: .35rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .thumb {
+        width: 34px;
+        height: 34px;
+        object-fit: contain;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        background: #fff;
+    }
+
+    .thumb-material {
+        width: 44px;
+        height: 44px;
+    }
+
+    .thumb-logo {
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+    }
+
+    .toggle {
+        display: flex;
+        gap: .45rem;
+        align-items: center;
+        padding: .35rem .6rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 999px;
+        background: #fff;
+        font-size: .9rem;
+        color: #0f172a;
+        user-select: none;
+    }
+
+    .area-label {
+        fill: #111827;
+        paint-order: stroke fill;
+        stroke: #ffffff;
+        stroke-width: 0.04;
+    }
+</style>

@@ -29,9 +29,23 @@
                 <input @bind="searchText" class="search-input" placeholder="Escribe aquí (próximamente)" />
             </div>
 
+            
             <nav class="menu-list">
+
+                <NavLink class="menu-item" href="/baribot" title="baribot">
+                    BARI BOT
+                </NavLink>
+
+                <NavLink class="menu-item" href="/documentaciones" title="Documentaciones, protocolos y manuales">
+                    DOCUMENTACIONES
+                </NavLink>
+
                 <NavLink class="menu-item" href="/areas" title="Mapa de áreas y zonas del laboratorio">
                     ÁREAS
+                </NavLink>
+
+                <NavLink class="menu-item" href="/contenidos" title="Asignaturas, contenido, experiencias">
+                    ASIGNATURAS, CLASES Y EXPERIENCIAS
                 </NavLink>
 
                 <NavLink class="menu-item" href="/inventario-materiales" title="Materiales y consumibles del laboratorio">
@@ -46,9 +60,19 @@
                     INVENTARIO SUSTANCIAS
                 </NavLink>
 
-                <NavLink class="menu-item" href="/documentaciones" title="Documentaciones, protocolos y manuales">
-                    DOCUMENTACIONES
+                <NavLink class="menu-item" href="/inventario-instalaciones" title="Instalaciones electricas, hidricas, etc.">
+                    INSTALACIONES
                 </NavLink>
+
+                <NavLink class="menu-item" href="/inventario-mesones" title="Mesones, etc.">
+                    MESONES
+                </NavLink>
+
+
+                <NavLink class="menu-item" href="/informacion-tecnica" title="Datos Tecnicos">
+                    DATOS TECNICOS
+                </NavLink>
+
             </nav>
         </aside>
 
@@ -99,6 +123,16 @@
 
     .search-box { display:flex; flex-direction:column; gap:.4rem; margin:.4rem 0 .8rem; }
     .search-label { color:#e9f3ff; font-size:0.8rem; letter-spacing:0.08em; }
+
+    .search-input-invent {
+        min-width: 280px;
+        flex: 1 1 320px;
+        border-radius: 10px;
+        background: #ffffff; /* Cambiamos a fondo blanco sólido */
+        color: #0f172a; /* Color de texto oscuro (el que usas en tus títulos) */
+        border: 1px solid #cbd5e1; /* Un borde definido para que se vea el campo */
+    }
+
     .search-input {
         border-radius:0.6rem; border:1px solid rgba(255,255,255,.25);
         padding:.6rem .7rem; outline:none; color:#fff; background:rgba(255,255,255,.12);

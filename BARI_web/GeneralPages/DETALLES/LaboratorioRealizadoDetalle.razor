@@ -1,0 +1,737 @@
+﻿@page "/laboratorios-realizados/item/{LaboratorioRealizadoId}"
+
+@using Npgsql
+@using System.Globalization
+@using Microsoft.AspNetCore.Components
+@inject NpgsqlDataSource DataSource
+@inject LaboratorioState LaboratorioState
+@inject NavigationManager Nav
+@implements IDisposable
+
+<PageTitle>Detalle de Laboratorio Realizado</PageTitle>
+
+<section class="page-card">
+    <div class="header-row">
+        <div>
+            <h2>Detalle de Laboratorio Realizado</h2>
+            <div class="muted">ID: <b>@LaboratorioRealizadoId</b></div>
+        </div>
+        <div class="header-actions">
+            <button class="btn" type="button" @onclick="GoBack">Volver</button>
+        </div>
+    </div>
+
+    <LaboratorioSelector />
+</section>
+
+<section class="page-card" style="margin-top:1.2rem;">
+    @if (!string.IsNullOrWhiteSpace(loadError))
+    {
+        <p class="error-note">Error: @loadError</p>
+    }
+    else if (isLoading)
+    {
+        <p><em>Cargando…</em></p>
+    }
+    else if (!found)
+    {
+        <div class="empty">
+            No se encontró el laboratorio realizado <b>@LaboratorioRealizadoId</b> en el laboratorio actual.
+        </div>
+    }
+    else
+    {
+        @if (!isEditing)
+        {
+            <div class="detail-info">
+                <div class="title-row">
+                    <h3 style="margin:0;">@edit.Nombre</h3>
+                    <div class="badges">
+                        <span class="badge gray">LAB REALIZADO</span>
+                        @if (!string.IsNullOrWhiteSpace(edit.AsignaturaId))
+                        {
+                            <NavLink class="badge linkbadge" href="@($"{RutaAsignaturaDetalle}{edit.AsignaturaId}")">
+                                @AsignaturaLabel
+                            </NavLink>
+                        }
+                    </div>
+                </div>
+
+                <div class="dl">
+                    <div class="dl-row">
+                        <div class="dt">Asignatura</div>
+                        <div class="dd">
+                            @if (!string.IsNullOrWhiteSpace(edit.AsignaturaId))
+                            {
+                                <NavLink class="btn-link" href="@($"{RutaAsignaturaDetalle}{edit.AsignaturaId}")">@AsignaturaLabel</NavLink>
+                                <span class="text-xs muted">(@edit.AsignaturaId)</span>
+                            }
+                            else
+                            {
+                                <span class="muted">—</span>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="dl-row">
+                        <div class="dt">Descripción</div>
+                        <div class="dd">@NullDash(edit.Descripcion)</div>
+                    </div>
+
+                    <div class="dl-row">
+                        <div class="dt">Experiencias que apuntan a este lab</div>
+                        <div class="dd">
+                            @if (_exps.Count == 0)
+                            {
+                                <span class="muted">—</span>
+                            }
+                            else
+                            {
+                                <div class="table-wrap">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>Experiencia</th>
+                                                <th>Orden</th>
+                                                <th>Tiempo</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var e in _exps.OrderBy(x => x.Orden ?? int.MaxValue).ThenBy(x => x.Nombre))
+                                            {
+                                                <tr>
+                                                    <td style="font-weight:800;">
+                                                        <NavLink class="btn-link" href="@($"{RutaExperienciaDetalle}{e.ExperienciaId}")">@e.Nombre</NavLink>
+                                                        <div class="text-xs muted">(@e.ExperienciaId)</div>
+                                                    </td>
+                                                    <td class="muted">@((e.Orden is null) ? "—" : e.Orden.ToString())</td>
+                                                    <td class="muted">@((e.TiempoMin is null) ? "—" : $"{e.TiempoMin} min")</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="text-xs muted" style="margin-top:.35rem;">
+                                    *Si deseas eliminar este Lab Realizado, primero elimina o reasigna estas experiencias.
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <div class="view-actions">
+                    <button class="btn primary" type="button" @onclick="StartEdit">Editar</button>
+
+                    @if (!confirmDelete)
+                    {
+                        <button class="btn danger" type="button" @onclick="AskDelete">Eliminar</button>
+                    }
+                    else
+                    {
+                        <button class="btn danger" type="button" @onclick="DeleteAsync" disabled="@isSaving">Confirmar eliminar</button>
+                        <button class="btn" type="button" @onclick="CancelDelete" disabled="@isSaving">Cancelar</button>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(msg))
+                    {
+                        <span class="text-sm muted">@msg</span>
+                    }
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="form-header">
+                <h4>Editar laboratorio realizado</h4>
+                <p class="form-hint">Puedes cambiar asignatura, nombre y descripción.</p>
+            </div>
+
+            <div class="form-grid">
+                <div class="field">
+                    <label>Asignatura</label>
+                    <select class="border p-1" @bind="edit.AsignaturaId">
+                        <option value="">(selecciona)</option>
+                        @foreach (var a in _asignaturaOptions.OrderBy(x => x.Label))
+                        {
+                            <option value="@a.Id">@a.Label</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="field">
+                    <label>Nombre</label>
+                    <input class="border p-1" @bind="edit.Nombre" placeholder="Nombre" />
+                </div>
+
+                <div class="field full-span">
+                    <label>Descripción</label>
+                    <textarea class="border p-1" rows="4" @bind="edit.Descripcion" placeholder="Descripción"></textarea>
+                </div>
+
+                <div class="form-actions full-span">
+                    <button class="btn primary" type="button" @onclick="SaveAsync" disabled="@isSaving">Guardar cambios</button>
+                    <button class="btn" type="button" @onclick="CancelEdit" disabled="@isSaving">Cancelar</button>
+
+                    @if (!string.IsNullOrWhiteSpace(msg))
+                    {
+                        <span class="text-sm muted">@msg</span>
+                    }
+                </div>
+            </div>
+        }
+    }
+</section>
+
+@code {
+    [Parameter] public string LaboratorioRealizadoId { get; set; } = "";
+
+    private const string RutaAsignaturaDetalle = "/asignaturas/item/";
+    private const string RutaExperienciaDetalle = "/experiencias/item/";
+
+    private bool isLoading = true;
+    private bool isSaving = false;
+    private bool found = false;
+
+    private bool isEditing = false;
+    private bool confirmDelete = false;
+
+    private string? loadError;
+    private string? msg;
+
+    private LabRealEdit edit = new();
+
+    private readonly List<SelectOption> _asignaturaOptions = new();
+    private readonly List<ExperienciaMini> _exps = new();
+
+    private string AsignaturaLabel =>
+        _asignaturaOptions.FirstOrDefault(x => string.Equals(x.Id, edit.AsignaturaId, StringComparison.OrdinalIgnoreCase))?.Label
+        ?? edit.AsignaturaId
+        ?? "—";
+
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await ReloadAllAsync();
+    }
+
+    private void HandleLaboratorioChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await ReloadAllAsync();
+            StateHasChanged();
+        });
+    }
+
+    private async Task ReloadAllAsync()
+    {
+        loadError = null;
+        msg = null;
+        confirmDelete = false;
+
+        isLoading = true;
+        found = false;
+        isEditing = false;
+
+        edit = new LabRealEdit();
+        _asignaturaOptions.Clear();
+        _exps.Clear();
+
+        try
+        {
+            await LoadLookupsAsync();
+            await LoadLabRealAsync();
+
+            if (found)
+                await LoadExperienciasAsync();
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void StartEdit()
+    {
+        msg = null;
+        confirmDelete = false;
+        isEditing = true;
+    }
+
+    private async Task CancelEdit()
+    {
+        msg = null;
+        confirmDelete = false;
+        isEditing = false;
+        await ReloadAllAsync();
+    }
+
+    private void AskDelete()
+    {
+        confirmDelete = true;
+        msg = "Esto eliminará el laboratorio realizado (solo si NO tiene experiencias asociadas).";
+    }
+
+    private void CancelDelete()
+    {
+        confirmDelete = false;
+        msg = null;
+    }
+
+    private void GoBack()
+    {
+        Nav.NavigateTo("/contenidos");
+    }
+
+    private async Task LoadLookupsAsync()
+    {
+        await using var conn = await DataSource.OpenConnectionAsync();
+        const string asigSql = @"
+            SELECT asignatura_id,
+                   COALESCE(NULLIF(nombre,''), asignatura_id) AS nombre,
+                   codigo_clase,
+                   laboratorio_id
+            FROM asignaturas
+            WHERE (laboratorio_id = @lab OR laboratorio_id IS NULL)
+            ORDER BY nombre;";
+        await using var cmd = new NpgsqlCommand(asigSql, conn);
+        cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+        {
+            var id = r.GetString(0);
+            var nombre = r.GetString(1);
+            var codigo = r.GetString(2);
+            var isGlobal = r.IsDBNull(3);
+
+            var label = isGlobal ? $"{nombre} ({codigo}) · GLOBAL" : $"{nombre} ({codigo})";
+            _asignaturaOptions.Add(new SelectOption(id, label));
+        }
+    }
+
+    private async Task LoadLabRealAsync()
+    {
+        var id = (LaboratorioRealizadoId ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(id)) { found = false; return; }
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+        const string sql = @"
+            SELECT laboratorio_realizado_id,
+                   COALESCE(asignatura_id,'') AS asignatura_id,
+                   COALESCE(NULLIF(nombre,''), laboratorio_realizado_id) AS nombre,
+                   COALESCE(descripcion,'') AS descripcion
+            FROM laboratorio_realizado
+            WHERE laboratorio_realizado_id = @id
+              AND laboratorio_id = @lab
+            LIMIT 1;";
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("id", id);
+        cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+
+        await using var r = await cmd.ExecuteReaderAsync();
+        if (!await r.ReadAsync())
+        {
+            found = false;
+            return;
+        }
+
+        found = true;
+        edit = new LabRealEdit
+            {
+                LaboratorioRealizadoId = r.GetString(0),
+                AsignaturaId = r.GetString(1),
+                Nombre = r.GetString(2),
+                Descripcion = r.GetString(3),
+            };
+    }
+
+    private async Task LoadExperienciasAsync()
+    {
+        _exps.Clear();
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        const string sql = @"
+            SELECT experiencia_id,
+                   COALESCE(NULLIF(nombre,''), experiencia_id) AS nombre,
+                   orden,
+                   tiempo_estimado_min
+            FROM experiencias_clases
+            WHERE laboratorio_id = @lab
+              AND laboratorio_realizado_id = @lr
+            ORDER BY orden NULLS LAST, nombre;";
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+        cmd.Parameters.AddWithValue("lr", edit.LaboratorioRealizadoId);
+
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+        {
+            _exps.Add(new ExperienciaMini(
+                r.GetString(0),
+                r.GetString(1),
+                r.IsDBNull(2) ? (int?)null : r.GetInt32(2),
+                r.IsDBNull(3) ? (int?)null : r.GetInt32(3)
+            ));
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        msg = null;
+        confirmDelete = false;
+
+        if (!found) { msg = "No hay laboratorio realizado cargado."; return; }
+        if (string.IsNullOrWhiteSpace(edit.AsignaturaId)) { msg = "Selecciona la asignatura."; return; }
+        if (string.IsNullOrWhiteSpace(edit.Nombre)) { msg = "Ingresa el nombre."; return; }
+
+        isSaving = true;
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+                UPDATE laboratorio_realizado
+                SET asignatura_id=@asig,
+                    nombre=@nombre,
+                    descripcion=@desc
+                WHERE laboratorio_realizado_id=@id AND laboratorio_id=@lab;";
+            var rows = await ExecAsync(conn, null, sql,
+                ("id", edit.LaboratorioRealizadoId),
+                ("lab", LaboratorioState.LaboratorioId),
+                ("asig", edit.AsignaturaId.Trim()),
+                ("nombre", edit.Nombre.Trim()),
+                ("desc", DbOrNull(edit.Descripcion))
+            );
+
+            if (rows == 0)
+            {
+                msg = "No se pudo guardar.";
+                return;
+            }
+
+            msg = "Guardado correctamente.";
+            isEditing = false;
+            await ReloadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        msg = null;
+        if (!found) return;
+
+        if (_exps.Count > 0)
+        {
+            msg = "No se puede eliminar: hay experiencias asociadas. Elimínalas o reasígnalas primero.";
+            confirmDelete = false;
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await ExecAsync(conn, null,
+                "DELETE FROM laboratorio_realizado WHERE laboratorio_realizado_id=@id AND laboratorio_id=@lab",
+                ("id", edit.LaboratorioRealizadoId),
+                ("lab", LaboratorioState.LaboratorioId)
+            );
+
+            Nav.NavigateTo("/contenidos");
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private static object DbOrNull(string? s) => string.IsNullOrWhiteSpace(s) ? (object)DBNull.Value : s!.Trim();
+    private static string NullDash(string? s) => string.IsNullOrWhiteSpace(s) ? "—" : s;
+
+    private static async Task<int> ExecAsync(NpgsqlConnection conn, NpgsqlTransaction? tx, string sql, params (string name, object value)[] ps)
+    {
+        await using var cmd = (tx is null) ? new NpgsqlCommand(sql, conn) : new NpgsqlCommand(sql, conn, tx);
+        cmd.CommandTimeout = 60;
+        foreach (var (name, value) in ps)
+            cmd.Parameters.AddWithValue(name, value ?? DBNull.Value);
+        return await cmd.ExecuteNonQueryAsync();
+    }
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
+
+    private sealed record SelectOption(string Id, string Label);
+
+    private sealed class LabRealEdit
+    {
+        public string LaboratorioRealizadoId { get; set; } = "";
+        public string? AsignaturaId { get; set; }
+        public string Nombre { get; set; } = "";
+        public string? Descripcion { get; set; }
+    }
+
+    private sealed record ExperienciaMini(string ExperienciaId, string Nombre, int? Orden, int? TiempoMin);
+}
+
+<style>
+    .page-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+        padding: 1rem;
+        box-shadow: 0 6px 14px rgba(15,23,42,.04);
+    }
+
+    .header-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+    }
+
+    .header-actions {
+        display: flex;
+        gap: .5rem;
+        align-items: center;
+    }
+
+    .muted {
+        color: #64748b;
+    }
+
+    .text-xs {
+        font-size: .8rem;
+    }
+
+    .text-sm {
+        font-size: .9rem;
+    }
+
+    .error-note {
+        color: #b91c1c;
+    }
+
+    .empty {
+        padding: .85rem 1rem;
+        border-radius: 10px;
+        background: #fef9c3;
+        border: 1px solid #fde68a;
+        color: #854d0e;
+    }
+
+    .btn {
+        border: 1px solid #cbd5e1;
+        background: #fff;
+        color: #0f172a;
+        padding: .5rem .9rem;
+        border-radius: .55rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+        .btn.primary {
+            background: #2563eb;
+            color: #fff;
+            border: none;
+            box-shadow: 0 6px 12px rgba(37,99,235,.18);
+        }
+
+            .btn.primary:hover {
+                background: #1d4ed8;
+            }
+
+        .btn.danger {
+            background: #b91c1c;
+            color: #fff;
+            border: none;
+        }
+
+            .btn.danger:hover {
+                background: #991b1b;
+            }
+
+    .btn-link {
+        color: #1d4ed8;
+        text-decoration: none;
+        font-weight: 800;
+    }
+
+        .btn-link:hover {
+            text-decoration: underline;
+        }
+
+    .detail-info {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 1rem;
+        background: #fff;
+    }
+
+    .title-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: .75rem;
+    }
+
+    .badges {
+        display: flex;
+        gap: .4rem;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    .badge {
+        background: #dbeafe;
+        color: #1d4ed8;
+        padding: .2rem .55rem;
+        border-radius: 999px;
+        font-size: .85rem;
+        font-weight: 700;
+    }
+
+        .badge.gray {
+            background: #e2e8f0;
+            color: #0f172a;
+        }
+
+        .badge.linkbadge {
+            text-decoration: none;
+        }
+
+            .badge.linkbadge:hover {
+                filter: brightness(.98);
+            }
+
+    .dl {
+        display: grid;
+        gap: .6rem;
+    }
+
+    .dl-row {
+        display: grid;
+        grid-template-columns: 220px 1fr;
+        gap: .75rem;
+    }
+
+    @@media (max-width:900px) {
+        .dl-row {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .dt {
+        color: #475569;
+        font-weight: 800;
+    }
+
+    .dd {
+        color: #0f172a;
+    }
+
+    .view-actions {
+        margin-top: 1rem;
+        display: flex;
+        gap: .75rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .form-header {
+        margin-bottom: .75rem;
+    }
+
+        .form-header h4 {
+            margin: 0 0 .25rem 0;
+            font-weight: 800;
+            color: #0f172a;
+        }
+
+    .form-hint {
+        margin: 0;
+        color: #64748b;
+        font-size: .95rem;
+    }
+
+    .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: .75rem;
+        align-items: start;
+    }
+
+    .full-span {
+        grid-column: 1 / -1;
+    }
+
+    .field label {
+        display: block;
+        font-size: .85rem;
+        color: #475569;
+        margin-bottom: .25rem;
+        font-weight: 800;
+    }
+
+    .border {
+        border: 1px solid #e5e7eb;
+        border-radius: .5rem;
+    }
+
+    .p-1 {
+        padding: .45rem .6rem;
+    }
+
+    .form-actions {
+        display: flex;
+        gap: .75rem;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-top: .25rem;
+    }
+
+    .table-wrap {
+        overflow-x: auto;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #fff;
+    }
+
+    th, td {
+        padding: .55rem;
+        border-bottom: 1px solid #e5e7eb;
+        text-align: left;
+        vertical-align: top;
+    }
+
+    th {
+        background: #f3f4f6;
+        font-weight: 700;
+    }
+</style>

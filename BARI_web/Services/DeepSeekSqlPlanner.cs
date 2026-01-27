@@ -30,7 +30,7 @@ public sealed class SqlActionStep
 public sealed class SqlActionPlan
 {
     [JsonPropertyName("intent")]
-    public string Intent { get; set; } = "db_query"; // db_query | general_help | needs_clarification
+    public string Intent { get; set; } = "db_query"; // db_query | web_search | general_help | needs_clarification
 
     [JsonPropertyName("clarifying_question")]
     public string? ClarifyingQuestion { get; set; }
@@ -75,8 +75,39 @@ public sealed class DeepSeekSqlPlanner
         var schemaSlice = await _schema.BuildSchemaSliceForPromptAsync(q, maxTables: 14, ct: ct);
 
         var system = $@"
-Responde SOLO en json válido (incluye la palabra json en tu salida para asegurarlo).
+Responde SOLO en JSON válido (json).
 Eres un planificador para un sistema de inventario/laboratorio en PostgreSQL.
+
+GLOSARIO / DESAMBIGUACIÓN (MUY IMPORTANTE):
+- laboratorios: es el LUGAR FÍSICO (salón/ambiente). Tiene laboratorio_id (integer) y nombre.
+- asignaturas: es la MATERIA (ej. ""Química General"").
+- laboratorio_realizado: es la PRÁCTICA / LABORATORIO N de una asignatura (ej. ""Laboratorio 1 - ..."").
+  Campos clave: laboratorio_realizado_id, asignatura_id, laboratorio_id (físico), nombre, descripcion.
+- experiencias_clases: actividades/pasos; puede vincularse a laboratorio_realizado por experiencias_clases.laboratorio_realizado_id.
+
+REGLA:
+- Si el usuario dice ""Laboratorio <N> de la materia/asignatura <X>"" o menciona una asignatura,
+  interpreta ""Laboratorio <N>"" como laboratorio_realizado (NO como tabla laboratorios).
+  Entonces:
+  1) Buscar asignatura por asignaturas.nombre ILIKE '%<X>%'
+  2) Buscar laboratorio_realizado de esa asignatura con laboratorio_realizado.nombre ILIKE 'Laboratorio <N>%'
+  3) (Opcional) listar experiencias_clases asociadas a ese laboratorio_realizado_id.
+- Si el usuario habla de ubicación física (""dónde queda"", ""en qué sala"", ""en qué área"", ""laboratorio_id""),
+  interpreta como tabla laboratorios (lugar físico).
+- Si solo dice ""laboratorio 1"" sin contexto, usa needs_clarification y pregunta:
+  ""¿Te refieres al laboratorio físico (lugar) o a la práctica de una asignatura?""
+
+RECORDATORIOS DEL ESQUEMA:
+- Materiales físicos están en la tabla materiales (tipo: 'VIDRIO','PLASTICO','MONTAJE','CONSUMIBLE').
+- Equipos están en equipos y sus modelos en modelos_equipo.
+- Sustancias abstractas en sustancias; contenedores físicos en contenedores (relación por sustancia_id).
+- Documentos están en documentos y usan:
+  - categoria_id, subcategoria_id (FK compuesta con categoria)
+  - alcance (GENERAL/MARCA/LABORATORIO/CLASE/ASIGNATURA/EXPERIENCIA/EQUIPO/MATERIAL/SUSTANCIA/CONTENEDOR)
+  - laboratorio_contexto_id (opcional)
+- Instalaciones fijas están en instalaciones (subcategoria_id, laboratorio_id, area_id, fechas de revisión).
+- Ubicación típica: area_id, meson_id, nivel, posicion, canvas_id.
+
 
 Debes:
 1) Pensar internamente qué pide el usuario y qué tablas/columnas son relevantes.
@@ -94,7 +125,7 @@ REGLAS DE SEGURIDAD (OBLIGATORIAS):
 - NO uses ';'
 - NO uses comentarios (-- o /* */)
 - NO uses INSERT/UPDATE/DELETE/DDL ni comandos de sesión (SET, SHOW, etc.)
-- Para listados, siempre usa LIMIT razonable (por ejemplo <= 100)
+- Para listados usa LIMIT (por defecto {_opt.DefaultListLimit} y nunca más de {_opt.MaxListLimit}).
 - Usa ILIKE para búsquedas por texto.
 - Si necesitas varias consultas, crea varios steps de tipo ""sql"". Cada step debe ser ejecutable por separado.
 
@@ -129,6 +160,9 @@ Instrucciones:
   está PERMITIDO y RECOMENDADO usar varios steps SQL (para obtener candidatos, detalles, peligrosidad, etc.).
 - Si falta un dato crítico (ej. ""detalles"" sin identificar el elemento) usa intent=""needs_clarification"" y deja steps vacíos.
 - Si es una duda teórica general (no requiere BD), usa intent=""general_help"" y deja steps vacíos.
+- Si el usuario no especifica cantidad, usa LIMIT {_opt.DefaultListLimit}.
+- Máximo {_opt.MaxSqlSteps} pasos SQL.
+
 ";
 
         var msgs = new List<ChatMessage>
@@ -153,8 +187,9 @@ Instrucciones:
 
         // Normalización básica
         plan.Intent = (plan.Intent ?? "db_query").Trim().ToLowerInvariant();
-        if (plan.Intent is not ("db_query" or "general_help" or "needs_clarification"))
+        if (plan.Intent is not ("db_query" or "general_help" or "needs_clarification" or "web_search"))
             plan.Intent = "db_query";
+
 
         if (plan.Steps == null)
             plan.Steps = new List<SqlActionStep>();
@@ -167,4 +202,5 @@ Instrucciones:
 
         return plan;
     }
+
 }

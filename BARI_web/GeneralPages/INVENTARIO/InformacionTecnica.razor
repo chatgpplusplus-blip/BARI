@@ -1,0 +1,2246 @@
+﻿
+@page "/informacion-tecnica"
+@using Npgsql
+@using System.Globalization
+@inject NpgsqlDataSource DataSource
+@inject LaboratorioState LaboratorioState
+@implements IDisposable
+@using Microsoft.AspNetCore.Components.Forms
+@inject IWebHostEnvironment HostEnvironment
+
+<PageTitle>Información técnica</PageTitle>
+
+<section class="page-card">
+    <h2>Información técnica</h2>
+    <p class="helper">
+        Catálogos base y configuración técnica (uso poco frecuente). CRUD “burdo” en una sola pantalla.
+    </p>
+    <LaboratorioSelector />
+</section>
+
+@if (!string.IsNullOrWhiteSpace(_loadError))
+{
+    <section class="page-card" style="margin-top:1rem;">
+        <p class="error-note">Error: @_loadError</p>
+    </section>
+}
+
+@* ============================
+   MARCAS
+   ============================ *@
+<section class="page-card" style="margin-top:1rem;">
+    <div class="section-head">
+        <h3>Marcas</h3>
+        <span class="badge">@_marcas.Count</span>
+    </div>
+
+    <details>
+        <summary style="cursor:pointer; font-weight:800;">Agregar marca</summary>
+
+        <div class="form-grid" style="margin-top:.75rem;">
+            <div class="field">
+                <label>ID (opcional)</label>
+                <input class="border p-1" placeholder="marca_xxx" @bind="_newMarcaId" />
+            </div>
+            <div class="field">
+                <label>Nombre</label>
+                <input class="border p-1" placeholder="Nombre de la marca" @bind="_newMarcaNombre" />
+            </div>
+
+            <div class="field full-span">
+                <label>Logo / Imagen</label>
+
+                <div class="upload-card">
+                    <div class="upload-options">
+                        <label class="text-sm">
+                            <input type="radio"
+                                   name="marcaImagenModo"
+                                   value="url"
+                                   checked="@(_newMarcaImagenModo == "url")"
+                                   @onchange="OnMarcaImagenModoChanged" />
+                            URL
+                        </label>
+
+                        <label class="text-sm">
+                            <input type="radio"
+                                   name="marcaImagenModo"
+                                   value="archivo"
+                                   checked="@(_newMarcaImagenModo == "archivo")"
+                                   @onchange="OnMarcaImagenModoChanged" />
+                            Archivo
+                        </label>
+                    </div>
+
+                    @if (_newMarcaImagenModo == "url")
+                    {
+                        <input class="border p-1" placeholder="Logo URL (o ruta relativa /uploads/...)" @bind="_newMarcaImagenUrl" />
+                    }
+                    else
+                    {
+                        <label class="upload-drop">
+                            <InputFile OnChange="OnMarcaImagenArchivoSeleccionado"
+                                       accept="image/png,image/jpeg,image/jpg,image/webp" />
+                            <span>Arrastra una imagen o haz clic para buscar</span>
+                        </label>
+
+                        @if (!string.IsNullOrWhiteSpace(_newMarcaImagenArchivo))
+                        {
+                            <div class="text-xs text-gray-500">Archivo: @_newMarcaImagenArchivo</div>
+                        }
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(_newMarcaImagenUrl))
+                    {
+                        <div class="text-xs muted" style="margin-top:.35rem;">
+                            Guardará: <code>@_newMarcaImagenUrl</code>
+                        </div>
+                    }
+                </div>
+            </div>
+
+
+            <div class="form-actions full-span">
+                <button class="btn primary" type="button" @onclick="AddMarcaAsync" disabled="@_isSaving">Guardar</button>
+                @if (!string.IsNullOrWhiteSpace(_msgMarcas))
+                {
+                    <span class="text-sm muted">@_msgMarcas</span>
+                }
+            </div>
+        </div>
+    </details>
+
+    <div class="table-wrap" style="margin-top:1rem;">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:180px;">ID</th>
+                    <th>Nombre</th>
+                    <th style="width:90px;">Logo</th>
+                    <th style="width:240px;">Acciones</th>
+
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var m in _marcas.OrderBy(x => x.Nombre))
+                {
+                    var editing = _editingMarcas.Contains(m.MarcaId);
+
+                    <tr>
+                        <td><code>@m.MarcaId</code></td>
+
+                        @if (!editing)
+                        {
+                            <td>@m.Nombre</td>
+                            
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(m.ImagenUrl))
+                                {
+                                    <img src="@ResolveUrl(m.ImagenUrl)"
+                                         style="width:44px;height:44px;object-fit:contain;border:1px solid #e5e7eb;border-radius:10px;background:#fff;padding:4px;"
+                                         alt="@m.Nombre" />
+                                }
+                                else
+                                {
+                                    <span class="muted text-xs">—</span>
+                                }
+                            </td>
+                            <td>
+                                <button class="btn" type="button" @onclick="() => StartEditMarca(m.MarcaId)">Editar</button>
+                                <button class="btn danger" type="button" @onclick="() => DeleteMarcaAsync(m.MarcaId)" disabled="@_isSaving">Eliminar</button>
+                            </td>
+
+                        }
+                        else
+                        {
+                            var ed = _editMarca[m.MarcaId];
+
+                            
+                            <!-- NOMBRE (edit) -->
+                            <td>
+                                <input class="border p-1" @bind="ed.Nombre" />
+                            </td>
+                            <!-- LOGO (edit) -->
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(ed.ImagenUrl))
+                                {
+                                    <div style="margin-bottom:.35rem;">
+                                        <img src="@ResolveUrl(ed.ImagenUrl)"
+                                             style="width:44px;height:44px;object-fit:contain;border:1px solid #e5e7eb;border-radius:10px;background:#fff;padding:4px;"
+                                             alt="@ed.Nombre" />
+                                    </div>
+                                }
+
+                                <div class="upload-options" style="margin:0;">
+                                    <label class="text-sm">
+                                        <input type="radio"
+                                               name="@($"marcaImgModo_{m.MarcaId}")"
+                                               value="url"
+                                               checked="@(ed.ImagenModo == "url")"
+                                               @onchange="(e) => OnEditMarcaImagenModoChanged(m.MarcaId, e)" />
+                                        URL
+                                    </label>
+
+                                    <label class="text-sm">
+                                        <input type="radio"
+                                               name="@($"marcaImgModo_{m.MarcaId}")"
+                                               value="archivo"
+                                               checked="@(ed.ImagenModo == "archivo")"
+                                               @onchange="(e) => OnEditMarcaImagenModoChanged(m.MarcaId, e)" />
+                                        Archivo
+                                    </label>
+                                </div>
+
+                                @if (ed.ImagenModo == "url")
+                                {
+                                    <input class="border p-1" placeholder="Logo URL /uploads/..."
+                                           @bind="ed.ImagenUrl" />
+                                }
+                                else
+                                {
+                                    <label class="upload-drop" style="margin-top:.35rem;">
+                                        <InputFile OnChange="(a) => OnEditMarcaImagenArchivoSeleccionado(m.MarcaId, a)"
+                                                   accept="image/png,image/jpeg,image/jpg,image/webp" />
+                                        <span>Subir logo</span>
+                                    </label>
+
+                                    @if (!string.IsNullOrWhiteSpace(ed.ImagenArchivo))
+                                    {
+                                        <div class="text-xs muted">Archivo: @ed.ImagenArchivo</div>
+                                    }
+                                }
+
+                                <div style="margin-top:.35rem;">
+                                    <button class="btn" type="button"
+                                            @onclick="() => { ed.ImagenUrl = null; ed.ImagenArchivo = null; }">
+                                        Quitar
+                                    </button>
+                                </div>
+                            </td>
+
+                            <!-- ACCIONES (edit) -->
+                            <td>
+                                <button class="btn primary" type="button" @onclick="() => SaveMarcaAsync(m.MarcaId)" disabled="@_isSaving">Guardar</button>
+                                <button class="btn" type="button" @onclick="() => CancelEditMarca(m.MarcaId)" disabled="@_isSaving">Cancelar</button>
+                            </td>
+                        }
+
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@* ============================
+   UNIDADES
+   ============================ *@
+<section class="page-card" style="margin-top:1rem;">
+    <div class="section-head">
+        <h3>Unidades</h3>
+        <span class="badge">@_unidades.Count</span>
+    </div>
+
+    <details>
+        <summary style="cursor:pointer; font-weight:800;">Agregar unidad</summary>
+
+        <div class="form-grid" style="margin-top:.75rem;">
+            <div class="field">
+                <label>ID</label>
+                <input class="border p-1" placeholder="ml, g, L, ..." @bind="_newUnidadId" />
+            </div>
+            <div class="field">
+                <label>Nombre</label>
+                <input class="border p-1" placeholder="Mililitro" @bind="_newUnidadNombre" />
+            </div>
+            <div class="field">
+                <label>Símbolo</label>
+                <input class="border p-1" placeholder="mL" @bind="_newUnidadSimbolo" />
+            </div>
+
+            <div class="form-actions full-span">
+                <button class="btn primary" type="button" @onclick="AddUnidadAsync" disabled="@_isSaving">Guardar</button>
+                @if (!string.IsNullOrWhiteSpace(_msgUnidades))
+                {
+                    <span class="text-sm muted">@_msgUnidades</span>
+                }
+            </div>
+        </div>
+    </details>
+
+    <div class="table-wrap" style="margin-top:1rem;">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:180px;">ID</th>
+                    <th>Nombre</th>
+                    <th style="width:140px;">Símbolo</th>
+                    <th style="width:240px;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var u in _unidades.OrderBy(x => x.Nombre))
+                {
+                    var editing = _editingUnidades.Contains(u.UnidadId);
+
+                    <tr>
+                        <td><code>@u.UnidadId</code></td>
+
+                        @if (!editing)
+                        {
+                            <td>@u.Nombre</td>
+                            <td><b>@u.Simbolo</b></td>
+                            <td>
+                                <button class="btn" type="button" @onclick="() => StartEditUnidad(u.UnidadId)">Editar</button>
+                                <button class="btn danger" type="button" @onclick="() => DeleteUnidadAsync(u.UnidadId)" disabled="@_isSaving">Eliminar</button>
+                            </td>
+                        }
+                        else
+                        {
+                            <td><input class="border p-1" @bind="_editUnidad[u.UnidadId].Nombre" /></td>
+                            <td><input class="border p-1" @bind="_editUnidad[u.UnidadId].Simbolo" /></td>
+                            <td>
+                                <button class="btn primary" type="button" @onclick="() => SaveUnidadAsync(u.UnidadId)" disabled="@_isSaving">Guardar</button>
+                                <button class="btn" type="button" @onclick="() => CancelEditUnidad(u.UnidadId)" disabled="@_isSaving">Cancelar</button>
+                            </td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@* ============================
+   ESTADOS
+   ============================ *@
+<section class="page-card" style="margin-top:1rem;">
+    <div class="section-head">
+        <h3>Estados (activo)</h3>
+        <span class="badge">@_estados.Count</span>
+    </div>
+
+    <details>
+        <summary style="cursor:pointer; font-weight:800;">Agregar estado</summary>
+
+        <div class="form-grid" style="margin-top:.75rem;">
+            <div class="field">
+                <label>ID</label>
+                <input class="border p-1" placeholder="estado_xxx" @bind="_newEstadoId" />
+            </div>
+            <div class="field">
+                <label>Nombre</label>
+                <input class="border p-1" placeholder="Operativo / Fuera de servicio..." @bind="_newEstadoNombre" />
+            </div>
+
+            <div class="form-actions full-span">
+                <button class="btn primary" type="button" @onclick="AddEstadoAsync" disabled="@_isSaving">Guardar</button>
+                @if (!string.IsNullOrWhiteSpace(_msgEstados))
+                {
+                    <span class="text-sm muted">@_msgEstados</span>
+                }
+            </div>
+        </div>
+    </details>
+
+    <div class="table-wrap" style="margin-top:1rem;">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:180px;">ID</th>
+                    <th>Nombre</th>
+                    <th style="width:240px;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var e in _estados.OrderBy(x => x.Nombre))
+                {
+                    var editing = _editingEstados.Contains(e.EstadoId);
+
+                    <tr>
+                        <td><code>@e.EstadoId</code></td>
+
+                        @if (!editing)
+                        {
+                            <td>@e.Nombre</td>
+                            <td>
+                                <button class="btn" type="button" @onclick="() => StartEditEstado(e.EstadoId)">Editar</button>
+                                <button class="btn danger" type="button" @onclick="() => DeleteEstadoAsync(e.EstadoId)" disabled="@_isSaving">Eliminar</button>
+                            </td>
+                        }
+                        else
+                        {
+                            <td><input class="border p-1" @bind="_editEstado[e.EstadoId].Nombre" /></td>
+                            <td>
+                                <button class="btn primary" type="button" @onclick="() => SaveEstadoAsync(e.EstadoId)" disabled="@_isSaving">Guardar</button>
+                                <button class="btn" type="button" @onclick="() => CancelEditEstado(e.EstadoId)" disabled="@_isSaving">Cancelar</button>
+                            </td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@* ============================
+   LABORATORIOS
+   ============================ *@
+<section class="page-card" style="margin-top:1rem;">
+    <div class="section-head">
+        <h3>Laboratorios</h3>
+        <span class="badge">@_laboratorios.Count</span>
+    </div>
+
+    <details>
+        <summary style="cursor:pointer; font-weight:800;">Agregar laboratorio</summary>
+
+        <div class="form-grid" style="margin-top:.75rem;">
+            <div class="field">
+                <label>ID (opcional)</label>
+                <input class="border p-1" placeholder="(si vacío se auto-asigna)" @bind="_newLabId" />
+                <div class="text-xs muted">Si lo dejas vacío, se usa MAX(laboratorio_id)+1.</div>
+            </div>
+            <div class="field">
+                <label>Nombre</label>
+                <input class="border p-1" placeholder="Nombre del laboratorio" @bind="_newLabNombre" />
+            </div>
+            <div class="field">
+                <label>¿Tiene GHS?</label>
+                <label class="check">
+                    <input type="checkbox" checked="@_newLabTieneGhs" @onchange="OnNewLabTieneGhsChanged" />
+                    <span class="muted">tiene_ghs</span>
+                </label>
+            </div>
+
+            <div class="form-actions full-span">
+                <button class="btn primary" type="button" @onclick="AddLaboratorioAsync" disabled="@_isSaving">Guardar</button>
+                @if (!string.IsNullOrWhiteSpace(_msgLabs))
+                {
+                    <span class="text-sm muted">@_msgLabs</span>
+                }
+            </div>
+        </div>
+    </details>
+
+    <div class="table-wrap" style="margin-top:1rem;">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:120px;">ID</th>
+                    <th>Nombre</th>
+                    <th style="width:140px;">GHS</th>
+                    <th style="width:240px;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var l in _laboratorios.OrderBy(x => x.LaboratorioId))
+                {
+                    var editing = _editingLabs.Contains(l.LaboratorioId);
+
+                    <tr>
+                        <td><code>@l.LaboratorioId</code></td>
+
+                        @if (!editing)
+                        {
+                            <td>@l.Nombre</td>
+                            <td>@(l.TieneGhs ? "Sí" : "No")</td>
+                            <td>
+                                <button class="btn" type="button" @onclick="() => StartEditLab(l.LaboratorioId)">Editar</button>
+                                <button class="btn danger" type="button" @onclick="() => DeleteLaboratorioAsync(l.LaboratorioId)" disabled="@_isSaving">Eliminar</button>
+                            </td>
+                        }
+                        else
+                        {
+                            <td>
+                                <input class="border p-1" @bind="_editLab[l.LaboratorioId].Nombre" />
+                            </td>
+                            <td>
+                                <label class="check">
+                                    <input type="checkbox"
+                                           checked="@_editLab[l.LaboratorioId].TieneGhs"
+                                           @onchange="(e) => OnEditLabTieneGhsChanged(l.LaboratorioId, e)" />
+                                    <span class="muted">tiene_ghs</span>
+                                </label>
+                            </td>
+                            <td>
+                                <button class="btn primary" type="button" @onclick="() => SaveLaboratorioAsync(l.LaboratorioId)" disabled="@_isSaving">Guardar</button>
+                                <button class="btn" type="button" @onclick="() => CancelEditLab(l.LaboratorioId)" disabled="@_isSaving">Cancelar</button>
+                            </td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@* ============================
+   ASIGNATURAS
+   ============================ *@
+<section class="page-card" style="margin-top:1rem;">
+    <div class="section-head">
+        <h3>Asignaturas</h3>
+        <span class="badge">@_asignaturas.Count</span>
+    </div>
+
+    <div class="row" style="margin-top:.5rem;">
+        <label class="check">
+            <input type="checkbox" checked="@_soloAsignaturasDelLab" @onchange="OnSoloAsignaturasLabChanged" />
+            <span class="muted">Mostrar sólo (lab actual + global)</span>
+        </label>
+        <span class="text-xs muted">Lab actual: <b>@LaboratorioState.LaboratorioId</b></span>
+    </div>
+
+    <details style="margin-top:.5rem;">
+        <summary style="cursor:pointer; font-weight:800;">Agregar asignatura</summary>
+
+        <div class="form-grid" style="margin-top:.75rem;">
+            <div class="field">
+                <label>ID (opcional)</label>
+                <input class="border p-1" placeholder="asig_xxx" @bind="_newAsigId" />
+            </div>
+            <div class="field">
+                <label>Código clase (UNIQUE)</label>
+                <input class="border p-1" placeholder="QUIM-101" @bind="_newAsigCodigo" />
+            </div>
+            <div class="field">
+                <label>Nombre</label>
+                <input class="border p-1" placeholder="Química General" @bind="_newAsigNombre" />
+            </div>
+            <div class="field">
+                <label>Laboratorio (opcional)</label>
+                <select class="border p-1" value="@_newAsigLabId" @onchange="OnNewAsigLabChanged">
+                    <option value="">(global / sin lab)</option>
+                    @foreach (var l in _laboratorios.OrderBy(x => x.Nombre))
+                    {
+                        <option value="@l.LaboratorioId">@l.Nombre (@l.LaboratorioId)</option>
+                    }
+                </select>
+            </div>
+            <div class="field full-span">
+                <label>Descripción</label>
+                <textarea class="border p-1" rows="2" @bind="_newAsigDescripcion"></textarea>
+            </div>
+            <div class="field full-span">
+                <label>Descripción detalle</label>
+                <textarea class="border p-1" rows="3" @bind="_newAsigDescripcionDetalle"></textarea>
+            </div>
+
+            <div class="form-actions full-span">
+                <button class="btn primary" type="button" @onclick="AddAsignaturaAsync" disabled="@_isSaving">Guardar</button>
+                @if (!string.IsNullOrWhiteSpace(_msgAsig))
+                {
+                    <span class="text-sm muted">@_msgAsig</span>
+                }
+            </div>
+        </div>
+    </details>
+
+    <div class="table-wrap" style="margin-top:1rem;">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:160px;">ID</th>
+                    <th>Nombre</th>
+                    <th style="width:160px;">Código</th>
+                    <th style="width:220px;">Lab</th>
+                    <th style="width:260px;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var a in _asignaturas.OrderBy(x => x.Nombre))
+                {
+                    var editing = _editingAsig.Contains(a.AsignaturaId);
+
+                    <tr>
+                        <td><code>@a.AsignaturaId</code></td>
+
+                        @if (!editing)
+                        {
+                            <td>
+                                <div style="font-weight:800;">@a.Nombre</div>
+                                @if (!string.IsNullOrWhiteSpace(a.Descripcion))
+                                {
+                                    <div class="text-xs muted" title="@a.Descripcion">@Trunc(a.Descripcion, 90)</div>
+                                }
+                            </td>
+                            <td><b>@a.CodigoClase</b></td>
+                            <td>@(a.LaboratorioId.HasValue ? $"{LabLabel(a.LaboratorioId.Value)} ({a.LaboratorioId.Value})" : "Global")</td>
+                            <td>
+                                <button class="btn" type="button" @onclick="() => StartEditAsig(a.AsignaturaId)">Editar</button>
+                                <button class="btn danger" type="button" @onclick="() => DeleteAsignaturaAsync(a.AsignaturaId)" disabled="@_isSaving">Eliminar</button>
+                            </td>
+                        }
+                        else
+                        {
+                            <td>
+                                <input class="border p-1" @bind="_editAsig[a.AsignaturaId].Nombre" />
+                                <div style="margin-top:.35rem;">
+                                    <textarea class="border p-1" rows="2" @bind="_editAsig[a.AsignaturaId].Descripcion"></textarea>
+                                </div>
+                                <div style="margin-top:.35rem;">
+                                    <textarea class="border p-1" rows="2" @bind="_editAsig[a.AsignaturaId].DescripcionDetalle"></textarea>
+                                </div>
+                            </td>
+                            <td>
+                                <input class="border p-1" @bind="_editAsig[a.AsignaturaId].CodigoClase" />
+                            </td>
+                            <td>
+                                <select class="border p-1" value="@_editAsig[a.AsignaturaId].LaboratorioIdText" @onchange="(e) => OnEditAsigLabChanged(a.AsignaturaId, e)">
+                                    <option value="">(global)</option>
+                                    @foreach (var l in _laboratorios.OrderBy(x => x.Nombre))
+                                    {
+                                        <option value="@l.LaboratorioId">@l.Nombre (@l.LaboratorioId)</option>
+                                    }
+                                </select>
+                            </td>
+                            <td>
+                                <button class="btn primary" type="button" @onclick="() => SaveAsignaturaAsync(a.AsignaturaId)" disabled="@_isSaving">Guardar</button>
+                                <button class="btn" type="button" @onclick="() => CancelEditAsig(a.AsignaturaId)" disabled="@_isSaving">Cancelar</button>
+                            </td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+
+@code {
+    // ====== Estado general ======
+    private bool _isSaving;
+    private string? _loadError;
+
+
+    // ====== MARCAS ======
+    private readonly List<MarcaRow> _marcas = new();
+    private string? _newMarcaId;
+    private string? _newMarcaNombre;
+    private string? _msgMarcas;
+
+    private readonly HashSet<string> _editingMarcas = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, MarcaEdit> _editMarca = new(StringComparer.OrdinalIgnoreCase);
+
+    private string? _newMarcaImagenUrl;
+    private string _newMarcaImagenModo = "url";
+    private string? _newMarcaImagenArchivo;
+
+    // ====== UNIDADES ======
+    private readonly List<UnidadRow> _unidades = new();
+    private string? _newUnidadId;
+    private string? _newUnidadNombre;
+    private string? _newUnidadSimbolo;
+    private string? _msgUnidades;
+
+    private readonly HashSet<string> _editingUnidades = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, UnidadEdit> _editUnidad = new(StringComparer.OrdinalIgnoreCase);
+
+    // ====== ESTADOS ======
+    private readonly List<EstadoRow> _estados = new();
+    private string? _newEstadoId;
+    private string? _newEstadoNombre;
+    private string? _msgEstados;
+
+    private readonly HashSet<string> _editingEstados = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, EstadoEdit> _editEstado = new(StringComparer.OrdinalIgnoreCase);
+
+    // ====== LABORATORIOS ======
+    private readonly List<LaboratorioRow> _laboratorios = new();
+    private string? _newLabId;
+    private string? _newLabNombre;
+    private bool _newLabTieneGhs;
+    private string? _msgLabs;
+
+    private readonly HashSet<int> _editingLabs = new();
+    private readonly Dictionary<int, LaboratorioEdit> _editLab = new();
+
+    // ====== ASIGNATURAS ======
+    private readonly List<AsignaturaRow> _asignaturas = new();
+    private bool _soloAsignaturasDelLab = true;
+    private string? _msgAsig;
+
+    private string? _newAsigId;
+    private string? _newAsigNombre;
+    private string? _newAsigCodigo;
+    private string? _newAsigDescripcion;
+    private string? _newAsigDescripcionDetalle;
+    private string? _newAsigLabId; // string para select ("" -> null)
+
+    private readonly HashSet<string> _editingAsig = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, AsignaturaEdit> _editAsig = new(StringComparer.OrdinalIgnoreCase);
+
+    // ====== MODELOS ======
+    private readonly List<ModeloRow> _modelos = new();
+    private string? _msgModelos;
+
+    private string? _newModeloId;
+    private string? _newModeloNombre;
+    private string? _newModeloMarcaId;
+    private string? _newModeloSubcatId;
+    private bool _newModeloCalibrable;
+    private string? _newModeloManualUrl;
+    private string? _newModeloImagenUrl;
+    private string? _newModeloDescripcion;
+    private string? _newModeloNotas;
+
+    private readonly HashSet<string> _editingModelos = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ModeloEdit> _editModelo = new(StringComparer.OrdinalIgnoreCase);
+
+    // Subcategorías equipo (categoria_id = 'equipo-instrumento')
+    private readonly List<SelectOption> _subcatsEquipo = new();
+
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await ReloadAllAsync();
+    }
+
+    private void HandleLaboratorioChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await ReloadAllAsync();
+            StateHasChanged();
+        });
+    }
+
+    private async Task ReloadAllAsync()
+    {
+        _loadError = null;
+
+        _msgMarcas = null;
+        _msgUnidades = null;
+        _msgEstados = null;
+        _msgLabs = null;
+        _msgAsig = null;
+        _msgModelos = null;
+
+        _marcas.Clear();
+        _unidades.Clear();
+        _estados.Clear();
+        _laboratorios.Clear();
+        _asignaturas.Clear();
+        _modelos.Clear();
+        _subcatsEquipo.Clear();
+
+        _editingMarcas.Clear(); _editMarca.Clear();
+        _editingUnidades.Clear(); _editUnidad.Clear();
+        _editingEstados.Clear(); _editEstado.Clear();
+        _editingLabs.Clear(); _editLab.Clear();
+        _editingAsig.Clear(); _editAsig.Clear();
+        _editingModelos.Clear(); _editModelo.Clear();
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await LoadMarcasAsync(conn);
+            await LoadUnidadesAsync(conn);
+            await LoadEstadosAsync(conn);
+            await LoadLaboratoriosAsync(conn);
+            await LoadSubcatsEquipoAsync(conn);
+            await LoadAsignaturasAsync(conn);
+            await LoadModelosAsync(conn);
+        }
+        catch (Exception ex)
+        {
+            _loadError = ex.Message;
+        }
+    }
+
+    // ===================== LOADERS =====================
+    private static async Task<List<(string id, string nombre)>> ReadIdNombreAsync(NpgsqlConnection conn, string sql, params (string name, object value)[] ps)
+    {
+        var list = new List<(string, string)>();
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        foreach (var (n, v) in ps) cmd.Parameters.AddWithValue(n, v ?? DBNull.Value);
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+            list.Add((r.GetString(0), r.GetString(1)));
+        return list;
+    }
+
+    private async Task LoadMarcasAsync(NpgsqlConnection conn)
+    {
+        await using var cmd = new NpgsqlCommand(
+     "SELECT marca_id, nombre, COALESCE(imagen_url,'') FROM marcas ORDER BY nombre", conn);
+
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+            _marcas.Add(new MarcaRow(r.GetString(0), r.GetString(1), EmptyToNull(r.GetString(2))));
+
+    }
+
+    private async Task LoadUnidadesAsync(NpgsqlConnection conn)
+    {
+        await using var cmd = new NpgsqlCommand("SELECT unidad_id, nombre, simbolo FROM unidades ORDER BY nombre", conn);
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+            _unidades.Add(new UnidadRow(r.GetString(0), r.GetString(1), r.GetString(2)));
+    }
+
+    private async Task LoadEstadosAsync(NpgsqlConnection conn)
+    {
+        await using var cmd = new NpgsqlCommand("SELECT estado_id, nombre FROM estados_activo ORDER BY nombre", conn);
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+            _estados.Add(new EstadoRow(r.GetString(0), r.GetString(1)));
+    }
+
+    private async Task LoadLaboratoriosAsync(NpgsqlConnection conn)
+    {
+        await using var cmd = new NpgsqlCommand("SELECT laboratorio_id, nombre, tiene_ghs FROM laboratorios ORDER BY laboratorio_id", conn);
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+            _laboratorios.Add(new LaboratorioRow(r.GetInt32(0), r.GetString(1), r.GetBoolean(2)));
+    }
+
+    private async Task LoadSubcatsEquipoAsync(NpgsqlConnection conn)
+    {
+        const string sql = @"
+            SELECT subcategoria_id, nombre
+            FROM subcategorias
+            WHERE categoria_id = 'equipo-instrumento'
+            ORDER BY nombre";
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+            _subcatsEquipo.Add(new SelectOption(r.GetString(0), r.GetString(1)));
+    }
+
+    private async Task LoadAsignaturasAsync(NpgsqlConnection conn)
+    {
+        _asignaturas.Clear();
+
+        if (_soloAsignaturasDelLab && LaboratorioState.LaboratorioId > 0)
+        {
+            const string sql = @"
+                SELECT asignatura_id, nombre, codigo_clase,
+                       COALESCE(descripcion,''), laboratorio_id, COALESCE(descripcion_detalle,'')
+                FROM asignaturas
+                WHERE laboratorio_id = @lab OR laboratorio_id IS NULL
+                ORDER BY nombre";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+                _asignaturas.Add(new AsignaturaRow(
+                    r.GetString(0),
+                    r.GetString(1),
+                    r.GetString(2),
+                    r.GetString(3),
+                    r.IsDBNull(4) ? (int?)null : r.GetInt32(4),
+                    r.GetString(5)
+                ));
+        }
+        else
+        {
+            const string sql = @"
+                SELECT asignatura_id, nombre, codigo_clase,
+                       COALESCE(descripcion,''), laboratorio_id, COALESCE(descripcion_detalle,'')
+                FROM asignaturas
+                ORDER BY nombre";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+                _asignaturas.Add(new AsignaturaRow(
+                    r.GetString(0),
+                    r.GetString(1),
+                    r.GetString(2),
+                    r.GetString(3),
+                    r.IsDBNull(4) ? (int?)null : r.GetInt32(4),
+                    r.GetString(5)
+                ));
+        }
+    }
+
+    private async Task LoadModelosAsync(NpgsqlConnection conn)
+    {
+        const string sql = @"
+            SELECT modelo_id,
+                   COALESCE(marca_id,'') AS marca_id,
+                   COALESCE(subcategoria_id,'') AS subcategoria_id,
+                   nombre_modelo,
+                   es_calibrable,
+                   COALESCE(manual_url,''),
+                   COALESCE(notas,''),
+                   COALESCE(descripcion,''),
+                   COALESCE(imagen_url,'')
+            FROM modelos_equipo
+            ORDER BY nombre_modelo";
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+        {
+            _modelos.Add(new ModeloRow(
+                r.GetString(0),
+                EmptyToNull(r.GetString(1)),
+                EmptyToNull(r.GetString(2)),
+                r.GetString(3),
+                r.GetBoolean(4),
+                EmptyToNull(r.GetString(5)),
+                EmptyToNull(r.GetString(6)),
+                EmptyToNull(r.GetString(7)),
+                EmptyToNull(r.GetString(8))
+            ));
+        }
+    }
+
+    // ===================== MARCAS CRUD =====================
+    private void StartEditMarca(string id)
+    {
+        var m = _marcas.FirstOrDefault(x => x.MarcaId.Equals(id, StringComparison.OrdinalIgnoreCase));
+        if (m is null) return;
+
+        _editingMarcas.Add(id);
+        _editMarca[id] = new MarcaEdit
+            {
+                Nombre = m.Nombre,
+                ImagenUrl = m.ImagenUrl,
+                ImagenModo = "url",
+                ImagenArchivo = null
+            };
+    }
+
+
+    private void CancelEditMarca(string id)
+    {
+        _editingMarcas.Remove(id);
+        _editMarca.Remove(id);
+    }
+
+    private async Task AddMarcaAsync()
+    {
+        _msgMarcas = null;
+
+        if (string.IsNullOrWhiteSpace(_newMarcaNombre))
+        {
+            _msgMarcas = "Ingresa el nombre.";
+            return;
+        }
+
+        var id = string.IsNullOrWhiteSpace(_newMarcaId)
+            ? $"mar_{Guid.NewGuid():N}".Substring(0, 12)
+            : _newMarcaId.Trim();
+
+        _isSaving = true;
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            const string sql = @"
+                INSERT INTO marcas (marca_id, nombre, imagen_url)
+                VALUES (@id, @nombre, @img)
+                ON CONFLICT (marca_id) DO NOTHING";
+
+            await using var cmd = new NpgsqlCommand(sql, conn, tx);
+            cmd.Parameters.AddWithValue("id", id);
+            cmd.Parameters.AddWithValue("nombre", _newMarcaNombre.Trim());
+            cmd.Parameters.AddWithValue("img", DbOrNull(_newMarcaImagenUrl));
+
+
+            var rows = await cmd.ExecuteNonQueryAsync();
+            await tx.CommitAsync();
+
+            _msgMarcas = rows == 0 ? "No se insertó (ID duplicado)." : "Marca guardada.";
+            _newMarcaId = null;
+            _newMarcaNombre = null;
+            _newMarcaImagenUrl = null;
+            _newMarcaImagenModo = "url";
+            _newMarcaImagenArchivo = null;
+
+
+            await ReloadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgMarcas = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void OnMarcaImagenModoChanged(ChangeEventArgs args)
+{
+    var value = args.Value?.ToString();
+    if (string.IsNullOrWhiteSpace(value)) return;
+
+    _newMarcaImagenModo = value;
+
+    // opcional: si cambias a URL, limpia el nombre del archivo
+    if (_newMarcaImagenModo == "url")
+        _newMarcaImagenArchivo = null;
+}
+
+private async Task OnMarcaImagenArchivoSeleccionado(InputFileChangeEventArgs args)
+{
+    if (args.FileCount == 0) return;
+
+    var file = args.File;
+
+    // Validación mínima (opcional)
+    var extension = Path.GetExtension(file.Name).ToLowerInvariant();
+    var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".png", ".jpg", ".jpeg", ".webp" };
+    if (!allowed.Contains(extension))
+    {
+        _msgMarcas = "Formato no permitido. Usa PNG/JPG/WEBP.";
+        return;
+    }
+
+    var fileName = $"marca_{Guid.NewGuid():N}{extension}";
+    var relativePath = Path.Combine("uploads", "marcas", fileName).Replace("\\", "/");
+    var absolutePath = Path.Combine(HostEnvironment.WebRootPath, relativePath);
+
+    Directory.CreateDirectory(Path.GetDirectoryName(absolutePath)!);
+
+    await using var stream = file.OpenReadStream(5 * 1024 * 1024); // 5MB
+    await using var fileStream = File.Create(absolutePath);
+    await stream.CopyToAsync(fileStream);
+
+    _newMarcaImagenUrl = $"/{relativePath}";
+    _newMarcaImagenArchivo = file.Name;
+    _msgMarcas = $"Logo cargado: {file.Name}";
+}
+
+
+    private async Task SaveMarcaAsync(string id)
+    {
+        if (!_editMarca.TryGetValue(id, out var ed)) return;
+
+        if (string.IsNullOrWhiteSpace(ed.Nombre))
+        {
+            _msgMarcas = "Nombre inválido.";
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            const string sql = @"UPDATE marcas SET nombre=@nombre, imagen_url=@img WHERE marca_id=@id";
+            await using var cmd = new NpgsqlCommand(sql, conn, tx);
+            cmd.Parameters.AddWithValue("id", id);
+            cmd.Parameters.AddWithValue("nombre", ed.Nombre.Trim());
+            cmd.Parameters.AddWithValue("img", DbOrNull(ed.ImagenUrl));
+
+            await cmd.ExecuteNonQueryAsync();
+
+            await tx.CommitAsync();
+
+            CancelEditMarca(id);
+            _msgMarcas = "Actualizado.";
+            await ReloadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgMarcas = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task DeleteMarcaAsync(string id)
+    {
+        _msgMarcas = null;
+        _isSaving = true;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            const string sql = @"DELETE FROM marcas WHERE marca_id=@id";
+            await using var cmd = new NpgsqlCommand(sql, conn, tx);
+            cmd.Parameters.AddWithValue("id", id);
+            await cmd.ExecuteNonQueryAsync();
+
+            await tx.CommitAsync();
+
+            _msgMarcas = "Eliminado.";
+            await ReloadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgMarcas = $"No se pudo eliminar: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    // ===================== UNIDADES CRUD =====================
+    private void StartEditUnidad(string id)
+    {
+        var u = _unidades.FirstOrDefault(x => x.UnidadId.Equals(id, StringComparison.OrdinalIgnoreCase));
+        if (u is null) return;
+
+        _editingUnidades.Add(id);
+        _editUnidad[id] = new UnidadEdit { Nombre = u.Nombre, Simbolo = u.Simbolo };
+    }
+
+    private void CancelEditUnidad(string id)
+    {
+        _editingUnidades.Remove(id);
+        _editUnidad.Remove(id);
+    }
+
+    private async Task AddUnidadAsync()
+    {
+        _msgUnidades = null;
+
+        if (string.IsNullOrWhiteSpace(_newUnidadId) || string.IsNullOrWhiteSpace(_newUnidadNombre) || string.IsNullOrWhiteSpace(_newUnidadSimbolo))
+        {
+            _msgUnidades = "Ingresa ID, nombre y símbolo.";
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            const string sql = @"INSERT INTO unidades (unidad_id, nombre, simbolo) VALUES (@id, @nombre, @simbolo)";
+            await using var cmd = new NpgsqlCommand(sql, conn, tx);
+            cmd.Parameters.AddWithValue("id", _newUnidadId.Trim());
+            cmd.Parameters.AddWithValue("nombre", _newUnidadNombre.Trim());
+            cmd.Parameters.AddWithValue("simbolo", _newUnidadSimbolo.Trim());
+
+            await cmd.ExecuteNonQueryAsync();
+            await tx.CommitAsync();
+
+            _msgUnidades = "Unidad guardada.";
+            _newUnidadId = null;
+            _newUnidadNombre = null;
+            _newUnidadSimbolo = null;
+
+            await ReloadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgUnidades = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task SaveUnidadAsync(string id)
+    {
+        if (!_editUnidad.TryGetValue(id, out var ed)) return;
+
+        if (string.IsNullOrWhiteSpace(ed.Nombre) || string.IsNullOrWhiteSpace(ed.Simbolo))
+        {
+            _msgUnidades = "Nombre/símbolo inválidos.";
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            const string sql = @"UPDATE unidades SET nombre=@nombre, simbolo=@simbolo WHERE unidad_id=@id";
+            await using var cmd = new NpgsqlCommand(sql, conn, tx);
+            cmd.Parameters.AddWithValue("id", id);
+            cmd.Parameters.AddWithValue("nombre", ed.Nombre.Trim());
+            cmd.Parameters.AddWithValue("simbolo", ed.Simbolo.Trim());
+            await cmd.ExecuteNonQueryAsync();
+
+            await tx.CommitAsync();
+
+            CancelEditUnidad(id);
+            _msgUnidades = "Actualizado.";
+            await ReloadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgUnidades = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task DeleteUnidadAsync(string id)
+    {
+        _msgUnidades = null;
+        _isSaving = true;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            const string sql = @"DELETE FROM unidades WHERE unidad_id=@id";
+            await using var cmd = new NpgsqlCommand(sql, conn, tx);
+            cmd.Parameters.AddWithValue("id", id);
+            await cmd.ExecuteNonQueryAsync();
+
+            await tx.CommitAsync();
+
+            _msgUnidades = "Eliminado.";
+            await ReloadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgUnidades = $"No se pudo eliminar: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    // ===================== ESTADOS CRUD =====================
+    private void StartEditEstado(string id)
+    {
+        var e = _estados.FirstOrDefault(x => x.EstadoId.Equals(id, StringComparison.OrdinalIgnoreCase));
+        if (e is null) return;
+
+        _editingEstados.Add(id);
+        _editEstado[id] = new EstadoEdit { Nombre = e.Nombre };
+    }
+
+    private void CancelEditEstado(string id)
+    {
+        _editingEstados.Remove(id);
+        _editEstado.Remove(id);
+    }
+
+    private async Task AddEstadoAsync()
+    {
+        _msgEstados = null;
+
+        if (string.IsNullOrWhiteSpace(_newEstadoId) || string.IsNullOrWhiteSpace(_newEstadoNombre))
+        {
+            _msgEstados = "Ingresa ID y nombre.";
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            const string sql = @"INSERT INTO estados_activo (estado_id, nombre) VALUES (@id, @nombre)";
+            await using var cmd = new NpgsqlCommand(sql, conn, tx);
+            cmd.Parameters.AddWithValue("id", _newEstadoId.Trim());
+            cmd.Parameters.AddWithValue("nombre", _newEstadoNombre.Trim());
+            await cmd.ExecuteNonQueryAsync();
+
+            await tx.CommitAsync();
+
+            _msgEstados = "Estado guardado.";
+            _newEstadoId = null;
+            _newEstadoNombre = null;
+
+            await ReloadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgEstados = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task SaveEstadoAsync(string id)
+    {
+        if (!_editEstado.TryGetValue(id, out var ed)) return;
+        if (string.IsNullOrWhiteSpace(ed.Nombre))
+        {
+            _msgEstados = "Nombre inválido.";
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            const string sql = @"UPDATE estados_activo SET nombre=@nombre WHERE estado_id=@id";
+            await using var cmd = new NpgsqlCommand(sql, conn, tx);
+            cmd.Parameters.AddWithValue("id", id);
+            cmd.Parameters.AddWithValue("nombre", ed.Nombre.Trim());
+            await cmd.ExecuteNonQueryAsync();
+
+            await tx.CommitAsync();
+
+            CancelEditEstado(id);
+            _msgEstados = "Actualizado.";
+            await ReloadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgEstados = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task DeleteEstadoAsync(string id)
+    {
+        _msgEstados = null;
+        _isSaving = true;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            const string sql = @"DELETE FROM estados_activo WHERE estado_id=@id";
+            await using var cmd = new NpgsqlCommand(sql, conn, tx);
+            cmd.Parameters.AddWithValue("id", id);
+            await cmd.ExecuteNonQueryAsync();
+
+            await tx.CommitAsync();
+
+            _msgEstados = "Eliminado.";
+            await ReloadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgEstados = $"No se pudo eliminar: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    // ===================== LABS CRUD =====================
+    private void OnNewLabTieneGhsChanged(ChangeEventArgs e)
+    {
+        _newLabTieneGhs = e.Value is bool b && b;
+    }
+
+    private void StartEditLab(int id)
+    {
+        var l = _laboratorios.FirstOrDefault(x => x.LaboratorioId == id);
+        if (l is null) return;
+
+        _editingLabs.Add(id);
+        _editLab[id] = new LaboratorioEdit { Nombre = l.Nombre, TieneGhs = l.TieneGhs };
+    }
+
+    private void CancelEditLab(int id)
+    {
+        _editingLabs.Remove(id);
+        _editLab.Remove(id);
+    }
+
+    private void OnEditLabTieneGhsChanged(int id, ChangeEventArgs e)
+    {
+        if (!_editLab.TryGetValue(id, out var ed)) return;
+        ed.TieneGhs = e.Value is bool b && b;
+    }
+
+    private async Task AddLaboratorioAsync()
+    {
+        _msgLabs = null;
+
+        if (string.IsNullOrWhiteSpace(_newLabNombre))
+        {
+            _msgLabs = "Ingresa el nombre.";
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            int labId;
+            if (string.IsNullOrWhiteSpace(_newLabId))
+            {
+                const string next = @"SELECT COALESCE(MAX(laboratorio_id),0)+1 FROM laboratorios";
+                await using var cmdNext = new NpgsqlCommand(next, conn, tx);
+                labId = Convert.ToInt32(await cmdNext.ExecuteScalarAsync());
+            }
+            else
+            {
+                if (!int.TryParse(_newLabId.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out labId))
+                {
+                    _msgLabs = "ID inválido (debe ser entero).";
+                    return;
+                }
+            }
+
+            const string sql = @"INSERT INTO laboratorios (laboratorio_id, nombre, tiene_ghs) VALUES (@id, @nombre, @ghs)";
+            await using var cmd = new NpgsqlCommand(sql, conn, tx);
+            cmd.Parameters.AddWithValue("id", labId);
+            cmd.Parameters.AddWithValue("nombre", _newLabNombre.Trim());
+            cmd.Parameters.AddWithValue("ghs", _newLabTieneGhs);
+            await cmd.ExecuteNonQueryAsync();
+
+            await tx.CommitAsync();
+
+            _msgLabs = "Laboratorio guardado.";
+            _newLabId = null;
+            _newLabNombre = null;
+            _newLabTieneGhs = false;
+
+            await ReloadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgLabs = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task SaveLaboratorioAsync(int id)
+    {
+        if (!_editLab.TryGetValue(id, out var ed)) return;
+
+        if (string.IsNullOrWhiteSpace(ed.Nombre))
+        {
+            _msgLabs = "Nombre inválido.";
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            const string sql = @"UPDATE laboratorios SET nombre=@nombre, tiene_ghs=@ghs WHERE laboratorio_id=@id";
+            await using var cmd = new NpgsqlCommand(sql, conn, tx);
+            cmd.Parameters.AddWithValue("id", id);
+            cmd.Parameters.AddWithValue("nombre", ed.Nombre.Trim());
+            cmd.Parameters.AddWithValue("ghs", ed.TieneGhs);
+            await cmd.ExecuteNonQueryAsync();
+
+            await tx.CommitAsync();
+
+            CancelEditLab(id);
+            _msgLabs = "Actualizado.";
+            await ReloadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgLabs = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task DeleteLaboratorioAsync(int id)
+    {
+        _msgLabs = null;
+        _isSaving = true;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            const string sql = @"DELETE FROM laboratorios WHERE laboratorio_id=@id";
+            await using var cmd = new NpgsqlCommand(sql, conn, tx);
+            cmd.Parameters.AddWithValue("id", id);
+            await cmd.ExecuteNonQueryAsync();
+
+            await tx.CommitAsync();
+
+            _msgLabs = "Eliminado.";
+            await ReloadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgLabs = $"No se pudo eliminar: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    // ===================== ASIGNATURAS CRUD =====================
+    private void OnSoloAsignaturasLabChanged(ChangeEventArgs e)
+    {
+        _soloAsignaturasDelLab = e.Value is bool b && b;
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                await using var conn = await DataSource.OpenConnectionAsync();
+                await LoadAsignaturasAsync(conn);
+            }
+            catch { /* silencioso */ }
+            StateHasChanged();
+        });
+    }
+
+    private void OnNewAsigLabChanged(ChangeEventArgs e)
+    {
+        _newAsigLabId = e.Value?.ToString();
+    }
+
+    private void StartEditAsig(string id)
+    {
+        var a = _asignaturas.FirstOrDefault(x => x.AsignaturaId.Equals(id, StringComparison.OrdinalIgnoreCase));
+        if (a is null) return;
+
+        _editingAsig.Add(id);
+        _editAsig[id] = new AsignaturaEdit
+            {
+                Nombre = a.Nombre,
+                CodigoClase = a.CodigoClase,
+                Descripcion = a.Descripcion,
+                DescripcionDetalle = a.DescripcionDetalle,
+                LaboratorioIdText = a.LaboratorioId?.ToString(CultureInfo.InvariantCulture) ?? ""
+            };
+    }
+
+    private void CancelEditAsig(string id)
+    {
+        _editingAsig.Remove(id);
+        _editAsig.Remove(id);
+    }
+
+    private void OnEditAsigLabChanged(string asigId, ChangeEventArgs e)
+    {
+        if (!_editAsig.TryGetValue(asigId, out var ed)) return;
+        ed.LaboratorioIdText = e.Value?.ToString() ?? "";
+    }
+
+    private async Task AddAsignaturaAsync()
+    {
+        _msgAsig = null;
+
+        if (string.IsNullOrWhiteSpace(_newAsigNombre) || string.IsNullOrWhiteSpace(_newAsigCodigo))
+        {
+            _msgAsig = "Ingresa nombre y código clase.";
+            return;
+        }
+
+        var id = string.IsNullOrWhiteSpace(_newAsigId)
+            ? $"asig_{Guid.NewGuid():N}".Substring(0, 12)
+            : _newAsigId.Trim();
+
+        int? labId = null;
+        if (!string.IsNullOrWhiteSpace(_newAsigLabId))
+        {
+            if (int.TryParse(_newAsigLabId, NumberStyles.Any, CultureInfo.InvariantCulture, out var x))
+                labId = x;
+        }
+        else
+        {
+            // comodidad: si hay lab seleccionado, úsalo
+            if (LaboratorioState.LaboratorioId > 0) labId = LaboratorioState.LaboratorioId;
+        }
+
+        _isSaving = true;
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            const string sql = @"
+                INSERT INTO asignaturas
+                (asignatura_id, nombre, codigo_clase, descripcion, laboratorio_id, descripcion_detalle)
+                VALUES
+                (@id, @nombre, @codigo, @desc, @lab, @detalle)";
+            await using var cmd = new NpgsqlCommand(sql, conn, tx);
+
+            cmd.Parameters.AddWithValue("id", id);
+            cmd.Parameters.AddWithValue("nombre", _newAsigNombre.Trim());
+            cmd.Parameters.AddWithValue("codigo", _newAsigCodigo.Trim());
+            cmd.Parameters.AddWithValue("desc", DbOrNull(_newAsigDescripcion));
+            cmd.Parameters.AddWithValue("lab", labId.HasValue ? labId.Value : (object)DBNull.Value);
+            cmd.Parameters.AddWithValue("detalle", DbOrNull(_newAsigDescripcionDetalle));
+
+            await cmd.ExecuteNonQueryAsync();
+            await tx.CommitAsync();
+
+            _msgAsig = "Asignatura guardada.";
+
+            _newAsigId = null;
+            _newAsigNombre = null;
+            _newAsigCodigo = null;
+            _newAsigDescripcion = null;
+            _newAsigDescripcionDetalle = null;
+            _newAsigLabId = null;
+
+            await ReloadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgAsig = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task SaveAsignaturaAsync(string id)
+    {
+        if (!_editAsig.TryGetValue(id, out var ed)) return;
+
+        if (string.IsNullOrWhiteSpace(ed.Nombre) || string.IsNullOrWhiteSpace(ed.CodigoClase))
+        {
+            _msgAsig = "Nombre/código inválidos.";
+            return;
+        }
+
+        int? labId = null;
+        if (!string.IsNullOrWhiteSpace(ed.LaboratorioIdText))
+        {
+            if (int.TryParse(ed.LaboratorioIdText, NumberStyles.Any, CultureInfo.InvariantCulture, out var x))
+                labId = x;
+        }
+
+        _isSaving = true;
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            const string sql = @"
+                UPDATE asignaturas
+                SET nombre=@nombre,
+                    codigo_clase=@codigo,
+                    descripcion=@desc,
+                    laboratorio_id=@lab,
+                    descripcion_detalle=@detalle
+                WHERE asignatura_id=@id";
+            await using var cmd = new NpgsqlCommand(sql, conn, tx);
+            cmd.Parameters.AddWithValue("id", id);
+            cmd.Parameters.AddWithValue("nombre", ed.Nombre.Trim());
+            cmd.Parameters.AddWithValue("codigo", ed.CodigoClase.Trim());
+            cmd.Parameters.AddWithValue("desc", DbOrNull(ed.Descripcion));
+            cmd.Parameters.AddWithValue("lab", labId.HasValue ? labId.Value : (object)DBNull.Value);
+            cmd.Parameters.AddWithValue("detalle", DbOrNull(ed.DescripcionDetalle));
+
+            await cmd.ExecuteNonQueryAsync();
+            await tx.CommitAsync();
+
+            CancelEditAsig(id);
+            _msgAsig = "Actualizado.";
+            await ReloadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgAsig = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task DeleteAsignaturaAsync(string id)
+    {
+        _msgAsig = null;
+        _isSaving = true;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            const string sql = @"DELETE FROM asignaturas WHERE asignatura_id=@id";
+            await using var cmd = new NpgsqlCommand(sql, conn, tx);
+            cmd.Parameters.AddWithValue("id", id);
+            await cmd.ExecuteNonQueryAsync();
+
+            await tx.CommitAsync();
+
+            _msgAsig = "Eliminado.";
+            await ReloadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgAsig = $"No se pudo eliminar: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    // ===================== MODELOS CRUD =====================
+    private void OnNewModeloCalibrableChanged(ChangeEventArgs e)
+    {
+        _newModeloCalibrable = e.Value is bool b && b;
+    }
+
+    private void StartEditModelo(string id)
+    {
+        var m = _modelos.FirstOrDefault(x => x.ModeloId.Equals(id, StringComparison.OrdinalIgnoreCase));
+        if (m is null) return;
+
+        _editingModelos.Add(id);
+        _editModelo[id] = new ModeloEdit
+            {
+                NombreModelo = m.NombreModelo,
+                MarcaId = m.MarcaId,
+                SubcategoriaId = m.SubcategoriaId,
+                EsCalibrable = m.EsCalibrable,
+                ManualUrl = m.ManualUrl,
+                ImagenUrl = m.ImagenUrl,
+                Descripcion = m.Descripcion,
+                Notas = m.Notas
+            };
+    }
+
+    private void CancelEditModelo(string id)
+    {
+        _editingModelos.Remove(id);
+        _editModelo.Remove(id);
+    }
+
+    private void OnEditModeloCalibrableChanged(string id, ChangeEventArgs e)
+    {
+        if (!_editModelo.TryGetValue(id, out var ed)) return;
+        ed.EsCalibrable = e.Value is bool b && b;
+    }
+
+    private async Task AddModeloAsync()
+    {
+        _msgModelos = null;
+
+        if (string.IsNullOrWhiteSpace(_newModeloNombre))
+        {
+            _msgModelos = "Ingresa el nombre del modelo.";
+            return;
+        }
+
+        // si se elige subcat, blindaje: debe ser equipo-instrumento
+        if (!string.IsNullOrWhiteSpace(_newModeloSubcatId) && !_subcatsEquipo.Any(s => s.Id.Equals(_newModeloSubcatId, StringComparison.OrdinalIgnoreCase)))
+        {
+            _msgModelos = "Subcategoría inválida (no es de equipo-instrumento).";
+            return;
+        }
+
+        var id = string.IsNullOrWhiteSpace(_newModeloId)
+            ? $"mod_{Guid.NewGuid():N}".Substring(0, 12)
+            : _newModeloId.Trim();
+
+        _isSaving = true;
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            const string sql = @"
+                INSERT INTO modelos_equipo
+                (modelo_id, marca_id, subcategoria_id, nombre_modelo, es_calibrable, manual_url, notas, descripcion, imagen_url)
+                VALUES
+                (@id, @marca, @subcat, @nombre, @cal, @manual, @notas, @desc, @img)";
+            await using var cmd = new NpgsqlCommand(sql, conn, tx);
+
+            cmd.Parameters.AddWithValue("id", id);
+            cmd.Parameters.AddWithValue("marca", DbOrNull(_newModeloMarcaId));
+            cmd.Parameters.AddWithValue("subcat", DbOrNull(_newModeloSubcatId));
+            cmd.Parameters.AddWithValue("nombre", _newModeloNombre.Trim());
+            cmd.Parameters.AddWithValue("cal", _newModeloCalibrable);
+            cmd.Parameters.AddWithValue("manual", DbOrNull(_newModeloManualUrl));
+            cmd.Parameters.AddWithValue("notas", DbOrNull(_newModeloNotas));
+            cmd.Parameters.AddWithValue("desc", DbOrNull(_newModeloDescripcion));
+            cmd.Parameters.AddWithValue("img", DbOrNull(_newModeloImagenUrl));
+
+            await cmd.ExecuteNonQueryAsync();
+            await tx.CommitAsync();
+
+            _msgModelos = "Modelo guardado.";
+
+            _newModeloId = null;
+            _newModeloNombre = null;
+            _newModeloMarcaId = null;
+            _newModeloSubcatId = null;
+            _newModeloCalibrable = false;
+            _newModeloManualUrl = null;
+            _newModeloImagenUrl = null;
+            _newModeloDescripcion = null;
+            _newModeloNotas = null;
+
+            await ReloadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgModelos = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task SaveModeloAsync(string id)
+    {
+        if (!_editModelo.TryGetValue(id, out var ed)) return;
+
+        if (string.IsNullOrWhiteSpace(ed.NombreModelo))
+        {
+            _msgModelos = "Nombre inválido.";
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(ed.SubcategoriaId) && !_subcatsEquipo.Any(s => s.Id.Equals(ed.SubcategoriaId, StringComparison.OrdinalIgnoreCase)))
+        {
+            _msgModelos = "Subcategoría inválida (no es de equipo-instrumento).";
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            const string sql = @"
+                UPDATE modelos_equipo
+                SET marca_id=@marca,
+                    subcategoria_id=@subcat,
+                    nombre_modelo=@nombre,
+                    es_calibrable=@cal,
+                    manual_url=@manual,
+                    notas=@notas,
+                    descripcion=@desc,
+                    imagen_url=@img
+                WHERE modelo_id=@id";
+            await using var cmd = new NpgsqlCommand(sql, conn, tx);
+
+            cmd.Parameters.AddWithValue("id", id);
+            cmd.Parameters.AddWithValue("marca", DbOrNull(ed.MarcaId));
+            cmd.Parameters.AddWithValue("subcat", DbOrNull(ed.SubcategoriaId));
+            cmd.Parameters.AddWithValue("nombre", ed.NombreModelo.Trim());
+            cmd.Parameters.AddWithValue("cal", ed.EsCalibrable);
+            cmd.Parameters.AddWithValue("manual", DbOrNull(ed.ManualUrl));
+            cmd.Parameters.AddWithValue("notas", DbOrNull(ed.Notas));
+            cmd.Parameters.AddWithValue("desc", DbOrNull(ed.Descripcion));
+            cmd.Parameters.AddWithValue("img", DbOrNull(ed.ImagenUrl));
+
+            await cmd.ExecuteNonQueryAsync();
+            await tx.CommitAsync();
+
+            CancelEditModelo(id);
+            _msgModelos = "Actualizado.";
+            await ReloadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgModelos = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task DeleteModeloAsync(string id)
+    {
+        _msgModelos = null;
+        _isSaving = true;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            const string sql = @"DELETE FROM modelos_equipo WHERE modelo_id=@id";
+            await using var cmd = new NpgsqlCommand(sql, conn, tx);
+            cmd.Parameters.AddWithValue("id", id);
+            await cmd.ExecuteNonQueryAsync();
+
+            await tx.CommitAsync();
+
+            _msgModelos = "Eliminado.";
+            await ReloadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgModelos = $"No se pudo eliminar: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    // ===================== HELPERS UI =====================
+    private string MarcaLabel(string? marcaId)
+    {
+        if (string.IsNullOrWhiteSpace(marcaId)) return "—";
+        return _marcas.FirstOrDefault(x => x.MarcaId.Equals(marcaId, StringComparison.OrdinalIgnoreCase))?.Nombre ?? marcaId;
+    }
+
+    private string SubcatLabel(string? subcatId)
+    {
+        if (string.IsNullOrWhiteSpace(subcatId)) return "—";
+        return _subcatsEquipo.FirstOrDefault(x => x.Id.Equals(subcatId, StringComparison.OrdinalIgnoreCase))?.Label ?? subcatId;
+    }
+
+    private string LabLabel(int labId)
+    {
+        return _laboratorios.FirstOrDefault(x => x.LaboratorioId == labId)?.Nombre ?? $"Lab {labId}";
+    }
+
+    private static object DbOrNull(string? s) =>
+        string.IsNullOrWhiteSpace(s) ? (object)DBNull.Value : s!.Trim();
+
+    private static string? EmptyToNull(string s) =>
+        string.IsNullOrWhiteSpace(s) ? null : s;
+
+    private static string ResolveUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return "";
+        if (url.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return url;
+        return url.StartsWith("/", StringComparison.OrdinalIgnoreCase) ? url : $"/{url}";
+    }
+
+    private static string Trunc(string? s, int max)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "";
+        var t = s.Trim();
+        if (t.Length <= max) return t;
+        return t.Substring(0, max - 1) + "…";
+    }
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
+
+    private void OnEditMarcaImagenModoChanged(string marcaId, ChangeEventArgs args)
+    {
+        if (!_editMarca.TryGetValue(marcaId, out var ed)) return;
+
+        var value = args.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(value)) return;
+
+        ed.ImagenModo = value;
+
+        if (ed.ImagenModo == "url")
+            ed.ImagenArchivo = null;
+    }
+
+    private async Task OnEditMarcaImagenArchivoSeleccionado(string marcaId, InputFileChangeEventArgs args)
+    {
+        if (!_editMarca.TryGetValue(marcaId, out var ed)) return;
+        if (args.FileCount == 0) return;
+
+        var file = args.File;
+
+        var extension = Path.GetExtension(file.Name).ToLowerInvariant();
+        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".png", ".jpg", ".jpeg", ".webp" };
+        if (!allowed.Contains(extension))
+        {
+            _msgMarcas = "Formato no permitido. Usa PNG/JPG/WEBP.";
+            return;
+        }
+
+        var fileName = $"marca_{Guid.NewGuid():N}{extension}";
+        var relativePath = Path.Combine("uploads", "marcas", fileName).Replace("\\", "/");
+        var absolutePath = Path.Combine(HostEnvironment.WebRootPath, relativePath);
+
+        Directory.CreateDirectory(Path.GetDirectoryName(absolutePath)!);
+
+        await using var stream = file.OpenReadStream(5 * 1024 * 1024);
+        await using var fileStream = File.Create(absolutePath);
+        await stream.CopyToAsync(fileStream);
+
+        ed.ImagenUrl = $"/{relativePath}";
+        ed.ImagenArchivo = file.Name;
+
+        _msgMarcas = $"Logo cargado: {file.Name}";
+    }
+
+    // ===================== MODELOS DATOS =====================
+    private sealed record SelectOption(string Id, string Label);
+
+    private sealed record MarcaRow(string MarcaId, string Nombre, string? ImagenUrl);
+    private sealed class MarcaEdit
+    {
+        public string Nombre { get; set; } = "";
+        public string? ImagenUrl { get; set; }
+
+        // UI state
+        public string ImagenModo { get; set; } = "url";   // "url" | "archivo"
+        public string? ImagenArchivo { get; set; }        // nombre original
+    }
+
+    private sealed record UnidadRow(string UnidadId, string Nombre, string Simbolo);
+    private sealed class UnidadEdit { public string Nombre { get; set; } = ""; public string Simbolo { get; set; } = ""; }
+
+    private sealed record EstadoRow(string EstadoId, string Nombre);
+    private sealed class EstadoEdit { public string Nombre { get; set; } = ""; }
+
+    private sealed record LaboratorioRow(int LaboratorioId, string Nombre, bool TieneGhs);
+    private sealed class LaboratorioEdit { public string Nombre { get; set; } = ""; public bool TieneGhs { get; set; } }
+
+    private sealed record AsignaturaRow(
+        string AsignaturaId,
+        string Nombre,
+        string CodigoClase,
+        string Descripcion,
+        int? LaboratorioId,
+        string DescripcionDetalle
+    );
+
+    private sealed class AsignaturaEdit
+    {
+        public string Nombre { get; set; } = "";
+        public string CodigoClase { get; set; } = "";
+        public string? Descripcion { get; set; }
+        public string? DescripcionDetalle { get; set; }
+        public string LaboratorioIdText { get; set; } = ""; // "" => null
+    }
+
+    private sealed record ModeloRow(
+        string ModeloId,
+        string? MarcaId,
+        string? SubcategoriaId,
+        string NombreModelo,
+        bool EsCalibrable,
+        string? ManualUrl,
+        string? Notas,
+        string? Descripcion,
+        string? ImagenUrl
+    );
+
+    private sealed class ModeloEdit
+    {
+        public string NombreModelo { get; set; } = "";
+        public string? MarcaId { get; set; }
+        public string? SubcategoriaId { get; set; }
+        public bool EsCalibrable { get; set; }
+        public string? ManualUrl { get; set; }
+        public string? Notas { get; set; }
+        public string? Descripcion { get; set; }
+        public string? ImagenUrl { get; set; }
+    }
+}
+
+<style>
+    .page-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+        padding: 1rem;
+        box-shadow: 0 6px 14px rgba(15, 23, 42, 0.04);
+    }
+
+    .helper {
+        margin: .3rem 0 0;
+        color: #475569;
+        font-size: .95rem;
+    }
+
+    .muted {
+        color: #64748b;
+    }
+
+    .text-xs {
+        font-size: .8rem;
+    }
+
+    .text-sm {
+        font-size: .9rem;
+    }
+
+    .error-note {
+        color: #b91c1c;
+    }
+
+    .badge {
+        background: #e2e8f0;
+        color: #0f172a;
+        padding: .2rem .55rem;
+        border-radius: 999px;
+        font-size: .85rem;
+        font-weight: 800;
+    }
+
+    .section-head {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+        flex-wrap: wrap;
+        justify-content: space-between;
+    }
+
+    .row {
+        display: flex;
+        gap: .75rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: .75rem;
+        align-items: start;
+    }
+
+    .field label {
+        display: block;
+        font-size: .85rem;
+        color: #475569;
+        margin-bottom: .25rem;
+        font-weight: 900;
+    }
+
+    .full-span {
+        grid-column: 1 / -1;
+    }
+
+    .border {
+        border: 1px solid #e5e7eb;
+        border-radius: .5rem;
+    }
+
+    .p-1 {
+        padding: .45rem .6rem;
+    }
+
+    .form-actions {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+        flex-wrap: wrap;
+        margin-top: .25rem;
+    }
+
+    .btn {
+        border: 1px solid #cbd5e1;
+        background: #fff;
+        color: #0f172a;
+        padding: .45rem .85rem;
+        border-radius: .55rem;
+        font-weight: 800;
+        cursor: pointer;
+    }
+
+        .btn.primary {
+            background: #2563eb;
+            color: #fff;
+            border: none;
+            box-shadow: 0 6px 12px rgba(37, 99, 235, 0.18);
+        }
+
+            .btn.primary:hover {
+                background: #1d4ed8;
+            }
+
+            .upload-card {
+    border: 1px dashed #cbd5e1;
+    border-radius: 12px;
+    padding: .75rem;
+    background: #f8fafc;
+}
+
+.upload-options {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: .5rem;
+}
+
+.upload-drop {
+    display: flex;
+    gap: .6rem;
+    align-items: center;
+    justify-content: space-between;
+    border: 1px dashed #cbd5e1;
+    border-radius: 12px;
+    padding: .7rem .8rem;
+    background: #fff;
+    cursor: pointer;
+}
+
+.upload-drop span {
+    color: #475569;
+    font-weight: 700;
+    font-size: .9rem;
+}
+
+
+        .btn.danger {
+            background: #b91c1c;
+            color: #fff;
+            border: none;
+        }
+
+            .btn.danger:hover {
+                background: #991b1b;
+            }
+
+        .btn:disabled {
+            opacity: .65;
+            cursor: not-allowed;
+        }
+
+    .btn-link {
+        color: #1d4ed8;
+        text-decoration: none;
+        font-weight: 800;
+    }
+
+        .btn-link:hover {
+            text-decoration: underline;
+        }
+
+    .check {
+        display: flex;
+        align-items: center;
+        gap: .45rem;
+        font-weight: 800;
+    }
+
+    .table-wrap {
+        overflow-x: auto;
+        margin-top: .75rem;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #fff;
+    }
+
+    th, td {
+        padding: 0.6rem;
+        border-bottom: 1px solid #e5e7eb;
+        text-align: left;
+        vertical-align: top;
+    }
+
+    th {
+        background: #f3f4f6;
+        font-weight: 900;
+    }
+</style>

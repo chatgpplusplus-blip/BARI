@@ -17,4 +17,8 @@ public sealed class DeepSeekOptions
     /// Cantidad de mensajes previos que se envían como contexto al LLM.
     /// </summary>
     public int HistoryWindow { get; set; } = 10;
+
+    public int MaxListLimit { get; set; } = 100;    
+    public int MaxSqlSteps { get; set; } = 4;       
+
 }

@@ -22,14 +22,34 @@ public sealed class BariIntentRouter
         var lower = q.ToLowerInvariant();
 
         var looksDb =
-            lower.Contains("cuánt") || lower.Contains("cuantos") || lower.Contains("cantidad") ||
-            lower.Contains("inventario") || lower.Contains("tenemos") || lower.Contains("hay ") ||
-            lower.Contains("dónde") || lower.Contains("donde") || lower.Contains("ubic") ||
-            lower.Contains("venc") || lower.Contains("qr") || lower.Contains("cas") ||
-            lower.Contains("equipo") || lower.Contains("reactiv") || lower.Contains("sustanc") ||
-            lower.Contains("documento") || lower.Contains("material") ||
-            lower.Contains("mesón") || lower.Contains("mesones") ||
-            lower.Contains("área") || lower.Contains("areas") || lower.Contains("laboratorio");
+    lower.Contains("cuánt") || lower.Contains("cuantos") || lower.Contains("cantidad") ||
+    lower.Contains("inventario") || lower.Contains("tenemos") || lower.Contains("hay ") ||
+    lower.Contains("dónde") || lower.Contains("donde") || lower.Contains("ubic") ||
+    lower.Contains("venc") || lower.Contains("qr") || lower.Contains("cas") ||
+    lower.Contains("equipo") || lower.Contains("reactiv") || lower.Contains("sustanc") ||
+    lower.Contains("documento") || lower.Contains("material") ||
+    lower.Contains("mesón") || lower.Contains("mesones") ||
+    lower.Contains("área") || lower.Contains("areas") || lower.Contains("laboratorio") ||
+
+    // ✅ NUEVO: infraestructura / layout
+    lower.Contains("instalacion") || lower.Contains("instalaciones") || lower.Contains("infraestructura") ||
+    lower.Contains("ducha") || lower.Contains("lavaplatos") || lower.Contains("campana") || lower.Contains("extractor") ||
+    lower.Contains("aire acondicionado") || lower.Contains("tomacorriente") ||
+    lower.Contains("gas") || lower.Contains("ethernet") || lower.Contains("wifi") || lower.Contains("access point") ||
+    lower.Contains("puerta") || lower.Contains("ventana") ||
+    lower.Contains("canvas") || lower.Contains("plano") || lower.Contains("layout") ||
+    lower.Contains("poligono") || lower.Contains("coorden") ||
+    lower.Contains("planta") ||
+    lower.Contains("mantenimiento") || lower.Contains("revision") || lower.Contains("próxima revisión") || lower.Contains("proxima revision");
+
+        var looksWeb =
+    lower.Contains("busca en internet") || lower.Contains("google") || lower.Contains("web") ||
+    lower.Contains("en línea") || lower.Contains("online") || lower.Contains("link") ||
+    lower.Contains("artículo") || lower.Contains("paper") || lower.Contains("pdf") ||
+    lower.Contains("últimas") || lower.Contains("noticias") || lower.Contains("precio en el mercado");
+
+        if (looksWeb)
+            return new RouterDecision { Intent = "web_search", Notes = "Heurística: el usuario pide búsqueda web." };
 
         if (looksDb)
             return new RouterDecision { Intent = "db_query", Notes = "Heurística: parece consulta del inventario/BD." };
@@ -41,11 +61,13 @@ public sealed class BariIntentRouter
 @"Responde en json.
 Clasifica la intención del usuario en:
 - db_query
+- web_search
 - general_help
 - needs_clarification
 
 Devuelve SOLO:
-{ ""intent"": ""db_query|general_help|needs_clarification"", ""clarifying_question"": null, ""notes"": ""breve"" }"
+{ ""intent"": ""db_query|web_search|general_help|needs_clarification"", ""clarifying_question"": null, ""notes"": ""breve"" }"
+
             },
             new() { Role="user", Content = q }
         };
@@ -65,9 +87,11 @@ Devuelve SOLO:
         return x switch
         {
             "db" or "database" or "dbquery" or "db_query" => "db_query",
+            "web" or "web_search" or "internet" or "browse" or "search" => "web_search",
             "general" or "general_help" => "general_help",
             "clarify" or "needs_clarification" => "needs_clarification",
             _ => "general_help"
         };
+
     }
 }

@@ -1,25 +1,324 @@
-﻿html, body {
-    overscroll-behavior: contain;
+﻿
+/* ===========================
+           Estilos locales (prefijo ma-)
+           Evita afectar otras páginas
+           =========================== */
+
+.ma-page {
+    padding: 10px 12px;
+    background: transparent;
+}
+
+.ma-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.ma-title {
+    font-size: 1.35rem;
+    font-weight: 700;
+    margin: 0;
+    line-height: 1.2;
+}
+
+.ma-subtitle {
+    font-size: 0.85rem;
+    color: #6b7280;
+    margin-top: 2px;
+}
+
+.ma-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 999px;
+    background: #fff;
+    font-size: 0.85rem;
+    color: #374151;
+    max-width: 520px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ma-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.02);
+}
+
+.ma-toolbar {
+    margin-bottom: 12px;
+}
+
+.ma-toolbar-row {
+    display: flex;
+    align-items: end;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.ma-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 220px;
+}
+
+.ma-label {
+    font-size: 0.8rem;
+    color: #6b7280;
+}
+
+.ma-input {
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 6px 8px;
+    font-size: 0.9rem;
+    background: #fff;
+}
+
+.ma-spacer {
+    flex: 1 1 auto;
+}
+
+.ma-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.ma-btn {
+    border-radius: 10px;
+    padding: 6px 10px;
+}
+
+.ma-btn-muted {
+    opacity: 0.9;
+}
+
+.ma-hint {
+    margin-top: 8px;
+}
+
+.ma-hint-text {
+    font-size: 0.9rem;
+    color: #4b5563;
+}
+
+/* ===== Layout principal ===== */
+.ma-editor-layout {
+    margin-top: 6px;
+}
+
+.editor-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1150px) 420px;
+    gap: 16px;
+    align-items: start;
 }
 
 .canvas-host {
-    display: flex;
-    justify-content: flex-start;
+    overflow: auto;
 }
 
-.canvas-box {
+.ma-canvas-host {
+    overflow-x: auto;
+}
+
+.ma-canvas-box {
     position: relative;
-    border: 1px solid #ccc;
-    width: 100%;
-    max-width: none;
-    aspect-ratio: var(--ar);
-    touch-action: none;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #fff;
+    overflow: hidden;
 }
 
-.floating-card {
-    background: rgba(255,255,255,.95);
+/* Overlay zoom */
+.ma-zoom {
+    position: absolute;
+    right: 10px;
+    top: 10px;
+    display: flex;
+    gap: .4rem;
+    z-index: 5;
+}
+
+.ma-zoom-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    border: 1px solid #d1d5db;
+    background: #fff;
+    font-weight: 700;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.03);
+}
+
+    .ma-zoom-btn:hover {
+        background: #f9fafb;
+    }
+
+/* Floating card */
+.ma-floating-card {
     border: 1px solid #e5e7eb;
-    border-radius: .5rem;
-    box-shadow: 0 10px 20px rgba(0,0,0,.08);
-    padding: .5rem;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.92);
+    backdrop-filter: blur(6px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+    padding: 10px;
+    z-index: 6;
+    max-width: calc(100% - 20px);
+}
+
+.ma-floating-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.ma-mini-btn {
+    background: #fff;
+}
+
+    .ma-mini-btn:hover {
+        background: #f9fafb;
+    }
+
+.ma-mini-select {
+    border-radius: 8px;
+}
+
+.ma-mini-input {
+    border-radius: 8px;
+}
+
+.ma-inline-label {
+    color: #374151;
+}
+
+.ma-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    user-select: none;
+}
+
+/* Panel lateral */
+.prop-panel {
+    position: sticky;
+    top: 80px;
+    max-height: calc(100vh - 100px);
+    overflow: auto;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.02);
+}
+
+.ma-panel-section {
+    padding: 6px 2px;
+}
+
+.ma-panel-title {
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: #111827;
+}
+
+.ma-divider {
+    height: 1px;
+    background: #e5e7eb;
+    margin: 12px 0;
+}
+
+.area-label {
+    pointer-events: none;
+    user-select: none;
+}
+
+svg text {
+    user-select: none;
+}
+
+/* Bottom actions card */
+.ma-actions-card {
+    margin-top: 12px;
+}
+
+.ma-section-title {
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: #111827;
+}
+/* === HUD DRAGGABLE === */
+
+.ma-canvas-box svg {
+    position: relative; /* para que el absolute del HUD se ancle aquí */
+    pointer-events: auto;
+}
+
+/* Cuadro del HUD */
+.ma-hud {
+    position: absolute;
+    top: 120px;
+    left: 20px;
+    min-width: 180px;
+    max-width: 260px;
+    background: #ffffff;
+    border-radius: 8px;
+    border: 1px solid #d4d4d8;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
+    padding: 4px 8px;
+    font-size: 12px;
+    color: #111827;
+    z-index: 999; /* MUY por encima del SVG */
+    pointer-events: auto; /* 🔥 CLAVE: que SÍ reciba punteros */
+}
+
+.ma-prop-panel {
+    overflow: auto;
+    max-height: calc(100vh - 160px); /* ajusta según tu header/toolbar */
+}
+
+/* Cabecera que hace de “manija” para arrastrar */
+.ma-hud-handle {
+    font-size: 14px;
+    line-height: 1;
+    text-align: right;
+    cursor: grab;
+    user-select: none;
+    margin-bottom: 4px;
+    color: #6b7280;
+    /* 🔥 CLAVE: que también reciba eventos */
+    pointer-events: auto;
+}
+
+/* Cuando está arrastrando, cambiamos cursor */
+.ma-hud.is-dragging .ma-hud-handle {
+    cursor: grabbing;
+}
+
+/* Cuerpo del HUD */
+.ma-hud-body {
+    font-size: 12px;
+}
+
+.ma-hud-sep {
+    margin: 4px 0;
+    border-top: 1px dashed #e5e7eb;
+}
+
+.ma-hud-note {
+    margin-top: 2px;
+    font-size: 11px;
+    color: #6b7280;
 }

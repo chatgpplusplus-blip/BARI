@@ -3,86 +3,133 @@
 @using BARI_web.Services
 
 <div class="bb-shell">
-    <div class="bb-header">
+    <header class="bb-header">
         <div class="bb-title">
             <div class="bb-badge">BariBot</div>
-            <div class="bb-subtitle">Inventario de laboratorio (química + electrónica)</div>
+            <div class="bb-subtitle">Inventario + documentos + instalaciones</div>
         </div>
 
-        <div class="bb-status">
-            @if (IsBusy)
-            {
-                <span class="bb-dot bb-dot--busy"></span>
-                <span>Analizando…</span>
-            }
-            else
-            {
-                <span class="bb-dot bb-dot--ok"></span>
-                <span>Listo</span>
-            }
-        </div>
-    </div>
+        <div class="bb-actions">
+            <div class="bb-status" title="Estado">
+                @if (IsBusy)
+                {
+                    <span class="bb-dot bb-dot--busy"></span>
+                    <span>Cargando…</span>
+                }
+                else
+                {
+                    <span class="bb-dot bb-dot--ok"></span>
+                    <span>Listo</span>
+                }
+            </div>
 
-    <div class="bb-body">
+            <button class="bb-btn bb-btn--ghost"
+                    @onclick="Stop"
+                    disabled="@(!IsBusy)"
+                    title="Detener respuesta">
+                ⏹ Detener
+            </button>
+        </div>
+    </header>
+
+    <section class="bb-body" role="log" aria-live="polite">
         @if (Messages.Count == 0)
         {
             <div class="bb-empty">
                 <div class="bb-empty-title">Prueba con:</div>
+
                 <div class="bb-chips">
-                    <button class="bb-chip"
-                            @onclick="@(() => QuickAsk("¿Cuántos reactivos corrosivos hay?"))">
-                        ¿Cuántos reactivos corrosivos hay?
+                    <button class="bb-chip" @onclick="@(() => QuickAsk("Lista equipos del laboratorio 1"))">
+                        Lista equipos del laboratorio
                     </button>
+                    <button class="bb-chip" @onclick="@(() => QuickAsk("¿Dónde está el equipo pHmetro?"))">
+                        ¿Dónde está un equipo?
+                    </button>
+                    <button class="bb-chip" @onclick="@(() => QuickAsk("¿Tienen ácido sulfúrico? (por nombre o CAS)"))">
+                        ¿Tienen un reactivo?
+                    </button>
+                    <button class="bb-chip" @onclick="@(() => QuickAsk("Busca documentos SOP de seguridad"))">
+                        Busca documentos SOP
+                    </button>
+                    <button class="bb-chip" @onclick="@(() => QuickAsk("Lista instalaciones: duchas y lavaplatos del laboratorio 1"))">
+                        Instalaciones (duchas/lavaplatos)
+                    </button>
+                </div>
 
-                    <button class="bb-chip"
-                            @onclick="@(() => QuickAsk("Lista equipos en el laboratorio"))">
-                        Lista equipos
-                    </button>
-
-                    <button class="bb-chip"
-                            @onclick="@(() => QuickAsk("¿Tienen ácido sulfúrico? (por nombre o CAS)"))">
-                        ¿Tienen ácido sulfúrico?
-                    </button>
-
-                    <button class="bb-chip"
-                            @onclick="@(() => QuickAsk("Busca documentos de seguridad"))">
-                        Busca documentos
-                    </button>
+                <div class="bb-empty-hint">
+                    Tip: puedes mencionar <code>laboratorio</code>, <code>área</code>, <code>mesón</code>,
+                    <code>QR</code>, <code>CAS</code>, o <code>fecha de vencimiento</code>.
                 </div>
             </div>
         }
 
         @foreach (var m in Messages)
         {
-            <div class="bb-row @(m.Role == "user" ? "bb-row--me" : "bb-row--bot")">
+            <div class="bb-row @(m.Role == "user" ? "bb-row--me" : "bb-row--bot")" @key="m.Id">
                 <div class="bb-bubble @(m.Role == "user" ? "bb-bubble--me" : "bb-bubble--bot")">
                     <div class="bb-bubble-meta">
                         <span class="bb-who">@(m.Role == "user" ? "Tú" : "BariBot")</span>
-                        <span class="bb-time">@m.At.ToLocalTime().ToString("HH:mm")</span>
+                        <span class="bb-time" title="@m.At.ToString("u")">@m.At.ToLocalTime().ToString("HH:mm")</span>
                     </div>
 
-                    <div class="bb-bubble-text">@m.Content</div>
+                    <div class="bb-bubble-text">
+                        @RenderContent(m.Content)
+                    </div>
 
-                    @if (m.Role == "assistant" && m.UsedDatabase == true)
-                    {
-                        <div class="bb-pill">BD</div>
-                    }
+                    <div class="bb-bubble-footer">
+                        @if (m.Role == "assistant" && m.UsedDatabase == true)
+                        {
+                            <span class="bb-pill">BD</span>
+                        }
+
+                        @if (m.Role == "assistant")
+                        {
+                            <button class="bb-mini"
+                                    title="Copiar respuesta"
+                                    @onclick="@(() => CopyAsync(m.Content))">
+                                Copiar
+                            </button>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+
+        @if (IsBusy)
+        {
+            <div class="bb-row bb-row--bot">
+                <div class="bb-bubble bb-bubble--bot bb-bubble--typing">
+                    <div class="bb-bubble-meta">
+                        <span class="bb-who">BariBot</span>
+                        <span class="bb-time">ahora</span>
+                    </div>
+
+                    <div class="bb-typing">
+                        <span>Cargando respuesta</span>
+                        <span class="bb-dots" aria-hidden="true">
+                            <span class="bb-dotdot"></span>
+                            <span class="bb-dotdot"></span>
+                            <span class="bb-dotdot"></span>
+                        </span>
+                    </div>
                 </div>
             </div>
         }
 
         @if (!string.IsNullOrWhiteSpace(ErrorMessage))
         {
-            <div class="bb-error">
+            <div class="bb-error" role="alert">
                 <strong>Error:</strong> @ErrorMessage
             </div>
         }
-    </div>
 
-    <div class="bb-footer">
+        <div class="bb-bottom" @ref="_bottom"></div>
+    </section>
+
+    <footer class="bb-footer">
         <div class="bb-input-wrap">
             <textarea class="bb-input"
-                      placeholder="Escribe tu pregunta…"
+                      placeholder="Escribe tu pregunta… (Enter envía, Shift+Enter salto de línea)"
                       @bind="Draft"
                       @bind:event="oninput"
                       @onkeydown="OnKeyDown"
@@ -97,8 +144,8 @@
         </div>
 
         <div class="bb-hint">
-            Tip: intenta por <code>nombre</code>, <code>CAS</code>, <code>QR</code>, <code>área</code>,
-            o por peligrosidad (<code>corros</code>, <code>inflam</code>, <code>toxic</code>).
+            Ejemplos: <code>documentos</code>, <code>instalaciones</code>, <code>equipos</code>,
+            <code>sustancias</code>, <code>contenedores</code>, <code>materiales</code>.
         </div>
-    </div>
+    </footer>
 </div>

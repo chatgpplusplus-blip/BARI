@@ -1,5 +1,4 @@
-﻿
-@page "/modificarareas"
+﻿@page "/modificarareas"
 @namespace BARI_web.Features.Espacios.Pages
 @using Microsoft.AspNetCore.Components
 
@@ -80,7 +79,8 @@
 
             <!-- Columna izquierda: lienzo -->
             <div class="canvas-host ma-canvas-host">
-                <div class="canvas-box ma-canvas-box" style="--ar:@AspectRatioString();width:1150px;">
+                <div class="canvas-box ma-canvas-box"
+                     style="--ar:@AspectRatioString(); width:100%; max-width:1150px;">
 
                     <!-- Controles de Zoom -->
                     <div class="ma-zoom" @onclick:stopPropagation="true">
@@ -161,8 +161,8 @@
                                 {
                                     @VertexPicker(p, p.x_m, p.y_m, Handle.NW)
                                     @VertexPicker(p, p.x_m + p.ancho_m, p.y_m, Handle.NE)
-                                    @VertexPicker(p, p.x_m, p.y_m + p.alto_m, Handle.SW)
-                                    @VertexPicker(p, p.x_m + p.ancho_m, p.y_m + p.alto_m, Handle.SE)
+                                    @VertexPicker(p, p.x_m, p.y_m + p.largo_m, Handle.SW)
+                                    @VertexPicker(p, p.x_m + p.ancho_m, p.y_m + p.largo_m, Handle.SE)
                                 }
 
                                 @* === VÉRTICES (edición) === *@
@@ -170,7 +170,6 @@
                                 {
                                     for (var i = 0; i < p.puntos.Count; i++)
                                     {
-                                        // ✅ FIX CRÍTICO: copiar el índice local para evitar bug de closure del "for"
                                         var idx = i;
 
                                         var pt = p.puntos[idx];
@@ -226,7 +225,8 @@
                         <!-- Puertas (VERDE) -->
                         @foreach (var d in _doors.Where(IsDoorVisible))
                         {
-                            var col = "#13A076"; var thick = 0.10m;
+                            var col = "#13A076";
+                            var thick = 0.10m;
 
                             <g @onclick="() => { _selDoorId = d.door_id; _selWinId = null; _sel = null; _showDoorWinPanels = true; StateHasChanged(); }">
                                 <line x1="@S(d.x_m)" y1="@S(d.y_m)"
@@ -250,7 +250,7 @@
                         @foreach (var w in _windows.Where(IsWinVisible))
                         {
                             var col = "#66CCFF";
-                            var thick = 0.10m;  // ✅ igual que puerta (mejor para manipular)
+                            var thick = 0.10m;  // igual que puerta (mejor para manipular)
 
                             <g @onclick="() => { _selWinId = w.win_id; _selDoorId = null; _sel = null; _showDoorWinPanels = true; StateHasChanged(); }">
                                 <line x1="@S(w.x_m)" y1="@S(w.y_m)"
@@ -269,7 +269,6 @@
                                       @onpointerdown="(e)=>OnPointerDownResizeWin(e, w.win_id)" />
                             </g>
                         }
-
 
                         @if (_polys.Count == 0)
                         {
@@ -298,23 +297,33 @@
                     }
 
                     @* =========================
-                       HUD: coordenadas + medidas
+                       HUD: coordenadas + medidas (arrastrable via JS)
                        ========================= *@
-                    <div class="ma-hud" @onclick:stopPropagation="true">
-                        @if (_cursorWorld is not null)
-                        {
-                            <div><b>X</b>: @S(Math.Round(_cursorWorld.Value.x, 3)) m</div>
-                            <div><b>Y</b>: @S(Math.Round(_cursorWorld.Value.y, 3)) m</div>
-                        }
-                        @if (_isDrawing && _draftPoints.Count > 0)
-                        {
-                            <div class="ma-hud-sep"></div>
-                            <div><b>Tramo</b>: @S(Math.Round(_draftLiveLen, 3)) m</div>
-                            <div><b>Total</b>: @S(Math.Round(_draftTotalLen, 3)) m</div>
-                            <div class="ma-hud-note">Shift = libre | Snap = @(_snapToGrid ? "ON" : "OFF")</div>
-                        }
-                    </div>
+                    <div id="ma-hud"
+                         class="ma-hud ma-hud-draggable"
+                         style="position:absolute; left:20px; top:120px;">
 
+                        <div class="ma-hud-handle"
+                             title="Arrastrar HUD">
+                            ≡
+                        </div>
+
+                        <div class="ma-hud-body">
+                            @if (_cursorWorld is not null)
+                            {
+                                <div><b>X</b>: @S(Math.Round(_cursorWorld.Value.x, 3)) m</div>
+                                <div><b>Y</b>: @S(Math.Round(_cursorWorld.Value.y, 3)) m</div>
+                            }
+
+                            @if (_isDrawing && _draftPoints.Count > 0)
+                            {
+                                <div class="ma-hud-sep"></div>
+                                <div><b>Tramo</b>: @S(Math.Round(_draftLiveLen, 3)) m</div>
+                                <div><b>Total</b>: @S(Math.Round(_draftTotalLen, 3)) m</div>
+                                <div class="ma-hud-note">Shift = libre | Snap = @(_snapToGrid ? "ON" : "OFF")</div>
+                            }
+                        </div>
+                    </div>
 
                     <!-- Botonera flotante -->
                     <div class="floating-card ma-floating-card" style="position:absolute; right:10px; bottom:10px;" @onclick:stopPropagation="true">
@@ -354,11 +363,50 @@
                             </label>
                         </div>
                     </div>
-                </div>
+
+                                    </div>
             </div>
 
             <!-- Columna derecha: panel lateral -->
             <aside class="prop-panel ma-prop-panel" @onclick:stopPropagation="true">
+
+                @if (_isDrawing)
+                {
+                    <div class="ma-floating-row mt-1 flex items-center gap-2">
+
+                        <button type="button"
+                                class="px-2 py-1 border rounded ma-mini-btn"
+                                @onclick="UndoLastDraftPoint"
+                                disabled="@(_draftPoints.Count == 0)">
+                            Deshacer punto
+                        </button>
+
+                        <div class="flex items-center gap-1">
+                            <span class="text-sm font-bold whitespace-nowrap">Pos. X:</span>
+                            <input class="border p-1 w-20 text-center"
+                                   @ref="_draftXRef"
+                                   value="@_draftInputX"
+                                   @oninput="(e)=> _draftInputX = e.Value?.ToString() ?? string.Empty"
+                                   @onkeydown="OnDraftXKeyDown" />
+                        </div>
+
+                        <div class="flex items-center gap-1">
+                            <span class="text-sm font-bold whitespace-nowrap">Pos. Y:</span>
+                            <input class="border p-1 w-20 text-center"
+                                   @ref="_draftYRef"
+                                   value="@_draftInputY"
+                                   @oninput="(e)=> _draftInputY = e.Value?.ToString() ?? string.Empty"
+                                   @onkeydown="OnDraftYKeyDown" />
+                        </div>
+
+                        <button type="button"
+                                class="px-2 py-1 border rounded ma-mini-btn ml-2"
+                                @onclick="AddTypedDraftPoint">
+                            Añadir vértice
+                        </button>
+                    </div>
+                }
+
 
                 @if (_sel is not null)
                 {
@@ -713,308 +761,3 @@
         </div>
     }
 </div>
-
-<style>
-    /* ===========================
-           Estilos locales (prefijo ma-)
-           Evita afectar otras páginas
-           =========================== */
-
-    .ma-page {
-        padding: 10px 12px;
-        background: transparent;
-    }
-
-    .ma-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-end;
-        gap: 12px;
-        margin-bottom: 10px;
-    }
-
-    .ma-title {
-        font-size: 1.35rem;
-        font-weight: 700;
-        margin: 0;
-        line-height: 1.2;
-    }
-
-    .ma-subtitle {
-        font-size: 0.85rem;
-        color: #6b7280;
-        margin-top: 2px;
-    }
-
-    .ma-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 6px 10px;
-        border: 1px solid #e5e7eb;
-        border-radius: 999px;
-        background: #fff;
-        font-size: 0.85rem;
-        color: #374151;
-        max-width: 520px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .ma-card {
-        background: #fff;
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        padding: 12px;
-        box-shadow: 0 1px 0 rgba(0,0,0,0.02);
-    }
-
-    .ma-toolbar {
-        margin-bottom: 12px;
-    }
-
-    .ma-toolbar-row {
-        display: flex;
-        align-items: end;
-        gap: 12px;
-        flex-wrap: wrap;
-    }
-
-    .ma-field {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        min-width: 220px;
-    }
-
-    .ma-label {
-        font-size: 0.8rem;
-        color: #6b7280;
-    }
-
-    .ma-input {
-        border: 1px solid #d1d5db;
-        border-radius: 8px;
-        padding: 6px 8px;
-        font-size: 0.9rem;
-        background: #fff;
-    }
-
-    .ma-spacer {
-        flex: 1 1 auto;
-    }
-
-    .ma-actions {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-    }
-
-    .ma-btn {
-        border-radius: 10px;
-        padding: 6px 10px;
-    }
-
-    .ma-btn-muted {
-        opacity: 0.9;
-    }
-
-    .ma-hint {
-        margin-top: 8px;
-    }
-
-    .ma-hint-text {
-        font-size: 0.9rem;
-        color: #4b5563;
-    }
-
-    /* ===== Layout principal ===== */
-    .ma-editor-layout {
-        margin-top: 6px;
-    }
-
-    .editor-layout {
-        display: grid;
-        grid-template-columns: minmax(0, 1150px) 420px;
-        gap: 16px;
-        align-items: start;
-    }
-
-    .canvas-host {
-        overflow: auto;
-    }
-
-    .ma-canvas-box {
-        position: relative;
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        background: #fff;
-        overflow: hidden;
-    }
-
-    /* Overlay zoom */
-    .ma-zoom {
-        position: absolute;
-        right: 10px;
-        top: 10px;
-        display: flex;
-        gap: .4rem;
-        z-index: 5;
-    }
-
-    .ma-zoom-btn {
-        width: 34px;
-        height: 34px;
-        border-radius: 10px;
-        border: 1px solid #d1d5db;
-        background: #fff;
-        font-weight: 700;
-        box-shadow: 0 1px 0 rgba(0,0,0,0.03);
-    }
-
-        .ma-zoom-btn:hover {
-            background: #f9fafb;
-        }
-
-    /* Floating card */
-    .ma-floating-card {
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        background: rgba(255,255,255,0.92);
-        backdrop-filter: blur(6px);
-        box-shadow: 0 4px 20px rgba(0,0,0,0.06);
-        padding: 10px;
-        z-index: 6;
-        max-width: calc(100% - 20px);
-    }
-
-    .ma-floating-row {
-        display: flex;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 8px;
-    }
-
-    .ma-mini-btn {
-        background: #fff;
-    }
-
-        .ma-mini-btn:hover {
-            background: #f9fafb;
-        }
-
-    .ma-mini-select {
-        border-radius: 8px;
-    }
-
-    .ma-mini-input {
-        border-radius: 8px;
-    }
-
-    .ma-inline-label {
-        color: #374151;
-    }
-
-    .ma-check {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        user-select: none;
-    }
-
-    /* Panel lateral */
-    .prop-panel {
-        position: sticky;
-        top: 80px;
-        max-height: calc(100vh - 100px);
-        overflow: auto;
-        background: #fff;
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        padding: 12px;
-        box-shadow: 0 1px 0 rgba(0,0,0,0.02);
-    }
-
-    .ma-panel-section {
-        padding: 6px 2px;
-    }
-
-    .ma-panel-title {
-        font-weight: 700;
-        margin-bottom: 8px;
-        color: #111827;
-    }
-
-    .ma-divider {
-        height: 1px;
-        background: #e5e7eb;
-        margin: 12px 0;
-    }
-
-    .area-label {
-        pointer-events: none;
-        user-select: none;
-    }
-
-    svg text {
-        user-select: none;
-    }
-
-    /* Bottom actions card */
-    .ma-actions-card {
-        margin-top: 12px;
-    }
-
-    .ma-section-title {
-        font-weight: 700;
-        margin-bottom: 8px;
-        color: #111827;
-    }
-
-    /* ===== HUD (coordenadas + medidas) ===== */
-    .ma-hud {
-        position: absolute;
-        left: 10px;
-        top: 10px; /* ✅ arriba */
-        bottom: auto; /* ✅ desactiva abajo */
-        z-index: 7;
-        background: rgba(255,255,255,0.92);
-        border: 1px solid #e5e7eb;
-        border-radius: 10px;
-        padding: 8px 10px;
-        font-size: 12px;
-        line-height: 1.25rem;
-        color: #111827;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.06);
-        min-width: 150px;
-        pointer-events: none;
-    }
-
-
-    .ma-hud-sep {
-        height: 1px;
-        background: #e5e7eb;
-        margin: 6px 0;
-    }
-
-    .ma-hud-note {
-        font-size: 11px;
-        color: #6b7280;
-        margin-top: 4px;
-    }
-
-    /* Responsive: si la pantalla es chica, baja el panel */
-    @@media (max-width: 1400px) {
-        .editor-layout {
-            grid-template-columns: 1fr;
-        }
-
-        .prop-panel {
-            position: relative;
-            top: auto;
-            max-height: none;
-        }
-    }
-</style>
-```

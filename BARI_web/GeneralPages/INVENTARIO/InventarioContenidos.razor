@@ -1,0 +1,2001 @@
+﻿@page "/contenidos"
+
+@using Npgsql
+@using System.Globalization
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Web
+@inject NpgsqlDataSource DataSource
+@inject LaboratorioState LaboratorioState
+@inject NavigationManager Nav
+@implements IDisposable
+
+<PageTitle>Contenidos</PageTitle>
+
+<section class="page-card">
+    <h2>Contenidos</h2>
+    <p class="helper">
+        Contenidos académicos del laboratorio: Asignaturas, Laboratorios (Clases) y Experiencias/Clases.
+        Puedes registrar nuevos elementos desde aquí, y abajo verlos en tablas con hipervínculos a sus detalles.
+    </p>
+    <LaboratorioSelector />
+</section>
+
+<!-- =========================================================
+     1) REGISTRO / SUBIR (PRIMERO)
+========================================================= -->
+<section class="page-card" style="margin-top:1.5rem;">
+    <h3>Registrar contenido</h3>
+    <p class="helper">Crea asignaturas, Laboratorios (Clases) y experiencias. Todo se guarda dentro del laboratorio actual.</p>
+
+    <div class="create-grid">
+        <!-- =========================
+             A) Crear Asignatura
+        ========================== -->
+        <details class="create-card">
+            <summary>Crear asignatura</summary>
+
+            <div class="form-grid">
+                <div class="field">
+                    <label>ID (opcional)</label>
+                    <input class="border p-1" placeholder="asig_xxx" @bind="_newAsigId" />
+                </div>
+
+                <div class="field">
+                    <label>Nombre</label>
+                    <input class="border p-1" placeholder="Ej: Química General I" @bind="_newAsigNombre" />
+                </div>
+
+                <div class="field">
+                    <label>Código clase (único)</label>
+                    <input class="border p-1" placeholder="Ej: QG-101" @bind="_newAsigCodigo" />
+                </div>
+
+                <div class="field full-span">
+                    <label>Descripción</label>
+                    <textarea class="border p-1" rows="2" placeholder="Descripción corta" @bind="_newAsigDesc"></textarea>
+                </div>
+
+                <div class="field full-span">
+                    <label>Descripción detallada</label>
+                    <textarea class="border p-1" rows="3" placeholder="Detalles, objetivos, etc." @bind="_newAsigDetalle"></textarea>
+                </div>
+
+                <div class="form-actions full-span">
+                    <button class="btn primary" type="button" @onclick="CrearAsignaturaAsync" disabled="@_savingAsig">Guardar asignatura</button>
+                    @if (!string.IsNullOrWhiteSpace(_msgAsig))
+                    {
+                        <span class="text-sm muted">@_msgAsig</span>
+                    }
+                </div>
+            </div>
+        </details>
+
+        <!-- =========================
+             B) Registrar Laboratorio (Clase)
+        ========================== -->
+        <details class="create-card">
+            <summary>Registrar laboratorio (Clase)</summary>
+
+            <div class="form-grid">
+                <div class="field">
+                    <label>ID (opcional)</label>
+                    <input class="border p-1" placeholder="labreal_xxx" @bind="_newLabRealId" />
+                </div>
+
+                <div class="field">
+                    <label>Asignatura</label>
+                    <select class="border p-1" @bind="_newLabRealAsigId">
+                        <option value="">(selecciona)</option>
+                        @foreach (var a in _asignaturaOptions)
+                        {
+                            <option value="@a.Id">@a.Label</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="field full-span">
+                    <label>Nombre</label>
+                    <input class="border p-1" placeholder="Ej: Laboratorio 1 - Mediciones y material volumétrico" @bind="_newLabRealNombre" />
+                </div>
+
+                <div class="field full-span">
+                    <label>Descripción</label>
+                    <textarea class="border p-1" rows="3" placeholder="Qué se hace, objetivos, etc." @bind="_newLabRealDesc"></textarea>
+                </div>
+
+                <div class="form-actions full-span">
+                    <button class="btn primary" type="button" @onclick="CrearLaboratorioRealizadoAsync" disabled="@_savingLabReal">Guardar laboratorio</button>
+                    @if (!string.IsNullOrWhiteSpace(_msgLabReal))
+                    {
+                        <span class="text-sm muted">@_msgLabReal</span>
+                    }
+                </div>
+            </div>
+        </details>
+
+        <!-- =========================
+             C) Registrar Experiencia / Clase
+        ========================== -->
+        <details class="create-card">
+            <summary>Registrar experiencia / clase</summary>
+
+            <div class="form-grid">
+                <div class="field">
+                    <label>ID (opcional)</label>
+                    <input class="border p-1" placeholder="exp_xxx" @bind="_newExpId" />
+                </div>
+
+                <div class="field">
+                    <label>Asignatura (obligatorio)</label>
+                    <select class="border p-1" value="@_newExpAsigId" @onchange="OnNewExpAsignaturaChanged">
+                        <option value="">(selecciona)</option>
+                        @foreach (var a in _asignaturaOptions)
+                        {
+                            <option value="@a.Id">@a.Label</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="field">
+                    <label>Laboratorio - Clase (Obligatorio)</label>
+                    <select class="border p-1" @bind="_newExpLabRealId" disabled="@string.IsNullOrWhiteSpace(_newExpAsigId)">
+                        <option value="">(selecciona)</option>
+                        @foreach (var lr in LabRealizadoOptionsParaNewExp)
+                        {
+                            <option value="@lr.Id">@lr.Label</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="field full-span">
+                    <label>Nombre</label>
+                    <input class="border p-1" placeholder="Ej: Determinación de densidad" @bind="_newExpNombre" />
+                </div>
+
+                <div class="field">
+                    <label>Orden (opcional)</label>
+                    <input class="border p-1" type="number" step="1" placeholder="1, 2, 3..." @bind="_newExpOrden" />
+                </div>
+
+                <div class="field">
+                    <label>Tiempo estimado (min, opcional)</label>
+                    <input class="border p-1" type="number" step="1" placeholder="Ej: 60" @bind="_newExpTiempoMin" />
+                </div>
+
+                <div class="field full-span">
+                    <label>Procedimientos</label>
+                    <textarea class="border p-1" rows="4" placeholder="Paso a paso..." @bind="_newExpProcedimientos"></textarea>
+                </div>
+
+                <div class="field full-span">
+                    <label>Precauciones</label>
+                    <textarea class="border p-1" rows="3" placeholder="EPP, riesgos, etc." @bind="_newExpPrecauciones"></textarea>
+                </div>
+
+                <div class="field full-span">
+                    <label>Observaciones</label>
+                    <textarea class="border p-1" rows="2" placeholder="Notas adicionales..." @bind="_newExpObservaciones"></textarea>
+                </div>
+
+                <div class="field full-span">
+                    <label>Descripción detallada</label>
+                    <textarea class="border p-1" rows="3" placeholder="Detalles extendidos..." @bind="_newExpDetalle"></textarea>
+                </div>
+
+                <div class="field full-span">
+                    <label class="muted">Vincular recursos (opcional) · aparecerán en el detalle con miniaturas si hay imagen</label>
+
+                    <div class="rel-grid">
+                        <div class="rel-card">
+                            <div class="rel-title">Modelos de Equipos (@_newExpEquiposSel.Count)</div>
+                            <input class="border p-1 rel-search" placeholder="Buscar equipo..."
+                                   @bind="_relEqSearch" @bind:event="oninput" />
+                            <div class="rel-list">
+                                @foreach (var opt in EquiposOptionsFiltradas)
+                                {
+                                    <label class="check-row">
+                                        <input type="checkbox" checked="@_newExpEquiposSel.Contains(opt.Id)"
+                                               @onchange="@(() => Toggle(_newExpEquiposSel, opt.Id))" />
+                                        @if (!string.IsNullOrWhiteSpace(opt.ImageUrl))
+                                        {
+                                            <img class="thumb" src="@ResolveUrl(opt.ImageUrl)" alt="img eq" />
+                                        }
+                                        <span class="check-text">@opt.Label</span>
+                                        @if (!string.IsNullOrWhiteSpace(opt.Meta))
+                                        {
+                                            <span class="tag">@opt.Meta</span>
+                                        }
+                                    </label>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="rel-card">
+                            <div class="rel-title">Materiales (@_newExpMaterialesSel.Count)</div>
+                            <input class="border p-1 rel-search" placeholder="Buscar material..."
+                                   @bind="_relMatSearch" @bind:event="oninput" />
+                            <div class="rel-list">
+                                @foreach (var opt in MaterialesOptionsFiltradas)
+                                {
+                                    <label class="check-row">
+                                        <input type="checkbox" checked="@_newExpMaterialesSel.Contains(opt.Id)"
+                                               @onchange="@(() => Toggle(_newExpMaterialesSel, opt.Id))" />
+                                        @if (!string.IsNullOrWhiteSpace(opt.ImageUrl))
+                                        {
+                                            <img class="thumb" src="@ResolveUrl(opt.ImageUrl)" alt="img mat" />
+                                        }
+                                        <span class="check-text">@opt.Label</span>
+                                        @if (!string.IsNullOrWhiteSpace(opt.Meta))
+                                        {
+                                            <span class="tag">@opt.Meta</span>
+                                        }
+                                    </label>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="rel-card">
+                            <div class="rel-title">Sustancias (@_newExpSustanciasSel.Count)</div>
+                            <input class="border p-1 rel-search" placeholder="Buscar sustancia..."
+                                   @bind="_relSusSearch" @bind:event="oninput" />
+                            <div class="rel-list">
+                                @foreach (var opt in SustanciasOptionsFiltradas)
+                                {
+                                    <label class="check-row">
+                                        <input type="checkbox" checked="@_newExpSustanciasSel.Contains(opt.Id)"
+                                               @onchange="@(() => Toggle(_newExpSustanciasSel, opt.Id))" />
+                                        @if (!string.IsNullOrWhiteSpace(opt.ImageUrl))
+                                        {
+                                            <img class="thumb" src="@ResolveUrl(opt.ImageUrl)" alt="img sus" />
+                                        }
+                                        <span class="check-text">@opt.Label</span>
+                                        @if (!string.IsNullOrWhiteSpace(opt.Meta))
+                                        {
+                                            <span class="tag">@opt.Meta</span>
+                                        }
+                                    </label>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-actions full-span">
+                    <button class="btn primary" type="button" @onclick="CrearExperienciaAsync" disabled="@_savingExp">Guardar experiencia</button>
+                    @if (!string.IsNullOrWhiteSpace(_msgExp))
+                    {
+                        <span class="text-sm muted">@_msgExp</span>
+                    }
+                </div>
+            </div>
+        </details>
+    </div>
+</section>
+
+<!-- =========================================================
+     2) LECTURA EN TABLAS (ASIGNATURAS / LABS / EXPERIENCIAS)
+========================================================= -->
+<section class="page-card" style="margin-top:1.5rem;">
+    <div class="category-header">
+        <div>
+            <h3>Tablas de contenido</h3>
+            <p class="helper">Asignaturas con documentos asociados, Laboratorios (Clases) y experiencias con hipervínculos a sus páginas de detalle.</p>
+        </div>
+
+        <div class="category-controls">
+            <label class="toggle">
+                <input type="checkbox"
+                       checked="@_incluirGlobales"
+                       @onchange="OnToggleGlobales" />
+                <span>Incluir globales</span>
+            </label>
+
+            <input class="border p-1 search-input-invent"
+                   placeholder="Buscar (nombre, código, descripción)..."
+                   @bind="_searchAsig"
+                   @bind:event="oninput" />
+
+            <label class="toggle">
+                <input type="checkbox"
+                       checked="@_soloConContenido"
+                       @onchange="OnToggleSoloConContenido" />
+                <span>Solo con contenido</span>
+            </label>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_loadError))
+    {
+        <p class="error-note">Error cargando contenidos: @_loadError</p>
+    }
+    else
+    {
+        <div class="summary-row">
+            <span class="badge">@AsignaturasFiltradas.Count() asignaturas</span>
+            <span class="badge">@LabsFiltrados.Count() lab (Clase)</span>
+            <span class="badge">@ExperienciasFiltradas.Count() experiencias</span>
+            <span class="badge">@_docs.Count docs vinculados</span>
+        </div>
+
+        <!-- =========================
+             A) TABLA ASIGNATURAS (CONTRAÍBLE)
+        ========================== -->
+        <details class="panel" style="margin-top:.9rem;" open>
+            <summary class="panel-summary">
+                <span>Asignaturas</span>
+                <span class="badge">@AsignaturasFiltradas.Count()</span>
+            </summary>
+
+            @if (!AsignaturasFiltradas.Any())
+            {
+                <div class="text-xs muted">— No hay asignaturas con los filtros actuales.</div>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table class="mini">
+                        <thead>
+                            <tr>
+                                <th>Asignatura</th>
+                                <th>Código</th>
+                                <th>Tipo</th>
+                                <th>Descripción</th>
+                                <th>Labs</th>
+                                <th>Exp</th>
+                                <th>Docs</th>
+                                <th>Documentos asociados</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var a in AsignaturasFiltradas)
+                            {
+                                var docsAsig = GetDocsParaAsignatura(a.AsignaturaId).ToList();
+
+                                <tr>
+                                    <td style="font-weight:900;">
+                                        <NavLink class="btn-link"
+                                                 href="@($"{RutaAsignaturaDetalle}{a.AsignaturaId}")">
+                                            @a.Nombre
+                                        </NavLink>
+                                    </td>
+                                    <td class="muted"><span class="tag">@a.CodigoClase</span></td>
+                                    <td>
+                                        @if (a.EsGlobal)
+                                        {
+                                            <span class="tag warn">GLOBAL</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="tag">LAB</span>
+                                        }
+                                    </td>
+                                    <td class="muted">@Trunc(a.Descripcion, 140)</td>
+                                    <td><span class="badge">@a.LabsRealizadosCount</span></td>
+                                    <td><span class="badge">@a.ExperienciasCount</span></td>
+                                    <td><span class="badge">@a.DocsCount</span></td>
+                                    <td>
+                                        @if (docsAsig.Count == 0)
+                                        {
+                                            <span class="text-xs muted">—</span>
+                                        }
+                                        else
+                                        {
+                                            <div class="doc-tags">
+                                                @foreach (var d in docsAsig)
+                                                {
+                                                    var href = GetDocHref(d);
+                                                    if (!string.IsNullOrWhiteSpace(href))
+                                                    {
+                                                        <a class="tag linktag"
+                                                           href="@href"
+                                                           target="_blank"
+                                                           rel="noopener noreferrer"
+                                                           title="@d.Titulo">
+                                                            @Trunc(d.Titulo, 36)
+                                                        </a>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="tag">@Trunc(d.Titulo, 36)</span>
+                                                    }
+                                                }
+                                            </div>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </details>
+
+        <!-- =========================
+             B) TABLA LABS REALIZADOS (CONTRAÍBLE)
+        ========================== -->
+        <details class="panel" style="margin-top:.9rem;">
+            <summary class="panel-summary">
+                <span>Laboratorios (Clases)</span>
+                <span class="badge">@LabsFiltrados.Count()</span>
+            </summary>
+
+            @if (!LabsFiltrados.Any())
+            {
+                <div class="text-xs muted">— No hay Laboratorios (Clases) con los filtros actuales.</div>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table class="mini">
+                        <thead>
+                            <tr>
+                                <th>Laboratorio (Clase)</th>
+                                <th>Asignatura</th>
+                                <th>Descripción</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var lr in LabsFiltrados)
+                            {
+                                var asigLabel = GetAsignaturaLabel(lr.AsignaturaId);
+
+                                <tr>
+                                    <td style="font-weight:900;">
+                                        <NavLink class="btn-link"
+                                                 href="@($"{RutaLabRealDetalle}{lr.LaboratorioRealizadoId}")">
+                                            @lr.Nombre
+                                        </NavLink>
+                                    </td>
+                                    <td class="muted">
+                                        @if (!string.IsNullOrWhiteSpace(lr.AsignaturaId))
+                                        {
+                                            <NavLink class="btn-link"
+                                                     href="@($"{RutaAsignaturaDetalle}{lr.AsignaturaId}")">
+                                                @asigLabel
+                                            </NavLink>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-xs muted">—</span>
+                                        }
+                                    </td>
+                                    <td class="muted">@Trunc(lr.Descripcion, 180)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </details>
+
+        <!-- =========================
+             C) TABLA EXPERIENCIAS (CONTRAÍBLE)
+        ========================== -->
+        <details class="panel" style="margin-top:.9rem;">
+            <summary class="panel-summary">
+                <span>Experiencias / Clases</span>
+                <span class="badge">@ExperienciasFiltradas.Count()</span>
+            </summary>
+
+            @if (!ExperienciasFiltradas.Any())
+            {
+                <div class="text-xs muted">— No hay experiencias con los filtros actuales.</div>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table class="mini">
+                        <thead>
+                            <tr>
+                                <th>Experiencia</th>
+                                <th>Lab (Clase)</th>
+                                <th>Asignatura</th>
+                                <th>Orden</th>
+                                <th>Tiempo</th>
+                                <th>Proc</th>
+                                <th>Prec</th>
+                                <th>Obs</th>
+                                <th>Recursos</th>
+                                <th>Docs</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var exp in ExperienciasFiltradas)
+                            {
+                                var docsExp = GetDocsParaExperiencia(exp.ExperienciaId).ToList();
+                                var asigLabel = GetAsignaturaLabel(exp.AsignaturaId);
+
+                                <tr>
+                                    <td style="font-weight:900;">
+                                        <NavLink class="btn-link"
+                                                 href="@($"{RutaExperienciaDetalle}{exp.ExperienciaId}")">
+                                            @exp.Nombre
+                                        </NavLink>
+                                    </td>
+
+                                    <td class="muted">
+                                        @if (!string.IsNullOrWhiteSpace(exp.LaboratorioRealizadoId))
+                                        {
+                                            <NavLink class="btn-link"
+                                                     href="@($"{RutaLabRealDetalle}{exp.LaboratorioRealizadoId}")">
+                                                @(exp.LabRealizadoNombre ?? exp.LaboratorioRealizadoId)
+                                            </NavLink>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-xs muted">—</span>
+                                        }
+                                    </td>
+
+                                    <td class="muted">
+                                        <NavLink class="btn-link"
+                                                 href="@($"{RutaAsignaturaDetalle}{exp.AsignaturaId}")">
+                                            @asigLabel
+                                        </NavLink>
+                                    </td>
+
+                                    <td class="muted">@((exp.Orden is null) ? "—" : exp.Orden.ToString())</td>
+                                    <td class="muted">@((exp.TiempoMin is null) ? "—" : $"{exp.TiempoMin} min")</td>
+
+                                    <td class="muted">@Trunc(exp.Procedimientos, 80)</td>
+                                    <td class="muted">@Trunc(exp.Precauciones, 80)</td>
+                                    <td class="muted">@Trunc(exp.Observaciones, 80)</td>
+
+                                    <td class="muted">
+                                        <span class="badge">@GetRelCount(_expEquipos, exp.ExperienciaId) eq</span>
+                                        <span class="badge">@GetRelCount(_expMateriales, exp.ExperienciaId) mat</span>
+                                        <span class="badge">@GetRelCount(_expSustancias, exp.ExperienciaId) sus</span>
+                                    </td>
+
+                                    <td>
+                                        @if (docsExp.Count == 0)
+                                        {
+                                            <span class="text-xs muted">—</span>
+                                        }
+                                        else
+                                        {
+                                            <div class="doc-tags">
+                                                @foreach (var d in docsExp)
+                                                {
+                                                    var href = GetDocHref(d);
+                                                    if (!string.IsNullOrWhiteSpace(href))
+                                                    {
+                                                        <a class="tag linktag"
+                                                           href="@href"
+                                                           target="_blank"
+                                                           rel="noopener noreferrer"
+                                                           title="@d.Titulo">
+                                                            @Trunc(d.Titulo, 28)
+                                                        </a>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="tag">@Trunc(d.Titulo, 28)</span>
+                                                    }
+                                                }
+                                            </div>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </details>
+
+    }
+</section>
+
+@code {
+    // ===================== Rutas de Detalle (AJUSTA SI CAMBIA TU APP) =====================
+    private const string RutaAsignaturaDetalle = "/asignaturas/item/";
+    private const string RutaLabRealDetalle = "/laboratorios-realizados/item/";
+    private const string RutaExperienciaDetalle = "/experiencias/item/";
+
+    // ===== Estado =====
+    private string? _loadError;
+
+    private bool _incluirGlobales = true;
+    private bool _soloConContenido = false;
+    private string? _searchAsig;
+
+    // ===== Datos =====
+    private readonly List<AsignaturaCard> _asignaturas = new();
+    private readonly List<LaboratorioRealizadoRow> _labsRealizados = new();
+    private readonly List<ExperienciaRow> _experiencias = new();
+    private readonly List<DocRow> _docs = new();
+
+    private readonly Dictionary<string, List<LaboratorioRealizadoRow>> LabsPorAsignatura = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, List<ExperienciaRow>> ExperienciasPorAsignatura = new(StringComparer.OrdinalIgnoreCase);
+
+    // Relaciones (para mostrar conteos)
+    private readonly Dictionary<string, List<RelItem>> _expEquipos = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, List<RelItem>> _expMateriales = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, List<RelItem>> _expSustancias = new(StringComparer.OrdinalIgnoreCase);
+
+    // Docs por entidad
+    private readonly Dictionary<string, List<DocRow>> DocsPorAsignatura = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, List<DocRow>> _docsPorExp = new(StringComparer.OrdinalIgnoreCase);
+
+    // Índice rápido
+    private readonly Dictionary<string, AsignaturaCard> _asigIndex = new(StringComparer.OrdinalIgnoreCase);
+
+    // ===== Lookups para formularios =====
+    private readonly List<SelectOption> _asignaturaOptions = new();
+    private readonly List<SelectOption> _labRealizadoOptions = new();
+
+    private readonly List<SelectOption> _equiposOptions = new();
+    private readonly List<SelectOption> _materialesOptions = new();
+    private readonly List<SelectOption> _sustanciasOptions = new();
+
+    // ===== Form: Asignatura =====
+    private bool _savingAsig;
+    private string? _msgAsig;
+
+    private string? _newAsigId;
+    private string? _newAsigNombre;
+    private string? _newAsigCodigo;
+    private string? _newAsigDesc;
+    private string? _newAsigDetalle;
+
+    // ===== Form: Lab Realizado =====
+    private bool _savingLabReal;
+    private string? _msgLabReal;
+
+    private string? _newLabRealId;
+    private string? _newLabRealAsigId;
+    private string? _newLabRealNombre;
+    private string? _newLabRealDesc;
+
+    // ===== Form: Experiencia =====
+    private bool _savingExp;
+    private string? _msgExp;
+
+    private string? _newExpId;
+    private string? _newExpAsigId;
+    private string? _newExpLabRealId;
+    private string? _newExpNombre;
+    private string? _newExpOrden;
+    private string? _newExpTiempoMin;
+
+    private string? _newExpProcedimientos;
+    private string? _newExpPrecauciones;
+    private string? _newExpObservaciones;
+    private string? _newExpDetalle;
+
+    private readonly HashSet<string> _newExpEquiposSel = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _newExpMaterialesSel = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _newExpSustanciasSel = new(StringComparer.OrdinalIgnoreCase);
+
+    private string? _relEqSearch;
+    private string? _relMatSearch;
+    private string? _relSusSearch;
+
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await ReloadAllAsync();
+    }
+
+
+
+    private void HandleLaboratorioChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await ReloadAllAsync();
+            StateHasChanged();
+        });
+    }
+
+    private async Task ReloadAllAsync()
+    {
+        _loadError = null;
+
+        _asignaturas.Clear();
+        _labsRealizados.Clear();
+        _experiencias.Clear();
+        _docs.Clear();
+
+        LabsPorAsignatura.Clear();
+        ExperienciasPorAsignatura.Clear();
+        DocsPorAsignatura.Clear();
+        _docsPorExp.Clear();
+
+        _expEquipos.Clear();
+        _expMateriales.Clear();
+        _expSustancias.Clear();
+
+        _asignaturaOptions.Clear();
+        _labRealizadoOptions.Clear();
+        _equiposOptions.Clear();
+        _materialesOptions.Clear();
+        _sustanciasOptions.Clear();
+
+        _asigIndex.Clear();
+
+        try
+        {
+            await LoadLookupsAsync();
+            await LoadContenidosAsync();
+            BuildCardsAndGroups();
+        }
+        catch (Exception ex)
+        {
+            _loadError = ex.Message;
+        }
+    }
+
+    private async Task LoadLookupsAsync()
+    {
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        // Asignaturas (lab o global)
+        const string asigSql = @"
+            SELECT asignatura_id,
+                   COALESCE(NULLIF(nombre,''), asignatura_id) AS nombre,
+                   codigo_clase,
+                   laboratorio_id
+            FROM asignaturas
+            WHERE (laboratorio_id = @lab OR laboratorio_id IS NULL)
+            ORDER BY nombre";
+        await using (var cmd = new NpgsqlCommand(asigSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                var id = r.GetString(0);
+                var nombre = r.GetString(1);
+                var codigo = r.GetString(2);
+                var isGlobal = r.IsDBNull(3);
+                var label = isGlobal ? $"{nombre} ({codigo}) · GLOBAL" : $"{nombre} ({codigo})";
+                _asignaturaOptions.Add(new SelectOption(id, label));
+            }
+        }
+
+        // Labs realizados (del laboratorio) -> para select de "Nueva experiencia"
+        const string lrSql = @"
+            SELECT laboratorio_realizado_id,
+                   COALESCE(asignatura_id,'') AS asignatura_id,
+                   COALESCE(NULLIF(nombre,''), laboratorio_realizado_id) AS nombre
+            FROM laboratorio_realizado
+            WHERE laboratorio_id = @lab
+            ORDER BY nombre";
+        await using (var cmd = new NpgsqlCommand(lrSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                _labRealizadoOptions.Add(new SelectOption(
+                    r.GetString(0),
+                    r.GetString(2),
+                    meta: r.GetString(1)
+                ));
+            }
+        }
+
+        // Modelos de equipo (concepto) disponibles en el laboratorio actual
+        const string eqSql = @"
+    SELECT me.modelo_id,
+           COALESCE(NULLIF(me.nombre_modelo,''), me.modelo_id) AS nombre_modelo,
+           COALESCE(ma.nombre,'') AS marca_nombre,
+           me.imagen_url,
+           COUNT(e.equipo_id) AS instancias_en_lab
+    FROM modelos_equipo me
+    LEFT JOIN marcas ma ON ma.marca_id = me.marca_id
+    INNER JOIN equipos e ON e.modelo_id = me.modelo_id
+                        AND e.laboratorio_id = @lab
+    GROUP BY me.modelo_id, nombre_modelo, marca_nombre, me.imagen_url
+    ORDER BY nombre_modelo, me.modelo_id;
+";
+        await using (var cmd = new NpgsqlCommand(eqSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                var id = r.GetString(0);
+                var nombre = r.GetString(1);
+                var marca = r.GetString(2);
+                var img = r.IsDBNull(3) ? null : r.GetString(3);
+                var count = r.IsDBNull(4) ? 0 : r.GetInt64(4);
+
+                var label = string.IsNullOrWhiteSpace(marca)
+                    ? $"{nombre} · ({count} en lab)"
+                    : $"{nombre} · {marca} · ({count} en lab)";
+
+                _equiposOptions.Add(new SelectOption(
+                    id,
+                    label,
+                    imageUrl: img,
+                    meta: "MODELO EQUIPO"
+                ));
+            }
+        }
+
+
+        // Materiales
+        const string matSql = @"
+            SELECT material_id,
+                   nombre,
+                   tipo,
+                   imagen_url
+            FROM materiales
+            WHERE laboratorio_id = @lab
+            ORDER BY nombre";
+        await using (var cmd = new NpgsqlCommand(matSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+                _materialesOptions.Add(new SelectOption(
+                    r.GetString(0),
+                    r.GetString(1),
+                    imageUrl: r.IsDBNull(3) ? null : r.GetString(3),
+                    meta: r.GetString(2)
+                ));
+        }
+
+        // Sustancias
+        const string susSql = @"
+            SELECT sustancia_id,
+                   COALESCE(NULLIF(nombre_comercial,''), NULLIF(nombre_quimico,''), sustancia_id) AS nombre,
+                   imagen_url
+            FROM sustancias
+            WHERE laboratorio_id = @lab
+            ORDER BY nombre";
+        await using (var cmd = new NpgsqlCommand(susSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+                _sustanciasOptions.Add(new SelectOption(
+                    r.GetString(0),
+                    r.GetString(1),
+                    imageUrl: r.IsDBNull(2) ? null : r.GetString(2),
+                    meta: "SUSTANCIA"
+                ));
+        }
+    }
+
+    private async Task LoadContenidosAsync()
+    {
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        // Asignaturas para tabla
+        const string asigSql = @"
+            SELECT asignatura_id, nombre, codigo_clase,
+                   COALESCE(descripcion,'') AS descripcion,
+                   COALESCE(descripcion_detalle,'') AS detalle,
+                   laboratorio_id
+            FROM asignaturas
+            WHERE (laboratorio_id = @lab OR laboratorio_id IS NULL)
+            ORDER BY nombre";
+        await using (var cmd = new NpgsqlCommand(asigSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                _asignaturas.Add(new AsignaturaCard(
+                    r.GetString(0),
+                    r.GetString(1),
+                    r.GetString(2),
+                    r.GetString(3),
+                    r.GetString(4),
+                    EsGlobal: r.IsDBNull(5),
+                    0, 0, 0
+                ));
+            }
+        }
+
+        // Labs realizados
+        const string lrSql = @"
+            SELECT laboratorio_realizado_id,
+                   COALESCE(asignatura_id,'') AS asignatura_id,
+                   nombre,
+                   COALESCE(descripcion,'') AS descripcion
+            FROM laboratorio_realizado
+            WHERE laboratorio_id = @lab
+            ORDER BY nombre";
+        await using (var cmd = new NpgsqlCommand(lrSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                _labsRealizados.Add(new LaboratorioRealizadoRow(
+                    r.GetString(0),
+                    r.GetString(1),
+                    r.GetString(2),
+                    r.GetString(3)
+                ));
+            }
+        }
+
+        // Experiencias
+        const string expSql = @"
+            SELECT ec.experiencia_id,
+                   ec.asignatura_id,
+                   COALESCE(ec.laboratorio_realizado_id,'') AS lab_real_id,
+                   COALESCE(NULLIF(ec.nombre,''), ec.experiencia_id) AS nombre,
+                   ec.orden,
+                   ec.tiempo_estimado_min,
+                   COALESCE(ec.procedimientos,'') AS procedimientos,
+                   COALESCE(ec.precauciones,'') AS precauciones,
+                   COALESCE(ec.observaciones,'') AS observaciones,
+                   COALESCE(ec.descripcion_detalle,'') AS detalle
+            FROM experiencias_clases ec
+            WHERE (ec.laboratorio_id = @lab OR ec.laboratorio_id IS NULL)
+            ORDER BY ec.asignatura_id, ec.orden NULLS LAST, ec.nombre";
+        await using (var cmd = new NpgsqlCommand(expSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                _experiencias.Add(new ExperienciaRow(
+                    r.GetString(0),
+                    r.GetString(1),
+                    r.GetString(2),
+                    r.GetString(3),
+                    r.IsDBNull(4) ? (int?)null : r.GetInt32(4),
+                    r.IsDBNull(5) ? (int?)null : r.GetInt32(5),
+                    r.GetString(6),
+                    r.GetString(7),
+                    r.GetString(8),
+                    r.GetString(9),
+                    LabRealizadoNombre: null
+                ));
+            }
+        }
+
+        // Docs vinculados (ASIGNATURA o EXPERIENCIA) -> por CONTEXTO, no por laboratorio_id target
+        const string docSql = @"
+            SELECT documento_id, titulo, procedencia, alcance,
+                   COALESCE(asignatura_id,'') AS asignatura_id,
+                   COALESCE(experiencia_id,'') AS experiencia_id,
+                   url, archivo_local, imagen_url
+            FROM documentos
+            WHERE (laboratorio_contexto_id = @lab OR laboratorio_contexto_id IS NULL)
+              AND (alcance = 'ASIGNATURA' OR alcance = 'EXPERIENCIA')
+            ORDER BY titulo";
+        await using (var cmd = new NpgsqlCommand(docSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                _docs.Add(new DocRow(
+                    r.GetString(0),
+                    r.GetString(1),
+                    r.GetString(2),
+                    r.GetString(3),
+                    r.GetString(4),
+                    r.GetString(5),
+                    r.IsDBNull(6) ? null : r.GetString(6),
+                    r.IsDBNull(7) ? null : r.GetString(7),
+                    r.IsDBNull(8) ? null : r.GetString(8)
+                ));
+            }
+        }
+
+        await LoadRelacionesAsync(conn);
+    }
+
+    private async Task LoadRelacionesAsync(NpgsqlConnection conn)
+    {
+        // Modelos de equipo vinculados a la experiencia (concepto, no instancia)
+        const string reEq = @"
+    SELECT ee.experiencia_id,
+           me.modelo_id,
+           COALESCE(NULLIF(me.nombre_modelo,''), me.modelo_id) AS nombre,
+           me.imagen_url
+    FROM experiencia_equipos ee
+    INNER JOIN modelos_equipo me ON me.modelo_id = ee.modelo_equipo_id
+    INNER JOIN experiencias_clases ec ON ec.experiencia_id = ee.experiencia_id
+    WHERE (ec.laboratorio_id = @lab OR ec.laboratorio_id IS NULL)
+    ORDER BY nombre;
+";
+        await using (var cmd = new NpgsqlCommand(reEq, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+                AddRel(_expEquipos, r.GetString(0),
+                    new RelItem(r.GetString(1), r.GetString(2), r.IsDBNull(3) ? null : r.GetString(3)));
+        }
+
+
+        // Materiales
+        const string reMat = @"
+            SELECT em.experiencia_id,
+                   m.material_id,
+                   m.nombre,
+                   m.imagen_url,
+                   m.tipo
+            FROM experiencia_materiales em
+            INNER JOIN materiales m ON m.material_id = em.material_id
+            INNER JOIN experiencias_clases ec ON ec.experiencia_id = em.experiencia_id
+            WHERE (ec.laboratorio_id = @lab OR ec.laboratorio_id IS NULL)
+              AND m.laboratorio_id = @lab
+            ORDER BY m.nombre";
+        await using (var cmd = new NpgsqlCommand(reMat, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+                AddRel(_expMateriales, r.GetString(0),
+                    new RelItem(r.GetString(1), r.GetString(2), r.IsDBNull(3) ? null : r.GetString(3), meta: r.GetString(4)));
+        }
+
+        // Sustancias
+        const string reSus = @"
+            SELECT es.experiencia_id,
+                   s.sustancia_id,
+                   COALESCE(NULLIF(s.nombre_comercial,''), NULLIF(s.nombre_quimico,''), s.sustancia_id) AS nombre,
+                   s.imagen_url
+            FROM experiencia_sustancias es
+            INNER JOIN sustancias s ON s.sustancia_id = es.sustancia_id
+            INNER JOIN experiencias_clases ec ON ec.experiencia_id = es.experiencia_id
+            WHERE (ec.laboratorio_id = @lab OR ec.laboratorio_id IS NULL)
+              AND s.laboratorio_id = @lab
+            ORDER BY nombre";
+        await using (var cmd = new NpgsqlCommand(reSus, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+                AddRel(_expSustancias, r.GetString(0),
+                    new RelItem(r.GetString(1), r.GetString(2), r.IsDBNull(3) ? null : r.GetString(3)));
+        }
+    }
+
+    private void BuildCardsAndGroups()
+    {
+        // Index asignaturas
+        foreach (var a in _asignaturas)
+            _asigIndex[a.AsignaturaId] = a;
+
+        // Labs por asignatura
+        foreach (var lr in _labsRealizados)
+        {
+            if (string.IsNullOrWhiteSpace(lr.AsignaturaId)) continue;
+            if (!LabsPorAsignatura.TryGetValue(lr.AsignaturaId, out var list))
+                LabsPorAsignatura[lr.AsignaturaId] = list = new List<LaboratorioRealizadoRow>();
+            list.Add(lr);
+        }
+
+        // LabReal names
+        var labRealNames = _labsRealizados.ToDictionary(x => x.LaboratorioRealizadoId, x => x.Nombre, StringComparer.OrdinalIgnoreCase);
+
+        // Experiencias por asignatura + asignar nombre labreal (ACTUALIZANDO _experiencias)
+        for (int i = 0; i < _experiencias.Count; i++)
+        {
+            var exp = _experiencias[i];
+
+            var lrName =
+                (!string.IsNullOrWhiteSpace(exp.LaboratorioRealizadoId) &&
+                 labRealNames.TryGetValue(exp.LaboratorioRealizadoId, out var n))
+                    ? n
+                    : null;
+
+            var exp2 = exp with { LabRealizadoNombre = lrName };
+            _experiencias[i] = exp2; // ✅ clave: ahora la 3ra tabla lo verá
+
+            if (!ExperienciasPorAsignatura.TryGetValue(exp2.AsignaturaId, out var list))
+                ExperienciasPorAsignatura[exp2.AsignaturaId] = list = new List<ExperienciaRow>();
+
+            list.Add(exp2);
+        }
+
+        // Docs por asig / exp
+        foreach (var d in _docs)
+        {
+            if (string.Equals(d.Alcance, "ASIGNATURA", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(d.AsignaturaId))
+            {
+                if (!DocsPorAsignatura.TryGetValue(d.AsignaturaId, out var list))
+                    DocsPorAsignatura[d.AsignaturaId] = list = new List<DocRow>();
+                list.Add(d);
+            }
+
+            if (string.Equals(d.Alcance, "EXPERIENCIA", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(d.ExperienciaId))
+            {
+                if (!_docsPorExp.TryGetValue(d.ExperienciaId, out var list))
+                    _docsPorExp[d.ExperienciaId] = list = new List<DocRow>();
+                list.Add(d);
+            }
+        }
+
+        // Contadores en asignaturas
+        for (int i = 0; i < _asignaturas.Count; i++)
+        {
+            var a = _asignaturas[i];
+
+            var expCount = ExperienciasPorAsignatura.TryGetValue(a.AsignaturaId, out var exps) ? exps.Count : 0;
+            var lrCount = LabsPorAsignatura.TryGetValue(a.AsignaturaId, out var lrs) ? lrs.Count : 0;
+
+            var docCount = 0;
+            if (DocsPorAsignatura.TryGetValue(a.AsignaturaId, out var docsA)) docCount += docsA.Count;
+            if (exps is not null)
+            {
+                foreach (var e in exps)
+                    if (_docsPorExp.TryGetValue(e.ExperienciaId, out var docsE)) docCount += docsE.Count;
+            }
+
+            _asignaturas[i] = a with
+                {
+                    ExperienciasCount = expCount,
+                    LabsRealizadosCount = lrCount,
+                    DocsCount = docCount
+                };
+
+            _asigIndex[_asignaturas[i].AsignaturaId] = _asignaturas[i];
+        }
+    }
+
+    // ===================== FILTROS PARA TABLAS =====================
+    private IEnumerable<LaboratorioRealizadoRow> LabsFiltrados
+    {
+        get
+        {
+            var asigIds = AsignaturasBase.Select(a => a.AsignaturaId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            IEnumerable<LaboratorioRealizadoRow> list =
+                _labsRealizados.Where(lr => string.IsNullOrWhiteSpace(lr.AsignaturaId) || asigIds.Contains(lr.AsignaturaId));
+
+            if (!string.IsNullOrWhiteSpace(_searchAsig))
+            {
+                var q = _searchAsig.Trim();
+                bool Hit(string? s) => !string.IsNullOrWhiteSpace(s) && s.Contains(q, StringComparison.OrdinalIgnoreCase);
+
+                list = list.Where(lr =>
+                    Hit(lr.Nombre) ||
+                    Hit(lr.Descripcion) ||
+                    Hit(GetAsignaturaLabel(lr.AsignaturaId))
+                );
+            }
+
+            return list;
+        }
+    }
+
+    private IEnumerable<AsignaturaCard> AsignaturasFiltradas
+    {
+        get
+        {
+            var list = AsignaturasBase;
+
+            if (!string.IsNullOrWhiteSpace(_searchAsig))
+            {
+                var q = _searchAsig.Trim();
+                bool Hit(string? s) => !string.IsNullOrWhiteSpace(s) && s.Contains(q, StringComparison.OrdinalIgnoreCase);
+
+                list = list.Where(a =>
+                    Hit(a.Nombre) ||
+                    Hit(a.CodigoClase) ||
+                    Hit(a.Descripcion) ||
+                    Hit(a.DescripcionDetalle)
+                );
+            }
+
+            return list;
+        }
+    }
+
+    private IEnumerable<AsignaturaCard> AsignaturasBase
+    {
+        get
+        {
+            IEnumerable<AsignaturaCard> list = _asignaturas;
+
+            if (!_incluirGlobales)
+                list = list.Where(a => !a.EsGlobal);
+
+            if (_soloConContenido)
+                list = list.Where(a => a.ExperienciasCount > 0 || a.LabsRealizadosCount > 0 || a.DocsCount > 0);
+
+            return list;
+        }
+    }
+
+
+    private IEnumerable<ExperienciaRow> ExperienciasFiltradas
+    {
+        get
+        {
+            var asigIds = AsignaturasBase.Select(a => a.AsignaturaId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            IEnumerable<ExperienciaRow> list = _experiencias.Where(e => asigIds.Contains(e.AsignaturaId));
+
+            if (!string.IsNullOrWhiteSpace(_searchAsig))
+            {
+                var q = _searchAsig.Trim();
+                bool Hit(string? s) => !string.IsNullOrWhiteSpace(s) && s.Contains(q, StringComparison.OrdinalIgnoreCase);
+
+                list = list.Where(e =>
+                    Hit(e.Nombre) ||
+                    Hit(e.Procedimientos) ||
+                    Hit(e.Precauciones) ||
+                    Hit(e.Observaciones) ||
+                    Hit(e.DescripcionDetalle) ||
+                    Hit(GetAsignaturaLabel(e.AsignaturaId)) ||
+                    Hit(e.LabRealizadoNombre)
+                );
+            }
+
+            return list;
+        }
+    }
+
+
+    // ===================== Lookups para selects =====================
+    private IEnumerable<SelectOption> LabRealizadoOptionsParaNewExp =>
+        string.IsNullOrWhiteSpace(_newExpAsigId)
+            ? Enumerable.Empty<SelectOption>()
+            : _labRealizadoOptions.Where(x => string.Equals(x.Meta, _newExpAsigId, StringComparison.OrdinalIgnoreCase));
+
+    private IEnumerable<SelectOption> EquiposOptionsFiltradas => FilterOptions(_equiposOptions, _relEqSearch);
+    private IEnumerable<SelectOption> MaterialesOptionsFiltradas => FilterOptions(_materialesOptions, _relMatSearch);
+    private IEnumerable<SelectOption> SustanciasOptionsFiltradas => FilterOptions(_sustanciasOptions, _relSusSearch);
+
+    private static IEnumerable<SelectOption> FilterOptions(IEnumerable<SelectOption> src, string? q)
+    {
+        if (string.IsNullOrWhiteSpace(q)) return src;
+        var s = q.Trim();
+        return src.Where(o => o.Label.Contains(s, StringComparison.OrdinalIgnoreCase)
+                           || (o.Meta?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false));
+    }
+
+    private void OnToggleGlobales(ChangeEventArgs e)
+    {
+        _incluirGlobales =
+            e.Value is bool b ? b :
+            string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void OnToggleSoloConContenido(ChangeEventArgs e)
+    {
+        _soloConContenido =
+            e.Value is bool b ? b :
+            string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void OnNewExpAsignaturaChanged(ChangeEventArgs e)
+    {
+        _newExpAsigId = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? null : e.Value?.ToString();
+        _newExpLabRealId = null;
+        _msgExp = null;
+        StateHasChanged();
+    }
+
+    // ===================== Crear Asignatura =====================
+    private async Task CrearAsignaturaAsync()
+    {
+        _msgAsig = null;
+        _savingAsig = true;
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_newAsigNombre))
+            {
+                _msgAsig = "Ingresa el nombre.";
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(_newAsigCodigo))
+            {
+                _msgAsig = "Ingresa el código de clase.";
+                return;
+            }
+
+            var id = string.IsNullOrWhiteSpace(_newAsigId)
+                ? $"asig_{Guid.NewGuid():N}".Substring(0, 12)
+                : _newAsigId.Trim();
+
+            await using var conn = await DataSource.OpenConnectionAsync();
+
+            const string sql = @"
+                INSERT INTO asignaturas
+                (asignatura_id, nombre, codigo_clase, descripcion, laboratorio_id, descripcion_detalle)
+                VALUES
+                (@id, @nombre, @codigo, @desc, @lab, @detalle)
+            ";
+
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("id", id);
+            cmd.Parameters.AddWithValue("nombre", _newAsigNombre.Trim());
+            cmd.Parameters.AddWithValue("codigo", _newAsigCodigo.Trim());
+            cmd.Parameters.AddWithValue("desc", DbOrNull(_newAsigDesc));
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            cmd.Parameters.AddWithValue("detalle", DbOrNull(_newAsigDetalle));
+
+            await cmd.ExecuteNonQueryAsync();
+
+            _msgAsig = "Asignatura registrada.";
+            _newAsigId = _newAsigNombre = _newAsigCodigo = _newAsigDesc = _newAsigDetalle = null;
+
+            await ReloadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgAsig = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _savingAsig = false;
+        }
+    }
+
+    // ===================== Crear Lab Realizado =====================
+    private async Task CrearLaboratorioRealizadoAsync()
+    {
+        _msgLabReal = null;
+        _savingLabReal = true;
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_newLabRealNombre))
+            {
+                _msgLabReal = "Ingresa el nombre del Laboratorio (Clase).";
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(_newLabRealAsigId))
+            {
+                _msgLabReal = "Selecciona la asignatura.";
+                return;
+            }
+
+            var id = string.IsNullOrWhiteSpace(_newLabRealId)
+                ? $"labreal_{Guid.NewGuid():N}".Substring(0, 12)
+                : _newLabRealId.Trim();
+
+            await using var conn = await DataSource.OpenConnectionAsync();
+
+            const string sql = @"
+                INSERT INTO laboratorio_realizado
+                (laboratorio_realizado_id, laboratorio_id, asignatura_id, nombre, descripcion)
+                VALUES
+                (@id, @lab, @asig, @nombre, @desc)
+            ";
+
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("id", id);
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            cmd.Parameters.AddWithValue("asig", _newLabRealAsigId.Trim());
+            cmd.Parameters.AddWithValue("nombre", _newLabRealNombre.Trim());
+            cmd.Parameters.AddWithValue("desc", DbOrNull(_newLabRealDesc));
+
+            await cmd.ExecuteNonQueryAsync();
+
+            _msgLabReal = "Laboratorio (Clase) registrado.";
+            _newLabRealId = _newLabRealAsigId = _newLabRealNombre = _newLabRealDesc = null;
+
+            await ReloadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgLabReal = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _savingLabReal = false;
+        }
+    }
+
+    // ===================== Crear Experiencia =====================
+    private async Task CrearExperienciaAsync()
+    {
+        _msgExp = null;
+        _savingExp = true;
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_newExpAsigId))
+            {
+                _msgExp = "Selecciona la asignatura.";
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(_newExpLabRealId))
+            {
+                _msgExp = "Selecciona el laboratorio / clase.";
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(_newExpNombre))
+            {
+                _msgExp = "Ingresa el nombre de la experiencia.";
+                return;
+            }
+
+            var id = string.IsNullOrWhiteSpace(_newExpId)
+                ? $"exp_{Guid.NewGuid():N}".Substring(0, 12)
+                : _newExpId.Trim();
+
+            int? orden = int.TryParse(_newExpOrden, out var o) ? o : null;
+            int? tmin = int.TryParse(_newExpTiempoMin, out var tm) ? tm : null;
+
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            const string insExp = @"
+                INSERT INTO experiencias_clases
+                (experiencia_id, asignatura_id, nombre,
+                 procedimientos, tiempo_estimado_min, observaciones, precauciones,
+                 orden, laboratorio_id, descripcion_detalle, laboratorio_realizado_id)
+                VALUES
+                (@id, @asig, @nombre,
+                 @proc, @tmin, @obs, @prec,
+                 @orden, @lab, @detalle, @labreal)
+            ";
+
+            await using (var cmd = new NpgsqlCommand(insExp, conn, tx))
+            {
+                cmd.Parameters.AddWithValue("id", id);
+                cmd.Parameters.AddWithValue("asig", _newExpAsigId!.Trim());
+                cmd.Parameters.AddWithValue("nombre", _newExpNombre.Trim());
+
+                cmd.Parameters.AddWithValue("proc", DbOrNull(_newExpProcedimientos));
+                cmd.Parameters.AddWithValue("tmin", tmin.HasValue ? tmin.Value : (object)DBNull.Value);
+                cmd.Parameters.AddWithValue("obs", DbOrNull(_newExpObservaciones));
+                cmd.Parameters.AddWithValue("prec", DbOrNull(_newExpPrecauciones));
+
+                cmd.Parameters.AddWithValue("orden", orden.HasValue ? orden.Value : (object)DBNull.Value);
+                cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+                cmd.Parameters.AddWithValue("detalle", DbOrNull(_newExpDetalle));
+
+                cmd.Parameters.AddWithValue("labreal", _newExpLabRealId!.Trim());
+
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            await InsertRelAsync(conn, tx, "experiencia_equipos", "modelo_equipo_id", _newExpEquiposSel, id);
+            await InsertRelAsync(conn, tx, "experiencia_materiales", "material_id", _newExpMaterialesSel, id);
+            await InsertRelAsync(conn, tx, "experiencia_sustancias", "sustancia_id", _newExpSustanciasSel, id);
+
+
+            await tx.CommitAsync();
+
+            _msgExp = "Experiencia registrada.";
+
+            _newExpId = null;
+            _newExpAsigId = null;
+            _newExpLabRealId = null;
+            _newExpNombre = null;
+            _newExpOrden = null;
+            _newExpTiempoMin = null;
+            _newExpProcedimientos = null;
+            _newExpPrecauciones = null;
+            _newExpObservaciones = null;
+            _newExpDetalle = null;
+
+            _newExpEquiposSel.Clear();
+            _newExpMaterialesSel.Clear();
+            _newExpSustanciasSel.Clear();
+
+            await ReloadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgExp = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _savingExp = false;
+        }
+    }
+
+    private static async Task InsertRelAsync(NpgsqlConnection conn, NpgsqlTransaction tx, string table, string col, HashSet<string> ids, string experienciaId)
+    {
+        if (ids.Count == 0) return;
+
+        var sql = $"INSERT INTO {table} (experiencia_id, {col}) VALUES (@exp, @id) ON CONFLICT DO NOTHING;";
+        foreach (var id in ids)
+        {
+            await using var cmd = new NpgsqlCommand(sql, conn, tx);
+            cmd.Parameters.AddWithValue("exp", experienciaId);
+            cmd.Parameters.AddWithValue("id", id);
+            await cmd.ExecuteNonQueryAsync();
+        }
+    }
+
+    // ===================== Helpers de Docs =====================
+    private IEnumerable<DocRow> GetDocsParaExperiencia(string expId) =>
+        _docsPorExp.TryGetValue(expId, out var list) ? list.OrderBy(x => x.Titulo) : Enumerable.Empty<DocRow>();
+
+    // Devuelve docs "de la asignatura" + docs de sus experiencias (sin duplicar)
+    private IEnumerable<DocRow> GetDocsParaAsignatura(string asigId)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var outList = new List<DocRow>();
+
+        if (DocsPorAsignatura.TryGetValue(asigId, out var docsA))
+        {
+            foreach (var d in docsA)
+                if (seen.Add(d.DocumentoId)) outList.Add(d);
+        }
+
+        if (ExperienciasPorAsignatura.TryGetValue(asigId, out var exps))
+        {
+            foreach (var e in exps)
+            {
+                if (_docsPorExp.TryGetValue(e.ExperienciaId, out var docsE))
+                {
+                    foreach (var d in docsE)
+                        if (seen.Add(d.DocumentoId)) outList.Add(d);
+                }
+            }
+        }
+
+        return outList.OrderBy(x => x.Titulo);
+    }
+
+    private static string GetDocHref(DocRow d)
+    {
+        if (!string.IsNullOrWhiteSpace(d.Url)) return d.Url!;
+        if (!string.IsNullOrWhiteSpace(d.ArchivoLocal)) return ResolveUrl(d.ArchivoLocal);
+        return "";
+    }
+
+    private string GetAsignaturaLabel(string asigId)
+    {
+        if (string.IsNullOrWhiteSpace(asigId)) return "";
+        if (_asigIndex.TryGetValue(asigId, out var a))
+            return $"{a.Nombre} ({a.CodigoClase})";
+        return asigId;
+    }
+
+    // ===================== Helpers UI / DATA =====================
+    private static int GetRelCount(Dictionary<string, List<RelItem>> map, string expId) =>
+        map.TryGetValue(expId, out var list) ? list.Count : 0;
+
+    private static void AddRel(Dictionary<string, List<RelItem>> map, string expId, RelItem item)
+    {
+        if (!map.TryGetValue(expId, out var list))
+            map[expId] = list = new List<RelItem>();
+        list.Add(item);
+    }
+
+    private static void Toggle(HashSet<string> set, string id)
+    {
+        if (!set.Add(id))
+            set.Remove(id);
+    }
+
+    private static object DbOrNull(string? s) =>
+        string.IsNullOrWhiteSpace(s) ? (object)DBNull.Value : s!.Trim();
+
+    private static string ResolveUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return "";
+        if (url.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return url;
+        return url.StartsWith("/", StringComparison.OrdinalIgnoreCase) ? url : $"/{url}";
+    }
+
+    private static string Trunc(string? s, int max)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "";
+        var t = s.Trim();
+        if (t.Length <= max) return t;
+        return t.Substring(0, max - 1) + "…";
+    }
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
+
+    // ===================== Models =====================
+    private sealed record SelectOption(string Id, string Label, string? imageUrl = null, string? meta = null)
+    {
+        public string? ImageUrl { get; } = imageUrl;
+        public string? Meta { get; } = meta;
+    }
+
+    private sealed record AsignaturaCard(
+        string AsignaturaId,
+        string Nombre,
+        string CodigoClase,
+        string Descripcion,
+        string DescripcionDetalle,
+        bool EsGlobal,
+        int ExperienciasCount,
+        int LabsRealizadosCount,
+        int DocsCount
+    );
+
+    private sealed record LaboratorioRealizadoRow(
+        string LaboratorioRealizadoId,
+        string AsignaturaId,
+        string Nombre,
+        string Descripcion
+    );
+
+    private sealed record ExperienciaRow(
+        string ExperienciaId,
+        string AsignaturaId,
+        string LaboratorioRealizadoId,
+        string Nombre,
+        int? Orden,
+        int? TiempoMin,
+        string Procedimientos,
+        string Precauciones,
+        string Observaciones,
+        string DescripcionDetalle,
+        string? LabRealizadoNombre
+    );
+
+    private sealed record RelItem(string Id, string Nombre, string? ImageUrl, string? meta = null)
+    {
+        public string? Meta { get; } = meta;
+    }
+
+    private sealed record DocRow(
+        string DocumentoId,
+        string Titulo,
+        string Procedencia,
+        string Alcance,
+        string AsignaturaId,
+        string ExperienciaId,
+        string? Url,
+        string? ArchivoLocal,
+        string? ImagenUrl
+    );
+}
+
+<style>
+    .page-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+        padding: 1rem;
+        box-shadow: 0 6px 14px rgba(15, 23, 42, 0.04);
+    }
+
+    .helper {
+        margin: .3rem 0 0;
+        color: #475569;
+        font-size: .95rem;
+    }
+
+    .muted {
+        color: #64748b;
+    }
+
+    .text-xs {
+        font-size: .8rem;
+    }
+
+    .text-sm {
+        font-size: .9rem;
+    }
+
+    .error-note {
+        color: #b91c1c;
+        margin-top: .75rem;
+    }
+
+    .empty {
+        padding: .85rem 1rem;
+        border-radius: 10px;
+        background: #fef9c3;
+        border: 1px solid #fde68a;
+        color: #854d0e;
+    }
+
+    .border {
+        border: 1px solid #e5e7eb;
+        border-radius: .5rem;
+    }
+
+    .p-1 {
+        padding: .45rem .6rem;
+    }
+
+    .btn.primary {
+        background: #2563eb;
+        color: #fff;
+        border: none;
+        padding: .5rem 1rem;
+        border-radius: .6rem;
+        font-weight: 800;
+        box-shadow: 0 6px 12px rgba(37, 99, 235, 0.18);
+        cursor: pointer;
+    }
+
+        .btn.primary:hover {
+            background: #1d4ed8;
+        }
+
+        .btn.primary:disabled {
+            opacity: .65;
+            cursor: not-allowed;
+        }
+
+    .btn-link {
+        color: #1d4ed8;
+        text-decoration: none;
+        font-weight: 800;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        padding: 0;
+    }
+
+        .btn-link:hover {
+            text-decoration: underline;
+        }
+
+        .btn-link.tiny {
+            margin-left: .55rem;
+            font-size: .85rem;
+            font-weight: 900;
+            padding: .2rem .45rem;
+            border: 1px solid #dbeafe;
+            border-radius: 999px;
+            background: #eff6ff;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: .25rem;
+        }
+
+            .btn-link.tiny:hover {
+                background: #dbeafe;
+                text-decoration: none;
+            }
+
+    .badge {
+        background: #e2e8f0;
+        color: #0f172a;
+        padding: .2rem .55rem;
+        border-radius: 999px;
+        font-size: .85rem;
+        font-weight: 800;
+    }
+
+    .tag {
+        display: inline-flex;
+        align-items: center;
+        padding: .15rem .5rem;
+        border-radius: 999px;
+        border: 1px solid #e5e7eb;
+        background: #f8fafc;
+        font-size: .78rem;
+        font-weight: 800;
+        color: #0f172a;
+        margin-right: .25rem;
+        white-space: nowrap;
+        text-decoration: none;
+    }
+
+        .tag.warn {
+            border-color: #f59e0b;
+            background: #fff7ed;
+            color: #9a3412;
+        }
+
+        .tag.linktag {
+            border-color: #c7d2fe;
+            background: #eef2ff;
+            color: #1e3a8a;
+        }
+
+            .tag.linktag:hover {
+                background: #e0e7ff;
+            }
+
+    .toggle {
+        display: flex;
+        gap: .45rem;
+        align-items: center;
+        padding: .35rem .6rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 999px;
+        background: #fff;
+        font-size: .9rem;
+        color: #0f172a;
+        user-select: none;
+    }
+
+    .category-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .category-controls {
+        display: flex;
+        gap: .75rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+
+    /* Create area */
+    .create-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 1rem;
+        margin-top: .75rem;
+        align-items: start;
+    }
+
+    .create-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: .75rem;
+        background: #fff;
+        box-shadow: 0 6px 14px rgba(15, 23, 42, 0.03);
+    }
+
+        .create-card summary {
+            cursor: pointer;
+            font-weight: 900;
+            color: #0f172a;
+        }
+
+    .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: .75rem;
+        align-items: start;
+        margin-top: .65rem;
+    }
+
+    .field label {
+        display: block;
+        font-size: .85rem;
+        color: #475569;
+        margin-bottom: .25rem;
+        font-weight: 900;
+    }
+
+    .full-span {
+        grid-column: 1 / -1;
+    }
+
+    .form-actions {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+        flex-wrap: wrap;
+        margin-top: .25rem;
+    }
+
+    .summary-row {
+        display: flex;
+        gap: .5rem;
+        flex-wrap: wrap;
+        margin-top: .75rem;
+    }
+
+    .panel {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+        padding: .75rem;
+        display: grid;
+        gap: .6rem;
+    }
+
+    .panel-title {
+        font-weight: 900;
+        color: #0f172a;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: .5rem;
+    }
+
+    /* Tables */
+    .table-wrap {
+        overflow-x: auto;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #fff;
+    }
+
+    th, td {
+        padding: .55rem;
+        border-bottom: 1px solid #e5e7eb;
+        text-align: left;
+        vertical-align: top;
+    }
+
+    th {
+        background: #f3f4f6;
+        font-weight: 900;
+    }
+
+    table.mini th, table.mini td {
+        padding: .45rem;
+        font-size: .9rem;
+    }
+
+    .doc-tags {
+        display: flex;
+        gap: .25rem;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    /* Relations selector */
+    .rel-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: .75rem;
+    }
+
+    .rel-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+        padding: .6rem;
+        display: grid;
+        gap: .5rem;
+    }
+
+    .rel-title {
+        font-weight: 900;
+        color: #0f172a;
+    }
+
+    .rel-search {
+        width: 100%;
+        border-radius: 10px;
+        border: 1px solid #cbd5e1;
+    }
+
+    .rel-list {
+        max-height: 220px;
+        overflow: auto;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        padding: .35rem;
+        background: #fafafa;
+        display: grid;
+        gap: .35rem;
+    }
+
+    .check-row {
+        display: flex;
+        gap: .5rem;
+        align-items: center;
+        padding: .35rem .35rem;
+        border-radius: 10px;
+        background: #fff;
+        border: 1px solid #f1f5f9;
+    }
+
+        .check-row:hover {
+            background: #f8fafc;
+        }
+
+    .check-text {
+        font-weight: 800;
+        color: #0f172a;
+    }
+
+    .thumb {
+        width: 34px;
+        height: 34px;
+        object-fit: contain;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        background: #fff;
+    }
+</style>

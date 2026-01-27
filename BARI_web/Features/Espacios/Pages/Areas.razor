@@ -1,37 +1,39 @@
 ﻿@page "/areas"
 @namespace BARI_web.Features.Espacios.Pages
 
-<section class="page-card" style="margin-bottom:1.5rem;">
+<section class="page-card areas-intro">
     <h2>Áreas del Laboratorio</h2>
     <p>
-        Aquí se mostrará el plano del laboratorio, con sus áreas agrupadas por polígonos
-        y el detalle de cada zona. Este módulo servirá para ubicar inventarios y
-        documentación en el mapa.
+        Visualización interactiva del plano del laboratorio. Utiliza este módulo para ubicar mesones, 
+        materiales y revisar la distribución espacial de la planta seleccionada.
     </p>
     <LaboratorioSelector />
 </section>
 
 <div class="areas-wrap">
     <div class="toolbar">
-        <h2 class="text-2xl" style="margin:0">Mapa del Laboratorio</h2>
+        <h2 class="toolbar-title">Mapa Digital</h2>
 
-        <!-- SELECTOR DE PLANTA (usa @bind en .NET6+) -->
-        <select class="btn" style="margin-right:.5rem" value="@_currentPlantaId"
-                @onchange="e => OnChangePlanta(e.Value?.ToString())">
-            @foreach (var plantaKv in _plantasLookup)
-            {
-                <option value="@plantaKv.Key">@plantaKv.Value</option>
-            }
-        </select>
+        <div class="toolbar-actions">
+            <select class="planta-select" value="@_currentPlantaId"
+                    @onchange="e => OnChangePlanta(e.Value?.ToString())">
+                @foreach (var plantaKv in _plantasLookup)
+                {
+                    <option value="@plantaKv.Key">@plantaKv.Value</option>
+                }
+            </select>
 
-        <button type="button" class="btn" @onclick="@(()=>Nav.NavigateTo("/modificarareas"))">
-            Modificar áreas
-        </button>
+            <button type="button" class="btn primary" @onclick="@(()=>Nav.NavigateTo("/modificarareas"))">
+                ✏️ Editar Áreas
+            </button>
+        </div>
     </div>
 
-    @if (_canvasViews.Count == 0)
+    @if (IsLoading || _canvasViews.Count == 0)
     {
-        <p>Cargando...</p>
+        <div class="canvas-card" style="text-align: center; padding: 3rem;">
+            <p class="muted">Cargando visualización del laboratorio...</p>
+        </div>
     }
     else
     {
@@ -40,130 +42,222 @@
             var canvas = view.Canvas;
             var currentAreas = view.Areas.Where(kv => IsAreaInCurrentPlanta(kv.Key)).ToList();
 
-            <div style="margin-bottom:1rem;">
-                <h3 style="margin:.5rem 0">@canvas.nombre</h3>
-                <div style="border:1px solid #e5e7eb; aspect-ratio:@AspectRatioString(canvas); width:100%;">
-                    <svg width="100%" height="100%" viewBox="@ViewBox(canvas)" preserveAspectRatio="xMidYMid meet">
-                        <defs>
-                            <!-- Fondo -->
-                            <rect id="bg-@canvas.canvas_id" x="0" y="0" width="@S(canvas.ancho_m)" height="@S(canvas.alto_m)" />
+            <section class="canvas-card">
+                <div class="canvas-header">
+                    <h3 class="canvas-title">@canvas.nombre</h3>
+                </div>
 
-                            <!-- Grilla con pattern: mucho menos DOM que cientos de <line> -->
-                            <pattern id="grid1m-@canvas.canvas_id" width="@S(1m)" height="@S(1m)" patternUnits="userSpaceOnUse">
-                                <path d="M 0 0 L 1 0 M 0 0 L 0 1"
-                                      stroke="#f1f1f1"
-                                      stroke-width="@S(0.02)"
+                <div class="map-frame" style="aspect-ratio:@AspectRatioString(canvas);">
+                    <svg class="map-svg" viewBox="@ViewBox(canvas)" preserveAspectRatio="xMidYMid meet">
+                        
+                        <defs>
+                            <rect id="bg-@canvas.canvas_id" x="0" y="0"
+                                  width="@S(canvas.ancho_m)" height="@S(canvas.largo_m)" />
+
+                            <pattern id="grid1m-@canvas.canvas_id"
+                                     width="@S(1m)" height="@S(1m)" patternUnits="userSpaceOnUse">
+                                <path class="grid-path"
+                                      d="M 0 0 L 1 0 M 0 0 L 0 1"
                                       vector-effect="non-scaling-stroke" />
                             </pattern>
                         </defs>
 
-                        <!-- fondo + grilla -->
-                        <use href="#bg-@canvas.canvas_id" fill="white" />
-                        <rect x="0" y="0" width="@S(canvas.ancho_m)" height="@S(canvas.alto_m)" fill="url(#grid1m-@canvas.canvas_id)" />
+                        <use href="#bg-@canvas.canvas_id" class="map-bg" />
+                        <rect x="0" y="0" width="@S(canvas.ancho_m)" height="@S(canvas.largo_m)"
+                              class="map-grid" fill="url(#grid1m-@canvas.canvas_id)" />
 
-                        <!-- Áreas visibles -->
                         @foreach (var areaKv in currentAreas)
                         {
-                            var aidMain = areaKv.Key; var aInfo = areaKv.Value;
-                            var areaW = aInfo.MaxX - aInfo.MinX; var areaH = aInfo.MaxY - aInfo.MinY;
+                            var aInfo = areaKv.Value;
+                            var areaW = aInfo.MaxX - aInfo.MinX;
+                            var areaH = aInfo.MaxY - aInfo.MinY;
 
-                            @foreach (var poly in aInfo.Polys)
+                            // Lógica de texto original (C#) para dividir líneas
+                            var raw = (aInfo.Label ?? "").Trim();
+                            string line1 = raw;
+                            string line2 = "";
+
+                            if (!string.IsNullOrWhiteSpace(raw) && raw.Length <= 9 && raw.Contains('-'))
                             {
-                                <polygon points="@PointsString(poly)"
-                                         fill="@aInfo.Fill"
-                                         stroke="#000" stroke-width="@S(OutlineStroke)"
-                                         vector-effect="non-scaling-stroke" />
+                                var dash = raw.IndexOf('-', StringComparison.Ordinal);
+                                if (dash >= 1 && dash <= 3 && dash < raw.Length - 1)
+                                {
+                                    var left = raw.Substring(0, dash + 1).Trim();
+                                    var right = raw.Substring(dash + 1).Trim();
+                                    bool rightDigits = right.All(char.IsDigit) && right.Length > 0;
+                                    bool leftOk = left.All(c => char.IsLetter(c) || c == '-') && left.Length > 0;
+
+                                    if (rightDigits && leftOk) { line1 = left; line2 = right; }
+                                }
+                            }
+                            // Wrap inteligente por palabras
+                            if (string.IsNullOrWhiteSpace(line2) && !string.IsNullOrWhiteSpace(raw))
+                            {
+                                var words = raw.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                                if (words.Length >= 2 && (raw.Length > 12 || words.Length > 2))
+                                {
+                                    var bestI = words.Length / 2; // Simplificado para visualización
+                                    // Tu lógica original de C# para el split es compleja, la conservamos
+                                    // Aquí asumo que viene del C# ya procesada o uso un split simple
+                                    // (Para este ejemplo usaré la lógica visual renderizada abajo)
+                                    // Nota: La lógica exacta de split está en tu .cs, aquí solo pinto.
+                                    
+                                    // Replicando tu lógica de render de C# visualmente:
+                                     var bestScore = int.MaxValue;
+                                     for (int i = 1; i <= words.Length - 1; i++)
+                                     {
+                                         var l1 = string.Join(" ", words.Take(i));
+                                         var l2 = string.Join(" ", words.Skip(i));
+                                         var score = Math.Abs(l1.Length - l2.Length);
+                                         if (score < bestScore) { bestScore = score; bestI = i; }
+                                     }
+                                     line1 = string.Join(" ", words.Take(bestI));
+                                     line2 = string.Join(" ", words.Skip(bestI));
+                                }
                             }
 
-                            @if (!string.IsNullOrWhiteSpace(aInfo.Label))
-                            {
-                                var fit = FitLabel(aInfo);
-                                var fs = fit.fs; var pillW = fit.pillW; var pillH = fit.pillH;
-                                var cx = aInfo.Cx; var cy = aInfo.Cy;
+                            var twoLines = !string.IsNullOrWhiteSpace(line2);
 
-                                <rect x="@S(cx - pillW/2)" y="@S(cy - pillH/2)" rx="@S(0.38m)" ry="@S(0.8m)"
-                                      width="@S(pillW)" height="@S(pillH)"
-                                      fill="#fff" opacity="0.95" />
+                            // Cálculos de tamaño (Pill + Fuente)
+                            // OJO: esto va DESPUÉS de calcular line1/line2 y de `var twoLines = ...;`
+                            var lenForW = twoLines
+                            ? Math.Max(line1.Length, line2.Length)
+                            : line1.Length;
 
-                                <svg:text class="area-label"
-                                          x="@S(cx)" y="@S(cy)"
-                                          text-anchor="middle" dominant-baseline="middle"
-                                          font-size="@S(fs)" fill="#222">
-                                    @aInfo.Label
-                                </svg:text>
-                            }
+                            var fit = FitLabel(aInfo, lenForW, twoLines);
+                            var fsBase = fit.fs;
+                            var pillW = fit.pillW;
+                            var pillH = fit.pillH;
 
-                            <!-- Capa de interacción -->
-                            <rect x="@S(aInfo.MinX)" y="@S(aInfo.MinY)" width="@S(areaW)" height="@S(areaH)"
-                                  fill="transparent" style="cursor:@(string.IsNullOrEmpty(aInfo.AreaId) ? "default" : "pointer")"
-                                  @onclick="@(()=>GoToArea(aInfo.AreaId))" />
+
+                            // Ajustes finales para que no se salga del área
+                            pillW = Math.Min(pillW, areaW * 0.95m);
+                            pillH = Math.Min(pillH, areaH * 0.85m);
+                            
+                            // Ajuste altura si hay 2 líneas
+                            if (twoLines)
+                                pillH = Math.Max(pillH, fsBase * 2.4m);
+                            else 
+                                pillH = Math.Max(pillH, fsBase * 1.5m);
+
+                            // Clamp de centro
+                            var halfW = pillW / 2m;
+                            var halfH = pillH / 2m;
+                            var adjCx = Clamp(aInfo.MinX + halfW, aInfo.MaxX - halfW, aInfo.Cx);
+                            var adjCy = Clamp(aInfo.MinY + halfH, aInfo.MaxY - halfH, aInfo.Cy);
+
+                            var canClick = !string.IsNullOrWhiteSpace(aInfo.AreaId);
+                            var cursor = canClick ? "pointer" : "default";
+
+                            <g class="area" @key="aInfo.AreaId" style="cursor:@cursor" @onclick="@(()=>GoToArea(aInfo.AreaId))">
+                                @foreach (var poly in aInfo.Polys)
+                                {
+                                    <polygon @key="poly.poly_id"
+                                             class="area-shape"
+                                             points="@PointsString(poly)"
+                                             fill="@aInfo.Fill"
+                                             vector-effect="non-scaling-stroke" />
+                                }
+
+                                @if (!string.IsNullOrWhiteSpace(raw))
+                                {
+                                    <rect class="area-pill"
+                                          x="@S(adjCx - pillW/2m)" y="@S(adjCy - pillH/2m)"
+                                          rx="@S(pillH * 0.2m)" ry="@S(pillH * 0.2m)"
+                                          width="@S(pillW)" height="@S(pillH)" />
+
+                                    <svg:text class="area-label"
+                                              x="@S(adjCx)" y="@S(adjCy)"
+                                              text-anchor="middle"
+                                              dominant-baseline="middle"
+                                              font-size="@S(fsBase)">
+                                        @if (twoLines)
+                                        {
+                                            <svg:tspan x="@S(adjCx)" dy="-0.6em">@line1</svg:tspan>
+                                            <svg:tspan x="@S(adjCx)" dy="1.2em">@line2</svg:tspan>
+                                        }
+                                        else
+                                        {
+                                            <svg:tspan x="@S(adjCx)" dy="0.1em">@line1</svg:tspan>
+                                        }
+                                    </svg:text>
+                                }
+
+                                <rect class="area-hit"
+                                      x="@S(aInfo.MinX)" y="@S(aInfo.MinY)"
+                                      width="@S(areaW)" height="@S(areaH)" />
+                            </g>
                         }
 
-                        <!-- Puertas -->
                         @foreach (var doorItem in view.Doors.Where(IsDoorVisible))
                         {
-                            <line @key="doorItem.door_id"
+                            <line @key="doorItem.door_id" class="door-line"
                                   x1="@S(doorItem.x_m)" y1="@S(doorItem.y_m)"
                                   x2="@S(DoorEndX(doorItem))" y2="@S(DoorEndY(doorItem))"
-                                  stroke="#13A076" stroke-width="@S(0.10m)" stroke-linecap="round" />
+                                  vector-effect="non-scaling-stroke" />
                         }
 
-                        <!-- Ventanas -->
                         @foreach (var winItem in view.Windows.Where(IsWinVisible))
                         {
-                            <line @key="winItem.win_id"
+                            <line @key="winItem.win_id" class="win-line"
                                   x1="@S(winItem.x_m)" y1="@S(winItem.y_m)"
                                   x2="@S(WinEndX(winItem))" y2="@S(WinEndY(winItem))"
-                                  stroke="#66CCFF" stroke-width="@S(0.05m)" stroke-linecap="round" />
+                                  vector-effect="non-scaling-stroke" />
                         }
                     </svg>
                 </div>
-            </div>
+            </section>
         }
 
-        <!-- === Índice de Áreas (planta actual) con mesones/materiales de montaje === -->
-        <div style="margin-top:1rem; border:1px solid #e5e7eb; border-radius:.5rem; padding:.75rem; background:#fff">
-            <details open>
-                <summary style="cursor:pointer; font-weight:600">
-                    Áreas de @(_plantasLookup.TryGetValue(_currentPlantaId ?? "", out var _p) ? _p : "Planta")
+        <div class="areas-index">
+            <details open class="areas-index-root">
+                <summary>
+                    <span>Datos de Planta: @(_plantasLookup.TryGetValue(_currentPlantaId ?? "", out var _p) ? _p : "General")</span>
                 </summary>
 
-                @foreach (var areaKv2 in _byArea.Where(kv => IsAreaInCurrentPlanta(kv.Key)).OrderBy(k => k.Value.Label, StringComparer.OrdinalIgnoreCase))
+                @foreach (var areaKv2 in _byArea.Where(kv => IsAreaInCurrentPlanta(kv.Key))
+                                                .OrderBy(k => k.Value.Label, StringComparer.OrdinalIgnoreCase))
                 {
-                    var aidList = areaKv2.Key; var aList = areaKv2.Value;
+                    var aidList = areaKv2.Key;
+                    var aList = areaKv2.Value;
                     var mes = _mesonesPorArea.TryGetValue(aidList, out var lm) ? lm : new List<MesonSummary>();
                     var montaje = _materialesMontajePorArea.TryGetValue(aidList, out var li) ? li : new List<MaterialMontajeView>();
 
-                    <details style="margin:.5rem 0" @key="aidList">
-                        <summary style="cursor:pointer; display:flex; align-items:center; gap:.5rem">
-                            <span style="font-weight:600">@aList.Label</span>
-                            <span style="color:#6b7280; font-size:.9rem">
-                                (@mes.Count mesones · @montaje.Count materiales de montaje)
-                            </span>
-                            <button type="button" class="btn link" style="margin-left:auto"
-                                    @onclick="@(()=>GoToArea(aidList))">
-                                ver
+                    <details class="area-row" @key="aidList">
+                        <summary class="area-row-summary">
+                            <div class="area-row-info">
+                                <span class="area-row-title">@aList.Label</span>
+                                <span class="area-row-meta">
+                                    @if(mes.Count > 0) { <span>@mes.Count mesones</span> }
+                                    @if(mes.Count > 0 && montaje.Count > 0) { <span> · </span> }
+                                    @if(montaje.Count > 0) { <span>@montaje.Count materiales</span> }
+                                    @if(mes.Count == 0 && montaje.Count == 0) { <span>Vacío</span> }
+                                </span>
+                            </div>
+                            
+                            <button type="button" class="btn link" @onclick="@(()=>GoToArea(aidList))" @onclick:stopPropagation>
+                                Ver detalle &rarr;
                             </button>
                         </summary>
 
-                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-top:.5rem">
-                            <div>
-                                <h4 style="margin:.25rem 0; font-weight:600">Mesones</h4>
-                                <ul style="list-style:none; padding-left:0; margin:.25rem 0 0">
+                        <div class="area-row-grid">
+                            <div class="area-col">
+                                <h4 class="area-col-title">Mesones / Mobiliario</h4>
+                                <ul class="simple-list">
                                     @if (mes.Count == 0)
                                     {
-                                        <li style="color:#6b7280"><em>Sin mesones.</em></li>
+                                        <li class="muted" style="font-size:0.85rem">No hay mesones registrados.</li>
                                     }
                                     else
                                     {
                                         @foreach (var m in mes)
                                         {
-                                            <li @key="m.meson_id"
-                                                style="display:flex; align-items:center; justify-content:space-between; padding:.25rem 0; border-bottom:1px dashed #eee">
-                                                <span>@m.nombre_meson</span>
-                                                <button type="button" class="btn link"
+                                            <li class="list-row" @key="m.meson_id">
+                                                <span class="list-item-title">@m.nombre_meson</span>
+                                                <button type="button" class="btn link" 
+                                                        style="font-size:0.8rem;"
                                                         @onclick="@(()=>Nav.NavigateTo($"/detalles-meson/{m.meson_id}"))">
-                                                    ver
+                                                    Abrir
                                                 </button>
                                             </li>
                                         }
@@ -171,26 +265,24 @@
                                 </ul>
                             </div>
 
-                            <div>
-                                <h4 style="margin:.25rem 0; font-weight:600">Materiales de montaje</h4>
-                                <ul style="list-style:none; padding-left:0; margin:.25rem 0 0">
+                            <div class="area-col">
+                                <h4 class="area-col-title">Materiales de Montaje</h4>
+                                <ul class="simple-list">
                                     @if (montaje.Count == 0)
                                     {
-                                        <li style="color:#6b7280"><em>Sin materiales de montaje.</em></li>
+                                        <li class="muted" style="font-size:0.85rem">Sin materiales asignados.</li>
                                     }
                                     else
                                     {
                                         @foreach (var item in montaje)
                                         {
-                                            <li @key="item.material_id" style="padding:.25rem 0; border-bottom:1px dashed #eee">
-                                                <div>
-                                                    <strong>@item.nombre</strong>
-                                                </div>
-                                                <div style="color:#4b5563; font-size:.9rem; margin-top:.15rem">
+                                            <li class="list-item" @key="item.material_id">
+                                                <div class="list-item-title">@item.nombre</div>
+                                                <div class="list-item-sub">
                                                     @item.estado_id
                                                     @if (!string.IsNullOrWhiteSpace(item.posicion))
                                                     {
-                                                        <span style="color:#6b7280">· @item.posicion</span>
+                                                        <span class="dot">•</span> <span>@item.posicion</span>
                                                     }
                                                 </div>
                                             </li>
@@ -205,10 +297,3 @@
         </div>
     }
 </div>
-
-<style>
-    .area-label {
-        pointer-events: none;
-        user-select: none;
-    }
-</style>

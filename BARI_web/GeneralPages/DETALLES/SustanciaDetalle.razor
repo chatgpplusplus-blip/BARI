@@ -1,0 +1,2118 @@
+﻿@page "/inventario-sustancias/{Id}"
+@using Npgsql
+@using System.Globalization
+@using System.IO
+@using System.Linq
+@using Microsoft.AspNetCore.Components.Forms
+@inject NpgsqlDataSource DataSource
+@inject LaboratorioState LaboratorioState
+@inject NavigationManager Nav
+@inject IWebHostEnvironment HostEnvironment
+@implements IDisposable
+
+<PageTitle>@(isLoading ? "Detalle de Reactivo" : (found ? (edit.Nombre ?? "Reactivo") : "Reactivo"))</PageTitle>
+
+<section class="page-card">
+    <div class="header-row">
+        <div>
+            <h2>Detalle de Reactivo</h2>
+            <div class="muted">ID: <b>@(Id ?? "—")</b></div>
+        </div>
+        <div class="header-actions">
+            <button class="btn" type="button" @onclick="GoBack">Volver</button>
+        </div>
+    </div>
+
+    <LaboratorioSelector />
+</section>
+
+<section class="page-card" style="margin-top:1.2rem;">
+    @if (!string.IsNullOrWhiteSpace(loadError))
+    {
+        <p class="error-note">Error: @loadError</p>
+    }
+    else if (isLoading)
+    {
+        <p><em>Cargando…</em></p>
+    }
+    else if (!found)
+    {
+        <div class="empty">
+            No se encontró el reactivo <b>@(Id ?? "")</b> en el laboratorio actual.
+        </div>
+    }
+    else
+    {
+        @* ======= VISTA ======= *@
+        @if (!isEditing)
+        {
+            <div class="detail-grid">
+                <div class="detail-media">
+                    @if (!string.IsNullOrWhiteSpace(edit.ImagenUrl))
+                    {
+                        <img class="material-img"
+                             src="@ResolveImagenUrl(edit.ImagenUrl)"
+                             alt="Imagen del reactivo"
+                             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+                        <div class="img-placeholder" style="display:none;">Sin imagen</div>
+                    }
+                    else
+                    {
+                        <div class="img-placeholder">Sin imagen</div>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(edit.ImagenUrl))
+                    {
+                        <div class="text-xs muted" style="margin-top:.35rem;">
+                            <span>Imagen:</span> <code>@edit.ImagenUrl</code>
+                        </div>
+                    }
+
+                    <div class="chips-row" style="margin-top:.75rem;">
+                        <span class="chip"><b>GHS</b> · @edit.GhsIds.Count</span>
+                        <span class="chip"><b>H</b> · @edit.HIds.Count</span>
+                        <span class="chip"><b>P</b> · @edit.PIds.Count</span>
+                        <span class="chip"><b>EXP</b> · @edit.ExperienciaIds.Count</span>
+                        <span class="chip"><b>CONT</b> · @contenedores.Count</span>
+                        @if (edit.SustanciaControlada)
+                        {
+                            <span class="chip warn">Controlada</span>
+                        }
+                    </div>
+                </div>
+
+                <div class="detail-info">
+                    <div class="title-row">
+                        <h3 style="margin:0;">@NullDash(edit.Nombre)</h3>
+
+                        <div class="badges">
+                            <span class="badge gray">@NullDash(edit.CategoriaNombre)</span>
+                            <span class="badge">@NullDash(SubcategoriasLabel)</span>
+                            @if (edit.SustanciaControlada)
+                            {
+                                <span class="badge gray">Controlada</span>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="dl">
+                        <div class="dl-row">
+                            <div class="dt">Nombre comercial</div>
+                            <div class="dd">@NullDash(edit.NombreComercial)</div>
+                        </div>
+
+                        <div class="dl-row">
+                            <div class="dt">Nombre químico</div>
+                            <div class="dd">@NullDash(edit.NombreQuimico)</div>
+                        </div>
+
+                        <div class="dl-row">
+                            <div class="dt">CAS</div>
+                            <div class="dd">@NullDash(edit.Cas)</div>
+                        </div>
+
+                        <div class="dl-row">
+                            <div class="dt">Forma física</div>
+                            <div class="dd">@NullDash(edit.FormaFisica)</div>
+                        </div>
+
+                        <div class="dl-row">
+                            <div class="dt">Descripción</div>
+                            <div class="dd">@NullDash(edit.Descripcion)</div>
+                        </div>
+
+                        <div class="dl-row">
+                            <div class="dt">Observaciones</div>
+                            <div class="dd">@NullDash(edit.Observaciones)</div>
+                        </div>
+
+                        <div class="dl-row">
+                            <div class="dt">Experiencias asociadas</div>
+                            <div class="dd">
+                                @if (_experienciasLigadas.Count == 0)
+                                {
+                                    <span class="muted">—</span>
+                                }
+                                else
+                                {
+                                    <ul class="link-list">
+                                        @foreach (var ex in _experienciasLigadas.OrderBy(x => x.Nombre))
+                                        {
+                                            <li>
+                                                <span class="pill">@ex.Nombre</span>
+                                                <span class="text-xs muted">(@ex.ExperienciaId)</span>
+                                            </li>
+                                        }
+                                    </ul>
+                                }
+                            </div>
+                        </div>
+                    </div>
+
+                    @* ===== Seguridad (resumen) ===== *@
+                    <div class="notes" style="margin-top:1rem;">
+                        <strong>Seguridad</strong>
+
+                        <div class="sec-grid">
+                            <div>
+                                <div class="muted">Pictogramas (GHS)</div>
+
+                                @if (edit.GhsIds.Count == 0)
+                                {
+                                    <div class="muted text-xs" style="margin-top:.35rem;">—</div>
+                                }
+                                else
+                                {
+                                    <div class="ghs-grid" style="margin-top:.35rem;">
+                                        @foreach (var g in _ghsOptions.Where(x => edit.GhsIds.Contains(x.Id)))
+                                        {
+                                            <div class="ghs-tile"
+                                                 title="@($"{g.Id} · {g.Nombre}{(string.IsNullOrWhiteSpace(g.Detalle) ? "" : $" · {g.Detalle}")}")">
+                                                @if (!string.IsNullOrWhiteSpace(g.IconUrl))
+                                                {
+                                                    <img src="@ResolveImagenUrl(g.IconUrl)"
+                                                         alt="@g.Nombre"
+                                                         onerror="this.style.display='none';" />
+                                                }
+                                                else
+                                                {
+                                                    <span class="ghs-fallback">@g.Id</span>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+
+                                    <div class="sec-list" style="margin-top:.5rem;">
+                                        @foreach (var g in _ghsOptions.Where(x => edit.GhsIds.Contains(x.Id)))
+                                        {
+                                            <span class="tag" title="@g.Nombre">@g.Id</span>
+                                        }
+                                    </div>
+                                }
+                            </div>
+
+                            <div>
+                                <div class="muted">H codes</div>
+                                <div class="sec-list">
+                                    @if (edit.HIds.Count == 0)
+                                    {
+                                        <span class="muted text-xs">—</span>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var h in _hCodeOptions.Where(x => edit.HIds.Contains(x.Id)))
+                                        {
+                                            <span class="tag"
+                                                  title="@($"{h.Id} · {h.Descripcion}{(string.IsNullOrWhiteSpace(h.Grupo) ? "" : $" · {h.Grupo}")}")">
+                                                @h.Id
+                                            </span>
+                                        }
+                                    }
+                                </div>
+                            </div>
+
+                            <div>
+                                <div class="muted">P codes</div>
+                                <div class="sec-list">
+                                    @if (edit.PIds.Count == 0)
+                                    {
+                                        <span class="muted text-xs">—</span>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var p in _pCodeOptions.Where(x => edit.PIds.Contains(x.Id)))
+                                        {
+                                            <span class="tag"
+                                                  title="@($"{p.Id} · {p.Descripcion}{(string.IsNullOrWhiteSpace(p.Grupo) ? "" : $" · {p.Grupo}")}")">
+                                                @p.Id
+                                            </span>
+                                        }
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="view-actions">
+                        <button class="btn primary" type="button" @onclick="StartEdit">Editar</button>
+
+                        @if (!confirmDelete)
+                        {
+                            <button class="btn danger" type="button" @onclick="AskDelete">Eliminar</button>
+                        }
+                        else
+                        {
+                            <button class="btn danger" type="button" @onclick="DeleteAsync" disabled="@isSaving">Confirmar eliminar</button>
+                            <button class="btn" type="button" @onclick="CancelDelete" disabled="@isSaving">Cancelar</button>
+                        }
+
+                        @if (!string.IsNullOrWhiteSpace(msg))
+                        {
+                            <span class="text-sm muted">@msg</span>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            @* ===== Contenedores ===== *@
+            <div class="notes" style="margin-top:1rem;">
+                <strong>Contenedores</strong>
+                <div class="muted">@contenedores.Count contenedores registrados.</div>
+
+                @if (contenedores.Count == 0)
+                {
+                    <div class="muted" style="margin-top:.35rem;">No hay contenedores asociados.</div>
+                }
+                else
+                {
+                    <div class="table-wrap" style="margin-top:.5rem;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Cantidad</th>
+                                    <th>Condición</th>
+                                    <th>Proveedor</th>
+                                    <th>Apertura</th>
+                                    <th>Vencimiento</th>
+                                    <th>Ubicación</th>
+                                    <th>Envase</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var cont in contenedores)
+                                {
+                                    <tr>
+                                        <td>
+                                            <NavLink href="@($"/inventario-sustancias/contenedor/{cont.Id}")">
+                                                @cont.Id
+                                            </NavLink>
+                                        </td>
+                                        <td>@cont.Cantidad</td>
+                                        <td>@cont.Condicion</td>
+                                        <td>@cont.Proveedor</td>
+                                        <td>@cont.FechaApertura</td>
+                                        <td>@cont.FechaVencimiento</td>
+                                        <td>@cont.Ubicacion</td>
+                                        <td>@cont.Envase</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            @* ======= EDICIÓN ======= *@
+            <div class="form-header">
+                <h4>Editar reactivo</h4>
+                <p class="form-hint">
+                    Ajusta datos básicos, subcategorías (M:N), experiencias y seguridad (GHS/H/P). Guarda para aplicar cambios.
+                </p>
+            </div>
+
+            <div class="form-grid">
+                <div class="field full-span">
+                    <label>Subcategorías (Reactivo Químico)</label>
+
+                    <div class="subcats-dropdown">
+                        <button type="button"
+                                class="border p-1 subcats-btn"
+                                @onclick="ToggleSubcatsDropdown">
+                            @SelectedSubcategoriasLabel
+                        </button>
+
+                        @if (_showSubcatsDropdown)
+                        {
+                            <div class="subcats-panel">
+                                <div class="text-xs muted" style="margin-bottom:.35rem;">
+                                    Selecciona una o más subcategorías (solo <code>reactivo-quimico</code>).
+                                </div>
+
+                                @foreach (var s in _subcategoriaOptions.OrderBy(x => x.Label))
+                                {
+                                    <label class="subcats-item">
+                                        <input type="checkbox"
+                                               checked="@edit.SubcategoriaIds.Contains(s.Id)"
+                                               @onchange="(e) => OnSubcategoriaToggle(s.Id, e)" />
+                                        <span>@s.Label</span>
+                                    </label>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    <div class="text-xs muted" style="margin-top:.25rem;">
+                        Guardará en <code>sustancia_subcategorias</code>.
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label>Nombre comercial</label>
+                    <input class="border p-1" placeholder="Nombre comercial" @bind="edit.NombreComercial" />
+                </div>
+
+                <div class="field">
+                    <label>Nombre químico</label>
+                    <input class="border p-1" placeholder="Nombre químico" @bind="edit.NombreQuimico" />
+                </div>
+
+                <div class="field">
+                    <label>CAS</label>
+                    <input class="border p-1" placeholder="CAS" @bind="edit.Cas" />
+                </div>
+
+                <div class="field">
+                    <label>Forma física</label>
+                    <input class="border p-1" placeholder="Sólido / Líquido / Gas..." @bind="edit.FormaFisica" />
+                </div>
+
+                <div class="field">
+                    <label>&nbsp;</label>
+                    <div class="edit-check">
+                        <input type="checkbox" @bind="edit.SustanciaControlada" />
+                        <span>Sustancia controlada</span>
+                    </div>
+                </div>
+
+                <div class="field full-span">
+                    <label>Descripción</label>
+                    <textarea class="border p-1" rows="3" placeholder="Descripción" @bind="edit.Descripcion"></textarea>
+                </div>
+
+                <div class="field full-span">
+                    <label>Observaciones</label>
+                    <textarea class="border p-1" rows="3" placeholder="Observaciones" @bind="edit.Observaciones"></textarea>
+                </div>
+
+                @* ===== Experiencias asociadas (tabla intermedia) ===== *@
+                <div class="field full-span">
+                    <label>Experiencias asociadas (tabla intermedia)</label>
+
+                    <div class="rel-box">
+                        <div class="rel-add">
+                            <select class="border p-1" @bind="_experienciaToAddId">
+                                <option value="">(agregar experiencia…)</option>
+                                @foreach (var opt in _experienciaOptions.Where(o => !edit.ExperienciaIds.Contains(o.Id)).OrderBy(o => o.Label))
+                                {
+                                    <option value="@opt.Id">@opt.Label</option>
+                                }
+                            </select>
+                            <button type="button" class="btn" @onclick="AddExperienciaLink" disabled="@string.IsNullOrWhiteSpace(_experienciaToAddId)">
+                                Agregar
+                            </button>
+                        </div>
+
+                        @if (edit.ExperienciaIds.Count == 0)
+                        {
+                            <div class="text-sm muted">— Sin experiencias asociadas</div>
+                        }
+                        else
+                        {
+                            <ul class="link-list">
+                                @foreach (var exId in edit.ExperienciaIds.OrderBy(x => GetExperienciaLabel(x)))
+                                {
+                                    <li class="rel-item">
+                                        <span class="pill">@GetExperienciaLabel(exId)</span>
+                                        <span class="text-xs muted">(@exId)</span>
+                                        <button type="button" class="btn mini danger" @onclick="@(() => RemoveExperienciaLink(exId))">
+                                            Quitar
+                                        </button>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    </div>
+
+                    <div class="text-xs muted" style="margin-top:.25rem;">
+                        Esto actualiza <code>experiencia_sustancias</code> al guardar.
+                    </div>
+                </div>
+
+                @* ===== Seguridad en edición ===== *@
+                <div class="sec-edit-grid full-span">
+                    <div class="upload-card">
+                        <div class="text-xs muted">Pictogramas GHS</div>
+
+                        <details>
+                            <summary style="cursor:pointer; font-weight:900;">@GhsEditLabel</summary>
+
+                            <div style="display:grid; gap:.35rem; padding-top:.5rem; max-height:260px; overflow:auto;">
+                                @if (_ghsOptions.Count == 0)
+                                {
+                                    <div class="text-xs muted">Sin pictogramas disponibles.</div>
+                                }
+                                else
+                                {
+                                    @foreach (var ghs in _ghsOptions)
+                                    {
+                                        <label style="display:flex; align-items:center; gap:.5rem;">
+                                            <input type="checkbox"
+                                                   checked="@edit.GhsIds.Contains(ghs.Id)"
+                                                   @onchange="(e) => ToggleSet(edit.GhsIds, ghs.Id, e)" />
+
+                                            <span class="ghs-inline">
+                                                <span class="ghs-mini-tile" title="@($"{ghs.Id} · {ghs.Nombre}")">
+                                                    @if (!string.IsNullOrWhiteSpace(ghs.IconUrl))
+                                                    {
+                                                        <img src="@ResolveImagenUrl(ghs.IconUrl)"
+                                                             alt="@ghs.Nombre"
+                                                             onerror="this.style.display='none';" />
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="ghs-fallback-mini">@ghs.Id</span>
+                                                    }
+                                                </span>
+
+                                                <span style="font-weight:900;">@ghs.Id</span>
+                                                <span class="text-xs muted">@ghs.Nombre</span>
+                                            </span>
+                                        </label>
+                                    }
+                                }
+                            </div>
+                        </details>
+                    </div>
+
+                    <div class="upload-card">
+                        <div class="text-xs muted">H codes (pasa el mouse sobre el código para ver el grupo)</div>
+
+                        <details style="width:100%; max-width:100%; overflow:hidden;">
+                            <summary style="cursor:pointer; font-weight:900; display:block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                                @HEditLabel
+                            </summary>
+
+                            <div style="display:grid; gap:.35rem; padding-top:.5rem; max-height:260px; overflow:auto; max-width:100%;">
+                                @if (_hCodeOptions.Count == 0)
+                                {
+                                    <div class="text-xs muted">Sin H codes disponibles.</div>
+                                }
+                                else
+                                {
+                                    @foreach (var h in _hCodeOptions)
+                                    {
+                                        <label style="display:flex; gap:.5rem; align-items:flex-start; width:100%; max-width:100%;">
+                                            <input type="checkbox"
+                                                   style="margin-top:.2rem;"
+                                                   checked="@edit.HIds.Contains(h.Id)"
+                                                   @onchange="(e) => ToggleSet(edit.HIds, h.Id, e)" />
+
+                                            <div style="min-width:0; width:100%; max-width:100%;">
+                                                <span style="font-weight:900;"
+                                                      title="@(!string.IsNullOrWhiteSpace(h.Grupo) ? h.Grupo : "Sin grupo")">
+                                                    @h.Id
+                                                </span>
+
+                                                <span style="margin-left:.35rem; display:inline; white-space:normal; overflow-wrap:anywhere; word-break:break-word;"
+                                                      class="muted text-xs">
+                                                    @h.Descripcion
+                                                </span>
+                                            </div>
+                                        </label>
+                                    }
+                                }
+                            </div>
+                        </details>
+                    </div>
+
+                    <div class="upload-card">
+                        <div class="text-xs muted">P codes (pasa el mouse sobre el código para ver el grupo)</div>
+
+                        <details style="width:100%; max-width:100%; overflow:hidden;">
+                            <summary style="cursor:pointer; font-weight:900; display:block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                                @PEditLabel
+                            </summary>
+
+                            <div style="display:grid; gap:.35rem; padding-top:.5rem; max-height:260px; overflow:auto; max-width:100%;">
+                                @if (_pCodeOptions.Count == 0)
+                                {
+                                    <div class="text-xs muted">Sin P codes disponibles.</div>
+                                }
+                                else
+                                {
+                                    @foreach (var p in _pCodeOptions)
+                                    {
+                                        <label style="display:flex; gap:.5rem; align-items:flex-start; width:100%; max-width:100%;">
+                                            <input type="checkbox"
+                                                   style="margin-top:.2rem;"
+                                                   checked="@edit.PIds.Contains(p.Id)"
+                                                   @onchange="(e) => ToggleSet(edit.PIds, p.Id, e)" />
+
+                                            <div style="min-width:0; width:100%; max-width:100%;">
+                                                <span style="font-weight:900;"
+                                                      title="@(!string.IsNullOrWhiteSpace(p.Grupo) ? p.Grupo : "Sin grupo")">
+                                                    @p.Id
+                                                </span>
+
+                                                <span style="margin-left:.35rem; display:inline; white-space:normal; overflow-wrap:anywhere; word-break:break-word;"
+                                                      class="muted text-xs">
+                                                    @p.Descripcion
+                                                </span>
+                                            </div>
+                                        </label>
+                                    }
+                                }
+                            </div>
+                        </details>
+                    </div>
+                </div>
+
+                @* ===== Imagen (estándar) ===== *@
+                <div class="upload-card full-span">
+                    <div class="upload-options">
+                        <label class="text-sm">
+                            <input type="radio" name="imagenModoReactivo"
+                                   value="url"
+                                   checked="@(_imagenModo == "url")"
+                                   @onchange="OnImagenModoChanged" />
+                            Colocar un URL
+                        </label>
+                        <label class="text-sm">
+                            <input type="radio" name="imagenModoReactivo"
+                                   value="archivo"
+                                   checked="@(_imagenModo == "archivo")"
+                                   @onchange="OnImagenModoChanged" />
+                            Subir archivo
+                        </label>
+                    </div>
+
+                    @if (_imagenModo == "url")
+                    {
+                        <input class="border p-1" placeholder="Imagen URL (o ruta relativa)" @bind="edit.ImagenUrl" />
+                    }
+                    else
+                    {
+                        <label class="upload-drop">
+                            <InputFile OnChange="OnImagenArchivoSeleccionado" accept="image/png,image/jpeg,image/jpg,image/webp" />
+                            <span>Arrastra una imagen o haz clic para buscar</span>
+                        </label>
+
+                        @if (!string.IsNullOrWhiteSpace(_imagenArchivoNombre))
+                        {
+                            <div class="text-xs muted">Archivo: @_imagenArchivoNombre</div>
+                        }
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(edit.ImagenUrl))
+                    {
+                        <div class="preview-row">
+                            <div class="text-xs muted">Preview:</div>
+                            <img class="material-img-sm"
+                                 src="@ResolveImagenUrl(edit.ImagenUrl)"
+                                 alt="Preview"
+                                 onerror="this.style.display='none';" />
+                            <div class="text-xs muted">Guardará: <code>@edit.ImagenUrl</code></div>
+                        </div>
+                    }
+                </div>
+
+                <div class="form-actions full-span">
+                    <button class="btn primary" type="button" @onclick="SaveAsync" disabled="@isSaving">Guardar cambios</button>
+                    <button class="btn" type="button" @onclick="CancelEdit" disabled="@isSaving">Cancelar</button>
+
+                    @if (!confirmDelete)
+                    {
+                        <button class="btn danger" type="button" @onclick="AskDelete" disabled="@isSaving">Eliminar</button>
+                    }
+                    else
+                    {
+                        <button class="btn danger" type="button" @onclick="DeleteAsync" disabled="@isSaving">Confirmar eliminar</button>
+                        <button class="btn" type="button" @onclick="CancelDelete" disabled="@isSaving">Cancelar eliminar</button>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(msg))
+                    {
+                        <span class="text-sm muted">@msg</span>
+                    }
+                </div>
+            </div>
+        }
+    }
+</section>
+
+@code {
+    [Parameter] public string? Id { get; set; }
+
+    private const string CategoriaReactivoId = "reactivo-quimico";
+
+    private bool isLoading = true;
+    private bool isSaving = false;
+    private bool found = false;
+
+    private bool isEditing = false;
+    private bool confirmDelete = false;
+
+    private string? loadError;
+    private string? msg;
+
+    private ReactivoEdit edit = new();
+
+    // Imagen
+    private string _imagenModo = "url";
+    private string? _imagenArchivoNombre;
+
+    // Lookups
+    private readonly List<SelectOption> _subcategoriaOptions = new();
+
+    private readonly List<GhsOption> _ghsOptions = new();
+    private readonly List<HCodeOption> _hCodeOptions = new();
+    private readonly List<PCodeOption> _pCodeOptions = new();
+
+    // Experiencias (tabla intermedia experiencia_sustancias)
+    private readonly List<SelectOption> _experienciaOptions = new();
+    private readonly List<ExperienciaLink> _experienciasLigadas = new();
+    private string? _experienciaToAddId;
+
+    // Contenedores
+    private readonly List<ContenedorInfo> contenedores = new();
+
+    // UI subcats
+    private bool _showSubcatsDropdown;
+
+    private string GhsEditLabel => edit.GhsIds.Count == 0 ? "Selecciona pictogramas…" : $"Pictogramas seleccionados: {edit.GhsIds.Count}";
+    private string HEditLabel => edit.HIds.Count == 0 ? "Selecciona H codes…" : $"H codes seleccionados: {edit.HIds.Count}";
+    private string PEditLabel => edit.PIds.Count == 0 ? "Selecciona P codes…" : $"P codes seleccionados: {edit.PIds.Count}";
+
+    private void ToggleSubcatsDropdown()
+        => _showSubcatsDropdown = !_showSubcatsDropdown;
+
+    private string SelectedSubcategoriasLabel
+    {
+        get
+        {
+            if (edit.SubcategoriaIds.Count == 0)
+                return "Subcategorías (obligatorio)";
+
+            var labels = _subcategoriaOptions
+                .Where(s => edit.SubcategoriaIds.Contains(s.Id))
+                .Select(s => s.Label)
+                .ToList();
+
+            return labels.Count == 0 ? "Subcategorías (obligatorio)" : string.Join(", ", labels);
+        }
+    }
+
+    private string SubcategoriasLabel
+    {
+        get
+        {
+            if (edit.SubcategoriaIds.Count == 0) return "—";
+
+            var labels = _subcategoriaOptions
+                .Where(s => edit.SubcategoriaIds.Contains(s.Id))
+                .Select(s => s.Label)
+                .ToList();
+
+            return labels.Count > 0 ? string.Join(", ", labels) : string.Join(", ", edit.SubcategoriaIds);
+        }
+    }
+
+    private void OnSubcategoriaToggle(string subcatId, ChangeEventArgs args)
+    {
+        var isChecked = args.Value switch
+        {
+            bool b => b,
+            string s => s.Equals("true", StringComparison.OrdinalIgnoreCase) || s.Equals("on", StringComparison.OrdinalIgnoreCase),
+            _ => false
+        };
+
+        if (isChecked) edit.SubcategoriaIds.Add(subcatId);
+        else edit.SubcategoriaIds.Remove(subcatId);
+    }
+
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await ReloadAllAsync();
+    }
+
+    private void HandleLaboratorioChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await ReloadAllAsync();
+            StateHasChanged();
+        });
+    }
+
+    private async Task ReloadAllAsync()
+    {
+        loadError = null;
+        msg = null;
+        confirmDelete = false;
+
+        isLoading = true;
+        isSaving = false;
+        found = false;
+        isEditing = false;
+
+        _showSubcatsDropdown = false;
+
+        _subcategoriaOptions.Clear();
+        _ghsOptions.Clear();
+        _hCodeOptions.Clear();
+        _pCodeOptions.Clear();
+
+        _experienciaOptions.Clear();
+        _experienciasLigadas.Clear();
+        _experienciaToAddId = null;
+
+        contenedores.Clear();
+
+        edit = new ReactivoEdit();
+
+        try
+        {
+            var id = (Id ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                found = false;
+                return;
+            }
+
+            await using var conn = await DataSource.OpenConnectionAsync();
+
+            await LoadLookupsAsync(conn);
+            await LoadReactivoAsync(conn, id);
+
+            if (!found) return;
+
+            await LoadSustanciaSeguridadAsync(conn, edit.SustanciaId);
+
+            await LoadExperienciasLigadasAsync(conn, edit.SustanciaId);
+            await LoadExperienciasOptionsAsync(conn);
+
+            await LoadContenedoresAsync(conn, edit.SustanciaId);
+
+            _imagenModo = "url";
+            _imagenArchivoNombre = null;
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void GoBack() => Nav.NavigateTo("/inventario-sustancias");
+
+    private void StartEdit()
+    {
+        msg = null;
+        confirmDelete = false;
+        _showSubcatsDropdown = false;
+        isEditing = true;
+    }
+
+    private async Task CancelEdit()
+    {
+        msg = null;
+        confirmDelete = false;
+        isEditing = false;
+        await ReloadAllAsync();
+    }
+
+    private void AskDelete()
+    {
+        confirmDelete = true;
+        msg = "Esto eliminará la sustancia. Asegúrate de no tener contenedores ni documentos asociados.";
+    }
+
+    private void CancelDelete()
+    {
+        confirmDelete = false;
+        msg = null;
+    }
+
+    private async Task LoadLookupsAsync(NpgsqlConnection conn)
+    {
+        // Subcategorías SOLO de reactivo-quimico
+        const string subSql = @"
+            SELECT subcategoria_id, nombre
+            FROM subcategorias
+            WHERE categoria_id = @cat
+            ORDER BY nombre";
+        await using (var cmd = new NpgsqlCommand(subSql, conn))
+        {
+            cmd.Parameters.AddWithValue("cat", CategoriaReactivoId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+                _subcategoriaOptions.Add(new SelectOption(r.GetString(0), r.GetString(1)));
+        }
+
+        // GHS
+        await using (var cmd = new NpgsqlCommand(@"
+            SELECT ghs_id, descripcion, icon_url, detalle
+            FROM ghs_pictogramas
+            ORDER BY ghs_id", conn))
+        await using (var r = await cmd.ExecuteReaderAsync())
+        {
+            while (await r.ReadAsync())
+                _ghsOptions.Add(new GhsOption(
+                    r.GetString(0),
+                    r.GetString(1),
+                    r.IsDBNull(2) ? null : r.GetString(2),
+                    r.IsDBNull(3) ? null : r.GetString(3)
+                ));
+        }
+
+        // H
+        await using (var cmd = new NpgsqlCommand(@"
+            SELECT h_id, descripcion, grupo
+            FROM h_codes
+            ORDER BY h_id", conn))
+        await using (var r = await cmd.ExecuteReaderAsync())
+        {
+            while (await r.ReadAsync())
+                _hCodeOptions.Add(new HCodeOption(
+                    r.GetString(0),
+                    r.GetString(1),
+                    r.IsDBNull(2) ? null : r.GetString(2)
+                ));
+        }
+
+        // P
+        await using (var cmd = new NpgsqlCommand(@"
+            SELECT p_id, descripcion, grupo
+            FROM p_codes
+            ORDER BY p_id", conn))
+        await using (var r = await cmd.ExecuteReaderAsync())
+        {
+            while (await r.ReadAsync())
+                _pCodeOptions.Add(new PCodeOption(
+                    r.GetString(0),
+                    r.GetString(1),
+                    r.IsDBNull(2) ? null : r.GetString(2)
+                ));
+        }
+    }
+
+    private async Task LoadReactivoAsync(NpgsqlConnection conn, string sustanciaId)
+    {
+        const string sql = @"
+        SELECT s.sustancia_id,
+               COALESCE(NULLIF(s.nombre_comercial, ''),
+                        NULLIF(s.nombre_quimico, ''),
+                        s.sustancia_id) AS nombre,
+               s.nombre_comercial,
+               s.nombre_quimico,
+               s.cas,
+               s.forma_fisica,
+               COALESCE(s.sustancia_controlada, false) AS sustancia_controlada,
+               s.observaciones,
+               s.descripcion,
+               s.imagen_url,
+               COALESCE(c.nombre,'') AS categoria_nombre,
+               COALESCE(s.categoria_id,'') AS categoria_id
+        FROM sustancias s
+        LEFT JOIN categorias c ON c.categoria_id = s.categoria_id
+        WHERE s.sustancia_id = @id
+          AND s.laboratorio_id = @laboratorio
+          AND s.categoria_id = @cat
+        LIMIT 1;
+    ";
+
+        await using (var cmd = new NpgsqlCommand(sql, conn))
+        {
+            cmd.Parameters.AddWithValue("id", sustanciaId);
+            cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
+            cmd.Parameters.AddWithValue("cat", CategoriaReactivoId);
+
+            // ✅ IMPORTANTE: el reader vive SOLO dentro de este using,
+            // y se cierra ANTES de ejecutar el siguiente comando
+            await using var reader = await cmd.ExecuteReaderAsync();
+
+            if (!await reader.ReadAsync())
+            {
+                found = false;
+                return;
+            }
+
+            found = true;
+
+            edit = new ReactivoEdit
+                {
+                    SustanciaId = reader.GetString(0),
+                    Nombre = reader.IsDBNull(1) ? "" : reader.GetString(1),
+                    NombreComercial = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                    NombreQuimico = reader.IsDBNull(3) ? "" : reader.GetString(3),
+                    Cas = reader.IsDBNull(4) ? "" : reader.GetString(4),
+                    FormaFisica = reader.IsDBNull(5) ? "" : reader.GetString(5),
+                    SustanciaControlada = !reader.IsDBNull(6) && reader.GetBoolean(6),
+                    Observaciones = reader.IsDBNull(7) ? "" : reader.GetString(7),
+                    Descripcion = reader.IsDBNull(8) ? "" : reader.GetString(8),
+                    ImagenUrl = reader.IsDBNull(9) ? "" : reader.GetString(9),
+                    CategoriaNombre = reader.IsDBNull(10) ? "" : reader.GetString(10),
+                    CategoriaId = reader.IsDBNull(11) ? "" : reader.GetString(11),
+                };
+        } // ✅ reader DISPUESTO AQUÍ → ya puedes ejecutar más comandos
+
+        // ✅ Cargar subcategorías (M:N) desde tabla puente
+        edit.SubcategoriaIds.Clear();
+
+        const string sqlSubs = @"
+        SELECT sc.subcategoria_id
+        FROM sustancia_subcategorias ss
+        INNER JOIN subcategorias sc ON sc.subcategoria_id = ss.subcategoria_id
+        WHERE ss.sustancia_id = @id
+          AND sc.categoria_id = @cat
+        ORDER BY sc.nombre;
+    ";
+
+        await using var cmdSubs = new NpgsqlCommand(sqlSubs, conn);
+        cmdSubs.Parameters.AddWithValue("id", edit.SustanciaId);
+        cmdSubs.Parameters.AddWithValue("cat", CategoriaReactivoId);
+
+        await using var r2 = await cmdSubs.ExecuteReaderAsync();
+        while (await r2.ReadAsync())
+            edit.SubcategoriaIds.Add(r2.GetString(0));
+    }
+
+    private async Task LoadSustanciaSeguridadAsync(NpgsqlConnection conn, string sustanciaId)
+    {
+        edit.GhsIds.Clear();
+        edit.HIds.Clear();
+        edit.PIds.Clear();
+
+        // GHS
+        await using (var cmd = new NpgsqlCommand(@"
+            SELECT ghs_id
+            FROM sustancias_pictogramas
+            WHERE sustancia_id = @id", conn))
+        {
+            cmd.Parameters.AddWithValue("id", sustanciaId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+                edit.GhsIds.Add(r.GetString(0));
+        }
+
+        // H
+        await using (var cmd = new NpgsqlCommand(@"
+            SELECT h_id
+            FROM sustancias_h
+            WHERE sustancia_id = @id", conn))
+        {
+            cmd.Parameters.AddWithValue("id", sustanciaId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+                edit.HIds.Add(r.GetString(0));
+        }
+
+        // P
+        await using (var cmd = new NpgsqlCommand(@"
+            SELECT p_id
+            FROM sustancias_p
+            WHERE sustancia_id = @id", conn))
+        {
+            cmd.Parameters.AddWithValue("id", sustanciaId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+                edit.PIds.Add(r.GetString(0));
+        }
+    }
+
+    private async Task LoadExperienciasLigadasAsync(NpgsqlConnection conn, string sustanciaId)
+    {
+        _experienciasLigadas.Clear();
+        edit.ExperienciaIds.Clear();
+
+        const string sql = @"
+            SELECT ec.experiencia_id, ec.nombre
+            FROM experiencia_sustancias es
+            INNER JOIN experiencias_clases ec ON ec.experiencia_id = es.experiencia_id
+            WHERE es.sustancia_id = @sid
+              AND ec.laboratorio_id = @lab
+            ORDER BY ec.nombre;
+        ";
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("sid", sustanciaId);
+        cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+        {
+            var expId = r.GetString(0);
+            var nombre = r.GetString(1);
+            _experienciasLigadas.Add(new ExperienciaLink(expId, nombre));
+            edit.ExperienciaIds.Add(expId);
+        }
+    }
+
+    private async Task LoadExperienciasOptionsAsync(NpgsqlConnection conn)
+    {
+        _experienciaOptions.Clear();
+
+        const string sql = @"
+            SELECT experiencia_id, nombre
+            FROM experiencias_clases
+            WHERE laboratorio_id = @lab
+            ORDER BY nombre;
+        ";
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+            _experienciaOptions.Add(new SelectOption(r.GetString(0), r.GetString(1)));
+    }
+
+    private string GetExperienciaLabel(string experienciaId)
+        => _experienciaOptions.FirstOrDefault(x => string.Equals(x.Id, experienciaId, StringComparison.OrdinalIgnoreCase))?.Label
+           ?? _experienciasLigadas.FirstOrDefault(x => string.Equals(x.ExperienciaId, experienciaId, StringComparison.OrdinalIgnoreCase))?.Nombre
+           ?? experienciaId;
+
+    private void AddExperienciaLink()
+    {
+        var id = _experienciaToAddId?.Trim();
+        if (string.IsNullOrWhiteSpace(id)) return;
+        edit.ExperienciaIds.Add(id);
+        _experienciaToAddId = null;
+        msg = null;
+    }
+
+    private void RemoveExperienciaLink(string experienciaId)
+    {
+        edit.ExperienciaIds.Remove(experienciaId);
+        msg = null;
+    }
+
+    private async Task LoadContenedoresAsync(NpgsqlConnection conn, string sustanciaId)
+    {
+        contenedores.Clear();
+
+        const string sqlCont = @"
+            SELECT c.cont_id,
+                   COALESCE(c.cantidad_reactivo_actual, c.cantidad_reactivo_nominal, 0) AS cantidad,
+                   COALESCE(u.simbolo, '') AS unidad,
+                   COALESCE(cond.nombre, '') AS condicion,
+                   c.fecha_apertura,
+                   c.fecha_vencimiento,
+                   COALESCE(c.proveedor, '') AS proveedor,
+                   COALESCE(a.nombre_areas, '') AS area,
+                   COALESCE(m.nombre_meson, '') AS meson,
+                   COALESCE(c.posicion, '') AS posicion,
+                   COALESCE(c.color_envase, '') AS color_envase
+            FROM contenedores c
+            LEFT JOIN unidades u ON u.unidad_id = c.unidad_id
+            LEFT JOIN condiciones cond ON cond.condicion_id = c.condicion_id
+            LEFT JOIN areas a ON a.area_id = c.area_id
+            LEFT JOIN mesones m ON m.meson_id = c.meson_id
+            WHERE c.sustancia_id = @id
+              AND c.laboratorio_id = @lab
+            ORDER BY c.cont_id;
+        ";
+
+        await using var cmd = new NpgsqlCommand(sqlCont, conn);
+        cmd.Parameters.AddWithValue("id", sustanciaId);
+        cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+        {
+            var cantidad = r.IsDBNull(1) ? 0m : r.GetDecimal(1);
+            var unidad = r.IsDBNull(2) ? "" : r.GetString(2);
+
+            var fechaApertura = r.IsDBNull(4) ? "—" : r.GetDateTime(4).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+            var fechaVencimiento = r.IsDBNull(5) ? "—" : r.GetDateTime(5).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+
+            var proveedor = r.IsDBNull(6) ? "" : r.GetString(6);
+            var envase = r.IsDBNull(10) ? "" : r.GetString(10);
+
+            contenedores.Add(new ContenedorInfo
+                {
+                    Id = r.GetString(0),
+                    Cantidad = $"{cantidad.ToString(CultureInfo.InvariantCulture)} {unidad}".Trim(),
+                    Condicion = string.IsNullOrWhiteSpace(r.GetString(3)) ? "—" : r.GetString(3),
+                    FechaApertura = fechaApertura,
+                    FechaVencimiento = fechaVencimiento,
+                    Proveedor = string.IsNullOrWhiteSpace(proveedor) ? "—" : proveedor,
+                    Ubicacion = BuildUbicacion(r.GetString(7), r.GetString(8), r.GetString(9)),
+                    Envase = string.IsNullOrWhiteSpace(envase) ? "—" : envase
+                });
+        }
+    }
+
+    private void OnImagenModoChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(value))
+            _imagenModo = value;
+    }
+
+    private async Task OnImagenArchivoSeleccionado(InputFileChangeEventArgs args)
+    {
+        if (args.FileCount == 0) return;
+
+        var file = args.File;
+        var extension = Path.GetExtension(file.Name);
+        var fileName = $"sustancia_{Guid.NewGuid():N}{extension}";
+        var relativePath = Path.Combine("uploads", "sustancias", fileName).Replace("\\", "/");
+        var absolutePath = Path.Combine(HostEnvironment.WebRootPath, relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(absolutePath)!);
+
+        await using var stream = file.OpenReadStream(5 * 1024 * 1024);
+        await using var fs = File.Create(absolutePath);
+        await stream.CopyToAsync(fs);
+
+        edit.ImagenUrl = $"/{relativePath}";
+        _imagenArchivoNombre = file.Name;
+        msg = $"Imagen cargada: {file.Name}";
+    }
+
+    private static void ToggleSet(HashSet<string> set, string id, ChangeEventArgs e)
+    {
+        var isChecked = e.Value switch
+        {
+            bool b => b,
+            string s => s.Equals("true", StringComparison.OrdinalIgnoreCase) || s.Equals("on", StringComparison.OrdinalIgnoreCase),
+            _ => false
+        };
+
+        if (isChecked) set.Add(id);
+        else set.Remove(id);
+    }
+
+    private async Task SaveAsync()
+    {
+        msg = null;
+        confirmDelete = false;
+
+        if (!found)
+        {
+            msg = "No hay reactivo cargado.";
+            return;
+        }
+
+        // Regla DB: al menos un nombre
+        var hasNombre =
+            !string.IsNullOrWhiteSpace(edit.NombreComercial) ||
+            !string.IsNullOrWhiteSpace(edit.NombreQuimico);
+
+        if (!hasNombre)
+        {
+            msg = "Ingresa al menos Nombre comercial o Nombre químico.";
+            return;
+        }
+
+        var selectedSubcats = edit.SubcategoriaIds
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (selectedSubcats.Count == 0)
+        {
+            msg = "Selecciona al menos una subcategoría de Reactivo Químico.";
+            return;
+        }
+
+        // Blindaje rápido: todas deben existir en el lookup (reactivo-quimico)
+        var allowed = new HashSet<string>(_subcategoriaOptions.Select(s => s.Id), StringComparer.OrdinalIgnoreCase);
+        if (selectedSubcats.Any(id => !allowed.Contains(id)))
+        {
+            msg = "Hay subcategorías inválidas (no corresponden a Reactivo Químico).";
+            return;
+        }
+
+        // Validar experiencias
+        var experienciaIds = edit.ExperienciaIds.ToList();
+        if (experienciaIds.Count > 0)
+        {
+            var setOpt = new HashSet<string>(_experienciaOptions.Select(x => x.Id), StringComparer.OrdinalIgnoreCase);
+            if (experienciaIds.Any(id => !setOpt.Contains(id)))
+            {
+                msg = "Hay experiencias seleccionadas que no existen en el laboratorio actual.";
+                return;
+            }
+        }
+
+        isSaving = true;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            // Blindaje extra en DB: subcategorías pertenecen a reactivo-quimico
+            const string checkSubs = @"
+                SELECT COUNT(*)
+                FROM subcategorias
+                WHERE categoria_id = @cat
+                  AND subcategoria_id = ANY(@subs::text[]);
+            ";
+            await using (var chk = new NpgsqlCommand(checkSubs, conn, tx))
+            {
+                chk.Parameters.AddWithValue("cat", CategoriaReactivoId);
+                chk.Parameters.AddWithValue("subs", selectedSubcats.ToArray());
+
+                var countOk = Convert.ToInt64(await chk.ExecuteScalarAsync());
+                if (countOk != selectedSubcats.Count)
+                {
+                    msg = "Una o más subcategorías son inválidas para Reactivo Químico.";
+                    await tx.RollbackAsync();
+                    return;
+                }
+            }
+
+            // 1) UPDATE sustancias
+            const string up = @"
+                UPDATE sustancias
+                SET nombre_comercial = @nombre_comercial,
+                    nombre_quimico = @nombre_quimico,
+                    cas = @cas,
+                    forma_fisica = @forma_fisica,
+                    sustancia_controlada = @sustancia_controlada,
+                    categoria_id = @cat,
+                    observaciones = @observaciones,
+                    descripcion = @descripcion,
+                    imagen_url = @imagen
+                WHERE sustancia_id = @id
+                  AND laboratorio_id = @laboratorio
+                  AND categoria_id = @cat;
+            ";
+            await using (var cmd = new NpgsqlCommand(up, conn, tx))
+            {
+                cmd.Parameters.AddWithValue("nombre_comercial", DbOrNull(edit.NombreComercial));
+                cmd.Parameters.AddWithValue("nombre_quimico", DbOrNull(edit.NombreQuimico));
+                cmd.Parameters.AddWithValue("cas", DbOrNull(edit.Cas));
+                cmd.Parameters.AddWithValue("forma_fisica", DbOrNull(edit.FormaFisica));
+                cmd.Parameters.AddWithValue("sustancia_controlada", edit.SustanciaControlada);
+                cmd.Parameters.AddWithValue("observaciones", DbOrNull(edit.Observaciones));
+                cmd.Parameters.AddWithValue("descripcion", DbOrNull(edit.Descripcion));
+                cmd.Parameters.AddWithValue("imagen", DbOrNull(edit.ImagenUrl));
+                cmd.Parameters.AddWithValue("cat", CategoriaReactivoId);
+                cmd.Parameters.AddWithValue("id", edit.SustanciaId);
+                cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
+
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            // 2) Sync subcategorías (M:N)
+            await ExecAsync(conn, tx, "DELETE FROM sustancia_subcategorias WHERE sustancia_id = @id", ("id", edit.SustanciaId));
+
+            const string insSubs = @"
+                INSERT INTO sustancia_subcategorias (sustancia_id, subcategoria_id)
+                SELECT @sid, s
+                FROM unnest(@subs::text[]) AS s
+                ON CONFLICT DO NOTHING;
+            ";
+            await using (var cmdSubs = new NpgsqlCommand(insSubs, conn, tx))
+            {
+                cmdSubs.Parameters.AddWithValue("sid", edit.SustanciaId);
+                cmdSubs.Parameters.AddWithValue("subs", selectedSubcats.ToArray());
+                await cmdSubs.ExecuteNonQueryAsync();
+            }
+
+            // 3) Sync experiencias (M:N)
+            await ExecAsync(conn, tx, "DELETE FROM experiencia_sustancias WHERE sustancia_id = @id", ("id", edit.SustanciaId));
+
+            const string insES = @"
+                INSERT INTO experiencia_sustancias (experiencia_id, sustancia_id)
+                VALUES (@exp, @sid)
+                ON CONFLICT DO NOTHING;
+            ";
+            foreach (var expId in experienciaIds)
+            {
+                await ExecAsync(conn, tx, insES, ("exp", expId), ("sid", edit.SustanciaId));
+            }
+
+            // 4) Sync seguridad: borrar y reinsertar
+            await using (var del = new NpgsqlCommand(@"
+                DELETE FROM sustancias_h WHERE sustancia_id = @id;
+                DELETE FROM sustancias_p WHERE sustancia_id = @id;
+                DELETE FROM sustancias_pictogramas WHERE sustancia_id = @id;
+            ", conn, tx))
+            {
+                del.Parameters.AddWithValue("id", edit.SustanciaId);
+                await del.ExecuteNonQueryAsync();
+            }
+
+            const string insH = @"INSERT INTO sustancias_h (sustancia_id, h_id) VALUES (@sid, @hid) ON CONFLICT DO NOTHING";
+            foreach (var hid in edit.HIds)
+            {
+                await using var c = new NpgsqlCommand(insH, conn, tx);
+                c.Parameters.AddWithValue("sid", edit.SustanciaId);
+                c.Parameters.AddWithValue("hid", hid);
+                await c.ExecuteNonQueryAsync();
+            }
+
+            const string insP = @"INSERT INTO sustancias_p (sustancia_id, p_id) VALUES (@sid, @pid) ON CONFLICT DO NOTHING";
+            foreach (var pid in edit.PIds)
+            {
+                await using var c = new NpgsqlCommand(insP, conn, tx);
+                c.Parameters.AddWithValue("sid", edit.SustanciaId);
+                c.Parameters.AddWithValue("pid", pid);
+                await c.ExecuteNonQueryAsync();
+            }
+
+            const string insG = @"INSERT INTO sustancias_pictogramas (sustancia_id, ghs_id) VALUES (@sid, @gid) ON CONFLICT DO NOTHING";
+            foreach (var gid in edit.GhsIds)
+            {
+                await using var c = new NpgsqlCommand(insG, conn, tx);
+                c.Parameters.AddWithValue("sid", edit.SustanciaId);
+                c.Parameters.AddWithValue("gid", gid);
+                await c.ExecuteNonQueryAsync();
+            }
+
+            await tx.CommitAsync();
+
+            msg = "Guardado correctamente.";
+            isEditing = false;
+            await ReloadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        msg = null;
+        if (!found) return;
+
+        isSaving = true;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            var contCount = await ScalarCountAsync(conn, tx,
+                "SELECT COUNT(*) FROM contenedores WHERE sustancia_id=@id AND laboratorio_id=@lab",
+                ("id", edit.SustanciaId), ("lab", LaboratorioState.LaboratorioId));
+
+            if (contCount > 0)
+            {
+                msg = $"No se puede eliminar: hay {contCount} contenedor(es). Elimina contenedores primero.";
+                confirmDelete = false;
+                await tx.RollbackAsync();
+                return;
+            }
+
+            var docCount = await ScalarCountAsync(conn, tx,
+                "SELECT COUNT(*) FROM documentos WHERE sustancia_id=@id AND laboratorio_id=@lab",
+                ("id", edit.SustanciaId), ("lab", LaboratorioState.LaboratorioId));
+
+            if (docCount > 0)
+            {
+                msg = $"No se puede eliminar: hay {docCount} documento(s) asociados. Desvincúlalos o elimínalos primero.";
+                confirmDelete = false;
+                await tx.RollbackAsync();
+                return;
+            }
+
+            var expCount = await ScalarCountAsync(conn, tx, @"
+                SELECT COUNT(*)
+                FROM experiencia_sustancias es
+                INNER JOIN experiencias_clases ec ON ec.experiencia_id = es.experiencia_id
+                WHERE es.sustancia_id=@id
+                  AND ec.laboratorio_id=@lab",
+                ("id", edit.SustanciaId), ("lab", LaboratorioState.LaboratorioId));
+
+            if (expCount > 0)
+            {
+                msg = $"No se puede eliminar: la sustancia está usada en {expCount} experiencia(s).";
+                confirmDelete = false;
+                await tx.RollbackAsync();
+                return;
+            }
+
+            // Limpieza tablas puente
+            await ExecAsync(conn, tx, "DELETE FROM sustancias_h WHERE sustancia_id=@id", ("id", edit.SustanciaId));
+            await ExecAsync(conn, tx, "DELETE FROM sustancias_p WHERE sustancia_id=@id", ("id", edit.SustanciaId));
+            await ExecAsync(conn, tx, "DELETE FROM sustancias_pictogramas WHERE sustancia_id=@id", ("id", edit.SustanciaId));
+            await ExecAsync(conn, tx, "DELETE FROM experiencia_sustancias WHERE sustancia_id=@id", ("id", edit.SustanciaId));
+            await ExecAsync(conn, tx, "DELETE FROM sustancia_subcategorias WHERE sustancia_id=@id", ("id", edit.SustanciaId));
+
+            // Borrar sustancia
+            var rows = await ExecAsync(conn, tx, @"
+                DELETE FROM sustancias
+                WHERE sustancia_id=@id AND laboratorio_id=@lab AND categoria_id=@cat",
+                ("id", edit.SustanciaId),
+                ("lab", LaboratorioState.LaboratorioId),
+                ("cat", CategoriaReactivoId));
+
+            await tx.CommitAsync();
+
+            if (rows == 0)
+            {
+                msg = "No se pudo eliminar (no existe en el laboratorio actual).";
+                confirmDelete = false;
+                return;
+            }
+
+            Nav.NavigateTo("/inventario-sustancias");
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private static async Task<long> ScalarCountAsync(NpgsqlConnection conn, NpgsqlTransaction tx, string sql, params (string name, object value)[] ps)
+    {
+        await using var cmd = new NpgsqlCommand(sql, conn, tx);
+        foreach (var (n, v) in ps)
+            cmd.Parameters.AddWithValue(n, v ?? DBNull.Value);
+        var result = await cmd.ExecuteScalarAsync();
+        return Convert.ToInt64(result);
+    }
+
+    private static async Task<int> ExecAsync(NpgsqlConnection conn, NpgsqlTransaction tx, string sql, params (string name, object value)[] ps)
+    {
+        await using var cmd = new NpgsqlCommand(sql, conn, tx) { CommandTimeout = 60 };
+        foreach (var (n, v) in ps)
+            cmd.Parameters.AddWithValue(n, v ?? DBNull.Value);
+        return await cmd.ExecuteNonQueryAsync();
+    }
+
+    private static object DbOrNull(string? s) =>
+        string.IsNullOrWhiteSpace(s) ? (object)DBNull.Value : s!.Trim();
+
+    private static string BuildUbicacion(string area, string meson, string posicion)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(area)) parts.Add(area);
+        if (!string.IsNullOrWhiteSpace(meson)) parts.Add(meson);
+        if (!string.IsNullOrWhiteSpace(posicion)) parts.Add(posicion);
+        return parts.Count == 0 ? "Sin ubicación" : string.Join(" · ", parts);
+    }
+
+    private static string ResolveImagenUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return "";
+        if (url.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return url;
+        return url.StartsWith("/", StringComparison.OrdinalIgnoreCase) ? url : $"/{url}";
+    }
+
+    private static string NullDash(string? s) => string.IsNullOrWhiteSpace(s) ? "—" : s;
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
+
+    private sealed record SelectOption(string Id, string Label);
+    private sealed record ExperienciaLink(string ExperienciaId, string Nombre);
+
+    private sealed class ReactivoEdit
+    {
+        public string SustanciaId { get; set; } = "";
+        public string? Nombre { get; set; }
+
+        public string? CategoriaId { get; set; }
+        public string? CategoriaNombre { get; set; }
+
+        public HashSet<string> SubcategoriaIds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+        public string NombreComercial { get; set; } = "";
+        public string NombreQuimico { get; set; } = "";
+        public string Cas { get; set; } = "";
+        public string FormaFisica { get; set; } = "";
+
+        public bool SustanciaControlada { get; set; }
+
+        public string Observaciones { get; set; } = "";
+        public string Descripcion { get; set; } = "";
+        public string ImagenUrl { get; set; } = "";
+
+        public HashSet<string> GhsIds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public HashSet<string> HIds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public HashSet<string> PIds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+        // ✅ Experiencias
+        public HashSet<string> ExperienciaIds { get; } = new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private sealed class ContenedorInfo
+    {
+        public string Id { get; set; } = "";
+        public string Cantidad { get; set; } = "";
+        public string Condicion { get; set; } = "";
+        public string Proveedor { get; set; } = "";
+        public string FechaApertura { get; set; } = "";
+        public string FechaVencimiento { get; set; } = "";
+        public string Ubicacion { get; set; } = "";
+        public string Envase { get; set; } = "";
+    }
+
+    private sealed record GhsOption(string Id, string Nombre, string? IconUrl, string? Detalle);
+    private sealed record HCodeOption(string Id, string Descripcion, string? Grupo);
+    private sealed record PCodeOption(string Id, string Descripcion, string? Grupo);
+}
+
+<style>
+    .page-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+        padding: 1rem;
+        box-shadow: 0 6px 14px rgba(15, 23, 42, 0.04);
+    }
+
+    .header-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+    }
+
+    .header-actions {
+        display: flex;
+        gap: .5rem;
+        align-items: center;
+    }
+
+    .muted {
+        color: #64748b;
+    }
+
+    .text-xs {
+        font-size: .8rem;
+    }
+
+    .text-sm {
+        font-size: .9rem;
+    }
+
+    .error-note {
+        color: #b91c1c;
+    }
+
+    .empty {
+        padding: .85rem 1rem;
+        border-radius: 10px;
+        background: #fef9c3;
+        border: 1px solid #fde68a;
+        color: #854d0e;
+    }
+
+    .btn {
+        border: 1px solid #cbd5e1;
+        background: #fff;
+        color: #0f172a;
+        padding: .5rem .9rem;
+        border-radius: .55rem;
+        font-weight: 700;
+        cursor: pointer;
+    }
+
+        .btn.primary {
+            background: #2563eb;
+            color: #fff;
+            border: none;
+            box-shadow: 0 6px 12px rgba(37, 99, 235, 0.18);
+        }
+
+            .btn.primary:hover {
+                background: #1d4ed8;
+            }
+
+        .btn.danger {
+            background: #b91c1c;
+            color: #fff;
+            border: none;
+        }
+
+            .btn.danger:hover {
+                background: #991b1b;
+            }
+
+        .btn.mini {
+            padding: .25rem .55rem;
+            border-radius: .45rem;
+            font-size: .85rem;
+        }
+
+    /* ===== Vista bonita ===== */
+    .detail-grid {
+        display: grid;
+        grid-template-columns: minmax(240px, 320px) 1fr;
+        gap: 1rem;
+        align-items: start;
+    }
+
+    @@media (max-width: 900px) {
+        .detail-grid
+
+    {
+        grid-template-columns: 1fr;
+    }
+
+    }
+
+    .detail-media {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: .75rem;
+        background: #fafafa;
+    }
+
+    .material-img {
+        width: 100%;
+        height: 280px;
+        object-fit: contain;
+        border-radius: 10px;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+    }
+
+    .img-placeholder {
+        width: 100%;
+        height: 280px;
+        border-radius: 10px;
+        background: #f1f5f9;
+        border: 1px dashed #cbd5e1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #64748b;
+        font-weight: 800;
+    }
+
+    .detail-info {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 1rem;
+        background: #fff;
+    }
+
+    .title-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: .75rem;
+    }
+
+    .badges {
+        display: flex;
+        gap: .4rem;
+        flex-wrap: wrap;
+    }
+
+    .badge {
+        background: #dbeafe;
+        color: #1d4ed8;
+        padding: .2rem .55rem;
+        border-radius: 999px;
+        font-size: .85rem;
+        font-weight: 800;
+    }
+
+        .badge.gray {
+            background: #e2e8f0;
+            color: #0f172a;
+        }
+
+    .dl {
+        display: grid;
+        gap: .6rem;
+    }
+
+    .dl-row {
+        display: grid;
+        grid-template-columns: 220px 1fr;
+        gap: .75rem;
+    }
+
+    @@media (max-width: 900px) {
+        .dl-row
+
+    {
+        grid-template-columns: 1fr;
+    }
+
+    }
+
+    .dt {
+        color: #475569;
+        font-weight: 900;
+    }
+
+    .dd {
+        color: #0f172a;
+    }
+
+    .view-actions {
+        margin-top: 1rem;
+        display: flex;
+        gap: .75rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    /* ===== Chips ===== */
+    .chips-row {
+        display: flex;
+        gap: .5rem;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    .chip {
+        background: #eef2ff;
+        border: 1px solid #c7d2fe;
+        color: #1e1b4b;
+        padding: .25rem .6rem;
+        border-radius: 999px;
+        font-weight: 900;
+        font-size: .85rem;
+    }
+
+        .chip.warn {
+            background: #fff7ed;
+            border-color: #fdba74;
+            color: #9a3412;
+        }
+
+    /* ===== Seguridad ===== */
+    .notes {
+        margin-top: 1rem;
+        background: #f1f5f9;
+        border-radius: 12px;
+        padding: .85rem 1rem;
+        color: #334155;
+        border: 1px solid #e2e8f0;
+    }
+
+    .sec-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px,1fr));
+        gap: .75rem;
+        margin-top: .5rem;
+    }
+
+    .sec-list {
+        display: flex;
+        gap: .35rem;
+        flex-wrap: wrap;
+        margin-top: .35rem;
+    }
+
+    .tag {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        padding: .15rem .45rem;
+        border-radius: 999px;
+        font-size: .8rem;
+        font-weight: 900;
+        color: #0f172a;
+    }
+
+    .ghs-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .45rem;
+        align-items: center;
+    }
+
+    .ghs-tile {
+        width: 44px;
+        height: 44px;
+        border-radius: 10px;
+        border: 1px solid #e5e7eb;
+        background: #fff;
+        display: grid;
+        place-items: center;
+        box-shadow: 0 6px 14px rgba(15, 23, 42, 0.04);
+        overflow: hidden;
+    }
+
+        .ghs-tile img {
+            width: 32px;
+            height: 32px;
+            object-fit: contain;
+        }
+
+    .ghs-fallback {
+        font-weight: 900;
+        font-size: .75rem;
+        color: #111827;
+        padding: 0 .25rem;
+        text-align: center;
+    }
+
+    /* ===== Form ===== */
+    .form-header {
+        margin-bottom: .75rem;
+    }
+
+        .form-header h4 {
+            margin: 0 0 .25rem 0;
+            font-weight: 900;
+            color: #0f172a;
+        }
+
+    .form-hint {
+        margin: 0;
+        color: #64748b;
+        font-size: .95rem;
+    }
+
+    .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: .75rem;
+        align-items: start;
+    }
+
+    .full-span {
+        grid-column: 1 / -1;
+    }
+
+    .field label {
+        display: block;
+        font-size: .85rem;
+        color: #475569;
+        margin-bottom: .25rem;
+        font-weight: 900;
+    }
+
+    .border {
+        border: 1px solid #e5e7eb;
+        border-radius: .5rem;
+    }
+
+    .p-1 {
+        padding: .45rem .6rem;
+    }
+
+    .edit-check {
+        display: inline-flex;
+        gap: .5rem;
+        align-items: center;
+        font-weight: 900;
+        color: #0f172a;
+        padding: .45rem .6rem;
+        border: 1px solid #e5e7eb;
+        border-radius: .5rem;
+        background: #fff;
+    }
+
+    .form-actions {
+        display: flex;
+        gap: .75rem;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-top: .25rem;
+    }
+
+    /* Upload + preview */
+    .upload-card {
+        border: 1px dashed #d1d5db;
+        padding: .75rem;
+        border-radius: .75rem;
+        display: grid;
+        gap: .6rem;
+        background: #fff;
+    }
+
+    .upload-options {
+        display: flex;
+        gap: .75rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .upload-drop {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        padding: .6rem;
+        border: 1px solid #e5e7eb;
+        border-radius: .5rem;
+        color: #6b7280;
+        cursor: pointer;
+    }
+
+        .upload-drop input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+    .preview-row {
+        display: flex;
+        gap: .5rem;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-top: .25rem;
+    }
+
+    .material-img-sm {
+        width: 180px;
+        height: 120px;
+        object-fit: contain;
+        border-radius: 10px;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+    }
+
+    /* Seguridad en edición */
+    .sec-edit-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px,1fr));
+        gap: .75rem;
+    }
+
+    .ghs-inline {
+        display: inline-flex;
+        align-items: center;
+        gap: .5rem;
+        min-width: 0;
+    }
+
+    .ghs-mini-tile {
+        width: 26px;
+        height: 26px;
+        border-radius: 8px;
+        border: 1px solid #e5e7eb;
+        background: #fff;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        flex: 0 0 auto;
+    }
+
+        .ghs-mini-tile img {
+            width: 18px;
+            height: 18px;
+            object-fit: contain;
+        }
+
+    .ghs-fallback-mini {
+        font-weight: 900;
+        font-size: .6rem;
+        color: #111827;
+        padding: 0 .15rem;
+        text-align: center;
+    }
+
+    /* Dropdown multi-subcats */
+    .subcats-dropdown {
+        position: relative;
+        width: 100%;
+    }
+
+    .subcats-btn {
+        width: 100%;
+        text-align: left;
+        border-radius: 10px;
+        background: #fff;
+    }
+
+    .subcats-panel {
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        right: 0;
+        z-index: 30;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: .6rem;
+        max-height: 240px;
+        overflow: auto;
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+    }
+
+    .subcats-item {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        padding: .35rem .25rem;
+        border-radius: 8px;
+    }
+
+        .subcats-item:hover {
+            background: #f1f5f9;
+        }
+
+    /* Rel box (experiencias) */
+    .rel-box {
+        border: 1px solid #e5e7eb;
+        border-radius: .75rem;
+        padding: .75rem;
+        background: #fafafa;
+        display: grid;
+        gap: .6rem;
+    }
+
+    .rel-add {
+        display: flex;
+        gap: .5rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .link-list {
+        list-style: none;
+        padding-left: 0;
+        margin: 0;
+        display: grid;
+        gap: .35rem;
+    }
+
+    .rel-item {
+        display: flex;
+        gap: .5rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .pill {
+        display: inline-flex;
+        padding: .2rem .55rem;
+        border-radius: 999px;
+        background: #eef2ff;
+        color: #3730a3;
+        font-weight: 900;
+        font-size: .88rem;
+    }
+
+    /* Tabla */
+    .table-wrap {
+        overflow-x: auto;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #fff;
+    }
+
+    th, td {
+        padding: 0.6rem;
+        border-bottom: 1px solid #e5e7eb;
+        text-align: left;
+    }
+
+    th {
+        background: #f3f4f6;
+        font-weight: 900;
+    }
+</style>

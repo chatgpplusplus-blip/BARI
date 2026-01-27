@@ -16,9 +16,15 @@ namespace BARI_web.Features.Espacios.Pages
         [Inject] private NpgsqlDataSource DataSource { get; set; } = default!;
         [Inject] public NavigationManager Nav { get; set; } = default!;
 
+        private const string MesonDetailsRouteTemplate = "/detalles/{0}";
+
+        // ✅ Instalaciones (antes apuntaba a inventario de materiales)
+        private const string InstalacionDetailsRouteTemplate = "/inventario-instalaciones/item/{0}";
+
         // ====== modelos ======
-        private record CanvasLab(string canvas_id, string nombre, decimal ancho_m, decimal alto_m, decimal margen_m);
+        private record CanvasLab(string canvas_id, string nombre, decimal ancho_m, decimal largo_m, decimal margen_m);
         private readonly record struct Point(decimal X, decimal Y);
+
         private class Poly
         {
             public string poly_id { get; init; } = "";
@@ -27,7 +33,7 @@ namespace BARI_web.Features.Espacios.Pages
             public decimal x_m { get; set; }
             public decimal y_m { get; set; }
             public decimal ancho_m { get; set; }
-            public decimal alto_m { get; set; }
+            public decimal largo_m { get; set; }
             public int z_order { get; init; }
             public string? etiqueta { get; init; }
             public string? color_hex { get; init; }
@@ -56,7 +62,7 @@ namespace BARI_web.Features.Espacios.Pages
             public decimal eje_x_rel_m { get; set; }
             public decimal eje_y_rel_m { get; set; }
             public decimal ancho_m { get; set; }
-            public decimal alto_m { get; set; }
+            public decimal largo_m { get; set; }
             public string label { get; set; } = "";
             public string fill { get; set; } = "#4B5563";
             public decimal opacidad { get; set; } = 0.35m;
@@ -72,7 +78,10 @@ namespace BARI_web.Features.Espacios.Pages
         {
             public string bloque_id { get; set; } = "";
             public string canvas_id { get; set; } = "";
-            public string? material_montaje_id { get; set; }
+
+            // ✅ antes: material_id (montaje). Ahora: instalacion_id
+            public string? instalacion_id { get; set; }
+
             public string? meson_id { get; set; }
             public string? etiqueta { get; set; }
             public string? color_hex { get; set; }
@@ -80,7 +89,8 @@ namespace BARI_web.Features.Espacios.Pages
             public decimal pos_x { get; set; }
             public decimal pos_y { get; set; }
             public decimal ancho { get; set; }
-            public decimal alto { get; set; }
+            public decimal largo { get; set; }      // 2D (Y) en el canvas
+            public decimal? altura { get; set; }    // 3D (opcional, no necesariamente se dibuja)
             public decimal offset_x { get; set; }
             public decimal offset_y { get; set; }
             public decimal abs_x { get; set; }
@@ -98,6 +108,7 @@ namespace BARI_web.Features.Espacios.Pages
             public string orientacion { get; set; } = "E"; // E/W/N/S (eje)
             public decimal largo_m { get; set; } = 1.0m;
         }
+
         private class Win
         {
             public string win_id { get; set; } = "";
@@ -115,28 +126,24 @@ namespace BARI_web.Features.Espacios.Pages
         private CanvasLab? _canvas;
         private AreaDraw? _area;
         private AreaInfo? _areaInfo;
+
         private readonly List<InnerItem> _inners = new();
         private readonly List<BlockItem> _blocks = new();
         private readonly List<Door> _doors = new();
         private readonly List<Win> _windows = new();
         private readonly List<EquipoItem> _equipos = new();
-        private readonly List<MaterialItem> _materialesVidrio = new();
-        private readonly List<MaterialItem> _materialesMontaje = new();
-        private readonly List<MaterialItem> _materialesConsumible = new();
+        private readonly List<InstalacionItem> _instalaciones = new();
         private readonly List<SustanciaItem> _sustancias = new();
 
         private readonly List<SelectOption> _equiposDisponibles = new();
-        private readonly List<SelectOption> _materialesVidrioDisponibles = new();
-        private readonly List<SelectOption> _materialesMontajeDisponibles = new();
-        private readonly List<SelectOption> _materialesConsumibleDisponibles = new();
+        private readonly List<SelectOption> _instalacionesDisponibles = new();
         private readonly List<SelectOption> _contenedoresDisponibles = new();
+
         private readonly Dictionary<string, string> _mesonesLookup = new(StringComparer.OrdinalIgnoreCase);
-        private readonly Dictionary<string, string> _materialesMontajeLookup = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, string> _instalacionesLookup = new(StringComparer.OrdinalIgnoreCase);
 
         private string? _selectedEquipoId;
-        private string? _selectedMaterialVidrioId;
-        private string? _selectedMaterialMontajeId;
-        private string? _selectedMaterialConsumibleId;
+        private string? _selectedInstalacionId;
         private string? _selectedContenedorId;
         private string? _assignMsg;
 
@@ -147,13 +154,10 @@ namespace BARI_web.Features.Espacios.Pages
         private bool _nuevoEquipoRequiereCalibracion;
         private string? _nuevoEquipoMsg;
 
-        private string _nuevoMaterialTipo = "vidrio";
-        private string? _nuevoMaterialNombre;
-        private string? _nuevoMaterialDetalle;
-        private string? _nuevoMaterialPosicion;
-        private string? _nuevoMaterialEstadoId;
-        private string? _nuevoMaterialUnidadId;
-        private string? _nuevoMaterialMsg;
+        private string? _nuevoInstalacionNombre;
+        private string? _nuevoInstalacionSubcategoriaId;
+        private string? _nuevoInstalacionEstadoId;
+        private string? _nuevoInstalacionMsg;
 
         private string? _nuevoSustanciaId;
         private string? _nuevoSustanciaNombreComercial;
@@ -179,11 +183,12 @@ namespace BARI_web.Features.Espacios.Pages
 
         // canvas dims
         private decimal Wm => _canvas?.ancho_m ?? 20m;
-        private decimal Hm => _canvas?.alto_m ?? 10m;
+        private decimal Hm => _canvas?.largo_m ?? 10m;
 
         // viewbox
         private decimal VX, VY, VW, VH;
         private string ViewBox() => $"{S(VX)} {S(VY)} {S(VW)} {S(VH)}";
+
         private string AspectRatioString()
         {
             var vw = VW <= 0m ? 1m : VW;
@@ -214,11 +219,10 @@ namespace BARI_web.Features.Espacios.Pages
             string posicion
         );
 
-        private sealed record MaterialItem(
-            string material_id,
+        private sealed record InstalacionItem(
+            string instalacion_id,
             string nombre,
-            string detalle,
-            string posicion
+            string detalle
         );
 
         private sealed record SustanciaItem(
@@ -238,10 +242,12 @@ namespace BARI_web.Features.Espacios.Pages
             {
                 IsLoading = true;
 
-                // area_id desde el slug (sin GetLookupAsync, leemos "areas" 1 vez)
+                // area_id desde el slug
                 var targetAreaId = await ResolveAreaIdFromSlug(AreaSlug);
+
                 _areaInfo = await LoadAreaInfoAsync(targetAreaId);
                 await LoadCanvasAsync(_areaInfo?.canvas_id);
+
                 if (_canvas is null)
                 {
                     SetDefaultViewBox();
@@ -272,14 +278,14 @@ namespace BARI_web.Features.Espacios.Pages
 
                 // interiores / puertas / ventanas / mesones
                 await LoadInnerItemsForArea(a);
-                await LoadBlocksForArea(a);
+                await LoadMesonesForArea(targetAreaId); // ✅ primero
+                await LoadBlocksForArea(a);             // ✅ después
                 await LoadDoorsAndWindowsForArea(a);
-                await LoadMesonesForArea(targetAreaId);
 
                 if (_areaInfo is not null)
                 {
                     await LoadEquiposAsync(targetAreaId);
-                    await LoadMaterialesAsync(targetAreaId);
+                    await LoadInstalacionesAsync(targetAreaId);
                     await LoadSustanciasAsync(targetAreaId);
                     await LoadDisponiblesAsync(_areaInfo.laboratorio_id, targetAreaId);
                 }
@@ -291,7 +297,78 @@ namespace BARI_web.Features.Espacios.Pages
             }
         }
 
+        // ====== NAVEGACIÓN (CLICK EN SVG + LISTAS) ======
+
+        // Úsalo desde el .razor para fila completa de mesón
+        
+
+        // Úsalo desde el .razor para fila completa de instalación
+        private void GoToInstalacion(InstalacionItem item) => GoToInstalacionById(item.instalacion_id);
+
+        // Úsalo desde el .razor para click en bloques (mesón/instalación)
+        private void OnSvgItemClick(BlockItem b)
+        {
+            if (!string.IsNullOrWhiteSpace(b.instalacion_id))
+            {
+                GoToInstalacionById(b.instalacion_id!);
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(b.meson_id))
+            {
+                GoToMesonById(b.meson_id!);
+                return;
+            }
+
+            // fallback: etiqueta como nombre
+            if (!string.IsNullOrWhiteSpace(b.etiqueta))
+            {
+                GoToMesonByName(b.etiqueta!);
+                return;
+            }
+        }
+
+        // Úsalo desde el .razor para click en inner (mesón/instalación)
+        private void OnSvgItemClick(InnerItem it)
+        {
+            if (!string.IsNullOrWhiteSpace(it.meson_id))
+            {
+                GoToMesonById(it.meson_id!);
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(it.instalacion_id))
+            {
+                GoToInstalacionById(it.instalacion_id!);
+                return;
+            }
+        }
+
+        // Cursor para SVG (pointer si es clickeable)
+        private string SvgCursor(BlockItem b)
+            => (!string.IsNullOrWhiteSpace(b.instalacion_id) || !string.IsNullOrWhiteSpace(b.meson_id) || !string.IsNullOrWhiteSpace(b.etiqueta))
+               ? "pointer" : "default";
+
+        private string SvgCursor(InnerItem it)
+            => (!string.IsNullOrWhiteSpace(it.meson_id) || !string.IsNullOrWhiteSpace(it.instalacion_id))
+               ? "pointer" : "default";
+
+
+        private void GoToMesonByName(string mesonName)
+        {
+            if (string.IsNullOrWhiteSpace(mesonName)) return;
+            var slug = Slugify(mesonName);
+            Nav.NavigateTo(string.Format(CultureInfo.InvariantCulture, MesonDetailsRouteTemplate, slug));
+        }
+
+        private void GoToInstalacionById(string instalacionId)
+        {
+            if (string.IsNullOrWhiteSpace(instalacionId)) return;
+            Nav.NavigateTo(string.Format(CultureInfo.InvariantCulture, InstalacionDetailsRouteTemplate, instalacionId));
+        }
+
         // ===== Carga / Construcción =====
+
         private async Task LoadCanvasAsync(string? canvasId)
         {
             Pg.UseSheet("canvas_lab");
@@ -302,7 +379,7 @@ namespace BARI_web.Features.Espacios.Pages
 
             _canvas = new CanvasLab(
                 c["canvas_id"], c["nombre"],
-                Dec(c["ancho_m"]), Dec(c["alto_m"]), Dec(c["margen_m"])
+                Dec(c["ancho_m"]), Dec(c["largo_m"]), Dec(c["margen_m"])
             );
         }
 
@@ -384,7 +461,7 @@ namespace BARI_web.Features.Espacios.Pages
                     x_m = Dec(Get(r, "x_m", "0")),
                     y_m = Dec(Get(r, "y_m", "0")),
                     ancho_m = Dec(Get(r, "ancho_m", "0")),
-                    alto_m = Dec(Get(r, "alto_m", "0")),
+                    largo_m = Dec(Get(r, "largo_m", "0")),
                     z_order = Int(Get(r, "z_order", "0")),
                     etiqueta = NullIfEmpty(Get(r, "etiqueta")),
                     color_hex = NullIfEmpty(Get(r, "color_hex"))
@@ -413,7 +490,7 @@ namespace BARI_web.Features.Espacios.Pages
                 }
                 else
                 {
-                    p.puntos = BuildRectPoints(p.x_m, p.y_m, p.ancho_m, p.alto_m);
+                    p.puntos = BuildRectPoints(p.x_m, p.y_m, p.ancho_m, p.largo_m);
                 }
                 UpdateBoundsFromPoints(p);
             }
@@ -444,7 +521,6 @@ namespace BARI_web.Features.Espacios.Pages
             if (sa > 0) { a.Cx = sx / sa; a.Cy = sy / sa; }
             else { a.Cx = (a.MinX + a.MaxX) / 2m; a.Cy = (a.MinY + a.MaxY) / 2m; }
 
-            // Label: usa primera etiqueta de poly o, si no, fallback al area_id (evita una consulta extra)
             var etiquetaPoly = ordered.Select(p => p.etiqueta).FirstOrDefault(t => !string.IsNullOrWhiteSpace(t));
             var nombreArea = _areaInfo?.nombre;
             a.Label = (etiquetaPoly ?? nombreArea ?? areaId).ToUpperInvariant();
@@ -472,7 +548,7 @@ namespace BARI_web.Features.Espacios.Pages
             p.x_m = minX;
             p.y_m = minY;
             p.ancho_m = Math.Max(0.1m, maxX - minX);
-            p.alto_m = Math.Max(0.1m, maxY - minY);
+            p.largo_m = Math.Max(0.1m, maxY - minY);
         }
 
         private string PointsString(Poly p)
@@ -540,83 +616,34 @@ namespace BARI_web.Features.Espacios.Pages
             }
         }
 
-        private async Task LoadMaterialesAsync(string areaId)
+        private async Task LoadInstalacionesAsync(string areaId)
         {
-            _materialesVidrio.Clear();
-            _materialesMontaje.Clear();
-            _materialesConsumible.Clear();
-            _materialesMontajeLookup.Clear();
+            _instalaciones.Clear();
+            _instalacionesLookup.Clear();
 
             await using var conn = await DataSource.OpenConnectionAsync();
 
-            const string sqlVidrio = @"
-                SELECT material_id,
-                       nombre,
-                       COALESCE(capacidad_num::text, '') AS detalle,
-                       COALESCE(posicion, '') AS posicion
-                FROM materiales_vidrio
-                WHERE area_id = @area_id
-                ORDER BY nombre";
-            await using (var cmd = new NpgsqlCommand(sqlVidrio, conn))
-            {
-                cmd.Parameters.AddWithValue("area_id", areaId);
-                await using var reader = await cmd.ExecuteReaderAsync();
-                while (await reader.ReadAsync())
-                {
-                    _materialesVidrio.Add(new MaterialItem(
-                        reader.GetString(0),
-                        reader.GetString(1),
-                        reader.GetString(2),
-                        reader.GetString(3)
-                    ));
-                }
-            }
+            const string sql = @"
+                SELECT i.instalacion_id,
+                       i.nombre,
+                       COALESCE(sc.nombre, COALESCE(i.subcategoria_id, '')) AS detalle
+                FROM instalaciones i
+                LEFT JOIN subcategorias sc ON sc.subcategoria_id = i.subcategoria_id
+                WHERE i.area_id = @area_id
+                ORDER BY i.nombre, i.instalacion_id;";
 
-            const string sqlMontaje = @"
-                SELECT material_id,
-                       nombre,
-                       COALESCE(estado_id, '') AS detalle,
-                       COALESCE(posicion, '') AS posicion
-                FROM materiales_montaje
-                WHERE area_id = @area_id
-                ORDER BY nombre";
-            await using (var cmd = new NpgsqlCommand(sqlMontaje, conn))
-            {
-                cmd.Parameters.AddWithValue("area_id", areaId);
-                await using var reader = await cmd.ExecuteReaderAsync();
-                while (await reader.ReadAsync())
-                {
-                    var materialId = reader.GetString(0);
-                    var materialName = reader.GetString(1);
-                    _materialesMontajeLookup[materialId] = materialName;
-                    _materialesMontaje.Add(new MaterialItem(
-                        materialId,
-                        materialName,
-                        reader.GetString(2),
-                        reader.GetString(3)
-                    ));
-                }
-            }
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("area_id", areaId);
 
-            const string sqlConsumible = @"
-                SELECT material_id,
-                       nombre,
-                       COALESCE(cantidad::text, '') AS detalle,
-                       COALESCE(posicion, '') AS posicion
-                FROM materiales_consumible
-                WHERE area_id = @area_id
-                ORDER BY nombre";
-            await using var cmdCons = new NpgsqlCommand(sqlConsumible, conn);
-            cmdCons.Parameters.AddWithValue("area_id", areaId);
-            await using var readerCons = await cmdCons.ExecuteReaderAsync();
-            while (await readerCons.ReadAsync())
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
             {
-                _materialesConsumible.Add(new MaterialItem(
-                    readerCons.GetString(0),
-                    readerCons.GetString(1),
-                    readerCons.GetString(2),
-                    readerCons.GetString(3)
-                ));
+                var id = reader.GetString(0);
+                var nombre = reader.GetString(1);
+                var detalle = reader.IsDBNull(2) ? "" : reader.GetString(2);
+
+                _instalacionesLookup[id] = nombre;
+                _instalaciones.Add(new InstalacionItem(id, nombre, detalle));
             }
         }
 
@@ -650,13 +677,82 @@ namespace BARI_web.Features.Espacios.Pages
                 ));
             }
         }
+        private sealed record TextLayout(decimal FontSize, decimal LineHeight, List<string> Lines);
+
+        private static bool ShouldRotate(decimal w, decimal h)
+        {
+            if (w <= 0) return false;
+            var ratio = h / w;
+            return ratio >= 1.6m; // 👈 ajusta si quieres (1.4–2.0)
+        }
+
+        private TextLayout LayoutLabel(string text, decimal boxW, decimal boxH)
+        {
+            text = (text ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(text))
+                return new TextLayout(0.18m, 1.15m, new List<string>());
+
+            var pad = 0.18m;
+            var availW = Math.Max(0.10m, boxW - pad);
+            var availH = Math.Max(0.10m, boxH - pad);
+
+            var lineHeight = 1.15m;
+
+            var maxFs = Math.Min(0.45m, Math.Min(availW, availH) * 0.45m);
+
+            // ✅ baja el mínimo para que de verdad intente encajar
+            var minFs = 0.06m;
+
+            // ✅ paso más fino (se nota mucho en cajas pequeñas)
+            var step = 0.01m;
+
+
+            for (var fs = maxFs; fs >= minFs; fs -= step)
+            {
+                var lines = WrapByWidth(text, availW, fs);
+                var neededH = lines.Count * (fs * lineHeight);
+
+                if (neededH <= availH)
+                    return new TextLayout(fs, lineHeight, lines);
+            }
+
+            // ✅ Fallback: devuelve TODO lo que se pueda (sin "…").
+            // Si aún no entra, que el clip lo recorte, pero sin modificar el texto.
+            var fallbackLines = WrapByWidth(text, availW, minFs);
+            return new TextLayout(minFs, lineHeight, fallbackLines);
+
+        }
+
+        private List<string> WrapByWidth(string text, decimal widthM, decimal fontSizeM)
+        {
+            var charW = fontSizeM * 0.55m; // aproximación
+            var maxChars = (int)Math.Max(1, Math.Floor(widthM / charW));
+
+            var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var lines = new List<string>();
+            var current = "";
+
+            foreach (var w in words)
+            {
+                if (current.Length == 0) current = w;
+                else if ((current.Length + 1 + w.Length) <= maxChars) current += " " + w;
+                else { lines.Add(current); current = w; }
+
+                while (current.Length > maxChars)
+                {
+                    lines.Add(current.Substring(0, maxChars));
+                    current = current.Substring(maxChars);
+                }
+            }
+
+            if (current.Length > 0) lines.Add(current);
+            return lines;
+        }
 
         private async Task LoadDisponiblesAsync(int laboratorioId, string areaId)
         {
             _equiposDisponibles.Clear();
-            _materialesVidrioDisponibles.Clear();
-            _materialesMontajeDisponibles.Clear();
-            _materialesConsumibleDisponibles.Clear();
+            _instalacionesDisponibles.Clear();
             _contenedoresDisponibles.Clear();
 
             await using var conn = await DataSource.OpenConnectionAsync();
@@ -669,66 +765,30 @@ namespace BARI_web.Features.Espacios.Pages
                 WHERE e.laboratorio_id = @lab
                   AND (e.area_id IS NULL OR e.area_id <> @area_id)
                 ORDER BY label, e.equipo_id";
+
             await using (var cmd = new NpgsqlCommand(sqlEquipos, conn))
             {
                 cmd.Parameters.AddWithValue("lab", laboratorioId);
                 cmd.Parameters.AddWithValue("area_id", areaId);
                 await using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
-                {
                     _equiposDisponibles.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
-                }
             }
 
-            const string sqlVidrio = @"
-                SELECT material_id, nombre
-                FROM materiales_vidrio
+            const string sqlInst = @"
+                SELECT instalacion_id, nombre
+                FROM instalaciones
                 WHERE laboratorio_id = @lab
                   AND (area_id IS NULL OR area_id <> @area_id)
-                ORDER BY nombre";
-            await using (var cmd = new NpgsqlCommand(sqlVidrio, conn))
+                ORDER BY nombre, instalacion_id";
+
+            await using (var cmd = new NpgsqlCommand(sqlInst, conn))
             {
                 cmd.Parameters.AddWithValue("lab", laboratorioId);
                 cmd.Parameters.AddWithValue("area_id", areaId);
                 await using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
-                {
-                    _materialesVidrioDisponibles.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
-                }
-            }
-
-            const string sqlMontaje = @"
-                SELECT material_id, nombre
-                FROM materiales_montaje
-                WHERE laboratorio_id = @lab
-                  AND (area_id IS NULL OR area_id <> @area_id)
-                ORDER BY nombre";
-            await using (var cmd = new NpgsqlCommand(sqlMontaje, conn))
-            {
-                cmd.Parameters.AddWithValue("lab", laboratorioId);
-                cmd.Parameters.AddWithValue("area_id", areaId);
-                await using var reader = await cmd.ExecuteReaderAsync();
-                while (await reader.ReadAsync())
-                {
-                    _materialesMontajeDisponibles.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
-                }
-            }
-
-            const string sqlConsumible = @"
-                SELECT material_id, nombre
-                FROM materiales_consumible
-                WHERE laboratorio_id = @lab
-                  AND (area_id IS NULL OR area_id <> @area_id)
-                ORDER BY nombre";
-            await using (var cmd = new NpgsqlCommand(sqlConsumible, conn))
-            {
-                cmd.Parameters.AddWithValue("lab", laboratorioId);
-                cmd.Parameters.AddWithValue("area_id", areaId);
-                await using var reader = await cmd.ExecuteReaderAsync();
-                while (await reader.ReadAsync())
-                {
-                    _materialesConsumibleDisponibles.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
-                }
+                    _instalacionesDisponibles.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
             }
 
             const string sqlCont = @"
@@ -737,14 +797,13 @@ namespace BARI_web.Features.Espacios.Pages
                 WHERE laboratorio_id = @lab
                   AND (area_id IS NULL OR area_id <> @area_id)
                 ORDER BY cont_id";
+
             await using var contCmd = new NpgsqlCommand(sqlCont, conn);
             contCmd.Parameters.AddWithValue("lab", laboratorioId);
             contCmd.Parameters.AddWithValue("area_id", areaId);
             await using var contReader = await contCmd.ExecuteReaderAsync();
             while (await contReader.ReadAsync())
-            {
                 _contenedoresDisponibles.Add(new SelectOption(contReader.GetString(0), contReader.GetString(1)));
-            }
         }
 
         private async Task AssignEquipoAsync()
@@ -777,6 +836,7 @@ namespace BARI_web.Features.Espacios.Pages
                 INSERT INTO equipos
                 (equipo_id, modelo_id, serie, estado_id, area_id, posicion, requiere_calibracion, laboratorio_id)
                 VALUES (@id, @modelo, @serie, @estado, @area, @posicion, @cal, @lab)";
+
             await using var cmd = new NpgsqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("id", equipoId);
             cmd.Parameters.AddWithValue("modelo", string.IsNullOrWhiteSpace(_nuevoEquipoModeloId) ? (object)DBNull.Value : _nuevoEquipoModeloId!);
@@ -797,81 +857,61 @@ namespace BARI_web.Features.Espacios.Pages
             await LoadEquiposAsync(_areaInfo.area_id);
         }
 
-        private async Task AssignMaterialAsync(string table, string? materialId)
+        private async Task AssignInstalacionAsync()
         {
-            if (_areaInfo is null || string.IsNullOrWhiteSpace(materialId)) return;
+            if (_areaInfo is null || string.IsNullOrWhiteSpace(_selectedInstalacionId)) return;
+
             await using var conn = await DataSource.OpenConnectionAsync();
-            var sql = $"UPDATE {table} SET area_id = @area_id WHERE material_id = @id";
+            const string sql = @"UPDATE instalaciones SET area_id = @area_id WHERE instalacion_id = @id";
             await using var cmd = new NpgsqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("area_id", _areaInfo.area_id);
-            cmd.Parameters.AddWithValue("id", materialId);
+            cmd.Parameters.AddWithValue("id", _selectedInstalacionId);
             await cmd.ExecuteNonQueryAsync();
-            _selectedMaterialVidrioId = null;
-            _selectedMaterialMontajeId = null;
-            _selectedMaterialConsumibleId = null;
-            await LoadMaterialesAsync(_areaInfo.area_id);
+
+            _selectedInstalacionId = null;
+
+            await LoadInstalacionesAsync(_areaInfo.area_id);
             await LoadDisponiblesAsync(_areaInfo.laboratorio_id, _areaInfo.area_id);
-            _assignMsg = "Material asignado.";
+
+            _assignMsg = "Instalación asignada.";
         }
 
-        private async Task SubirMaterialAsync()
+        private async Task SubirInstalacionAsync()
         {
             if (_areaInfo is null) return;
-            if (string.IsNullOrWhiteSpace(_nuevoMaterialNombre))
+            if (string.IsNullOrWhiteSpace(_nuevoInstalacionNombre))
             {
-                _nuevoMaterialMsg = "Ingresa el nombre del material.";
+                _nuevoInstalacionMsg = "Ingresa el nombre de la instalación.";
                 return;
             }
 
-            var materialId = $"mat_{Guid.NewGuid():N}".Substring(0, 12);
+            var instalacionId = $"inst_{Guid.NewGuid():N}".Substring(0, 12);
+
             await using var conn = await DataSource.OpenConnectionAsync();
-            string sql;
-            var cmd = new NpgsqlCommand();
-            cmd.Connection = conn;
-            cmd.Parameters.AddWithValue("id", materialId);
-            cmd.Parameters.AddWithValue("nombre", _nuevoMaterialNombre!);
-            cmd.Parameters.AddWithValue("estado", string.IsNullOrWhiteSpace(_nuevoMaterialEstadoId) ? (object)DBNull.Value : _nuevoMaterialEstadoId!);
-            cmd.Parameters.AddWithValue("area", _areaInfo.area_id);
-            cmd.Parameters.AddWithValue("posicion", string.IsNullOrWhiteSpace(_nuevoMaterialPosicion) ? (object)DBNull.Value : _nuevoMaterialPosicion!);
+
+            const string sql = @"
+                INSERT INTO instalaciones
+                    (instalacion_id, nombre, subcategoria_id, estado_id, laboratorio_id, area_id)
+                VALUES
+                    (@id, @nombre, @subcat, @estado, @lab, @area);";
+
+            await using var cmd = new NpgsqlCommand(sql, conn);
+
+            cmd.Parameters.AddWithValue("id", instalacionId);
+            cmd.Parameters.AddWithValue("nombre", _nuevoInstalacionNombre!.Trim());
+            cmd.Parameters.AddWithValue("subcat", string.IsNullOrWhiteSpace(_nuevoInstalacionSubcategoriaId) ? (object)DBNull.Value : _nuevoInstalacionSubcategoriaId!);
+            cmd.Parameters.AddWithValue("estado", string.IsNullOrWhiteSpace(_nuevoInstalacionEstadoId) ? (object)DBNull.Value : _nuevoInstalacionEstadoId!);
             cmd.Parameters.AddWithValue("lab", _areaInfo.laboratorio_id);
+            cmd.Parameters.AddWithValue("area", _areaInfo.area_id);
 
-            if (_nuevoMaterialTipo == "consumible")
-            {
-                sql = @"
-                    INSERT INTO materiales_consumible
-                    (material_id, nombre, estado_id, cantidad, area_id, posicion, laboratorio_id)
-                    VALUES (@id, @nombre, @estado, @cantidad, @area, @posicion, @lab)";
-                var cantidad = int.TryParse(_nuevoMaterialDetalle, out var qty) ? qty : 0;
-                cmd.Parameters.AddWithValue("cantidad", cantidad);
-            }
-            else if (_nuevoMaterialTipo == "montaje")
-            {
-                sql = @"
-                    INSERT INTO materiales_montaje
-                    (material_id, nombre, estado_id, area_id, posicion, laboratorio_id)
-                    VALUES (@id, @nombre, @estado, @area, @posicion, @lab)";
-            }
-            else
-            {
-                sql = @"
-                    INSERT INTO materiales_vidrio
-                    (material_id, nombre, capacidad_num, unidad_id, estado_id, area_id, posicion, laboratorio_id)
-                    VALUES (@id, @nombre, @capacidad, @unidad, @estado, @area, @posicion, @lab)";
-                var capacidad = decimal.TryParse(_nuevoMaterialDetalle, NumberStyles.Any, CultureInfo.InvariantCulture, out var cap) ? cap : 0m;
-                cmd.Parameters.AddWithValue("capacidad", capacidad);
-                cmd.Parameters.AddWithValue("unidad", string.IsNullOrWhiteSpace(_nuevoMaterialUnidadId) ? (object)DBNull.Value : _nuevoMaterialUnidadId!);
-            }
-
-            cmd.CommandText = sql;
             await cmd.ExecuteNonQueryAsync();
 
-            _nuevoMaterialNombre = null;
-            _nuevoMaterialDetalle = null;
-            _nuevoMaterialPosicion = null;
-            _nuevoMaterialEstadoId = null;
-            _nuevoMaterialUnidadId = null;
-            _nuevoMaterialMsg = "Material registrado.";
-            await LoadMaterialesAsync(_areaInfo.area_id);
+            _nuevoInstalacionNombre = null;
+            _nuevoInstalacionSubcategoriaId = null;
+            _nuevoInstalacionEstadoId = null;
+
+            _nuevoInstalacionMsg = "Instalación registrada.";
+            await LoadInstalacionesAsync(_areaInfo.area_id);
             await LoadDisponiblesAsync(_areaInfo.laboratorio_id, _areaInfo.area_id);
         }
 
@@ -897,15 +937,18 @@ namespace BARI_web.Features.Espacios.Pages
             var sustanciaId = string.IsNullOrWhiteSpace(_nuevoSustanciaId)
                 ? $"sus_{Guid.NewGuid():N}".Substring(0, 12)
                 : _nuevoSustanciaId!.Trim();
+
             var contenedorId = string.IsNullOrWhiteSpace(_nuevoContenedorId)
                 ? $"cont_{Guid.NewGuid():N}".Substring(0, 12)
                 : _nuevoContenedorId!.Trim();
 
             await using var conn = await DataSource.OpenConnectionAsync();
+
             const string sqlSust = @"
                 INSERT INTO sustancias (sustancia_id, nombre_comercial, nombre_quimico, laboratorio_id)
                 VALUES (@id, @comercial, @quimico, @lab)
                 ON CONFLICT (sustancia_id) DO NOTHING";
+
             await using (var cmd = new NpgsqlCommand(sqlSust, conn))
             {
                 cmd.Parameters.AddWithValue("id", sustanciaId);
@@ -918,6 +961,7 @@ namespace BARI_web.Features.Espacios.Pages
             const string sqlCont = @"
                 INSERT INTO contenedores (cont_id, sustancia_id, cantidad_reactivo_actual, area_id, laboratorio_id)
                 VALUES (@cont, @sus, @cantidad, @area, @lab)";
+
             await using (var cmd = new NpgsqlCommand(sqlCont, conn))
             {
                 cmd.Parameters.AddWithValue("cont", contenedorId);
@@ -953,6 +997,7 @@ namespace BARI_web.Features.Espacios.Pages
             const string sql = @"
                 INSERT INTO documentos (documento_id, titulo, url, archivo_local, notas, laboratorio_id)
                 VALUES (@id, @titulo, @url, @archivo, @notas, @lab)";
+
             await using var cmd = new NpgsqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("id", docId);
             cmd.Parameters.AddWithValue("titulo", _nuevoDocumentoTitulo!);
@@ -1022,7 +1067,7 @@ namespace BARI_web.Features.Espacios.Pages
             _inners.Clear();
             _mesonLabelFromInner.Clear();
 
-            var areaPolys = a.Polys.ToDictionary(p => p.poly_id, p => p);
+            var areaPolys = a.Polys.ToDictionary(p => p.poly_id, p => p, StringComparer.OrdinalIgnoreCase);
 
             try
             {
@@ -1032,26 +1077,28 @@ namespace BARI_web.Features.Espacios.Pages
                     var area_poly_id = Get(r, "area_poly_id");
                     if (!areaPolys.TryGetValue(area_poly_id, out var parentPoly)) continue;
 
-                var offset_x_m = Dec(Get(r, "offset_x_m", "0"));
-                var offset_y_m = Dec(Get(r, "offset_y_m", "0"));
+                    var offset_x_m = Dec(Get(r, "offset_x_m", "0"));
+                    var offset_y_m = Dec(Get(r, "offset_y_m", "0"));
 
-                var eje_x_rel_m = Dec(Get(r, "eje_x_rel_m", "0"));
-                var eje_y_rel_m = Dec(Get(r, "eje_y_rel_m", "0"));
-                var ancho_m = Dec(Get(r, "ancho_m", "0"));
-                var alto_m = Dec(Get(r, "alto_m", "0"));
-                var color_hex = NullIfEmpty(Get(r, "color_hex")) ?? "#4B5563";
-                var label = NullIfEmpty(Get(r, "etiqueta")) ?? "";
+                    var eje_x_rel_m = Dec(Get(r, "eje_x_rel_m", "0"));
+                    var eje_y_rel_m = Dec(Get(r, "eje_y_rel_m", "0"));
+                    var ancho_m = Dec(Get(r, "ancho_m", "0"));
+                    var largo_m = Dec(Get(r, "largo_m", "0"));
+                    var color_hex = NullIfEmpty(Get(r, "color_hex")) ?? "#4B5563";
+                    var label = NullIfEmpty(Get(r, "etiqueta")) ?? "";
 
-                var meson_id = NullIfEmpty(Get(r, "meson_id"));
-                var instalacion_id = NullIfEmpty(Get(r, "instalacion_id"));
+                    var meson_id = NullIfEmpty(Get(r, "meson_id"));
+                    var instalacion_id = NullIfEmpty(Get(r, "instalacion_id"));
 
-                var opTxt = NullIfEmpty(Get(r, "opacidad_0_1"));
-                var op = 0.35m;
-                if (!string.IsNullOrEmpty(opTxt) && decimal.TryParse(opTxt, NumberStyles.Any, CultureInfo.InvariantCulture, out var opDec))
-                    op = opDec;
+                    var opTxt = NullIfEmpty(Get(r, "opacidad_0_1"));
+                    var op = 0.35m;
+                    if (!string.IsNullOrEmpty(opTxt) && decimal.TryParse(opTxt, NumberStyles.Any, CultureInfo.InvariantCulture, out var opDec))
+                        op = opDec;
 
-                var abs_x = parentPoly.x_m + eje_x_rel_m + offset_x_m;
-                var abs_y = parentPoly.y_m + eje_y_rel_m + offset_y_m;
+                    // ✅ NO sumes offsets que el editor no usa
+                    var abs_x = parentPoly.x_m + eje_x_rel_m;
+                    var abs_y = parentPoly.y_m + eje_y_rel_m;
+
 
                     _inners.Add(new InnerItem
                     {
@@ -1060,7 +1107,7 @@ namespace BARI_web.Features.Espacios.Pages
                         eje_x_rel_m = eje_x_rel_m,
                         eje_y_rel_m = eje_y_rel_m,
                         ancho_m = ancho_m,
-                        alto_m = alto_m,
+                        largo_m = largo_m,
                         label = label,
                         fill = color_hex,
                         opacidad = op,
@@ -1106,7 +1153,6 @@ namespace BARI_web.Features.Espacios.Pages
                 }
             }
 
-            // Puertas
             Pg.UseSheet("puertas");
             foreach (var r in await Pg.ReadAllAsync())
             {
@@ -1135,7 +1181,6 @@ namespace BARI_web.Features.Espacios.Pages
                 });
             }
 
-            // Ventanas
             Pg.UseSheet("ventanas");
             foreach (var r in await Pg.ReadAllAsync())
             {
@@ -1168,51 +1213,108 @@ namespace BARI_web.Features.Espacios.Pages
         private async Task LoadBlocksForArea(AreaDraw a)
         {
             _blocks.Clear();
+            if (_canvas is null) return;
 
-            Pg.UseSheet("bloques_int");
-            foreach (var r in await Pg.ReadAllAsync())
+            await using var conn = await DataSource.OpenConnectionAsync();
+
+            const string sql = @"
+                SELECT b.bloque_id,
+                       b.canvas_id,
+                       b.instalacion_id,
+                       b.meson_id,
+                       b.etiqueta,
+                       b.color_hex,
+                       b.z_order,
+                       b.pos_x,
+                       b.pos_y,
+                       b.ancho,
+b.largo,
+b.altura,
+b.offset_x,
+b.offset_y
+                FROM bloques_int b
+LEFT JOIN mesones me
+  ON lower(trim(me.meson_id)) = lower(trim(b.meson_id))
+
+LEFT JOIN instalaciones ins
+  ON lower(trim(ins.instalacion_id)) = lower(trim(b.instalacion_id))
+
+                WHERE b.canvas_id = @canvas_id
+                  AND COALESCE(me.area_id, ins.area_id) = @area_id
+                ORDER BY b.z_order, b.bloque_id;";
+
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("canvas_id", _canvas.canvas_id);
+            cmd.Parameters.AddWithValue("area_id", a.AreaId);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+
+            var iBloqueId = reader.GetOrdinal("bloque_id");
+            var iCanvasId = reader.GetOrdinal("canvas_id");
+            var iInst = reader.GetOrdinal("instalacion_id");
+            var iMeson = reader.GetOrdinal("meson_id");
+            var iEtiqueta = reader.GetOrdinal("etiqueta");
+            var iColor = reader.GetOrdinal("color_hex");
+            var iZ = reader.GetOrdinal("z_order");
+            var iPosX = reader.GetOrdinal("pos_x");
+            var iPosY = reader.GetOrdinal("pos_y");
+
+            var iAncho = reader.GetOrdinal("ancho");
+            var ilargo = reader.GetOrdinal("largo");
+            var iAltura = reader.GetOrdinal("altura");
+            var iOffX = reader.GetOrdinal("offset_x");
+            var iOffY = reader.GetOrdinal("offset_y");
+
+            while (await reader.ReadAsync())
             {
-                if (!string.Equals(Get(r, "canvas_id"), _canvas?.canvas_id ?? "", StringComparison.OrdinalIgnoreCase))
-                    continue;
+                var offsetX = reader.IsDBNull(iOffX) ? 0m : reader.GetDecimal(iOffX);
+                var offsetY = reader.IsDBNull(iOffY) ? 0m : reader.GetDecimal(iOffY);
 
-                var offsetX = Dec(Get(r, "offset_x", "0"));
-                var offsetY = Dec(Get(r, "offset_y", "0"));
-                var absX = Dec(Get(r, "pos_x", "0"));
-                var absY = Dec(Get(r, "pos_y", "0"));
-                var ancho = Dec(Get(r, "ancho", "0.6"));
-                var alto = Dec(Get(r, "alto", "0.4"));
+                var posX = reader.IsDBNull(iPosX) ? 0m : reader.GetDecimal(iPosX);
+                var posY = reader.IsDBNull(iPosY) ? 0m : reader.GetDecimal(iPosY);
 
-                if (offsetX != 0m || offsetY != 0m)
+                // ✅ centro del área como en el editor (bbox center, no centroid)
+                var areaCenterX = (a.MinX + a.MaxX) / 2m;
+                var areaCenterY = (a.MinY + a.MaxY) / 2m;
+
+                // ✅ regla: pos_x/pos_y ya es ABS
+                decimal absX = posX;
+                decimal absY = posY;
+
+                // ✅ fallback legacy: si pos viene "vacío", reconstruye con offset
+                if (posX == 0m && posY == 0m && (offsetX != 0m || offsetY != 0m))
                 {
-                    absX = a.Cx + offsetX;
-                    absY = a.Cy + offsetY;
+                    absX = areaCenterX + offsetX;
+                    absY = areaCenterY + offsetY;
                 }
 
-                var block = new BlockItem
+
+
+
+                var ancho = reader.IsDBNull(iAncho) ? 0.6m : reader.GetDecimal(iAncho);
+                var largo = reader.IsDBNull(ilargo) ? 0.4m : reader.GetDecimal(ilargo);
+                var altura = reader.IsDBNull(iAltura) ? (decimal?)null : reader.GetDecimal(iAltura);
+                
+
+                _blocks.Add(new BlockItem
                 {
-                    bloque_id = Get(r, "bloque_id"),
-                    canvas_id = Get(r, "canvas_id"),
-                    material_montaje_id = NullIfEmpty(Get(r, "material_montaje_id")),
-                    meson_id = NullIfEmpty(Get(r, "meson_id")),
-                    etiqueta = NullIfEmpty(Get(r, "etiqueta")),
-                    color_hex = NullIfEmpty(Get(r, "color_hex")) ?? "#2563eb",
-                    z_order = Int(Get(r, "z_order", "0")),
-                    pos_x = absX,
-                    pos_y = absY,
+                    bloque_id = reader.GetString(iBloqueId),
+                    canvas_id = reader.GetString(iCanvasId),
+                    instalacion_id = reader.IsDBNull(iInst) ? null : reader.GetString(iInst),
+                    meson_id = reader.IsDBNull(iMeson) ? null : reader.GetString(iMeson),
+                    etiqueta = reader.IsDBNull(iEtiqueta) ? null : reader.GetString(iEtiqueta),
+                    color_hex = reader.IsDBNull(iColor) ? "#2563eb" : reader.GetString(iColor),
+                    z_order = reader.IsDBNull(iZ) ? 0 : reader.GetInt32(iZ),
+                    pos_x = posX,
+                    pos_y = posY,
                     ancho = ancho,
-                    alto = alto,
+                    largo = largo,
+                    altura = altura,
                     offset_x = offsetX,
                     offset_y = offsetY,
                     abs_x = absX,
                     abs_y = absY
-                };
-
-                var withinX = block.abs_x + block.ancho >= a.MinX && block.abs_x <= a.MaxX;
-                var withinY = block.abs_y + block.alto >= a.MinY && block.abs_y <= a.MaxY;
-                if (!withinX || !withinY)
-                    continue;
-
-                _blocks.Add(block);
+                });
             }
         }
 
@@ -1230,7 +1332,7 @@ namespace BARI_web.Features.Espacios.Pages
 
             foreach (var p in a.Polys)
             {
-                var L = p.x_m; var T = p.y_m; var R = p.x_m + p.ancho_m; var B = p.y_m + p.alto_m;
+                var L = p.x_m; var T = p.y_m; var R = p.x_m + p.ancho_m; var B = p.y_m + p.largo_m;
 
                 var yTop = RoundToTolerance(T);
                 var yBot = RoundToTolerance(B);
@@ -1259,18 +1361,28 @@ namespace BARI_web.Features.Espacios.Pages
             {
                 if (spans.Count == 0) continue;
                 var xs = new SortedSet<decimal>();
-                foreach (var (a1, a2) in spans) { var lo = Math.Min(a1, a2); var hi = Math.Max(a1, a2); xs.Add(lo); xs.Add(hi); }
+                foreach (var (a1, a2) in spans)
+                {
+                    var lo = Math.Min(a1, a2);
+                    var hi = Math.Max(a1, a2);
+                    xs.Add(lo); xs.Add(hi);
+                }
+
                 var xList = xs.ToList();
                 for (int i = 0; i < xList.Count - 1; i++)
                 {
-                    var s = xList[i]; var e = xList[i + 1];
+                    var s = xList[i];
+                    var e = xList[i + 1];
                     if (e <= s + Tolerance / 10m) continue;
+
                     int count = 0;
                     foreach (var (a1, a2) in spans)
                     {
-                        var lo = Math.Min(a1, a2); var hi = Math.Max(a1, a2);
+                        var lo = Math.Min(a1, a2);
+                        var hi = Math.Max(a1, a2);
                         if (s >= lo - Tolerance / 2m && e <= hi + Tolerance / 2m) count++;
                     }
+
                     if ((count % 2) == 1) a.Outline.Add((s, y, e, y));
                 }
             }
@@ -1279,18 +1391,28 @@ namespace BARI_web.Features.Espacios.Pages
             {
                 if (spans.Count == 0) continue;
                 var ys = new SortedSet<decimal>();
-                foreach (var (b1, b2) in spans) { var lo = Math.Min(b1, b2); var hi = Math.Max(b1, b2); ys.Add(lo); ys.Add(hi); }
+                foreach (var (b1, b2) in spans)
+                {
+                    var lo = Math.Min(b1, b2);
+                    var hi = Math.Max(b1, b2);
+                    ys.Add(lo); ys.Add(hi);
+                }
+
                 var yList = ys.ToList();
                 for (int i = 0; i < yList.Count - 1; i++)
                 {
-                    var s = yList[i]; var e = yList[i + 1];
+                    var s = yList[i];
+                    var e = yList[i + 1];
                     if (e <= s + Tolerance / 10m) continue;
+
                     int count = 0;
                     foreach (var (b1, b2) in spans)
                     {
-                        var lo = Math.Min(b1, b2); var hi = Math.Max(b1, b2);
+                        var lo = Math.Min(b1, b2);
+                        var hi = Math.Max(b1, b2);
                         if (s >= lo - Tolerance / 2m && e <= hi + Tolerance / 2m) count++;
                     }
+
                     if ((count % 2) == 1) a.Outline.Add((x, s, x, e));
                 }
             }
@@ -1307,7 +1429,7 @@ namespace BARI_web.Features.Espacios.Pages
             {
                 var points = p.puntos.Count >= 3
                     ? p.puntos
-                    : BuildRectPoints(p.x_m, p.y_m, p.ancho_m, p.alto_m);
+                    : BuildRectPoints(p.x_m, p.y_m, p.ancho_m, p.largo_m);
 
                 if (points.Count < 2) continue;
                 for (int i = 0; i < points.Count; i++)
@@ -1348,7 +1470,6 @@ namespace BARI_web.Features.Espacios.Pages
 
             List<(decimal x1, decimal y1, decimal x2, decimal y2)> outSegs = new();
 
-            // unir horizontales
             foreach (var kv in horizontals)
             {
                 var y = kv.Key;
@@ -1368,7 +1489,6 @@ namespace BARI_web.Features.Espacios.Pages
                 outSegs.Add((curA, y, curB, y));
             }
 
-            // unir verticales
             foreach (var kv in verticals)
             {
                 var x = kv.Key;
@@ -1399,12 +1519,12 @@ namespace BARI_web.Features.Espacios.Pages
         private static string Get(Dictionary<string, string> d, string key, string fallback = "") => d.TryGetValue(key, out var v) ? v : fallback;
         private static decimal Clamp(decimal min, decimal max, decimal v) => Math.Max(min, Math.Min(max, v));
 
-        // Tamaño de fuente ajustado a alto y ancho del elemento interior
+        // Tamaño de fuente ajustado a largo y ancho del elemento interior
         private static decimal FitInnerText(InnerItem it)
         {
             var pad = 0.10m;
             var w = Math.Max(0.10m, it.ancho_m - 2 * pad);
-            var h = Math.Max(0.10m, it.alto_m - 2 * pad);
+            var h = Math.Max(0.10m, it.largo_m - 2 * pad);
             var len = Math.Max(1, it.label?.Length ?? 1);
 
             var fsByH = h * 0.60m;
@@ -1449,8 +1569,8 @@ namespace BARI_web.Features.Espacios.Pages
             var sb = new System.Text.StringBuilder();
             foreach (var ch in formD)
             {
-                var cat = System.Globalization.CharUnicodeInfo.GetUnicodeCategory(ch);
-                if (cat != System.Globalization.UnicodeCategory.NonSpacingMark)
+                var cat = CharUnicodeInfo.GetUnicodeCategory(ch);
+                if (cat != UnicodeCategory.NonSpacingMark)
                     sb.Append(ch);
             }
             var cleaned = sb.ToString().Normalize(System.Text.NormalizationForm.FormC);
@@ -1459,7 +1579,7 @@ namespace BARI_web.Features.Espacios.Pages
             foreach (var ch in cleaned)
             {
                 if ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-') sb2.Append(ch);
-                else if (char.IsWhiteSpace(ch) || ch == '_' || ch == '/') sb2.Append('-');
+                else if (char.IsWhiteSpace(ch) || ch == '_' || ch == '/' || ch == '.') sb2.Append('-');
             }
             var slug = sb2.ToString().Trim('-');
             return string.IsNullOrEmpty(slug) ? "sin-area" : slug;
@@ -1471,7 +1591,7 @@ namespace BARI_web.Features.Espacios.Pages
             public string meson_id { get; set; } = "";
             public string area_id { get; set; } = "";
             public string nombre_meson { get; set; } = "";
-            public int reactivos_count { get; set; }  // usamos contenedores como proxy de reactivos
+            public int reactivos_count { get; set; }
             public int equipos_count { get; set; }
         }
 
@@ -1482,19 +1602,21 @@ namespace BARI_web.Features.Espacios.Pages
             _mesones.Clear();
             _mesonesLookup.Clear();
 
-            // 1) mesones del área
             Pg.UseSheet("mesones");
             var list = new List<MesonSummary>();
             foreach (var r in await Pg.ReadAllAsync())
             {
                 if (!string.Equals(Get(r, "area_id"), areaId, StringComparison.OrdinalIgnoreCase)) continue;
+
                 var mesonId = Get(r, "meson_id");
                 var nombreMeson = Get(r, "nombre_meson");
+
                 _mesonesLookup[mesonId] = nombreMeson;
+
                 list.Add(new MesonSummary
                 {
                     meson_id = mesonId,
-                    area_id = Get(r, "area_id"),
+                    area_id = areaId,
                     nombre_meson = nombreMeson
                 });
             }
@@ -1505,7 +1627,6 @@ namespace BARI_web.Features.Espacios.Pages
                 return;
             }
 
-            // 2) contenedores por mesón (proxy de reactivos_count)
             try
             {
                 Pg.UseSheet("contenedores");
@@ -1520,9 +1641,8 @@ namespace BARI_web.Features.Espacios.Pages
                 foreach (var m in list)
                     if (cnt.TryGetValue(m.meson_id, out var c)) m.reactivos_count = c;
             }
-            catch { /* si no existe columna/tabla, queda en 0 */ }
+            catch { }
 
-            // 3) equipos por mesón
             try
             {
                 Pg.UseSheet("equipos");
@@ -1537,18 +1657,25 @@ namespace BARI_web.Features.Espacios.Pages
                 foreach (var m in list)
                     if (cnt.TryGetValue(m.meson_id, out var c)) m.equipos_count = c;
             }
-            catch { /* tabla no existe = ok */ }
+            catch { }
 
             // Override de nombre si viene desde poligonos_interiores
             foreach (var m in list)
             {
                 if (_mesonLabelFromInner.TryGetValue(m.meson_id, out var lbl) && !string.IsNullOrWhiteSpace(lbl))
                     m.nombre_meson = lbl;
+
                 if (string.IsNullOrWhiteSpace(m.nombre_meson))
-                    m.nombre_meson = "MESON";
+                    m.nombre_meson = "MESÓN";
             }
 
             _mesones.AddRange(list.OrderBy(m => m.nombre_meson, StringComparer.OrdinalIgnoreCase));
+        }
+
+        private void GoToMesonById(string mesonId)
+        {
+            if (string.IsNullOrWhiteSpace(mesonId)) return;
+            Nav.NavigateTo($"/inventario-mesones/item/{Uri.EscapeDataString(mesonId)}");
         }
 
         private string BlockLabel(BlockItem block)
@@ -1561,25 +1688,69 @@ namespace BARI_web.Features.Espacios.Pages
                 && !string.IsNullOrWhiteSpace(mesonName))
                 return mesonName;
 
-            if (!string.IsNullOrWhiteSpace(block.material_montaje_id)
-                && _materialesMontajeLookup.TryGetValue(block.material_montaje_id, out var materialName)
-                && !string.IsNullOrWhiteSpace(materialName))
-                return materialName;
+            if (!string.IsNullOrWhiteSpace(block.instalacion_id)
+                && _instalacionesLookup.TryGetValue(block.instalacion_id, out var instName)
+                && !string.IsNullOrWhiteSpace(instName))
+                return instName;
 
             return string.Empty;
         }
 
         private string MesonNameForDisplay(MesonSummary m)
         {
-            // Ya dejamos el nombre listo en LoadMesonesForArea(), pero mantenemos compatibilidad con el .razor
             if (_mesonLabelFromInner.TryGetValue(m.meson_id, out var lbl) && !string.IsNullOrWhiteSpace(lbl))
                 return lbl;
 
             if (!string.IsNullOrWhiteSpace(m.nombre_meson))
                 return m.nombre_meson;
 
-            return "MESON";
+            return "MESÓN";
         }
 
+        private void OnBlockClick(BlockItem b)
+        {
+            if (!string.IsNullOrWhiteSpace(b.meson_id))
+            {
+                GoToMesonById(b.meson_id!);
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(b.instalacion_id))
+            {
+                GoToInstalacionById(b.instalacion_id!);
+                return;
+            }
+        }
+
+
+        private void GoToInstalacion(InstalacionItem item, bool _ = false)
+        {
+            Nav.NavigateTo(string.Format(CultureInfo.InvariantCulture, InstalacionDetailsRouteTemplate, item.instalacion_id));
+        }
+
+        private string MesonNameFromId(string mesonId)
+        {
+            if (_mesonLabelFromInner.TryGetValue(mesonId, out var lbl) && !string.IsNullOrWhiteSpace(lbl))
+                return lbl;
+
+            if (_mesonesLookup.TryGetValue(mesonId, out var nm) && !string.IsNullOrWhiteSpace(nm))
+                return nm;
+
+            return mesonId;
+        }
+
+        private string MesonNameForDisplay(string mesonId)
+        {
+            if (string.IsNullOrWhiteSpace(mesonId)) return "MESÓN";
+
+            if (_mesonLabelFromInner.TryGetValue(mesonId, out var lbl) && !string.IsNullOrWhiteSpace(lbl))
+                return lbl;
+
+            if (_mesonesLookup.TryGetValue(mesonId, out var n) && !string.IsNullOrWhiteSpace(n))
+                return n;
+
+            return mesonId;
+        }
     }
 }
+

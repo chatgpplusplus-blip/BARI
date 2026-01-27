@@ -1,0 +1,1584 @@
+﻿@page "/experiencias/item/{ExperienciaId}"
+
+@using Npgsql
+@using System.Globalization
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Routing
+@inject NpgsqlDataSource DataSource
+@inject LaboratorioState LaboratorioState
+@inject NavigationManager Nav
+@implements IDisposable
+
+<PageTitle>Detalle de Experiencia</PageTitle>
+
+<section class="page-card">
+    <div class="header-row">
+        <div>
+            <h2>Detalle de Experiencia</h2>
+            <div class="muted">ID: <b>@ExperienciaId</b></div>
+        </div>
+        <div class="header-actions">
+            <button class="btn" type="button" @onclick="GoBack">Volver</button>
+        </div>
+    </div>
+
+    <LaboratorioSelector />
+</section>
+
+<section class="page-card" style="margin-top:1.2rem;">
+    @if (!string.IsNullOrWhiteSpace(loadError))
+    {
+        <p class="error-note">Error: @loadError</p>
+    }
+    else if (isLoading)
+    {
+        <p><em>Cargando…</em></p>
+    }
+    else if (!found)
+    {
+        <div class="empty">
+            No se encontró la experiencia <b>@ExperienciaId</b> (en este laboratorio o global).
+        </div>
+    }
+    else
+    {
+        @if (!isEditing)
+        {
+            <div class="detail-info">
+                <div class="title-row">
+                    <h3 style="margin:0;">@edit.Nombre</h3>
+                    <div class="badges">
+                        @if (isGlobal)
+                        {
+                            <span class="badge warn">GLOBAL</span>
+                        }
+                        else
+                        {
+                            <span class="badge gray">LAB</span>
+                        }
+
+                        <NavLink class="badge linkbadge" href="@($"{RutaAsignaturaDetalle}{edit.AsignaturaId}")">
+                            @AsignaturaLabel
+                        </NavLink>
+
+                        @if (!string.IsNullOrWhiteSpace(edit.LaboratorioRealizadoId))
+                        {
+                            <NavLink class="badge linkbadge" href="@($"{RutaLabRealDetalle}{edit.LaboratorioRealizadoId}")">
+                                Lab: @LabRealLabel
+                            </NavLink>
+                        }
+                    </div>
+                </div>
+
+                <div class="dl">
+                    <div class="dl-row">
+                        <div class="dt">Asignatura</div>
+                        <div class="dd">
+                            <NavLink class="btn-link" href="@($"{RutaAsignaturaDetalle}{edit.AsignaturaId}")">@AsignaturaLabel</NavLink>
+                            <span class="text-xs muted">(@edit.AsignaturaId)</span>
+                        </div>
+                    </div>
+
+                    <div class="dl-row">
+                        <div class="dt">Laboratorio realizado</div>
+                        <div class="dd">
+                            @if (!string.IsNullOrWhiteSpace(edit.LaboratorioRealizadoId))
+                            {
+                                <NavLink class="btn-link" href="@($"{RutaLabRealDetalle}{edit.LaboratorioRealizadoId}")">@LabRealLabel</NavLink>
+                                <span class="text-xs muted">(@edit.LaboratorioRealizadoId)</span>
+                            }
+                            else
+                            {
+                                <span class="muted">—</span>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="dl-row">
+                        <div class="dt">Orden / Tiempo</div>
+                        <div class="dd">
+                            <span class="tag">Orden: @((edit.Orden is null) ? "—" : edit.Orden.ToString())</span>
+                            <span class="tag">Tiempo: @((edit.TiempoMin is null) ? "—" : $"{edit.TiempoMin} min")</span>
+                        </div>
+                    </div>
+
+                    <div class="dl-row">
+                        <div class="dt">Descripción detallada</div>
+                        <div class="dd">@NullDash(edit.DescripcionDetalle)</div>
+                    </div>
+
+                    <div class="dl-row">
+                        <div class="dt">Procedimientos</div>
+                        <div class="dd pre">@NullDash(edit.Procedimientos)</div>
+                    </div>
+
+                    <div class="dl-row">
+                        <div class="dt">Precauciones</div>
+                        <div class="dd pre warnbox">@NullDash(edit.Precauciones)</div>
+                    </div>
+
+                    <div class="dl-row">
+                        <div class="dt">Observaciones</div>
+                        <div class="dd pre">@NullDash(edit.Observaciones)</div>
+                    </div>
+
+                    <div class="dl-row">
+                        <div class="dt">Recursos vinculados</div>
+                        <div class="dd">
+                            <div class="split-3">
+                                <div class="panel">
+                                    <div class="panel-title small">Modelos de equipo (@edit.EquiposIds.Count)</div>
+                                    @RenderRelLinkGrid(edit.EquiposIds, _equiposOptions, RutaEquipoDetalle)
+                                </div>
+
+                                <div class="panel">
+                                    <div class="panel-title small">Materiales (@edit.MaterialesIds.Count)</div>
+                                    @RenderRelLinkGrid(edit.MaterialesIds, _materialesOptions, RutaMaterialDetalle)
+                                </div>
+
+                                <div class="panel">
+                                    <div class="panel-title small">Sustancias (@edit.SustanciasIds.Count)</div>
+                                    @RenderRelLinkGrid(edit.SustanciasIds, _sustanciasOptions, RutaSustanciaDetalle)
+                                </div>
+                            </div>
+
+                            <div class="text-xs muted" style="margin-top:.35rem;">
+                                Tip: haz click en cualquier recurso para abrir su ficha.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="dl-row">
+                        <div class="dt">Documentos (pegados a Experiencia)</div>
+                        <div class="dd">
+                            @if (_docsExp.Count == 0)
+                            {
+                                <span class="muted">—</span>
+                            }
+                            else
+                            {
+                                <div class="doc-grid">
+                                    @foreach (var d in _docsExp.OrderBy(x => x.Titulo))
+                                    {
+                                        <div class="doc-card">
+                                            @if (!string.IsNullOrWhiteSpace(d.ImagenUrl))
+                                            {
+                                                <img class="doc-cover" src="@ResolveUrl(d.ImagenUrl)" alt="cover" />
+                                            }
+                                            else
+                                            {
+                                                <div class="doc-cover placeholder">DOC</div>
+                                            }
+
+                                            <div class="doc-meta">
+                                                <div class="doc-title">@d.Titulo</div>
+                                                <div class="doc-sub muted">
+                                                    <span class="tag">@d.Procedencia</span>
+                                                    <span class="tag">@d.Alcance</span>
+                                                </div>
+
+                                                <div class="doc-actions">
+                                                    @if (!string.IsNullOrWhiteSpace(d.Url))
+                                                    {
+                                                        <a class="btn-link" href="@d.Url" target="_blank" rel="noopener noreferrer">Abrir URL</a>
+                                                    }
+                                                    else if (!string.IsNullOrWhiteSpace(d.ArchivoLocal))
+                                                    {
+                                                        <a class="btn-link" href="@ResolveUrl(d.ArchivoLocal)" target="_blank" rel="noopener noreferrer">Abrir archivo</a>
+                                                    }
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <div class="view-actions">
+                    <button class="btn primary" type="button" @onclick="StartEdit" disabled="@isGlobal">Editar</button>
+
+                    @if (isGlobal)
+                    {
+                        <span class="text-sm muted">Experiencia GLOBAL (solo lectura).</span>
+                    }
+                    else
+                    {
+                        @if (!confirmDelete)
+                        {
+                            <button class="btn danger" type="button" @onclick="AskDelete">Eliminar</button>
+                        }
+                        else
+                        {
+                            <button class="btn danger" type="button" @onclick="DeleteAsync" disabled="@isSaving">Confirmar eliminar</button>
+                            <button class="btn" type="button" @onclick="CancelDelete" disabled="@isSaving">Cancelar</button>
+                        }
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(msg))
+                    {
+                        <span class="text-sm muted">@msg</span>
+                    }
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="form-header">
+                <h4>Editar experiencia</h4>
+                <p class="form-hint">
+                    Ajusta asignatura, lab realizado, contenidos y recursos vinculados (equipos/materiales/sustancias).
+                </p>
+            </div>
+
+            <div class="form-grid">
+                <div class="field">
+                    <label>Asignatura</label>
+                    <select class="border p-1" value="@edit.AsignaturaId" @onchange="OnAsignaturaChanged">
+                        <option value="">(selecciona)</option>
+                        @foreach (var a in _asignaturaOptions.OrderBy(x => x.Label))
+                        {
+                            <option value="@a.Id">@a.Label</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="field">
+                    <label>Laboratorio realizado</label>
+                    <select class="border p-1" @bind="edit.LaboratorioRealizadoId" disabled="@string.IsNullOrWhiteSpace(edit.AsignaturaId)">
+                        <option value="">(selecciona)</option>
+                        @foreach (var lr in LabRealOptionsFiltradas)
+                        {
+                            <option value="@lr.Id">@lr.Label</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="field full-span">
+                    <label>Nombre</label>
+                    <input class="border p-1" @bind="edit.Nombre" placeholder="Nombre" />
+                </div>
+
+                <div class="field">
+                    <label>Orden</label>
+                    <input class="border p-1" type="number" step="1" @bind="edit.OrdenText" placeholder="1,2,3..." />
+                </div>
+
+                <div class="field">
+                    <label>Tiempo estimado (min)</label>
+                    <input class="border p-1" type="number" step="1" @bind="edit.TiempoMinText" placeholder="60" />
+                </div>
+
+                <div class="field full-span">
+                    <label>Descripción detallada</label>
+                    <textarea class="border p-1" rows="3" @bind="edit.DescripcionDetalle"></textarea>
+                </div>
+
+                <div class="field full-span">
+                    <label>Procedimientos</label>
+                    <textarea class="border p-1" rows="4" @bind="edit.Procedimientos"></textarea>
+                </div>
+
+                <div class="field full-span">
+                    <label>Precauciones</label>
+                    <textarea class="border p-1" rows="3" @bind="edit.Precauciones"></textarea>
+                </div>
+
+                <div class="field full-span">
+                    <label>Observaciones</label>
+                    <textarea class="border p-1" rows="2" @bind="edit.Observaciones"></textarea>
+                </div>
+
+                <div class="field full-span">
+                    <label class="muted">Recursos vinculados (se guarda en tablas intermedias)</label>
+
+                    <div class="rel-grid">
+                        <div class="rel-card">
+                            <div class="rel-title">Modelos de equipo (@edit.EquiposIds.Count)</div>
+                            <input class="border p-1 rel-search" placeholder="Buscar modelo..."
+                                   @bind="_relEqSearch" @bind:event="oninput" />
+                            <div class="rel-list">
+                                @foreach (var opt in FilterOptions(_equiposOptions, _relEqSearch))
+                                {
+                                    <label class="check-row">
+                                        <input type="checkbox" checked="@edit.EquiposIds.Contains(opt.Id)"
+                                               @onchange="@(() => Toggle(edit.EquiposIds, opt.Id))" />
+                                        @if (!string.IsNullOrWhiteSpace(opt.ImageUrl))
+                                        {
+                                            <img class="thumb" src="@ResolveUrl(opt.ImageUrl)" alt="img eq" />
+                                        }
+                                        <span class="check-text">@opt.Label</span>
+                                        @if (!string.IsNullOrWhiteSpace(opt.Meta))
+                                        {
+                                            <span class="tag">@opt.Meta</span>
+                                        }
+                                    </label>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="rel-card">
+                            <div class="rel-title">Materiales (@edit.MaterialesIds.Count)</div>
+                            <input class="border p-1 rel-search" placeholder="Buscar material..."
+                                   @bind="_relMatSearch" @bind:event="oninput" />
+                            <div class="rel-list">
+                                @foreach (var opt in FilterOptions(_materialesOptions, _relMatSearch))
+                                {
+                                    <label class="check-row">
+                                        <input type="checkbox" checked="@edit.MaterialesIds.Contains(opt.Id)"
+                                               @onchange="@(() => Toggle(edit.MaterialesIds, opt.Id))" />
+                                        @if (!string.IsNullOrWhiteSpace(opt.ImageUrl))
+                                        {
+                                            <img class="thumb" src="@ResolveUrl(opt.ImageUrl)" alt="img mat" />
+                                        }
+                                        <span class="check-text">@opt.Label</span>
+                                        @if (!string.IsNullOrWhiteSpace(opt.Meta))
+                                        {
+                                            <span class="tag">@opt.Meta</span>
+                                        }
+                                    </label>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="rel-card">
+                            <div class="rel-title">Sustancias (@edit.SustanciasIds.Count)</div>
+                            <input class="border p-1 rel-search" placeholder="Buscar sustancia..."
+                                   @bind="_relSusSearch" @bind:event="oninput" />
+                            <div class="rel-list">
+                                @foreach (var opt in FilterOptions(_sustanciasOptions, _relSusSearch))
+                                {
+                                    <label class="check-row">
+                                        <input type="checkbox" checked="@edit.SustanciasIds.Contains(opt.Id)"
+                                               @onchange="@(() => Toggle(edit.SustanciasIds, opt.Id))" />
+                                        @if (!string.IsNullOrWhiteSpace(opt.ImageUrl))
+                                        {
+                                            <img class="thumb" src="@ResolveUrl(opt.ImageUrl)" alt="img sus" />
+                                        }
+                                        <span class="check-text">@opt.Label</span>
+                                        @if (!string.IsNullOrWhiteSpace(opt.Meta))
+                                        {
+                                            <span class="tag">@opt.Meta</span>
+                                        }
+                                    </label>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-actions full-span">
+                    <button class="btn primary" type="button" @onclick="SaveAsync" disabled="@isSaving">Guardar cambios</button>
+                    <button class="btn" type="button" @onclick="CancelEdit" disabled="@isSaving">Cancelar</button>
+
+                    @if (!string.IsNullOrWhiteSpace(msg))
+                    {
+                        <span class="text-sm muted">@msg</span>
+                    }
+                </div>
+            </div>
+        }
+    }
+</section>
+
+@code {
+    [Parameter] public string ExperienciaId { get; set; } = "";
+
+    // ===================== RUTAS (AJUSTA SI CAMBIA TU APP) =====================
+    private const string RutaAsignaturaDetalle = "/asignaturas/item/";
+    private const string RutaLabRealDetalle = "/laboratorios-realizados/item/";
+
+    // ✅ Ahora "equipos" en experiencias = MODELOS de equipo
+    private const string RutaEquipoDetalle = "/inventario-equipos/modelo/";
+
+    private const string RutaMaterialDetalle = "/inventario-materiales/item/";
+    private const string RutaSustanciaDetalle = "/inventario-sustancias/";
+
+    private bool isLoading = true;
+    private bool isSaving = false;
+    private bool found = false;
+
+    private bool isEditing = false;
+    private bool confirmDelete = false;
+
+    private bool isGlobal = false;
+
+    private string? loadError;
+    private string? msg;
+
+    private ExperienciaEdit edit = new();
+
+    private readonly List<SelectOption> _asignaturaOptions = new();
+    private readonly List<SelectOption> _labRealOptions = new();
+
+    private readonly List<SelectOption> _equiposOptions = new();
+    private readonly List<SelectOption> _materialesOptions = new();
+    private readonly List<SelectOption> _sustanciasOptions = new();
+
+    private readonly List<DocRow> _docsExp = new();
+
+    private string? _relEqSearch;
+    private string? _relMatSearch;
+    private string? _relSusSearch;
+
+    private string AsignaturaLabel =>
+        _asignaturaOptions.FirstOrDefault(x => string.Equals(x.Id, edit.AsignaturaId, StringComparison.OrdinalIgnoreCase))?.Label
+        ?? edit.AsignaturaId
+        ?? "—";
+
+    private string LabRealLabel =>
+        _labRealOptions.FirstOrDefault(x => string.Equals(x.Id, edit.LaboratorioRealizadoId, StringComparison.OrdinalIgnoreCase))?.Label
+        ?? edit.LaboratorioRealizadoId
+        ?? "—";
+
+    private IEnumerable<SelectOption> LabRealOptionsFiltradas =>
+        string.IsNullOrWhiteSpace(edit.AsignaturaId)
+            ? Enumerable.Empty<SelectOption>()
+            : _labRealOptions.Where(x => string.Equals(x.Meta, edit.AsignaturaId, StringComparison.OrdinalIgnoreCase))
+                             .OrderBy(x => x.Label);
+
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await ReloadAllAsync();
+    }
+
+    private void HandleLaboratorioChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await ReloadAllAsync();
+            StateHasChanged();
+        });
+    }
+
+    private async Task ReloadAllAsync()
+    {
+        loadError = null;
+        msg = null;
+        confirmDelete = false;
+
+        isLoading = true;
+        found = false;
+        isEditing = false;
+        isGlobal = false;
+
+        edit = new ExperienciaEdit();
+        _docsExp.Clear();
+
+        _asignaturaOptions.Clear();
+        _labRealOptions.Clear();
+        _equiposOptions.Clear();
+        _materialesOptions.Clear();
+        _sustanciasOptions.Clear();
+
+        _relEqSearch = _relMatSearch = _relSusSearch = null;
+
+        try
+        {
+            await LoadLookupsAsync();
+            await LoadExperienciaAsync();
+
+            if (found)
+            {
+                await LoadRelacionesAsync();
+                await LoadDocsAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void StartEdit()
+    {
+        msg = null;
+        confirmDelete = false;
+        if (isGlobal)
+        {
+            msg = "Experiencia GLOBAL (solo lectura).";
+            return;
+        }
+        isEditing = true;
+    }
+
+    private async Task CancelEdit()
+    {
+        msg = null;
+        confirmDelete = false;
+        isEditing = false;
+        await ReloadAllAsync();
+    }
+
+    private void AskDelete()
+    {
+        confirmDelete = true;
+        msg = "Esto eliminará la experiencia, sus relaciones y docs del contexto del laboratorio actual.";
+    }
+
+    private void CancelDelete()
+    {
+        confirmDelete = false;
+        msg = null;
+    }
+
+    private void GoBack()
+    {
+        Nav.NavigateTo("/contenidos");
+    }
+
+    private async Task LoadLookupsAsync()
+    {
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        // Asignaturas (lab o global)
+        const string asigSql = @"
+            SELECT asignatura_id,
+                   COALESCE(NULLIF(nombre,''), asignatura_id) AS nombre,
+                   codigo_clase,
+                   laboratorio_id
+            FROM asignaturas
+            WHERE (laboratorio_id = @lab OR laboratorio_id IS NULL)
+            ORDER BY nombre;";
+        await using (var cmd = new NpgsqlCommand(asigSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                var id = r.GetString(0);
+                var nombre = r.GetString(1);
+                var codigo = r.GetString(2);
+                var isGlob = r.IsDBNull(3);
+                var label = isGlob ? $"{nombre} ({codigo}) · GLOBAL" : $"{nombre} ({codigo})";
+                _asignaturaOptions.Add(new SelectOption(id, label));
+            }
+        }
+
+        // Labs realizados (para filtrar por asignatura) -> Meta = asignatura_id
+        const string lrSql = @"
+            SELECT laboratorio_realizado_id,
+                   COALESCE(asignatura_id,'') AS asignatura_id,
+                   COALESCE(NULLIF(nombre,''), laboratorio_realizado_id) AS nombre
+            FROM laboratorio_realizado
+            WHERE laboratorio_id = @lab
+            ORDER BY nombre;";
+        await using (var cmd = new NpgsqlCommand(lrSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                _labRealOptions.Add(new SelectOption(
+                    r.GetString(0),
+                    r.GetString(2),
+                    meta: r.GetString(1)
+                ));
+            }
+        }
+
+        // Modelos de equipo (concepto) — la experiencia ya no se liga a la instancia física
+        const string eqSql = @"
+    SELECT me.modelo_id,
+           COALESCE(NULLIF(me.nombre_modelo,''), me.modelo_id) AS nombre_modelo,
+           COALESCE(ma.nombre,'') AS marca_nombre,
+           me.imagen_url,
+           COALESCE(stats.eq_count, 0) AS instancias_en_lab
+    FROM modelos_equipo me
+    LEFT JOIN marcas ma ON ma.marca_id = me.marca_id
+    LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS eq_count
+        FROM equipos e
+        WHERE e.modelo_id = me.modelo_id
+          AND e.laboratorio_id = @lab
+    ) stats ON true
+    WHERE me.categoria_id = ANY(@cats)
+    ORDER BY nombre_modelo, me.modelo_id;";
+        await using (var cmd = new NpgsqlCommand(eqSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            cmd.Parameters.AddWithValue("cats", CategoriaEquipoIds);
+
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                var id = r.GetString(0);
+                var nombre = r.GetString(1);
+                var marca = r.GetString(2);
+                var img = r.IsDBNull(3) ? null : r.GetString(3);
+                var count = r.IsDBNull(4) ? 0 : r.GetInt64(4);
+
+                var label = string.IsNullOrWhiteSpace(marca)
+                    ? $"{nombre} · ({count} en lab)"
+                    : $"{nombre} · {marca} · ({count} en lab)";
+
+                _equiposOptions.Add(new SelectOption(
+                    id,
+                    label,
+                    imageUrl: img,
+                    meta: "MODELO EQUIPO"
+                ));
+            }
+        }
+
+
+        // Materiales
+        const string matSql = @"
+            SELECT material_id, nombre, tipo, imagen_url
+            FROM materiales
+            WHERE laboratorio_id = @lab
+            ORDER BY nombre;";
+        await using (var cmd = new NpgsqlCommand(matSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                _materialesOptions.Add(new SelectOption(
+                    r.GetString(0),
+                    r.GetString(1),
+                    imageUrl: r.IsDBNull(3) ? null : r.GetString(3),
+                    meta: r.IsDBNull(2) ? null : r.GetString(2)
+                ));
+            }
+        }
+
+        // Sustancias
+        const string susSql = @"
+            SELECT sustancia_id,
+                   COALESCE(NULLIF(nombre_comercial,''), NULLIF(nombre_quimico,''), sustancia_id) AS nombre,
+                   imagen_url
+            FROM sustancias
+            WHERE laboratorio_id = @lab
+            ORDER BY nombre;";
+        await using (var cmd = new NpgsqlCommand(susSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                _sustanciasOptions.Add(new SelectOption(
+                    r.GetString(0),
+                    r.GetString(1),
+                    imageUrl: r.IsDBNull(2) ? null : r.GetString(2),
+                    meta: "SUSTANCIA"
+                ));
+            }
+        }
+    }
+
+    private async Task LoadExperienciaAsync()
+    {
+        var id = (ExperienciaId ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(id)) { found = false; return; }
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+        const string sql = @"
+            SELECT experiencia_id,
+                   asignatura_id,
+                   COALESCE(laboratorio_realizado_id,'') AS lab_real_id,
+                   COALESCE(NULLIF(nombre,''), experiencia_id) AS nombre,
+                   orden,
+                   tiempo_estimado_min,
+                   COALESCE(procedimientos,'') AS procedimientos,
+                   COALESCE(precauciones,'') AS precauciones,
+                   COALESCE(observaciones,'') AS observaciones,
+                   COALESCE(descripcion_detalle,'') AS detalle,
+                   laboratorio_id
+            FROM experiencias_clases
+            WHERE experiencia_id = @id
+              AND (laboratorio_id = @lab OR laboratorio_id IS NULL)
+            LIMIT 1;";
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("id", id);
+        cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+
+        await using var r = await cmd.ExecuteReaderAsync();
+        if (!await r.ReadAsync())
+        {
+            found = false;
+            return;
+        }
+
+        found = true;
+        isGlobal = r.IsDBNull(10);
+
+        edit = new ExperienciaEdit
+            {
+                ExperienciaId = r.GetString(0),
+                AsignaturaId = r.GetString(1),
+                LaboratorioRealizadoId = r.GetString(2),
+                Nombre = r.GetString(3),
+                Orden = r.IsDBNull(4) ? (int?)null : r.GetInt32(4),
+                TiempoMin = r.IsDBNull(5) ? (int?)null : r.GetInt32(5),
+                Procedimientos = r.GetString(6),
+                Precauciones = r.GetString(7),
+                Observaciones = r.GetString(8),
+                DescripcionDetalle = r.GetString(9),
+            };
+    }
+
+    private async Task LoadRelacionesAsync()
+    {
+        edit.EquiposIds.Clear();
+        edit.MaterialesIds.Clear();
+        edit.SustanciasIds.Clear();
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        const string eq = @"SELECT modelo_equipo_id FROM experiencia_equipos WHERE experiencia_id = @exp;";
+        await using (var cmd = new NpgsqlCommand(eq, conn))
+        {
+            cmd.Parameters.AddWithValue("exp", edit.ExperienciaId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+                edit.EquiposIds.Add(r.GetString(0));
+        }
+
+
+        const string mat = @"SELECT material_id FROM experiencia_materiales WHERE experiencia_id = @exp;";
+        await using (var cmd = new NpgsqlCommand(mat, conn))
+        {
+            cmd.Parameters.AddWithValue("exp", edit.ExperienciaId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+                edit.MaterialesIds.Add(r.GetString(0));
+        }
+
+        const string sus = @"SELECT sustancia_id FROM experiencia_sustancias WHERE experiencia_id = @exp;";
+        await using (var cmd = new NpgsqlCommand(sus, conn))
+        {
+            cmd.Parameters.AddWithValue("exp", edit.ExperienciaId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+                edit.SustanciasIds.Add(r.GetString(0));
+        }
+    }
+
+    private async Task LoadDocsAsync()
+    {
+        _docsExp.Clear();
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        const string docSql = @"
+            SELECT documento_id, titulo, procedencia, alcance,
+                   COALESCE(asignatura_id,'') AS asignatura_id,
+                   COALESCE(experiencia_id,'') AS experiencia_id,
+                   url, archivo_local, imagen_url
+            FROM documentos
+            WHERE (laboratorio_contexto_id = @lab OR laboratorio_contexto_id IS NULL)
+              AND alcance = 'EXPERIENCIA'
+              AND experiencia_id = @exp
+            ORDER BY titulo;";
+        await using var cmd = new NpgsqlCommand(docSql, conn);
+        cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+        cmd.Parameters.AddWithValue("exp", edit.ExperienciaId);
+
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+        {
+            _docsExp.Add(new DocRow(
+                r.GetString(0),
+                r.GetString(1),
+                r.GetString(2),
+                r.GetString(3),
+                r.GetString(4),
+                r.GetString(5),
+                r.IsDBNull(6) ? null : r.GetString(6),
+                r.IsDBNull(7) ? null : r.GetString(7),
+                r.IsDBNull(8) ? null : r.GetString(8)
+            ));
+        }
+    }
+    // Categorías de modelos de equipo (según tu seed)
+    private static readonly string[] CategoriaEquipoIds = new[]
+    {
+    "equipo-medicion",
+    "equipo-operacion",
+    "equipo-mixto"
+};
+
+    private void OnAsignaturaChanged(ChangeEventArgs e)
+    {
+        var v = e.Value?.ToString();
+        edit.AsignaturaId = string.IsNullOrWhiteSpace(v) ? "" : v!;
+        edit.LaboratorioRealizadoId = "";
+        msg = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        msg = null;
+        confirmDelete = false;
+
+        if (!found) { msg = "No hay experiencia cargada."; return; }
+        if (isGlobal) { msg = "Experiencia GLOBAL (solo lectura)."; return; }
+
+        if (string.IsNullOrWhiteSpace(edit.AsignaturaId)) { msg = "Selecciona la asignatura."; return; }
+        if (string.IsNullOrWhiteSpace(edit.LaboratorioRealizadoId)) { msg = "Selecciona el laboratorio realizado."; return; }
+        if (string.IsNullOrWhiteSpace(edit.Nombre)) { msg = "Ingresa el nombre."; return; }
+
+        var orden = ParseIntOrNull(edit.OrdenText);
+        var tmin = ParseIntOrNull(edit.TiempoMinText);
+
+        isSaving = true;
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            const string up = @"
+                UPDATE experiencias_clases
+                SET asignatura_id=@asig,
+                    laboratorio_realizado_id=@lr,
+                    nombre=@nombre,
+                    orden=@orden,
+                    tiempo_estimado_min=@tmin,
+                    procedimientos=@proc,
+                    precauciones=@prec,
+                    observaciones=@obs,
+                    descripcion_detalle=@det
+                WHERE experiencia_id=@id AND laboratorio_id=@lab;";
+
+            var rows = await ExecAsync(conn, tx, up,
+                ("id", edit.ExperienciaId),
+                ("lab", LaboratorioState.LaboratorioId),
+                ("asig", edit.AsignaturaId),
+                ("lr", edit.LaboratorioRealizadoId),
+                ("nombre", edit.Nombre.Trim()),
+                ("orden", orden),
+                ("tmin", tmin),
+                ("proc", DbOrNull(edit.Procedimientos)),
+                ("prec", DbOrNull(edit.Precauciones)),
+                ("obs", DbOrNull(edit.Observaciones)),
+                ("det", DbOrNull(edit.DescripcionDetalle))
+            );
+
+            if (rows == 0)
+            {
+                msg = "No se pudo guardar (posible experiencia GLOBAL o fuera del laboratorio).";
+                await tx.RollbackAsync();
+                return;
+            }
+
+            await ExecAsync(conn, tx, "DELETE FROM experiencia_equipos WHERE experiencia_id=@exp", ("exp", edit.ExperienciaId));
+            await ExecAsync(conn, tx, "DELETE FROM experiencia_materiales WHERE experiencia_id=@exp", ("exp", edit.ExperienciaId));
+            await ExecAsync(conn, tx, "DELETE FROM experiencia_sustancias WHERE experiencia_id=@exp", ("exp", edit.ExperienciaId));
+
+            await InsertRelAsync(conn, tx, "experiencia_equipos", "modelo_equipo_id", edit.EquiposIds, edit.ExperienciaId);
+            await InsertRelAsync(conn, tx, "experiencia_materiales", "material_id", edit.MaterialesIds, edit.ExperienciaId);
+            await InsertRelAsync(conn, tx, "experiencia_sustancias", "sustancia_id", edit.SustanciasIds, edit.ExperienciaId);
+
+
+            await tx.CommitAsync();
+
+            msg = "Guardado correctamente.";
+            isEditing = false;
+            await ReloadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        msg = null;
+        if (!found) return;
+        if (isGlobal) { msg = "Experiencia GLOBAL (no se puede eliminar)."; return; }
+
+        isSaving = true;
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            await ExecAsync(conn, tx,
+                "DELETE FROM documentos WHERE alcance='EXPERIENCIA' AND experiencia_id=@exp AND laboratorio_contexto_id=@lab",
+                ("exp", edit.ExperienciaId),
+                ("lab", LaboratorioState.LaboratorioId)
+            );
+
+            await ExecAsync(conn, tx, "DELETE FROM experiencia_equipos WHERE experiencia_id=@exp", ("exp", edit.ExperienciaId));
+            await ExecAsync(conn, tx, "DELETE FROM experiencia_materiales WHERE experiencia_id=@exp", ("exp", edit.ExperienciaId));
+            await ExecAsync(conn, tx, "DELETE FROM experiencia_sustancias WHERE experiencia_id=@exp", ("exp", edit.ExperienciaId));
+
+            await ExecAsync(conn, tx,
+                "DELETE FROM experiencias_clases WHERE experiencia_id=@id AND laboratorio_id=@lab",
+                ("id", edit.ExperienciaId),
+                ("lab", LaboratorioState.LaboratorioId)
+            );
+
+            await tx.CommitAsync();
+            Nav.NavigateTo("/contenidos");
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private static async Task InsertRelAsync(NpgsqlConnection conn, NpgsqlTransaction tx, string table, string col, HashSet<string> ids, string expId)
+    {
+        if (ids.Count == 0) return;
+        var sql = $"INSERT INTO {table} (experiencia_id, {col}) VALUES (@exp, @id) ON CONFLICT DO NOTHING;";
+        foreach (var id in ids)
+        {
+            await using var cmd = new NpgsqlCommand(sql, conn, tx);
+            cmd.Parameters.AddWithValue("exp", expId);
+            cmd.Parameters.AddWithValue("id", id);
+            await cmd.ExecuteNonQueryAsync();
+        }
+    }
+
+    private static IEnumerable<SelectOption> FilterOptions(IEnumerable<SelectOption> src, string? q)
+    {
+        if (string.IsNullOrWhiteSpace(q)) return src;
+        var s = q.Trim();
+        return src.Where(o => o.Label.Contains(s, StringComparison.OrdinalIgnoreCase)
+                           || (o.Meta?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false));
+    }
+
+    private static void Toggle(HashSet<string> set, string id)
+    {
+        if (!set.Add(id))
+            set.Remove(id);
+    }
+
+    private static object ParseIntOrNull(string? value) =>
+        int.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var i) ? i : DBNull.Value;
+
+    private static object DbOrNull(string? s) => string.IsNullOrWhiteSpace(s) ? (object)DBNull.Value : s!.Trim();
+
+    private static string ResolveUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return "";
+        if (url.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return url;
+        return url.StartsWith("/", StringComparison.OrdinalIgnoreCase) ? url : $"/{url}";
+    }
+
+    private static string NullDash(string? s) => string.IsNullOrWhiteSpace(s) ? "—" : s;
+
+    // ✅ LISTADO CON IMAGEN + HIPERVÍNCULO
+    private RenderFragment RenderRelLinkGrid(HashSet<string> ids, List<SelectOption> options, string routePrefix) => builder =>
+    {
+        if (ids.Count == 0)
+        {
+            builder.OpenElement(0, "span");
+            builder.AddAttribute(1, "class", "muted");
+            builder.AddContent(2, "—");
+            builder.CloseElement();
+            return;
+        }
+
+        var items = ids
+            .Select(id =>
+            {
+                var opt = options.FirstOrDefault(o => string.Equals(o.Id, id, StringComparison.OrdinalIgnoreCase));
+                var label = opt?.Label ?? id;
+                return new { Id = id, Label = label, Img = opt?.ImageUrl, Meta = opt?.Meta };
+            })
+            .OrderBy(x => x.Label, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        int seq = 10;
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "rel-link-grid");
+
+        foreach (var it in items)
+        {
+            builder.OpenComponent<NavLink>(seq++);
+            builder.AddAttribute(seq++, "href", $"{routePrefix}{it.Id}");
+            builder.AddAttribute(seq++, "class", "rel-link-item");
+            builder.AddAttribute(seq++, "ChildContent", (RenderFragment)(b =>
+            {
+                int s2 = 0;
+
+                // thumb
+                if (!string.IsNullOrWhiteSpace(it.Img))
+                {
+                    b.OpenElement(s2++, "img");
+                    b.AddAttribute(s2++, "class", "rel-link-thumb");
+                    b.AddAttribute(s2++, "src", ResolveUrl(it.Img));
+                    b.AddAttribute(s2++, "alt", "img");
+                    b.CloseElement();
+                }
+                else
+                {
+                    b.OpenElement(s2++, "div");
+                    b.AddAttribute(s2++, "class", "rel-link-thumb placeholder");
+                    b.AddContent(s2++, "IMG");
+                    b.CloseElement();
+                }
+
+                // text
+                b.OpenElement(s2++, "div");
+                b.AddAttribute(s2++, "class", "rel-link-text");
+
+                b.OpenElement(s2++, "div");
+                b.AddAttribute(s2++, "class", "rel-link-name");
+                b.AddContent(s2++, it.Label);
+                b.CloseElement();
+
+                if (!string.IsNullOrWhiteSpace(it.Meta))
+                {
+                    b.OpenElement(s2++, "div");
+                    b.AddAttribute(s2++, "class", "rel-link-meta");
+                    b.AddContent(s2++, it.Meta);
+                    b.CloseElement();
+                }
+
+                b.CloseElement();
+            }));
+            builder.CloseComponent();
+        }
+
+        builder.CloseElement();
+    };
+
+    private static async Task<int> ExecAsync(NpgsqlConnection conn, NpgsqlTransaction tx, string sql, params (string name, object value)[] ps)
+    {
+        await using var cmd = new NpgsqlCommand(sql, conn, tx) { CommandTimeout = 60 };
+        foreach (var (name, value) in ps)
+            cmd.Parameters.AddWithValue(name, value ?? DBNull.Value);
+        return await cmd.ExecuteNonQueryAsync();
+    }
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
+
+    private sealed record SelectOption(string Id, string Label, string? imageUrl = null, string? meta = null)
+    {
+        public string? ImageUrl { get; } = imageUrl;
+        public string? Meta { get; } = meta;
+    }
+
+    private sealed record DocRow(
+        string DocumentoId,
+        string Titulo,
+        string Procedencia,
+        string Alcance,
+        string AsignaturaId,
+        string ExperienciaId,
+        string? Url,
+        string? ArchivoLocal,
+        string? ImagenUrl
+    );
+
+    private sealed class ExperienciaEdit
+    {
+        public string ExperienciaId { get; set; } = "";
+        public string AsignaturaId { get; set; } = "";
+        public string? LaboratorioRealizadoId { get; set; } = "";
+
+        public string Nombre { get; set; } = "";
+
+        public int? Orden { get; set; }
+        public int? TiempoMin { get; set; }
+
+        public string? Procedimientos { get; set; }
+        public string? Precauciones { get; set; }
+        public string? Observaciones { get; set; }
+        public string? DescripcionDetalle { get; set; }
+
+        public string? OrdenText
+        {
+            get => Orden?.ToString(CultureInfo.InvariantCulture);
+            set => Orden = int.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : null;
+        }
+
+        public string? TiempoMinText
+        {
+            get => TiempoMin?.ToString(CultureInfo.InvariantCulture);
+            set => TiempoMin = int.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : null;
+        }
+
+        public HashSet<string> EquiposIds { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public HashSet<string> MaterialesIds { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public HashSet<string> SustanciasIds { get; } = new(StringComparer.OrdinalIgnoreCase);
+    }
+}
+
+<style>
+    .page-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+        padding: 1rem;
+        box-shadow: 0 6px 14px rgba(15,23,42,.04);
+    }
+
+    .header-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+    }
+
+    .header-actions {
+        display: flex;
+        gap: .5rem;
+        align-items: center;
+    }
+
+    .muted {
+        color: #64748b;
+    }
+
+    .text-xs {
+        font-size: .8rem;
+    }
+
+    .text-sm {
+        font-size: .9rem;
+    }
+
+    .error-note {
+        color: #b91c1c;
+    }
+
+    .empty {
+        padding: .85rem 1rem;
+        border-radius: 10px;
+        background: #fef9c3;
+        border: 1px solid #fde68a;
+        color: #854d0e;
+    }
+
+    .btn {
+        border: 1px solid #cbd5e1;
+        background: #fff;
+        color: #0f172a;
+        padding: .5rem .9rem;
+        border-radius: .55rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+        .btn.primary {
+            background: #2563eb;
+            color: #fff;
+            border: none;
+            box-shadow: 0 6px 12px rgba(37,99,235,.18);
+        }
+
+            .btn.primary:hover {
+                background: #1d4ed8;
+            }
+
+        .btn.danger {
+            background: #b91c1c;
+            color: #fff;
+            border: none;
+        }
+
+            .btn.danger:hover {
+                background: #991b1b;
+            }
+
+    .btn-link {
+        color: #1d4ed8;
+        text-decoration: none;
+        font-weight: 800;
+    }
+
+        .btn-link:hover {
+            text-decoration: underline;
+        }
+
+    .detail-info {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 1rem;
+        background: #fff;
+    }
+
+    .title-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: .75rem;
+    }
+
+    .badges {
+        display: flex;
+        gap: .4rem;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    .badge {
+        background: #dbeafe;
+        color: #1d4ed8;
+        padding: .2rem .55rem;
+        border-radius: 999px;
+        font-size: .85rem;
+        font-weight: 700;
+    }
+
+        .badge.gray {
+            background: #e2e8f0;
+            color: #0f172a;
+        }
+
+        .badge.warn {
+            background: #fff7ed;
+            color: #9a3412;
+        }
+
+        .badge.linkbadge {
+            text-decoration: none;
+        }
+
+            .badge.linkbadge:hover {
+                filter: brightness(.98);
+            }
+
+    .dl {
+        display: grid;
+        gap: .6rem;
+    }
+
+    .dl-row {
+        display: grid;
+        grid-template-columns: 220px 1fr;
+        gap: .75rem;
+    }
+
+    @@media (max-width:900px) {
+        .dl-row
+
+    {
+        grid-template-columns: 1fr;
+    }
+
+    }
+
+    .dt {
+        color: #475569;
+        font-weight: 800;
+    }
+
+    .dd {
+        color: #0f172a;
+    }
+
+        .dd.pre {
+            white-space: pre-wrap;
+        }
+
+    .warnbox {
+        border: 1px solid #f59e0b;
+        background: #fff7ed;
+        padding: .5rem;
+        border-radius: 10px;
+    }
+
+    .view-actions {
+        margin-top: 1rem;
+        display: flex;
+        gap: .75rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .form-header {
+        margin-bottom: .75rem;
+    }
+
+        .form-header h4 {
+            margin: 0 0 .25rem 0;
+            font-weight: 800;
+            color: #0f172a;
+        }
+
+    .form-hint {
+        margin: 0;
+        color: #64748b;
+        font-size: .95rem;
+    }
+
+    .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: .75rem;
+        align-items: start;
+    }
+
+    .full-span {
+        grid-column: 1 / -1;
+    }
+
+    .field label {
+        display: block;
+        font-size: .85rem;
+        color: #475569;
+        margin-bottom: .25rem;
+        font-weight: 800;
+    }
+
+    .border {
+        border: 1px solid #e5e7eb;
+        border-radius: .5rem;
+    }
+
+    .p-1 {
+        padding: .45rem .6rem;
+    }
+
+    .form-actions {
+        display: flex;
+        gap: .75rem;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-top: .25rem;
+    }
+
+    .tag {
+        display: inline-flex;
+        align-items: center;
+        padding: .15rem .5rem;
+        border-radius: 999px;
+        border: 1px solid #e5e7eb;
+        background: #f8fafc;
+        font-size: .78rem;
+        font-weight: 800;
+        color: #0f172a;
+        margin-right: .25rem;
+        white-space: nowrap;
+    }
+
+    .split-3 {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: .85rem;
+        align-items: start;
+    }
+
+    .panel {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+        padding: .75rem;
+        display: grid;
+        gap: .6rem;
+    }
+
+    .panel-title {
+        font-weight: 900;
+        color: #0f172a;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: .5rem;
+    }
+
+        .panel-title.small {
+            font-size: .92rem;
+        }
+
+    /* ✅ NUEVO: recursos con imagen + link */
+    .rel-link-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+        gap: .55rem;
+    }
+
+    .rel-link-item {
+        display: grid;
+        grid-template-columns: 44px 1fr;
+        gap: .55rem;
+        align-items: center;
+        padding: .45rem .55rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+        text-decoration: none;
+        color: inherit;
+    }
+
+        .rel-link-item:hover {
+            background: #f8fafc;
+            border-color: #cbd5e1;
+        }
+
+    .rel-link-thumb {
+        width: 44px;
+        height: 44px;
+        object-fit: contain;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+    }
+
+        .rel-link-thumb.placeholder {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
+            color: #334155;
+            background: #e2e8f0;
+            border: 1px dashed #cbd5e1;
+        }
+
+    .rel-link-text {
+        display: grid;
+        line-height: 1.15;
+    }
+
+    .rel-link-name {
+        font-weight: 900;
+        color: #0f172a;
+    }
+
+    .rel-link-meta {
+        font-size: .78rem;
+        color: #64748b;
+        font-weight: 700;
+    }
+
+    /* Selector recursos */
+    .rel-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: .75rem;
+    }
+
+    .rel-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+        padding: .6rem;
+        display: grid;
+        gap: .5rem;
+    }
+
+    .rel-title {
+        font-weight: 900;
+        color: #0f172a;
+    }
+
+    .rel-search {
+        width: 100%;
+        border-radius: 10px;
+        border: 1px solid #cbd5e1;
+    }
+
+    .rel-list {
+        max-height: 220px;
+        overflow: auto;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        padding: .35rem;
+        background: #fafafa;
+        display: grid;
+        gap: .35rem;
+    }
+
+    .check-row {
+        display: flex;
+        gap: .5rem;
+        align-items: center;
+        padding: .35rem .35rem;
+        border-radius: 10px;
+        background: #fff;
+        border: 1px solid #f1f5f9;
+    }
+
+        .check-row:hover {
+            background: #f8fafc;
+        }
+
+    .check-text {
+        font-weight: 800;
+        color: #0f172a;
+    }
+
+    .thumb {
+        width: 34px;
+        height: 34px;
+        object-fit: contain;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        background: #fff;
+    }
+
+    /* Docs */
+    .doc-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: .65rem;
+    }
+
+    .doc-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 14px;
+        background: #fff;
+        overflow: hidden;
+        display: grid;
+        grid-template-columns: 110px 1fr;
+        min-height: 90px;
+    }
+
+    .doc-cover {
+        width: 110px;
+        height: 100%;
+        object-fit: cover;
+        background: #f1f5f9;
+        border-right: 1px solid #e5e7eb;
+    }
+
+        .doc-cover.placeholder {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
+            color: #0f172a;
+            background: #e2e8f0;
+        }
+
+    .doc-meta {
+        padding: .6rem;
+        display: grid;
+        gap: .35rem;
+        align-content: start;
+    }
+
+    .doc-title {
+        font-weight: 900;
+        color: #0f172a;
+    }
+
+    .doc-sub {
+        display: flex;
+        gap: .35rem;
+        flex-wrap: wrap;
+    }
+
+    .doc-actions {
+        margin-top: .2rem;
+    }
+</style>

@@ -1,0 +1,2379 @@
+﻿@page "/inventario-materiales"
+@page "/inventario-materiales/{SubcategoriaId}"
+
+@using Npgsql
+@using BARI_web.General_Services
+@using System.Globalization
+@using System.IO
+@using System.Linq
+@using Microsoft.AspNetCore.Components.Forms
+@inject NpgsqlDataSource DataSource
+@inject LaboratorioState LaboratorioState
+@inject NavigationManager Nav
+@inject IWebHostEnvironment HostEnvironment
+@implements IDisposable
+
+<PageTitle>Inventario de Materiales</PageTitle>
+
+<section class="page-card">
+    <h2>Inventario de Materiales</h2>
+    <p>
+        Materiales del laboratorio organizados por categoría y subcategoría.
+        Incluye vidrio, plástico, consumibles y montaje/soporte.
+    </p>
+    <LaboratorioSelector />
+</section>
+
+<section class="page-card" style="margin-top:1.5rem;">
+    <details>
+        <summary style="cursor:pointer; font-weight:600;">Subir material</summary>
+
+        <div class="form-header">
+            <h4>Registro rápido de material</h4>
+            <p class="form-hint">Completa los campos principales y ubica el material en el mapa para registrar el mesón asociado.</p>
+        </div>
+
+        <div class="assign-row form-grid">
+            <select class="border p-1"
+                    value="@_nuevoMaterialCategoriaId"
+                    @onchange="OnCategoriaMaterialChanged">
+                <option value="">Categoría</option>
+                @foreach (var cat in _categoriaMaterialOptions)
+                {
+                    <option value="@cat.Id">@cat.Label</option>
+                }
+            </select>
+
+
+            <input class="border p-1" placeholder="Nombre" @bind="_nuevoMaterialNombre" />
+
+            @if (_nuevoMaterialTipo == "VIDRIO" || _nuevoMaterialTipo == "PLASTICO")
+            {
+                <input class="border p-1" placeholder="Capacidad (número)" type="number" step="any" @bind="_nuevoMaterialDetalle" />
+                <select class="border p-1" @bind="_nuevoMaterialUnidadId">
+                    <option value="">Unidad (vidrio)</option>
+                    @foreach (var unidad in _unidadOptions)
+                    {
+                        <option value="@unidad.Id">@unidad.Label</option>
+                    }
+                </select>
+            }
+
+            <input class="border p-1" placeholder="Cantidad" type="number" step="any" @bind="_nuevoMaterialCantidad" />
+
+            <input class="border p-1" placeholder="Altura (cm)" type="number" step="any" @bind="_nuevoMaterialAlturaCm" />
+
+            <select class="border p-1" @bind="_nuevoMaterialEstadoId">
+                <option value="">Estado</option>
+                @foreach (var estado in _estadoOptions)
+                {
+                    <option value="@estado.Id">@estado.Label</option>
+                }
+            </select>
+
+            <div class="brand-picker">
+                <select class="border p-1" @bind="_nuevoMaterialMarcaId">
+                    <option value="">Marca</option>
+                    @foreach (var marca in _marcaOptions)
+                    {
+                        <option value="@marca.Id">@marca.Label</option>
+                    }
+                </select>
+
+                @if (!string.IsNullOrWhiteSpace(SelectedMarcaLogoUrl))
+                {
+                    <img class="thumb thumb-logo" src="@SelectedMarcaLogoUrl" alt="Logo marca" />
+                }
+            </div>
+
+
+            <div class="border p-2" style="border-radius:.5rem;"
+                 aria-disabled="@string.IsNullOrWhiteSpace(_nuevoMaterialCategoriaId)">
+
+                <div class="text-xs text-gray-500" style="margin-bottom:.35rem;">Subcategorías (puedes elegir varias)</div>
+
+                @if (string.IsNullOrWhiteSpace(_nuevoMaterialCategoriaId))
+                {
+                    <div class="text-xs text-gray-500">Selecciona una categoría primero.</div>
+                }
+                else
+                {
+                    @foreach (var sub in SubcategoriasFiltradas)
+                    {
+                        var isChecked = _nuevoMaterialSubcategoriaIds.Contains(sub.Id);
+                        var checkboxId = $"subcat_{sub.Id}";
+
+                        <label for="@checkboxId" style="display:flex; gap:.5rem; align-items:center; margin:.2rem 0;">
+                            <input id="@checkboxId"
+                                   type="checkbox"
+                                   checked="@isChecked"
+                                   @onchange="(e) => OnSubcategoriaToggle(e, sub.Id)" />
+                            <span>@sub.Label</span>
+                        </label>
+                    }
+                }
+            </div>
+
+
+
+            <div class="selector-split full-span">
+                <select class="border p-1"
+                        value="@_nuevoMaterialAreaId"
+                        @onchange="OnAreaChanged">
+                    <option value="">Área</option>
+                    @foreach (var area in _areaOptions)
+                    {
+                        <option value="@area.Id">@area.Label</option>
+                    }
+                </select>
+
+                <div class="visual-picker">
+                    <div class="visual-toolbar">
+                        <label class="text-xs text-gray-500">Mapa de áreas</label>
+
+                        <select class="border p-1 text-xs" @bind="_currentPlantaId">
+                            <option value="">Todas</option>
+                            @foreach (var planta in _plantasLookup)
+                            {
+                                <option value="@planta.Key">@planta.Value</option>
+                            }
+                        </select>
+                    </div>
+
+                    @if (_canvasViews.Count == 0)
+                    {
+                        <div class="text-xs text-gray-500">Sin mapas disponibles.</div>
+                    }
+                    else
+                    {
+                        @foreach (var view in _canvasViews)
+                        {
+                            var areasPorPlanta = view.Areas.Where(a => IsAreaInCurrentPlanta(a.PlantaId)).ToList();
+                            if (areasPorPlanta.Count == 0)
+                            {
+                                continue;
+                            }
+
+                            <div class="canvas-card">
+                                <div class="text-xs text-gray-500">@view.Canvas.Nombre</div>
+
+                                <svg width="100%" height="100%"
+                                     viewBox="0 0 @view.Canvas.Ancho @view.Canvas.largo"
+                                     preserveAspectRatio="xMidYMid meet">
+
+                                    <rect x="0" y="0"
+                                          width="@FormatSvg(view.Canvas.Ancho)"
+                                          height="@FormatSvg(view.Canvas.largo)"
+                                          fill="transparent"
+                                          style="pointer-events:all"
+                                          @onclick="ClearAreaSelection" />
+
+                                    @foreach (var area in areasPorPlanta)
+                                    {
+                                        foreach (var poly in area.Poligonos.OrderBy(p => p.ZOrder))
+                                        {
+                                            <polygon points="@PointsString(poly)"
+                                                     fill="@AreaFill(area)"
+                                                     stroke="#111827" stroke-width="0.03"
+                                                     style="cursor:pointer"
+                                                     @onclick:stopPropagation="true"
+                                                     @onclick="@(() => SelectAreaFromVisualAsync(area.AreaId))" />
+                                        }
+
+                                        @if (!string.IsNullOrWhiteSpace(area.Nombre))
+                                        {
+                                            var labelWidth = AreaLabelWidth(area);
+                                            var labelHeight = AreaLabelHeight(area);
+                                            var fontSize = AreaLabelFontSize(area);
+
+                                            <svg:rect x="@FormatSvg(area.CenterX - labelWidth / 2m)"
+                                                      y="@FormatSvg(area.CenterY - labelHeight / 2m)"
+                                                      width="@FormatSvg(labelWidth)"
+                                                      height="@FormatSvg(labelHeight)"
+                                                      fill="#ffffff" opacity="0.8" rx="0.15" ry="0.15"
+                                                      @onclick:stopPropagation="true" />
+                                            <svg:text class="area-label"
+                                                      x="@FormatSvg(area.CenterX)" y="@FormatSvg(area.CenterY)"
+                                                      text-anchor="middle" dominant-baseline="middle"
+                                                      font-size="@FormatSvg(fontSize)"
+                                                      @onclick:stopPropagation="true">
+                                                @area.Nombre
+                                            </svg:text>
+                                        }
+                                    }
+                                </svg>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+
+            <div class="selector-split full-span">
+                <select class="border p-1"
+                        value="@_nuevoMaterialMesonId"
+                        @onchange="OnMesonChanged"
+                        disabled="@string.IsNullOrWhiteSpace(_nuevoMaterialAreaId)">
+                    <option value="">Mesón</option>
+                    @foreach (var meson in _mesonOptions)
+                    {
+                        <option value="@meson.Id">@meson.Label</option>
+                    }
+                </select>
+
+                <div class="visual-picker">
+                    <div class="text-xs text-gray-500">Mesones del área seleccionada</div>
+
+                    @if (SelectedAreaForMap is not null)
+                    {
+                        var selectedArea = SelectedAreaForMap;
+                        var vb = AreaViewBoxRect(selectedArea);
+
+                        <div class="canvas-card">
+                            <div class="text-xs text-gray-500">@SelectedAreaLabel</div>
+                            <svg width="100%" height="100%"
+                                 viewBox="@AreaViewBox(selectedArea)"
+                                 preserveAspectRatio="xMidYMid meet">
+
+                                <rect x="@FormatSvg(vb.x)" y="@FormatSvg(vb.y)"
+                                      width="@FormatSvg(vb.w)" height="@FormatSvg(vb.h)"
+                                      fill="transparent"
+                                      style="pointer-events:all"
+                                      @onclick="ClearMesonSelection" />
+
+                                @foreach (var poly in selectedArea.Poligonos.OrderBy(p => p.ZOrder))
+                                {
+                                    <polygon points="@PointsString(poly)"
+                                             fill="@AreaFill(selectedArea)"
+                                             stroke="#111827" stroke-width="0.03"
+                                             @onclick:stopPropagation="true" />
+                                }
+
+                                @foreach (var meson in _mesonVisuals.OrderBy(m => m.ZOrder))
+                                {
+                                    <g class="meson-visual"
+                                       style="cursor:pointer"
+                                       @onclick:stopPropagation="true"
+                                       @onclick="@(() => SelectMeson(meson.MesonId))">
+
+                                        <rect x="@FormatSvg(meson.X)"
+                                              y="@FormatSvg(meson.Y)"
+                                              width="@FormatSvg(meson.Width)"
+                                              height="@FormatSvg(meson.Height)"
+                                              fill="@MesonFill(meson)"
+                                              opacity="@FormatSvg(MesonOpacity(meson))"
+                                              stroke="@MesonStroke(meson)"
+                                              stroke-width="@FormatSvg(MesonStrokeWidth(meson))" />
+
+                                        <svg:text x="@FormatSvg(meson.X + meson.Width / 2m)"
+                                                  y="@FormatSvg(meson.Y + meson.Height / 2m)"
+                                                  text-anchor="middle" dominant-baseline="middle"
+                                                  font-size="@FormatSvg(MesonLabelFontSize(meson))"
+                                                  fill="#111827">
+                                            @meson.Label
+                                        </svg:text>
+                                    </g>
+                                }
+                            </svg>
+                        </div>
+                    }
+
+                    @if (_mesonSummaries.Count == 0)
+                    {
+                        <div class="text-xs text-gray-500">Sin mesones disponibles.</div>
+                    }
+                    else
+                    {
+                        <ul class="meson-list">
+                            @foreach (var meson in _mesonSummaries)
+                            {
+                                var isSel = string.Equals(meson.MesonId, _nuevoMaterialMesonId, StringComparison.OrdinalIgnoreCase);
+
+                                <li class="@(isSel ? "meson-item selected" : "meson-item")">
+                                    <button type="button" class="btn link"
+                                            @onclick="@(() => SelectMeson(meson.MesonId))">
+                                        @meson.Nombre
+                                    </button>
+                                    <div class="text-xs text-gray-500">
+                                        Reactivos: @meson.ReactivosCount · Equipos: @meson.EquiposCount
+                                    </div>
+                                </li>
+                            }
+                        </ul>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(_nuevoMaterialMesonId))
+                    {
+                        <div class="text-xs text-gray-500">
+                            Seleccionado: @SelectedAreaLabel · @SelectedMesonLabel
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <input class="border p-1" placeholder="Nivel" @bind="_nuevoMaterialNivel" />
+            <input class="border p-1" placeholder="Posición (ej. al fondo, en el medio)" @bind="_nuevoMaterialPosicion" />
+            <input class="border p-1" placeholder="Descripción" @bind="_nuevoMaterialDescripcion" />
+
+            <div class="upload-card full-span">
+                <div class="upload-options">
+                    <label class="text-sm">
+                        <input type="radio"
+                               name="imagenModo"
+                               value="url"
+                               checked="@(_nuevoMaterialImagenModo == "url")"
+                               @onchange="OnImagenModoChanged" />
+                        Colocar un URL
+                    </label>
+                    <label class="text-sm">
+                        <input type="radio"
+                               name="imagenModo"
+                               value="archivo"
+                               checked="@(_nuevoMaterialImagenModo == "archivo")"
+                               @onchange="OnImagenModoChanged" />
+                        Subir archivo
+                    </label>
+                </div>
+
+                @if (_nuevoMaterialImagenModo == "url")
+                {
+                    <input class="border p-1" placeholder="Imagen URL (o ruta relativa)" @bind="_nuevoMaterialImagenUrl" />
+                }
+                else
+                {
+                    <label class="upload-drop">
+                        <InputFile OnChange="OnImagenArchivoSeleccionado" accept="image/png,image/jpeg,image/jpg,image/webp" />
+                        <span>Arrastra una imagen o haz clic para buscar</span>
+                    </label>
+                    @if (!string.IsNullOrWhiteSpace(_nuevoMaterialImagenArchivo))
+                    {
+                        <div class="text-xs text-gray-500">Archivo: @_nuevoMaterialImagenArchivo</div>
+                    }
+                }
+            </div>
+
+            <input class="border p-1" placeholder="Observaciones" @bind="_nuevoMaterialObservaciones" />
+
+            <div class="form-actions full-span">
+                <button class="btn primary" @onclick="SubirMaterialAsync">Subir material</button>
+                @if (!string.IsNullOrWhiteSpace(_nuevoMaterialMsg))
+                {
+                    <span class="text-sm text-gray-500">@_nuevoMaterialMsg</span>
+                }
+            </div>
+
+        </div>
+    </details>
+</section>
+
+<section class="page-card" style="margin-top:1.5rem;">
+    <div class="category-header">
+        <div>
+            <h3>Guía de categorías (materiales)</h3>
+            <p class="helper">Selecciona una subcategoría para ver los materiales.</p>
+        </div>
+        <div class="category-controls">
+            <label class="toggle">
+                <input type="checkbox"
+                       checked="@_verTodos"
+                       @onchange="OnVerTodosToggle" />
+                <span>Ver todos los materiales</span>
+            </label>
+
+            <select class="category-select"
+                    @onchange="OnSubcategoriaChanged"
+                    value="@(_verTodos ? "" : SubcategoriaId)">
+                <option value="">Todas las categorías</option>
+                @foreach (var categoria in categorias)
+                {
+                    <optgroup label="@categoria.Nombre">
+                        @foreach (var subcategoria in categoria.Subcategorias)
+                        {
+                            <option value="@subcategoria.Id">@subcategoria.Nombre</option>
+                        }
+                    </optgroup>
+                }
+            </select>
+        </div>
+
+        @if (!_verTodos && !string.IsNullOrWhiteSpace(SubcategoriaId))
+        {
+            <NavLink class="btn-link" href="/inventario-materiales">Ver todas las categorías</NavLink>
+        }
+
+    </div>
+
+    @if (categorias.Count == 0)
+    {
+        <p><em>Cargando categorías…</em></p>
+    }
+    else
+    {
+        <div class="category-grid">
+            @foreach (var categoria in categorias)
+            {
+                <div class="category-card">
+                    <div class="category-title">@categoria.Nombre</div>
+                    <ul class="category-list">
+                        @foreach (var subcategoria in categoria.Subcategorias)
+                        {
+                            <li>
+                                <NavLink href="@($"/inventario-materiales/{subcategoria.Id}")" class="category-link">
+                                    @subcategoria.Nombre
+                                </NavLink>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            }
+        </div>
+    }
+</section>
+
+<section class="page-card" style="margin-top:1.5rem;">
+    <div class="materials-header">
+        <div class="materials-title">
+            <h3>
+                @(_verTodos
+                    ? "Todos los materiales"
+                    : (string.IsNullOrWhiteSpace(SubcategoriaId)
+                    ? "Materiales disponibles"
+                    : $"Materiales · {subcategoriaNombre ?? SubcategoriaId}"))
+            </h3>
+
+            @if (_verTodos || !string.IsNullOrWhiteSpace(SubcategoriaId))
+            {
+                <span class="badge">
+                    @FilteredCountLabel
+                </span>
+            }
+        </div>
+
+        <input class="border p-1 search-input-invent"
+               placeholder="Buscar (nombre, marca, área, estado, categoría, etc.)..."
+               @bind="_searchText"
+               @bind:event="oninput"
+               disabled="@(!(_verTodos || !string.IsNullOrWhiteSpace(SubcategoriaId)))" />
+
+        @if (_verTodos)
+        {
+            <NavLink class="btn-link" href="/inventario-materiales">Volver a categorías</NavLink>
+        }
+    </div>
+
+
+    @if (!string.IsNullOrWhiteSpace(loadError))
+    {
+        <p class="error-note">No se pudieron cargar materiales: @loadError</p>
+    }
+   
+    else if (materiales.Count == 0)
+    {
+        <div class="empty">
+            No hay materiales registrados para esta subcategoría.
+        </div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Nombre</th>
+                        <th>Categoría</th>
+                        <th>Subcategoría</th>
+                        <th>Tipo</th>
+                        <th>Estado</th>
+                        <th>Marca</th>
+                        <th>Cantidad</th>
+                        <th>Altura (cm)</th>
+                        <th>Área</th>
+                        <th>Ubicación</th>
+                        <th>Imagen</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    @foreach (var material in MaterialesFiltrados)
+                    {
+                        <tr>
+                            <td>@material.MaterialId</td>
+
+                            <td>
+                                <NavLink href="@($"/inventario-materiales/item/{material.MaterialId}")">
+                                    @material.Nombre
+                                </NavLink>
+                            </td>
+
+                            <td>@material.Categoria</td>
+                            <td>@material.Subcategoria</td>
+                            <td>@material.Tipo</td>
+
+                            <td>@(string.IsNullOrWhiteSpace(material.Estado) ? "—" : material.Estado)</td>
+
+                            <td>
+                                <div class="cell-media">
+                                    @if (!string.IsNullOrWhiteSpace(material.MarcaImagenUrl))
+                                    {
+                                        <img class="thumb thumb-logo" src="@material.MarcaImagenUrl" alt="Logo marca" />
+                                    }
+                                    <span>@(string.IsNullOrWhiteSpace(material.MarcaNombre) ? "—" : material.MarcaNombre)</span>
+                                </div>
+                            </td>
+
+                            <td>@material.Cantidad</td>
+                            <td>@material.AlturaCm</td>
+                            <td>@(string.IsNullOrWhiteSpace(material.Area) ? "—" : material.Area)</td>
+                            <td>@material.Ubicacion</td>
+
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(material.ImagenUrl))
+                                {
+                                    <img class="thumb thumb-material" src="@material.ImagenUrl" alt="Imagen material" />
+                                }
+                                else
+                                {
+                                    <span class="text-xs text-gray-500">—</span>
+                                }
+                            </td>
+                        </tr>
+
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+<style>
+    .selector-split {
+        display: flex;
+        gap: .75rem;
+        align-items: flex-start;
+        flex-wrap: wrap;
+    }
+
+    .form-header {
+        margin-top: 0.75rem;
+        margin-bottom: 0.75rem;
+    }
+
+        .form-header h4 {
+            margin: 0 0 0.25rem 0;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+    .form-hint {
+        margin: 0;
+        color: #64748b;
+        font-size: 0.95rem;
+    }
+
+    .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 0.75rem;
+        align-items: start;
+    }
+
+    .full-span {
+        grid-column: 1 / -1;
+    }
+
+    .form-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-top: 0.25rem;
+    }
+
+    .btn.primary {
+        background: #2563eb;
+        color: #fff;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 0.5rem;
+        font-weight: 600;
+        box-shadow: 0 6px 12px rgba(37, 99, 235, 0.18);
+    }
+
+        .btn.primary:hover {
+            background: #1d4ed8;
+        }
+
+    .visual-picker {
+        border: 1px solid #e5e7eb;
+        border-radius: .75rem;
+        padding: .6rem;
+        background: #fff;
+        min-width: 320px;
+    }
+
+    .visual-toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: .5rem;
+        margin-bottom: .5rem;
+    }
+
+    .canvas-card {
+        border: 1px solid #e5e7eb;
+        border-radius: .75rem;
+        padding: .5rem;
+        background: #fafafa;
+        margin-top: .5rem;
+    }
+
+        .canvas-card svg {
+            width: 100%;
+            height: 200px;
+            background: white;
+            border-radius: .5rem;
+        }
+
+    .meson-list {
+        list-style: none;
+        padding-left: 0;
+        margin: .5rem 0 0;
+        display: grid;
+        gap: .35rem;
+    }
+
+    .meson-item {
+        padding: .35rem .35rem;
+        border-radius: .5rem;
+    }
+
+        .meson-item.selected {
+            background: #fff7ed;
+            outline: 1px solid #f59e0b;
+        }
+</style>
+
+@code {
+    [Parameter] public string? SubcategoriaId { get; set; }
+
+
+    private readonly List<CategoriaRow> categorias = new();
+    private readonly List<MaterialRow> materiales = new();
+    private string? subcategoriaNombre;
+    private string? loadError;
+
+    private string _nuevoMaterialTipo = "VIDRIO";
+    private string? _nuevoMaterialNombre;
+    private string? _nuevoMaterialDetalle; // capacidad vidrio
+    private string? _nuevoMaterialCantidad; // cantidad general (obligatoria para CONSUMIBLE)
+    private string? _nuevoMaterialAlturaCm; // altura en cm
+    private string? _nuevoMaterialPosicion;
+    private string? _nuevoMaterialEstadoId;
+    private string? _nuevoMaterialUnidadId;     // unidad vidrio
+    private string? _nuevoMaterialMarcaId;
+    private readonly HashSet<string> _nuevoMaterialSubcategoriaIds
+        = new(StringComparer.OrdinalIgnoreCase);
+    private string? _nuevoMaterialAreaId;
+    private string? _nuevoMaterialMesonId;
+    private string? _nuevoMaterialNivel;
+    private string? _nuevoMaterialDescripcion;
+    private string? _nuevoMaterialImagenUrl;
+    private string _nuevoMaterialImagenModo = "url";
+    private string? _nuevoMaterialImagenArchivo;
+    private string? _nuevoMaterialObservaciones;
+    private string? _nuevoMaterialMsg;
+
+    private readonly List<SelectOption> _estadoOptions = new();
+    private readonly List<SelectOption> _unidadOptions = new();
+    private readonly List<SelectOption> _marcaOptions = new();
+    private readonly List<SelectOption> _subcategoriaOptions = new();
+    private readonly List<SelectOption> _areaOptions = new();
+    private readonly List<SelectOption> _mesonOptions = new();
+
+    private readonly List<MesonSummary> _mesonSummaries = new();
+    private readonly List<MesonVisual> _mesonVisuals = new();
+
+    private readonly List<CanvasView> _canvasViews = new();
+    private readonly Dictionary<string, string> _plantasLookup = new(StringComparer.OrdinalIgnoreCase);
+    private string? _currentPlantaId;
+
+    // ✅ Ahora usamos categoria_id (no nombres)
+    private static readonly string[] CategoriaMaterialIds = new[]
+    {
+        "material-vidrio",
+        "material-plastico",
+        "material-consumible",
+        "material-montaje"
+    };
+
+    private void OnVerTodosToggle(ChangeEventArgs args)
+    {
+        var isChecked =
+            args.Value is bool b ? b :
+            string.Equals(args.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+
+        if (isChecked)
+            Nav.NavigateTo("/inventario-materiales/todos");
+        else
+            Nav.NavigateTo("/inventario-materiales");
+    }
+
+
+    protected override void OnInitialized()
+    {
+        LaboratorioState.OnChange += HandleLaboratorioChanged;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        loadError = null;
+        _verTodos = ComputeVerTodos();
+
+        await LoadCategoriasAsync();
+        await LoadLookupsAsync();
+        await LoadCanvasAreasAsync();
+        await LoadMaterialesAsync();
+    }
+
+    private string? _nuevoMaterialCategoriaId; // ej: "material-vidrio"
+private readonly List<SelectOption> _categoriaMaterialOptions = new();
+private readonly Dictionary<string, List<SelectOption>> _subcategoriasByCategoria
+    = new(StringComparer.OrdinalIgnoreCase);
+
+private IEnumerable<SelectOption> SubcategoriasFiltradas =>
+    (!string.IsNullOrWhiteSpace(_nuevoMaterialCategoriaId)
+     && _subcategoriasByCategoria.TryGetValue(_nuevoMaterialCategoriaId, out var list))
+        ? list
+        : Enumerable.Empty<SelectOption>();
+
+    private void OnCategoriaMaterialChanged(ChangeEventArgs args)
+    {
+        _nuevoMaterialCategoriaId = args.Value?.ToString();
+
+        // Reinicia subcat para evitar mezcla
+        _nuevoMaterialSubcategoriaIds.Clear();
+
+        // Deriva el tipo desde la categoría
+        var tipo = MapCategoriaToTipo(_nuevoMaterialCategoriaId);
+        if (!string.IsNullOrWhiteSpace(tipo))
+            _nuevoMaterialTipo = tipo;
+
+        StateHasChanged();
+    }
+    private void OnSubcategoriaToggle(ChangeEventArgs e, string subId)
+    {
+        var isChecked =
+            e.Value is bool b ? b :
+            string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+
+        if (isChecked) _nuevoMaterialSubcategoriaIds.Add(subId);
+        else _nuevoMaterialSubcategoriaIds.Remove(subId);
+    }
+
+    private static string? MapCategoriaToTipo(string? categoriaId) => categoriaId switch
+    {
+        "material-vidrio" => "VIDRIO",
+        "material-plastico" => "PLASTICO",
+        "material-consumible" => "CONSUMIBLE",
+        "material-montaje" => "MONTAJE",
+        _ => null
+    };
+
+
+    private void HandleLaboratorioChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            _nuevoMaterialAreaId = null;
+            _nuevoMaterialMesonId = null;
+            _mesonOptions.Clear();
+            _mesonSummaries.Clear();
+            _mesonVisuals.Clear();
+
+            _canvasViews.Clear();
+            _plantasLookup.Clear();
+            _currentPlantaId = null;
+
+            await LoadLookupsAsync();
+            await LoadCanvasAreasAsync();
+            await LoadMaterialesAsync();
+
+            StateHasChanged();
+        });
+    }
+
+    private async Task OnAreaChanged(ChangeEventArgs args)
+    {
+        var newArea = args.Value?.ToString();
+
+        if (string.IsNullOrWhiteSpace(newArea))
+        {
+            ClearAreaSelection();
+            return;
+        }
+
+        if (string.Equals(newArea, _nuevoMaterialAreaId, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        _nuevoMaterialAreaId = newArea;
+        _nuevoMaterialMesonId = null;
+        await LoadMesonesAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SelectAreaFromVisualAsync(string? areaId)
+    {
+        if (string.IsNullOrWhiteSpace(areaId))
+            return;
+
+        if (string.Equals(areaId, _nuevoMaterialAreaId, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        _nuevoMaterialAreaId = areaId;
+        _nuevoMaterialMesonId = null;
+        await LoadMesonesAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void ClearAreaSelection()
+    {
+        _nuevoMaterialAreaId = null;
+        _nuevoMaterialMesonId = null;
+        _mesonOptions.Clear();
+        _mesonSummaries.Clear();
+        _mesonVisuals.Clear();
+        StateHasChanged();
+    }
+
+    private void ClearMesonSelection()
+    {
+        _nuevoMaterialMesonId = null;
+        StateHasChanged();
+    }
+
+    private void SelectMeson(string mesonId)
+    {
+        if (string.Equals(_nuevoMaterialMesonId, mesonId, StringComparison.OrdinalIgnoreCase))
+            _nuevoMaterialMesonId = null;
+        else
+            _nuevoMaterialMesonId = mesonId;
+    }
+
+    private void OnMesonChanged(ChangeEventArgs args)
+    {
+        var v = args.Value?.ToString();
+        _nuevoMaterialMesonId = string.IsNullOrWhiteSpace(v) ? null : v;
+    }
+
+    private string SelectedAreaLabel =>
+        _areaOptions.FirstOrDefault(a => string.Equals(a.Id, _nuevoMaterialAreaId, StringComparison.OrdinalIgnoreCase))?.Label
+        ?? _nuevoMaterialAreaId
+        ?? "Área";
+
+    private string SelectedMesonLabel =>
+        _mesonOptions.FirstOrDefault(m => string.Equals(m.Id, _nuevoMaterialMesonId, StringComparison.OrdinalIgnoreCase))?.Label
+        ?? _nuevoMaterialMesonId
+        ?? "Mesón";
+
+    private AreaItem? SelectedAreaForMap =>
+        _canvasViews.SelectMany(v => v.Areas)
+            .FirstOrDefault(a => string.Equals(a.AreaId, _nuevoMaterialAreaId, StringComparison.OrdinalIgnoreCase));
+
+    private void OnImagenModoChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(value))
+            _nuevoMaterialImagenModo = value;
+    }
+
+    private async Task OnImagenArchivoSeleccionado(InputFileChangeEventArgs args)
+    {
+        if (args.FileCount == 0) return;
+
+        var file = args.File;
+        var extension = Path.GetExtension(file.Name);
+        var fileName = $"material_{Guid.NewGuid():N}{extension}";
+        var relativePath = Path.Combine("uploads", "materiales", fileName).Replace("\\", "/");
+        var absolutePath = Path.Combine(HostEnvironment.WebRootPath, relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(absolutePath)!);
+
+        await using var stream = file.OpenReadStream(5 * 1024 * 1024);
+        await using var fileStream = File.Create(absolutePath);
+        await stream.CopyToAsync(fileStream);
+
+        _nuevoMaterialImagenUrl = $"/{relativePath}";
+        _nuevoMaterialImagenArchivo = file.Name;
+        _nuevoMaterialMsg = $"Imagen cargada: {file.Name}";
+    }
+
+    private async Task SubirMaterialAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_nuevoMaterialNombre))
+        {
+            _nuevoMaterialMsg = "Ingresa el nombre del material.";
+            return;
+        }
+
+        // Mantengo tu lógica de “ubicación obligatoria” (en DB son NULLables, pero aquí lo exiges)
+        if (string.IsNullOrWhiteSpace(_nuevoMaterialAreaId))
+        {
+            _nuevoMaterialMsg = "Selecciona un área para el material.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_nuevoMaterialMesonId))
+        {
+            _nuevoMaterialMsg = "Selecciona un mesón asociado al área.";
+            return;
+        }
+
+        // Reglas por tipo según constraints nuevos
+        decimal? capacidad = null;
+        string? unidadId = null;
+
+        // VIDRIO y PLASTICO usan capacidad/unidad en el formulario.
+        // En BD solo es obligatorio para VIDRIO, pero para PLASTICO lo guardamos si el usuario lo ingresó.
+        if (_nuevoMaterialTipo == "VIDRIO" || _nuevoMaterialTipo == "PLASTICO")
+        {
+            var capText = _nuevoMaterialDetalle;
+            var unidadText = _nuevoMaterialUnidadId;
+
+            var requiereCapUnidad = _nuevoMaterialTipo == "VIDRIO";
+            var usuarioIngresoAlgo = !string.IsNullOrWhiteSpace(capText) || !string.IsNullOrWhiteSpace(unidadText);
+
+            if (requiereCapUnidad || usuarioIngresoAlgo)
+            {
+                if (!decimal.TryParse(capText, NumberStyles.Any, CultureInfo.InvariantCulture, out var cap))
+                {
+                    _nuevoMaterialMsg = _nuevoMaterialTipo == "VIDRIO"
+                        ? "En Vidrio debes ingresar una capacidad válida."
+                        : "En Plástico la capacidad es inválida.";
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(unidadText))
+                {
+                    _nuevoMaterialMsg = _nuevoMaterialTipo == "VIDRIO"
+                        ? "En Vidrio debes seleccionar una unidad."
+                        : "En Plástico debes seleccionar una unidad si ingresas capacidad.";
+                    return;
+                }
+
+                capacidad = cap;
+                unidadId = unidadText;
+            }
+        }
+
+        decimal? cantidad = null;
+        if (!string.IsNullOrWhiteSpace(_nuevoMaterialCantidad))
+        {
+            if (!decimal.TryParse(_nuevoMaterialCantidad, NumberStyles.Any, CultureInfo.InvariantCulture, out var cant))
+            {
+                _nuevoMaterialMsg = "Cantidad inválida.";
+                return;
+            }
+            cantidad = cant;
+        }
+
+        decimal? alturaCm = null;
+        if (!string.IsNullOrWhiteSpace(_nuevoMaterialAlturaCm))
+        {
+            if (!decimal.TryParse(_nuevoMaterialAlturaCm, NumberStyles.Any, CultureInfo.InvariantCulture, out var alt))
+            {
+                _nuevoMaterialMsg = "Altura (cm) inválida.";
+                return;
+            }
+            alturaCm = alt;
+        }
+
+        if (_nuevoMaterialTipo == "CONSUMIBLE" && cantidad is null)
+        {
+            _nuevoMaterialMsg = "En Consumible debes ingresar una cantidad.";
+            return;
+        }
+
+        var materialId = $"mat_{Guid.NewGuid():N}".Substring(0, 12);
+
+        if (string.IsNullOrWhiteSpace(_nuevoMaterialCategoriaId))
+        {
+            _nuevoMaterialMsg = "Selecciona una categoría.";
+            return;
+        }
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+        await using var tx = await conn.BeginTransactionAsync();
+
+        const string sqlInsert = @"
+            INSERT INTO materiales
+            (material_id, nombre, tipo, categoria_id, marca_id, estado_id,
+             area_id, meson_id, nivel, posicion,
+             laboratorio_id, descripcion, imagen_url, observaciones,
+             capacidad_num, unidad_id, cantidad, altura_cm)
+            VALUES
+            (@id, @nombre, @tipo, @categoria, @marca, @estado,
+             @area, @meson, @nivel, @posicion,
+             @lab, @descripcion, @imagen, @obs,
+             @capacidad, @unidad, @cantidad, @altura_cm)
+        ";
+
+        await using (var cmd = new NpgsqlCommand(sqlInsert, conn, tx))
+        {
+            cmd.Parameters.AddWithValue("id", materialId);
+            cmd.Parameters.AddWithValue("nombre", _nuevoMaterialNombre!);
+            cmd.Parameters.AddWithValue("tipo", _nuevoMaterialTipo);
+
+            cmd.Parameters.AddWithValue("categoria", _nuevoMaterialCategoriaId!);
+
+            cmd.Parameters.AddWithValue("marca", string.IsNullOrWhiteSpace(_nuevoMaterialMarcaId) ? (object)DBNull.Value : _nuevoMaterialMarcaId!);
+            cmd.Parameters.AddWithValue("estado", string.IsNullOrWhiteSpace(_nuevoMaterialEstadoId) ? (object)DBNull.Value : _nuevoMaterialEstadoId!);
+
+            cmd.Parameters.AddWithValue("area", _nuevoMaterialAreaId!);
+            cmd.Parameters.AddWithValue("meson", _nuevoMaterialMesonId!);
+            cmd.Parameters.AddWithValue("nivel", ParseIntOrNull(_nuevoMaterialNivel));
+            cmd.Parameters.AddWithValue("posicion", string.IsNullOrWhiteSpace(_nuevoMaterialPosicion) ? (object)DBNull.Value : _nuevoMaterialPosicion!);
+
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            cmd.Parameters.AddWithValue("descripcion", string.IsNullOrWhiteSpace(_nuevoMaterialDescripcion) ? (object)DBNull.Value : _nuevoMaterialDescripcion!);
+            cmd.Parameters.AddWithValue("imagen", string.IsNullOrWhiteSpace(_nuevoMaterialImagenUrl) ? (object)DBNull.Value : _nuevoMaterialImagenUrl!);
+            cmd.Parameters.AddWithValue("obs", string.IsNullOrWhiteSpace(_nuevoMaterialObservaciones) ? (object)DBNull.Value : _nuevoMaterialObservaciones!);
+
+            cmd.Parameters.AddWithValue("capacidad", capacidad is null ? (object)DBNull.Value : capacidad.Value);
+            cmd.Parameters.AddWithValue("unidad", string.IsNullOrWhiteSpace(unidadId) ? (object)DBNull.Value : unidadId!);
+            cmd.Parameters.AddWithValue("cantidad", cantidad is null ? (object)DBNull.Value : cantidad.Value);
+            cmd.Parameters.AddWithValue("altura_cm", alturaCm is null ? (object)DBNull.Value : alturaCm.Value);
+
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // ✅ NUEVO MODELO: subcategorías en tabla puente (M:N)
+        if (_nuevoMaterialSubcategoriaIds.Count > 0)
+        {
+            const string sqlLink = @"
+        INSERT INTO material_subcategorias (material_id, subcategoria_id)
+        SELECT @id, x
+        FROM unnest(@subcats::varchar[]) AS x
+        ON CONFLICT DO NOTHING;
+    ";
+
+            await using var cmdLink = new NpgsqlCommand(sqlLink, conn, tx);
+            cmdLink.Parameters.AddWithValue("id", materialId);
+            cmdLink.Parameters.AddWithValue("subcats", _nuevoMaterialSubcategoriaIds.ToArray());
+            await cmdLink.ExecuteNonQueryAsync();
+        }
+
+
+        await tx.CommitAsync();
+
+
+        _nuevoMaterialNombre = null;
+        _nuevoMaterialDetalle = null;
+        _nuevoMaterialCantidad = null;
+        _nuevoMaterialAlturaCm = null;
+        _nuevoMaterialEstadoId = null; _nuevoMaterialPosicion = null;
+        _nuevoMaterialUnidadId = null;
+        _nuevoMaterialMarcaId = null;
+        _nuevoMaterialSubcategoriaIds.Clear();
+        _nuevoMaterialAreaId = null;
+        _nuevoMaterialMesonId = null;
+        _nuevoMaterialNivel = null;
+        _nuevoMaterialDescripcion = null;
+        _nuevoMaterialImagenUrl = null;
+        _nuevoMaterialImagenModo = "url";
+        _nuevoMaterialImagenArchivo = null;
+        _nuevoMaterialObservaciones = null;
+
+        _mesonOptions.Clear();
+        _mesonSummaries.Clear();
+        _mesonVisuals.Clear();
+
+        _nuevoMaterialMsg = "Material registrado.";
+        await LoadMaterialesAsync();
+        StateHasChanged();
+    }
+
+    private static object ParseIntOrNull(string? value) =>
+        int.TryParse(value, out var i) ? i : DBNull.Value;
+
+    private async Task LoadCategoriasAsync()
+    {
+        if (categorias.Count > 0) return;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+                SELECT c.categoria_id, c.nombre,
+                       s.subcategoria_id, s.nombre
+                FROM categorias c
+                LEFT JOIN subcategorias s ON s.categoria_id = c.categoria_id
+                WHERE c.categoria_id = ANY(@categorias)
+                ORDER BY c.nombre, s.nombre
+            ";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("categorias", CategoriaMaterialIds);
+            await using var reader = await cmd.ExecuteReaderAsync();
+
+            var map = new Dictionary<string, CategoriaRow>();
+            while (await reader.ReadAsync())
+            {
+                var categoriaId = reader.GetString(0);
+                if (!map.TryGetValue(categoriaId, out var categoria))
+                {
+                    categoria = new CategoriaRow(categoriaId, reader.GetString(1));
+                    map.Add(categoriaId, categoria);
+                    categorias.Add(categoria);
+                }
+
+                if (!reader.IsDBNull(2))
+                {
+                    categoria.Subcategorias.Add(new SubcategoriaRow(
+                        reader.GetString(2),
+                        reader.GetString(3)
+                    ));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+    }
+
+    private async Task LoadLookupsAsync()
+    {
+        _estadoOptions.Clear();
+        _unidadOptions.Clear();
+        _marcaOptions.Clear();
+        _subcategoriaOptions.Clear(); // (si ya no lo usas en el UI, puedes eliminarlo del todo)
+        _areaOptions.Clear();
+
+        // NUEVO: categorías y subcategorías filtradas
+        _categoriaMaterialOptions.Clear();
+        _subcategoriasByCategoria.Clear();
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        // -------------------------
+        // ESTADOS
+        // -------------------------
+        await using (var cmd = new NpgsqlCommand("SELECT estado_id, nombre FROM estados_activo ORDER BY nombre", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+            while (await reader.ReadAsync())
+                _estadoOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+
+        // -------------------------
+        // UNIDADES
+        // -------------------------
+        await using (var cmd = new NpgsqlCommand("SELECT unidad_id, nombre, simbolo FROM unidades ORDER BY nombre", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+            while (await reader.ReadAsync())
+                _unidadOptions.Add(new SelectOption(reader.GetString(0), $"{reader.GetString(1)} ({reader.GetString(2)})"));
+
+        // -------------------------
+        // MARCAS
+        // -------------------------
+        await using (var cmd = new NpgsqlCommand("SELECT marca_id, nombre, imagen_url FROM marcas ORDER BY nombre", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+            while (await reader.ReadAsync())
+                _marcaOptions.Add(new SelectOption(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetString(2)
+                ));
+
+
+        // -------------------------
+        // CATEGORÍAS (solo materiales) -> para selector principal
+        // -------------------------
+        const string catSql = @"
+        SELECT categoria_id, nombre
+        FROM categorias
+        WHERE categoria_id = ANY(@categorias)
+        ORDER BY nombre";
+        await using (var cmd = new NpgsqlCommand(catSql, conn))
+        {
+            cmd.Parameters.AddWithValue("categorias", CategoriaMaterialIds);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                _categoriaMaterialOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+        }
+
+        // -------------------------
+        // SUBCATEGORÍAS agrupadas por categoria_id
+        // -------------------------
+        const string subSql = @"
+        SELECT s.categoria_id, s.subcategoria_id, s.nombre, c.nombre AS categoria_nombre
+        FROM subcategorias s
+        INNER JOIN categorias c ON c.categoria_id = s.categoria_id
+        WHERE s.categoria_id = ANY(@categorias)
+        ORDER BY c.nombre, s.nombre";
+        await using (var cmd = new NpgsqlCommand(subSql, conn))
+        {
+            cmd.Parameters.AddWithValue("categorias", CategoriaMaterialIds);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var categoriaId = reader.GetString(0);
+                var subId = reader.GetString(1);
+                var subNombre = reader.GetString(2);
+                var categoriaNombre = reader.GetString(3);
+
+                if (!_subcategoriasByCategoria.TryGetValue(categoriaId, out var list))
+                {
+                    list = new List<SelectOption>();
+                    _subcategoriasByCategoria[categoriaId] = list;
+                }
+
+                // label solo con nombre (para el select filtrado)
+                list.Add(new SelectOption(subId, subNombre));
+
+                // (Compat) si todavía usas el select viejo de subcategorías con "Categoria · Subcat"
+                var legacyLabel = $"{categoriaNombre} · {subNombre}";
+                _subcategoriaOptions.Add(new SelectOption(subId, legacyLabel));
+            }
+        }
+
+        // Default de categoría/tipo (para que el formulario no quede “vacío”)
+        _nuevoMaterialCategoriaId ??= _categoriaMaterialOptions.FirstOrDefault()?.Id ?? "material-vidrio";
+        _nuevoMaterialTipo = MapCategoriaToTipo(_nuevoMaterialCategoriaId) ?? _nuevoMaterialTipo;
+
+        // Si cambió la categoría por default, reinicia subcat para evitar inconsistencias
+        if (!string.IsNullOrWhiteSpace(_nuevoMaterialCategoriaId)
+            && !_subcategoriasByCategoria.ContainsKey(_nuevoMaterialCategoriaId))
+        {
+            _nuevoMaterialSubcategoriaIds.Clear();
+        }
+
+        // -------------------------
+        // ÁREAS (por laboratorio)
+        // -------------------------
+        const string areaSql = @"
+        SELECT area_id, nombre_areas
+        FROM areas
+        WHERE laboratorio_id = @lab
+        ORDER BY nombre_areas";
+        await using (var cmd = new NpgsqlCommand(areaSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                _areaOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+        }
+    }
+
+
+    private async Task LoadMesonesAsync()
+    {
+        _mesonOptions.Clear();
+        _mesonSummaries.Clear();
+        _mesonVisuals.Clear();
+
+        if (string.IsNullOrWhiteSpace(_nuevoMaterialAreaId))
+            return;
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        const string mesonSql = @"
+            SELECT m.meson_id,
+                   COALESCE(NULLIF(m.nombre_meson, ''), m.meson_id) AS nombre_meson,
+                   COALESCE(c.reactivos_count, 0) AS reactivos_count,
+                   COALESCE(e.equipos_count, 0) AS equipos_count
+            FROM mesones m
+            INNER JOIN areas a ON a.area_id = m.area_id AND a.laboratorio_id = @lab
+            LEFT JOIN (
+                SELECT meson_id, COUNT(*) AS reactivos_count
+                FROM contenedores
+                WHERE area_id = @area
+                GROUP BY meson_id
+            ) c ON c.meson_id = m.meson_id
+            LEFT JOIN (
+                SELECT meson_id, COUNT(*) AS equipos_count
+                FROM equipos
+                WHERE area_id = @area
+                GROUP BY meson_id
+            ) e ON e.meson_id = m.meson_id
+            WHERE m.area_id = @area
+            ORDER BY nombre_meson";
+
+        await using var cmd = new NpgsqlCommand(mesonSql, conn);
+        cmd.Parameters.AddWithValue("area", _nuevoMaterialAreaId);
+        cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var mesonId = reader.GetString(0);
+            var nombre = reader.GetString(1);
+
+            _mesonOptions.Add(new SelectOption(mesonId, nombre));
+            _mesonSummaries.Add(new MesonSummary(
+                mesonId,
+                nombre,
+                reader.GetInt32(2),
+                reader.GetInt32(3)
+            ));
+        }
+
+        await LoadMesonVisualsAsync();
+    }
+
+    private string? _searchText;
+
+    private IEnumerable<MaterialRow> MaterialesFiltrados
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_searchText))
+                return materiales;
+
+            var q = _searchText.Trim();
+
+            bool Hit(string? s) =>
+                !string.IsNullOrWhiteSpace(s) &&
+                s.Contains(q, StringComparison.OrdinalIgnoreCase);
+
+            return materiales.Where(m =>
+    Hit(m.MaterialId) ||
+    Hit(m.Nombre) ||
+    Hit(m.Categoria) ||
+    Hit(m.Subcategoria) ||
+    Hit(m.Tipo) ||
+    Hit(m.Estado) ||
+    Hit(m.MarcaNombre) ||
+    Hit(m.Cantidad) ||
+    Hit(m.AlturaCm) ||
+    Hit(m.Area) ||
+    Hit(m.Ubicacion)
+    );
+        }
+    }
+
+    private string FilteredCountLabel
+    {
+        get
+        {
+            var total = materiales.Count;
+            if (string.IsNullOrWhiteSpace(_searchText))
+                return $"{total} materiales";
+
+            var filtered = MaterialesFiltrados.Count();
+            return $"{filtered} de {total}";
+        }
+    }
+
+    private async Task LoadMesonVisualsAsync()
+    {
+        _mesonVisuals.Clear();
+
+        if (string.IsNullOrWhiteSpace(_nuevoMaterialAreaId))
+            return;
+
+        var area = SelectedAreaForMap;
+        if (area is null)
+            return;
+
+        var mesonLabels = _mesonOptions
+            .GroupBy(m => m.Id, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().Label, StringComparer.OrdinalIgnoreCase);
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        if (!string.IsNullOrWhiteSpace(area.CanvasId) && await TableExistsAsync(conn, "bloques_int"))
+        {
+            const string blockSql = @"
+                SELECT b.bloque_id,
+                       b.meson_id,
+                       b.etiqueta,
+                       b.color_hex,
+                       b.z_order,
+                       b.pos_x,
+                       b.pos_y,
+                       b.ancho,
+                       b.largo,
+                       b.offset_x,
+                       b.offset_y
+                FROM bloques_int b
+                INNER JOIN mesones m ON m.meson_id = b.meson_id
+                WHERE b.canvas_id = @canvas
+                  AND b.meson_id IS NOT NULL
+                  AND m.area_id = @area";
+
+            await using var cmd = new NpgsqlCommand(blockSql, conn);
+            cmd.Parameters.AddWithValue("canvas", area.CanvasId!);
+            cmd.Parameters.AddWithValue("area", _nuevoMaterialAreaId!);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var mesonId = reader.IsDBNull(1) ? null : reader.GetString(1);
+                if (string.IsNullOrWhiteSpace(mesonId))
+                    continue;
+
+                if (!mesonLabels.ContainsKey(mesonId))
+                    continue;
+
+                var label = reader.IsDBNull(2) ? null : reader.GetString(2);
+                if (string.IsNullOrWhiteSpace(label) && mesonLabels.TryGetValue(mesonId, out var mesonLabel))
+                    label = mesonLabel;
+
+                label ??= "MESON";
+
+                var offsetX = reader.IsDBNull(9) ? 0m : reader.GetDecimal(9);
+                var offsetY = reader.IsDBNull(10) ? 0m : reader.GetDecimal(10);
+
+                var width = reader.GetDecimal(7);
+                var height = reader.GetDecimal(8);
+
+                var x = reader.GetDecimal(5);
+                var y = reader.GetDecimal(6);
+
+                if (offsetX != 0m || offsetY != 0m)
+                {
+                    x = area.CenterX + offsetX;
+                    y = area.CenterY + offsetY;
+                }
+
+                var fill = reader.IsDBNull(3) ? "#2563eb" : reader.GetString(3);
+                var zOrder = reader.IsDBNull(4) ? 0 : reader.GetInt32(4);
+
+                _mesonVisuals.Add(new MesonVisual(
+                    mesonId,
+                    label,
+                    x,
+                    y,
+                    width,
+                    height,
+                    fill,
+                    0.45m,
+                    zOrder
+                ));
+            }
+        }
+
+        var dedup = new Dictionary<string, MesonVisual>(StringComparer.OrdinalIgnoreCase);
+        foreach (var v in _mesonVisuals.OrderBy(v => v.ZOrder))
+        {
+            if (!dedup.ContainsKey(v.MesonId))
+                dedup[v.MesonId] = v;
+        }
+        _mesonVisuals.Clear();
+        _mesonVisuals.AddRange(dedup.Values.OrderBy(v => v.ZOrder));
+    }
+
+    private static async Task<bool> TableExistsAsync(NpgsqlConnection conn, string tableName)
+    {
+        const string sql = "SELECT to_regclass(@name) IS NOT NULL";
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("name", $"public.{tableName}");
+        var result = await cmd.ExecuteScalarAsync();
+        return result is bool b && b;
+    }
+
+    private async Task LoadCanvasAreasAsync()
+    {
+        _canvasViews.Clear();
+        _plantasLookup.Clear();
+
+        var previousPlantaId = _currentPlantaId;
+        _currentPlantaId = null;
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        await using (var cmd = new NpgsqlCommand("SELECT planta_id, nombre FROM plantas ORDER BY nombre", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+            while (await reader.ReadAsync())
+                _plantasLookup[reader.GetString(0)] = reader.GetString(1);
+
+        if (!string.IsNullOrWhiteSpace(previousPlantaId) && _plantasLookup.ContainsKey(previousPlantaId))
+            _currentPlantaId = previousPlantaId;
+        else
+            _currentPlantaId = _plantasLookup.Keys.FirstOrDefault();
+
+        const string canvasSql = @"
+            SELECT DISTINCT c.canvas_id, c.nombre, c.ancho_m, c.largo_m
+            FROM canvas_lab c
+            INNER JOIN areas a ON a.canvas_id = c.canvas_id
+            WHERE a.laboratorio_id = @lab
+            ORDER BY c.nombre";
+
+        var canvases = new List<CanvasItem>();
+        await using (var cmd = new NpgsqlCommand(canvasSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                canvases.Add(new CanvasItem(reader.GetString(0), reader.GetString(1), reader.GetDecimal(2), reader.GetDecimal(3)));
+        }
+
+        const string areaSql = @"
+            SELECT area_id, nombre_areas, planta_id, canvas_id
+            FROM areas
+            WHERE laboratorio_id = @lab
+            ORDER BY nombre_areas";
+
+        var areas = new List<AreaItem>();
+        await using (var cmd = new NpgsqlCommand(areaSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                areas.Add(new AreaItem(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetString(2),
+                    reader.IsDBNull(3) ? null : reader.GetString(3)
+                ));
+            }
+        }
+
+        const string polySql = @"
+            SELECT p.poly_id, p.area_id, COALESCE(p.color_hex, '#cbd5f5') AS color_hex, p.z_order
+            FROM poligonos p
+            INNER JOIN areas a ON a.area_id = p.area_id
+            WHERE a.laboratorio_id = @lab
+            ORDER BY p.z_order, p.poly_id";
+
+        var polys = new Dictionary<string, PolygonItem>();
+        await using (var cmd = new NpgsqlCommand(polySql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var polyId = reader.GetString(0);
+                polys[polyId] = new PolygonItem(
+                    polyId,
+                    reader.IsDBNull(1) ? null : reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetInt32(3)
+                );
+            }
+        }
+
+        const string pointsSql = @"
+            SELECT poly_id, orden, x_m, y_m
+            FROM poligonos_puntos
+            ORDER BY poly_id, orden";
+
+        await using (var cmd = new NpgsqlCommand(pointsSql, conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                var polyId = reader.GetString(0);
+                if (!polys.TryGetValue(polyId, out var poly))
+                    continue;
+
+                poly.Points.Add(new PointItem(reader.GetDecimal(2), reader.GetDecimal(3)));
+            }
+        }
+
+        foreach (var area in areas)
+        {
+            var areaPolys = polys.Values
+                .Where(p => string.Equals(p.AreaId, area.AreaId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (areaPolys.Count == 0)
+                continue;
+
+            area.Poligonos.AddRange(areaPolys);
+            area.CalculateBounds();
+        }
+
+        foreach (var canvas in canvases)
+        {
+            var viewAreas = areas
+                .Where(a => string.Equals(a.CanvasId, canvas.CanvasId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (viewAreas.Count == 0)
+                continue;
+
+            _canvasViews.Add(new CanvasView(canvas, viewAreas));
+        }
+
+        EnsurePlantaSelection(areas);
+
+        if (!string.IsNullOrWhiteSpace(_nuevoMaterialAreaId))
+            await LoadMesonVisualsAsync();
+    }
+
+    private bool _verTodos;
+
+private bool ComputeVerTodos()
+    {
+        return string.Equals(SubcategoriaId, "todos", StringComparison.OrdinalIgnoreCase);
+    }
+
+
+private string? SelectedMarcaLogoUrl =>
+    _marcaOptions.FirstOrDefault(m => string.Equals(m.Id, _nuevoMaterialMarcaId, StringComparison.OrdinalIgnoreCase))?.ImageUrl;
+
+
+    private async Task LoadMaterialesAsync()
+    {
+        materiales.Clear();
+        subcategoriaNombre = null;
+
+        // Si no hay subcategoría y no estamos en "todos", no listamos nada
+        if (!_verTodos && string.IsNullOrWhiteSpace(SubcategoriaId))
+            return;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+
+            if (!_verTodos && !string.IsNullOrWhiteSpace(SubcategoriaId))
+            {
+                const string sqlSubcategoria = @"
+                SELECT nombre
+                FROM subcategorias
+                WHERE subcategoria_id = @subcategoria";
+                await using (var cmdName = new NpgsqlCommand(sqlSubcategoria, conn))
+                {
+                    cmdName.Parameters.AddWithValue("subcategoria", SubcategoriaId);
+                    var nombre = await cmdName.ExecuteScalarAsync();
+                    subcategoriaNombre = nombre?.ToString();
+                }
+            }
+            else
+            {
+                // si no hay subcategoria real, no cargar nada
+                if (string.IsNullOrWhiteSpace(SubcategoriaId))
+                    return;
+            }
+
+            // Nota: para "todos", filtramos por tipo (los 4 tipos de materiales)
+            // y dejamos categoría/subcategoría por LEFT JOIN (si faltan, mostramos "Sin ...")
+            var sql = _verTodos
+    ? @"
+                SELECT m.material_id,
+                       m.nombre,
+                       COALESCE(c.nombre, 'Sin categoría') AS categoria,
+                       COALESCE(string_agg(DISTINCT sc.nombre, ', ' ORDER BY sc.nombre), 'Sin subcategoría') AS subcategoria,
+                       m.tipo,
+                       COALESCE(ea.nombre, '') AS estado,
+                       COALESCE(ma.nombre, '') AS marca_nombre,
+                       ma.imagen_url AS marca_imagen,
+                       m.imagen_url AS material_imagen,
+                                              m.cantidad,
+                       m.altura_cm,
+                       m.capacidad_num,
+                       u.simbolo AS unidad_simbolo,
+                       COALESCE(a.nombre_areas, '') AS area,
+                       COALESCE(ms.nombre_meson, '') AS meson,
+                       COALESCE(m.posicion, '') AS posicion
+                FROM materiales m
+                LEFT JOIN categorias c ON c.categoria_id = m.categoria_id
+                LEFT JOIN material_subcategorias msc ON msc.material_id = m.material_id
+                LEFT JOIN subcategorias sc ON sc.subcategoria_id = msc.subcategoria_id
+                LEFT JOIN estados_activo ea ON ea.estado_id = m.estado_id
+                LEFT JOIN marcas ma ON ma.marca_id = m.marca_id
+                LEFT JOIN areas a ON a.area_id = m.area_id
+                LEFT JOIN mesones ms ON ms.meson_id = m.meson_id
+                LEFT JOIN unidades u ON u.unidad_id = m.unidad_id
+                WHERE m.laboratorio_id = @laboratorio
+                  AND m.tipo = ANY(@tipos)
+                GROUP BY m.material_id, m.nombre, c.nombre, m.tipo,
+                         ea.nombre, ma.nombre, ma.imagen_url, m.imagen_url,
+                                                  m.cantidad, m.altura_cm, m.capacidad_num, u.simbolo,
+                         a.nombre_areas, ms.nombre_meson, m.posicion
+                ORDER BY categoria, subcategoria, m.nombre, m.material_id"
+    : @"
+                SELECT m.material_id,
+                       m.nombre,
+                       COALESCE(c.nombre, 'Sin categoría') AS categoria,
+                       COALESCE(string_agg(DISTINCT sc_all.nombre, ', ' ORDER BY sc_all.nombre), 'Sin subcategoría') AS subcategoria,
+                       m.tipo,
+                       COALESCE(ea.nombre, '') AS estado,
+                       COALESCE(ma.nombre, '') AS marca_nombre,
+                       ma.imagen_url AS marca_imagen,
+                       m.imagen_url AS material_imagen,
+                                              m.cantidad,
+                       m.altura_cm,
+                       m.capacidad_num,
+                       u.simbolo AS unidad_simbolo,
+                       COALESCE(a.nombre_areas, '') AS area,
+                       COALESCE(ms.nombre_meson, '') AS meson,
+                       COALESCE(m.posicion, '') AS posicion
+                FROM materiales m
+                -- join para filtrar (el material debe tener la subcategoría solicitada)
+                INNER JOIN material_subcategorias msf
+                        ON msf.material_id = m.material_id
+                       AND msf.subcategoria_id = @subcategoria
+                -- join separado para mostrar TODAS las subcategorías del material
+                LEFT JOIN material_subcategorias msa
+                       ON msa.material_id = m.material_id
+                LEFT JOIN subcategorias sc_all
+                       ON sc_all.subcategoria_id = msa.subcategoria_id
+                LEFT JOIN categorias c ON c.categoria_id = m.categoria_id
+                LEFT JOIN estados_activo ea ON ea.estado_id = m.estado_id
+                LEFT JOIN marcas ma ON ma.marca_id = m.marca_id
+                LEFT JOIN areas a ON a.area_id = m.area_id
+                LEFT JOIN mesones ms ON ms.meson_id = m.meson_id
+                LEFT JOIN unidades u ON u.unidad_id = m.unidad_id
+                WHERE m.laboratorio_id = @laboratorio
+                GROUP BY m.material_id, m.nombre, c.nombre, m.tipo,
+                         ea.nombre, ma.nombre, ma.imagen_url, m.imagen_url,
+                         m.cantidad, m.altura_cm, m.capacidad_num, u.simbolo,
+a.nombre_areas, ms.nombre_meson, m.posicion
+                ORDER BY m.nombre, m.material_id";
+
+
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("laboratorio", LaboratorioState.LaboratorioId);
+
+            if (_verTodos)
+            {
+                cmd.Parameters.AddWithValue("tipos", new[] { "VIDRIO", "PLASTICO", "CONSUMIBLE", "MONTAJE" });
+            }
+            else
+            {
+                cmd.Parameters.AddWithValue("subcategoria", SubcategoriaId!);
+            }
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var tipoDb = reader.GetString(4);
+
+                var estado = reader.GetString(5);
+
+                var marcaNombre = reader.GetString(6);
+                var marcaImagen = reader.IsDBNull(7) ? null : reader.GetString(7);
+                var materialImagen = reader.IsDBNull(8) ? null : reader.GetString(8);
+
+                decimal? cant = reader.IsDBNull(9) ? null : reader.GetDecimal(9);
+                decimal? altura = reader.IsDBNull(10) ? null : reader.GetDecimal(10);
+                decimal? cap = reader.IsDBNull(11) ? null : reader.GetDecimal(11);
+                var simbolo = reader.IsDBNull(12) ? null : reader.GetString(12);
+
+                var area = reader.GetString(13);
+                var meson = reader.GetString(14);
+                var posicion = reader.GetString(15);
+
+                var tipoLabel = BuildTipoLabel(tipoDb, cap, simbolo);
+                var cantidadLabel = BuildCantidadLabel(tipoDb, cant);
+                var alturaLabel = BuildAlturaLabel(altura);
+
+                materiales.Add(new MaterialRow(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetString(3),
+                    tipoLabel,
+                    estado,
+                    marcaNombre,
+                    marcaImagen,
+                    cantidadLabel,
+                    alturaLabel,
+                    area,
+                    BuildUbicacion(meson, posicion),
+                    materialImagen
+                ));
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+    }
+
+    private static string BuildUbicacion(string meson, string posicion)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(meson)) parts.Add(meson);
+        if (!string.IsNullOrWhiteSpace(posicion)) parts.Add(posicion);
+        return parts.Count == 0 ? "—" : string.Join(" · ", parts);
+    }
+
+
+    private static string BuildTipoLabel(string tipoDb, decimal? capacidad, string? simbolo)
+    {
+        var baseName = tipoDb switch
+        {
+            "VIDRIO" => "Vidrio",
+            "PLASTICO" => "Plástico",
+            "MONTAJE" => "Montaje",
+            "CONSUMIBLE" => "Consumible",
+            _ => tipoDb
+        };
+
+        if ((tipoDb == "VIDRIO" || tipoDb == "PLASTICO")
+            && capacidad is not null
+            && !string.IsNullOrWhiteSpace(simbolo))
+        {
+            return $"{baseName} · {capacidad.Value.ToString(CultureInfo.InvariantCulture)} {simbolo}";
+        }
+
+        return baseName;
+    }
+
+    private static string BuildCantidadLabel(string tipoDb, decimal? cantidad)
+    {
+        if (cantidad is null) return "—";
+        return cantidad.Value.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static string BuildUbicacion(string area, string meson, string posicion)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(area)) parts.Add(area);
+        if (!string.IsNullOrWhiteSpace(meson)) parts.Add(meson);
+        if (!string.IsNullOrWhiteSpace(posicion)) parts.Add(posicion);
+        return parts.Count == 0 ? "Sin ubicación" : string.Join(" · ", parts);
+    }
+
+    private sealed class CategoriaRow
+    {
+        public CategoriaRow(string id, string nombre) { Id = id; Nombre = nombre; }
+        public string Id { get; }
+        public string Nombre { get; }
+        public List<SubcategoriaRow> Subcategorias { get; } = new();
+    }
+
+    private sealed record SubcategoriaRow(string Id, string Nombre);
+    private sealed record SelectOption(string Id, string Label, string? ImageUrl = null);
+    private sealed record CanvasItem(string CanvasId, string Nombre, decimal Ancho, decimal largo);
+    private sealed record MesonVisual(string MesonId, string Label, decimal X, decimal Y, decimal Width, decimal Height, string Fill, decimal Opacity, int ZOrder);
+
+    private sealed class AreaItem
+    {
+        public AreaItem(string areaId, string nombre, string? plantaId, string? canvasId)
+        {
+            AreaId = areaId;
+            Nombre = nombre;
+            PlantaId = plantaId;
+            CanvasId = canvasId;
+        }
+
+        public string AreaId { get; }
+        public string Nombre { get; }
+        public string? PlantaId { get; }
+        public string? CanvasId { get; }
+        public List<PolygonItem> Poligonos { get; } = new();
+
+        public decimal CenterX { get; private set; }
+        public decimal CenterY { get; private set; }
+        public decimal Width { get; private set; }
+        public decimal Height { get; private set; }
+        public decimal MinX { get; private set; }
+        public decimal MinY { get; private set; }
+        public decimal MaxX { get; private set; }
+        public decimal MaxY { get; private set; }
+
+        public void CalculateBounds()
+        {
+            var points = Poligonos.SelectMany(p => p.Points).ToList();
+            if (points.Count == 0) return;
+
+            var minX = points.Min(p => p.X);
+            var maxX = points.Max(p => p.X);
+            var minY = points.Min(p => p.Y);
+            var maxY = points.Max(p => p.Y);
+
+            MinX = minX; MaxX = maxX;
+            MinY = minY; MaxY = maxY;
+
+            CenterX = (minX + maxX) / 2m;
+            CenterY = (minY + maxY) / 2m;
+            Width = Math.Max(0.2m, maxX - minX);
+            Height = Math.Max(0.2m, maxY - minY);
+        }
+    }
+
+        private static string BuildAlturaLabel(decimal? alturaCm)
+    {
+        if (alturaCm is null) return "—";
+        return alturaCm.Value.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private sealed class PolygonItem
+    {
+        public PolygonItem(string polyId, string? areaId, string colorHex, int zOrder)
+        {
+            PolyId = polyId;
+            AreaId = areaId;
+            ColorHex = colorHex;
+            ZOrder = zOrder;
+        }
+
+        public string PolyId { get; }
+        public string? AreaId { get; }
+        public string ColorHex { get; }
+        public int ZOrder { get; }
+        public List<PointItem> Points { get; } = new();
+    }
+
+    private sealed record PointItem(decimal X, decimal Y);
+    private sealed record CanvasView(CanvasItem Canvas, List<AreaItem> Areas);
+    private sealed record MesonSummary(string MesonId, string Nombre, int ReactivosCount, int EquiposCount);
+
+    private sealed record MaterialRow(
+    string MaterialId,
+    string Nombre,
+    string Categoria,
+    string Subcategoria,
+    string Tipo,
+    string Estado,
+    string MarcaNombre,
+    string? MarcaImagenUrl,
+    string Cantidad,
+    string AlturaCm,
+    string Area,
+    string Ubicacion,
+    string? ImagenUrl);
+
+    private void OnSubcategoriaChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            Nav.NavigateTo("/inventario-materiales");
+            return;
+        }
+        Nav.NavigateTo($"/inventario-materiales/{value}");
+    }
+
+    public void Dispose()
+    {
+        LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
+
+    private static string PointsString(PolygonItem poly) =>
+        string.Join(" ", poly.Points.Select(p => $"{p.X.ToString(CultureInfo.InvariantCulture)},{p.Y.ToString(CultureInfo.InvariantCulture)}"));
+
+    private static string FormatSvg(decimal value) => value.ToString(CultureInfo.InvariantCulture);
+
+    private static decimal AreaLabelWidth(AreaItem area) => Math.Max(0.6m, area.Width * 0.85m);
+    private static decimal AreaLabelHeight(AreaItem area) => Math.Max(0.25m, area.Height * 0.25m);
+
+    private static decimal AreaLabelFontSize(AreaItem area)
+    {
+        var baseSize = Math.Min(area.Width, area.Height) * 0.18m;
+        return ClampDecimal(baseSize, 0.18m, 0.55m);
+    }
+
+    private static decimal MesonLabelFontSize(MesonVisual meson)
+    {
+        var baseSize = Math.Min(meson.Width, meson.Height) * 0.45m;
+        return ClampDecimal(baseSize, 0.12m, 0.45m);
+    }
+
+    private static decimal ClampDecimal(decimal value, decimal min, decimal max)
+    {
+        if (value < min) return min;
+        if (value > max) return max;
+        return value;
+    }
+
+    private static string AreaViewBox(AreaItem area)
+    {
+        var padding = 0.4m;
+        var minX = area.MinX - padding;
+        var minY = area.MinY - padding;
+        var width = Math.Max(1m, area.Width + padding * 2m);
+        var height = Math.Max(1m, area.Height + padding * 2m);
+        return $"{FormatSvg(minX)} {FormatSvg(minY)} {FormatSvg(width)} {FormatSvg(height)}";
+    }
+
+    private static (decimal x, decimal y, decimal w, decimal h) AreaViewBoxRect(AreaItem area)
+    {
+        var padding = 0.4m;
+        var x = area.MinX - padding;
+        var y = area.MinY - padding;
+        var w = Math.Max(1m, area.Width + padding * 2m);
+        var h = Math.Max(1m, area.Height + padding * 2m);
+        return (x, y, w, h);
+    }
+
+    private string AreaFill(AreaItem area)
+    {
+        if (!string.IsNullOrWhiteSpace(_nuevoMaterialAreaId)
+            && string.Equals(_nuevoMaterialAreaId, area.AreaId, StringComparison.OrdinalIgnoreCase))
+        {
+            return "#93c5fd";
+        }
+        return area.Poligonos.FirstOrDefault()?.ColorHex ?? "#cbd5f5";
+    }
+
+    private string MesonFill(MesonVisual m)
+    {
+        if (!string.IsNullOrWhiteSpace(_nuevoMaterialMesonId)
+            && string.Equals(_nuevoMaterialMesonId, m.MesonId, StringComparison.OrdinalIgnoreCase))
+            return "#facc15";
+
+        return m.Fill;
+    }
+
+    private decimal MesonOpacity(MesonVisual m)
+    {
+        if (!string.IsNullOrWhiteSpace(_nuevoMaterialMesonId)
+            && string.Equals(_nuevoMaterialMesonId, m.MesonId, StringComparison.OrdinalIgnoreCase))
+            return 0.75m;
+
+        return m.Opacity;
+    }
+
+    private string MesonStroke(MesonVisual m)
+    {
+        if (!string.IsNullOrWhiteSpace(_nuevoMaterialMesonId)
+            && string.Equals(_nuevoMaterialMesonId, m.MesonId, StringComparison.OrdinalIgnoreCase))
+            return "#b45309";
+        return "#1f2937";
+    }
+
+    private decimal MesonStrokeWidth(MesonVisual m)
+    {
+        if (!string.IsNullOrWhiteSpace(_nuevoMaterialMesonId)
+            && string.Equals(_nuevoMaterialMesonId, m.MesonId, StringComparison.OrdinalIgnoreCase))
+            return 0.05m;
+        return 0.03m;
+    }
+
+    private bool IsAreaInCurrentPlanta(string? plantaId)
+    {
+        if (string.IsNullOrWhiteSpace(_currentPlantaId))
+            return true;
+
+        if (string.IsNullOrWhiteSpace(plantaId))
+            return false;
+
+        return string.Equals(plantaId, _currentPlantaId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void EnsurePlantaSelection(List<AreaItem> areas)
+    {
+        if (areas.Count == 0)
+        {
+            _currentPlantaId = _plantasLookup.Keys.FirstOrDefault();
+            return;
+        }
+
+        var firstAreaPlanta = areas.FirstOrDefault(a => !string.IsNullOrWhiteSpace(a.PlantaId))?.PlantaId;
+        if (string.IsNullOrWhiteSpace(firstAreaPlanta))
+        {
+            _currentPlantaId = null;
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_currentPlantaId)
+            && _plantasLookup.ContainsKey(_currentPlantaId)
+            && areas.Any(a => string.Equals(a.PlantaId, _currentPlantaId, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        _currentPlantaId = firstAreaPlanta ?? _plantasLookup.Keys.FirstOrDefault();
+    }
+}
+
+
+
+<style>
+    .category-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+    }
+
+    .category-controls {
+        display: flex;
+        gap: .75rem;
+        align-items: center;
+    }
+
+    .area-label {
+        fill: #111827;
+        paint-order: stroke fill;
+        stroke: #ffffff;
+        stroke-width: 0.04;
+    }
+
+    .selector-split {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        align-items: flex-start;
+    }
+
+    .visual-picker {
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        padding: 0.5rem;
+        background: #fff;
+        min-width: 240px;
+        display: grid;
+        gap: 0.5rem;
+    }
+
+    .visual-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        justify-content: space-between;
+    }
+
+    .canvas-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        padding: 0.5rem;
+        background: #f8fafc;
+        display: grid;
+        gap: 0.35rem;
+    }
+
+        .canvas-card svg {
+            width: 100%;
+            height: 180px;
+            background: #fff;
+        }
+
+    .meson-list {
+        list-style: none;
+        padding-left: 0;
+        margin: 0;
+        display: grid;
+        gap: 0.35rem;
+    }
+
+    .meson-visual {
+        cursor: pointer;
+    }
+
+    .upload-card {
+        border: 1px dashed #d1d5db;
+        padding: 0.6rem;
+        border-radius: 0.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        min-width: 220px;
+    }
+
+    .upload-options {
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+    }
+
+    .upload-drop {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.6rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        color: #6b7280;
+        cursor: pointer;
+    }
+
+        .upload-drop input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+    .category-select {
+        min-width: 220px;
+        padding: .35rem .6rem;
+        border-radius: 8px;
+        border: 1px solid #cbd5f5;
+        background: #fff;
+        color: #0f172a;
+    }
+
+    .helper {
+        margin: .3rem 0 0;
+        color: #475569;
+        font-size: .95rem;
+    }
+
+    .btn-link {
+        color: #1d4ed8;
+        text-decoration: none;
+        font-weight: 600;
+    }
+
+        .btn-link:hover {
+            text-decoration: underline;
+        }
+
+    .category-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 1rem;
+        margin-top: 1rem;
+    }
+
+    .category-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+        padding: 1rem;
+        box-shadow: 0 6px 14px rgba(15, 23, 42, 0.04);
+    }
+
+    .category-title {
+        font-weight: 700;
+        color: #0f172a;
+        margin-bottom: .5rem;
+    }
+
+    .category-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        gap: .35rem;
+    }
+
+    .category-link {
+        display: inline-flex;
+        padding: .35rem .6rem;
+        border-radius: 999px;
+        background: #f1f5f9;
+        color: #0f172a;
+        text-decoration: none;
+        font-size: .9rem;
+    }
+
+        .category-link.active,
+        .category-link:hover {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+
+    .materials-header {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+    }
+
+    .badge {
+        background: #e2e8f0;
+        color: #0f172a;
+        padding: .2rem .55rem;
+        border-radius: 999px;
+        font-size: .85rem;
+        font-weight: 600;
+    }
+
+    .empty {
+        padding: .85rem 1rem;
+        border-radius: 10px;
+        background: #fef9c3;
+        border: 1px solid #fde68a;
+        color: #854d0e;
+    }
+
+    .assign-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: center;
+        margin-top: 0.5rem;
+    }
+
+    .table-wrap {
+        overflow-x: auto;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #fff;
+    }
+
+    th, td {
+        padding: 0.6rem;
+        border-bottom: 1px solid #e5e7eb;
+        text-align: left;
+    }
+
+    th {
+        background: #f3f4f6;
+        font-weight: 600;
+    }
+     
+    @@WIPSJS
+    
+    .error-note {
+        color: #b91c1c;
+        margin-top: 0.75rem;
+    }
+
+    .brand-picker {
+        display: flex;
+        gap: .5rem;
+        align-items: center;
+    }
+
+    .cell-media {
+        display: flex;
+        gap: .45rem;
+        align-items: center;
+    }
+
+    .thumb {
+        width: 34px;
+        height: 34px;
+        object-fit: contain;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        background: #fff;
+    }
+
+    .thumb-material {
+        width: 44px;
+        height: 44px;
+    }
+
+    .toggle {
+        display: flex;
+        gap: .45rem;
+        align-items: center;
+        padding: .35rem .6rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 999px;
+        background: #fff;
+        font-size: .9rem;
+        color: #0f172a;
+        user-select: none;
+    }
+
+    .materials-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: .75rem;
+        flex-wrap: wrap;
+    }
+
+    .materials-title {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+        flex-wrap: wrap;
+    }
+
+    .search-input-invent {
+        min-width: 280px;
+        flex: 1 1 320px;
+        border-radius: 10px;
+        background: #ffffff; /* Cambiamos a fondo blanco sólido */
+        color: #0f172a; /* Color de texto oscuro (el que usas en tus títulos) */
+        border: 1px solid #cbd5e1; /* Un borde definido para que se vea el campo */
+    }
+
+        /* Esto asegura que el texto de ayuda también sea visible */
+        .search-input-invent::placeholder {
+            color: #64748b;
+            opacity: 1; /* Necesario en algunos navegadores como Firefox */
+        }
+</style>
