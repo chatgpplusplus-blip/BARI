@@ -126,3 +126,36 @@
     color: #fff !important;
     font-size: .92rem !important;
 }
+/* ===== FIX: MENÚ OFFCANVAS ENCIMA DEL OVERLAY (MÓVIL) ===== */
+
+/* Overlay por debajo del menú */
+.bari-overlay{
+  position: fixed !important;
+  inset: 0 !important;
+  background: rgba(0,0,0,.45) !important;
+  z-index: 2000 !important;
+  display: none; /* por defecto */
+}
+
+/* Menú por encima del overlay */
+@media (max-width: 900px){
+  .bari-sidenav{
+    position: fixed !important;
+    top: 0 !important;
+    left: -340px !important;   /* oculto */
+    height: 100vh !important;
+    width: 290px !important;
+    z-index: 3000 !important;  /* MÁS que overlay */
+    overflow-y: auto !important;
+    transition: left .25s ease !important;
+  }
+
+  /* cuando está abierto */
+  .bari-layout.menu-open .bari-sidenav{
+    left: 0 !important;
+  }
+
+  .bari-layout.menu-open .bari-overlay{
+    display: block !important;
+  }
+}
