@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Options;
+﻿using System.Linq;
+using Microsoft.Extensions.Options;
 
 namespace BARI_web.Services;
 
@@ -20,6 +21,17 @@ public sealed class BariIntentRouter
             return new RouterDecision { Intent = "needs_clarification", ClarifyingQuestion = "¿Qué quieres consultar exactamente del inventario o del laboratorio?" };
 
         var lower = q.ToLowerInvariant();
+        var hasHistory = history?.Any(m => m.Role == "assistant") == true;
+        var looksFollowUp = hasHistory && (
+            lower.Contains("ambos") || lower.Contains("ambas") ||
+            lower.Contains("estos") || lower.Contains("estas") ||
+            lower.Contains("esos") || lower.Contains("esas") ||
+            lower.Contains("ese") || lower.Contains("esa") ||
+            lower.Contains("mismo") || lower.Contains("misma") ||
+            lower.Contains("diferenc") || lower.Contains("compar") ||
+            lower.Contains("revisa") || lower.Contains("detall") ||
+            lower.Contains("datos") || lower.Contains("anterior") ||
+            lower.Contains("lo de arriba") || lower.Contains("de arriba"));
 
         var looksDb =
     lower.Contains("cuánt") || lower.Contains("cuantos") || lower.Contains("cantidad") ||
@@ -50,6 +62,9 @@ public sealed class BariIntentRouter
 
         if (looksWeb)
             return new RouterDecision { Intent = "web_search", Notes = "Heurística: el usuario pide búsqueda web." };
+
+        if (looksFollowUp)
+            return new RouterDecision { Intent = "db_query", Notes = "Heurística: pregunta de seguimiento con contexto previo." };
 
         if (looksDb)
             return new RouterDecision { Intent = "db_query", Notes = "Heurística: parece consulta del inventario/BD." };
