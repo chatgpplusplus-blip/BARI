@@ -422,36 +422,41 @@
 
                                     @foreach (var area in areasPorPlanta)
                                     {
-                                        foreach (var poly in area.Poligonos.OrderBy(p => p.ZOrder))
-                                        {
-                                            <polygon points="@PointsString(poly)"
-                                                     fill="@AreaFill(area)"
-                                                     stroke="#111827" stroke-width="0.03"
-                                                     style="cursor:pointer"
-                                                     @onclick:stopPropagation="true"
-                                                     @onclick="@(() => SelectContenedorAreaFromVisualAsync(area.AreaId))" />
-                                        }
+                                        <g class="area"
+                                           style="cursor:pointer"
+                                           @onclick="@(() => SelectContenedorAreaFromVisualAsync(area.AreaId))">
+                                            @if (!string.IsNullOrWhiteSpace(area.Nombre))
+                                            {
+                                                <title>@area.Nombre</title>
+                                            }
+                                            @foreach (var poly in area.Poligonos.OrderBy(p => p.ZOrder))
+                                            {
+                                                <polygon points="@PointsString(poly)"
+                                                         class="area-shape"
+                                                         fill="@AreaFill(area)"
+                                                         vector-effect="non-scaling-stroke" />
+                                            }
 
-                                        @if (!string.IsNullOrWhiteSpace(area.Nombre))
-                                        {
-                                            var labelWidth = AreaLabelWidth(area);
-                                            var labelHeight = AreaLabelHeight(area);
-                                            var fontSize = AreaLabelFontSize(area);
+                                            @if (!string.IsNullOrWhiteSpace(area.Nombre))
+                                            {
+                                                var labelWidth = AreaLabelWidth(area);
+                                                var labelHeight = AreaLabelHeight(area);
+                                                var fontSize = AreaLabelFontSize(area);
 
-                                            <svg:rect x="@FormatSvg(area.CenterX - labelWidth / 2m)"
-                                                      y="@FormatSvg(area.CenterY - labelHeight / 2m)"
-                                                      width="@FormatSvg(labelWidth)"
-                                                      height="@FormatSvg(labelHeight)"
-                                                      fill="#ffffff" opacity="0.8" rx="0.15" ry="0.15"
-                                                      @onclick:stopPropagation="true" />
-                                            <svg:text class="area-label"
-                                                      x="@FormatSvg(area.CenterX)" y="@FormatSvg(area.CenterY)"
-                                                      text-anchor="middle" dominant-baseline="middle"
-                                                      font-size="@FormatSvg(fontSize)"
-                                                      @onclick:stopPropagation="true">
-                                                @area.Nombre
-                                            </svg:text>
-                                        }
+                                                <svg:rect class="area-pill"
+                                                          x="@FormatSvg(area.CenterX - labelWidth / 2m)"
+                                                          y="@FormatSvg(area.CenterY - labelHeight / 2m)"
+                                                          width="@FormatSvg(labelWidth)"
+                                                          height="@FormatSvg(labelHeight)"
+                                                          rx="0.15" ry="0.15" />
+                                                <svg:text class="area-label"
+                                                          x="@FormatSvg(area.CenterX)" y="@FormatSvg(area.CenterY)"
+                                                          text-anchor="middle" dominant-baseline="middle"
+                                                          font-size="@FormatSvg(fontSize)">
+                                                    @area.Nombre
+                                                </svg:text>
+                                            }
+                                        </g>
                                     }
                                 </svg>
                             </div>
@@ -498,9 +503,9 @@
                                 @foreach (var poly in selectedArea.Poligonos.OrderBy(p => p.ZOrder))
                                 {
                                     <polygon points="@PointsString(poly)"
+                                             class="area-shape"
                                              fill="@AreaFill(selectedArea)"
-                                             stroke="#111827" stroke-width="0.03"
-                                             @onclick:stopPropagation="true" />
+                                             vector-effect="non-scaling-stroke" />
                                 }
 
                                 @foreach (var meson in _mesonVisuals.OrderBy(m => m.ZOrder))
@@ -510,7 +515,8 @@
                                        @onclick:stopPropagation="true"
                                        @onclick="@(() => SelectContenedorMeson(meson.MesonId))">
 
-                                        <rect x="@FormatSvg(meson.X)"
+                                        <rect class="meson-rect"
+                                              x="@FormatSvg(meson.X)"
                                               y="@FormatSvg(meson.Y)"
                                               width="@FormatSvg(meson.Width)"
                                               height="@FormatSvg(meson.Height)"
@@ -518,12 +524,14 @@
                                               opacity="@FormatSvg(MesonOpacity(meson))"
                                               stroke="@MesonStroke(meson)"
                                               stroke-width="@FormatSvg(MesonStrokeWidth(meson))" />
-                                        <svg:text x="@FormatSvg(meson.X + meson.Width / 2m)"
+                                        <svg:text class="meson-label"
+                                                  x="@FormatSvg(meson.X + meson.Width / 2m)"
                                                   y="@FormatSvg(meson.Y + meson.Height / 2m)"
                                                   text-anchor="middle"
                                                   dominant-baseline="middle"
                                                   font-size="@FormatSvg(MesonLabelFontSize(meson))"
-                                                  fill="#111827">
+                                                  textLength="@FormatSvg(meson.Width * 0.85m)"
+                                                  lengthAdjust="spacingAndGlyphs">
                                             @meson.Label
                                         </svg:text>
                                     </g>
@@ -2989,6 +2997,38 @@ ORDER BY reactivo, c.cont_id";
         paint-order: stroke fill;
         stroke: #ffffff;
         stroke-width: 0.04;
+        pointer-events: none;
+        user-select: none;
+        font-weight: 600;
+    }
+
+    .area-shape {
+        stroke: #94a3b8;
+        stroke-width: 0.06;
+        stroke-linejoin: round;
+        transition: all 0.2s ease;
+        fill-opacity: 0.85;
+    }
+
+    .area-pill {
+        fill: rgba(255, 255, 255, 0.8);
+        stroke: rgba(255, 255, 255, 0.5);
+        stroke-width: 0.03;
+        transition: all 0.2s ease;
+        pointer-events: none;
+    }
+
+    .area:hover .area-shape {
+        stroke: #2563eb;
+        stroke-width: 0.16;
+        fill-opacity: 1;
+        filter: saturate(1.1);
+    }
+
+    .area:hover .area-pill {
+        fill: #ffffff;
+        stroke: #2563eb;
+        filter: drop-shadow(0 3px 6px rgba(37, 99, 235, 0.2));
     }
 
     .selector-split {
@@ -3050,6 +3090,23 @@ ORDER BY reactivo, c.cont_id";
 
     .meson-visual {
         cursor: pointer;
+    }
+
+    .meson-rect {
+        transition: all 0.2s ease;
+    }
+
+    .meson-label {
+        fill: #111827;
+        font-weight: 600;
+        pointer-events: none;
+        user-select: none;
+    }
+
+    .meson-visual:hover .meson-rect {
+        stroke: #2563eb;
+        stroke-width: 0.06;
+        filter: saturate(1.1);
     }
 
     .upload-card {
