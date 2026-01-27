@@ -159,7 +159,9 @@ public partial class BariBot : ComponentBase
     // ✅ Render más “bonito” sin depender de librerías:
     // - Respeta saltos de línea
     // - Convierte ```bloques``` en <pre><code>
+    // - Negrita para texto entre comillas y **doble asterisco**
     // - Linkify básico http/https
+    // - Links a inventario por ID o referencias comunes
     protected MarkupString RenderContent(string content)
     {
         if (string.IsNullOrWhiteSpace(content))
@@ -176,6 +178,8 @@ public partial class BariBot : ComponentBase
             {
                 // Texto normal
                 var encoded = WebUtility.HtmlEncode(part);
+                encoded = ApplyBold(encoded);
+                encoded = LinkifyInventory(encoded);
                 encoded = Linkify(encoded);
                 encoded = encoded.Replace("\r\n", "\n").Replace("\n", "<br/>");
                 sb.Append(encoded);
@@ -212,5 +216,87 @@ public partial class BariBot : ComponentBase
             @"(https?:\/\/[^\s<]+)",
             "<a class=\"bb-link\" href=\"$1\" target=\"_blank\" rel=\"noopener noreferrer\">$1</a>",
             RegexOptions.IgnoreCase);
+    }
+
+    private static string ApplyBold(string encodedText)
+    {
+        if (string.IsNullOrWhiteSpace(encodedText))
+            return encodedText;
+
+        var withQuoted = Regex.Replace(
+            encodedText,
+            "&quot;(.+?)&quot;",
+            "<strong>&quot;$1&quot;</strong>",
+            RegexOptions.Singleline);
+
+        return Regex.Replace(
+            withQuoted,
+            "\\*\\*(.+?)\\*\\*",
+            "<strong>$1</strong>",
+            RegexOptions.Singleline);
+    }
+
+    private static string LinkifyInventory(string encodedText)
+    {
+        var result = encodedText;
+
+        result = ReplaceIfNotLinked(result, new Regex(@"\b(mat_[a-z0-9]{6,})\b", RegexOptions.IgnoreCase),
+            id => $"/inventario-materiales/item/{id}");
+        result = ReplaceIfNotLinked(result, new Regex(@"\b(eq_[a-z0-9]{6,})\b", RegexOptions.IgnoreCase),
+            id => $"/inventario-equipo/item/{id}");
+        result = ReplaceIfNotLinked(result, new Regex(@"\b(mod_[a-z0-9]{6,})\b", RegexOptions.IgnoreCase),
+            id => $"/inventario-equipos/modelo/{id}");
+        result = ReplaceIfNotLinked(result, new Regex(@"\b(sus_[a-z0-9]{6,})\b", RegexOptions.IgnoreCase),
+            id => $"/inventario-sustancias/{id}");
+        result = ReplaceIfNotLinked(result, new Regex(@"\b(cont_[a-z0-9]{6,})\b", RegexOptions.IgnoreCase),
+            id => $"/inventario-sustancias/contenedor/{id}");
+        result = ReplaceIfNotLinked(result, new Regex(@"\b(inst_[a-z0-9]{6,})\b", RegexOptions.IgnoreCase),
+            id => $"/inventario-instalaciones/item/{id}");
+        result = ReplaceIfNotLinked(result, new Regex(@"\b(mes_[a-z0-9]{6,})\b", RegexOptions.IgnoreCase),
+            id => $"/inventario-mesones/item/{id}");
+
+        result = ReplaceIfNotLinked(result, new Regex(@"\btodos los equipos\b", RegexOptions.IgnoreCase),
+            _ => "/inventario-equipo/todos");
+        result = ReplaceIfNotLinked(result, new Regex(@"\btodas las sustancias\b|\btodos las sustancias\b|\btodos los reactivos\b", RegexOptions.IgnoreCase),
+            _ => "/inventario-sustancias/todos");
+        result = ReplaceIfNotLinked(result, new Regex(@"\btodas las documentaciones\b|\btodos los documentos\b", RegexOptions.IgnoreCase),
+            _ => "/documentaciones/todos");
+
+        result = ReplaceIfNotLinked(result, new Regex(@"\bmateriales\b", RegexOptions.IgnoreCase),
+            _ => "/inventario-materiales");
+        result = ReplaceIfNotLinked(result, new Regex(@"\bequipos\b", RegexOptions.IgnoreCase),
+            _ => "/inventario-equipo");
+        result = ReplaceIfNotLinked(result, new Regex(@"\bsustancias\b|\breactivos\b", RegexOptions.IgnoreCase),
+            _ => "/inventario-sustancias");
+        result = ReplaceIfNotLinked(result, new Regex(@"\binstalaciones\b", RegexOptions.IgnoreCase),
+            _ => "/inventario-instalaciones");
+        result = ReplaceIfNotLinked(result, new Regex(@"\bmesones\b", RegexOptions.IgnoreCase),
+            _ => "/inventario-mesones");
+        result = ReplaceIfNotLinked(result, new Regex(@"\bdocumentos\b|\bdocumentaciones\b", RegexOptions.IgnoreCase),
+            _ => "/documentaciones");
+
+        return result;
+    }
+
+    private static string ReplaceIfNotLinked(string text, Regex regex, Func<string, string> hrefBuilder)
+    {
+        return regex.Replace(text, match =>
+        {
+            if (IsInsideAnchor(text, match.Index))
+                return match.Value;
+
+            var href = hrefBuilder(match.Groups[1].Success ? match.Groups[1].Value : match.Value);
+            return $"<a class=\"bb-link\" href=\"{href}\">{match.Value}</a>";
+        });
+    }
+
+    private static bool IsInsideAnchor(string text, int index)
+    {
+        var open = text.LastIndexOf("<a", index, StringComparison.OrdinalIgnoreCase);
+        if (open < 0)
+            return false;
+
+        var close = text.LastIndexOf("</a>", index, StringComparison.OrdinalIgnoreCase);
+        return close < open;
     }
 }
