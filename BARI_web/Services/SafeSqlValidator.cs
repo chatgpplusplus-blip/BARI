@@ -37,8 +37,9 @@ public sealed class SafeSqlValidator
               start.StartsWith("with", StringComparison.OrdinalIgnoreCase)))
             throw new InvalidOperationException("Solo se permite SELECT/WITH.");
 
-        // Banned tokens
-        var lowered = Regex.Replace(s, @"\s+", " ").ToLowerInvariant();
+        // Banned tokens (ignora literales de texto para permitir búsquedas seguras con ILIKE)
+        var scrubbed = Regex.Replace(s, @"'([^']|'')*'", "''");
+        var lowered = Regex.Replace(scrubbed, @"\s+", " ").ToLowerInvariant();
         foreach (var tok in BannedTokens)
         {
             if (Regex.IsMatch(lowered, $@"\b{Regex.Escape(tok)}\b"))
