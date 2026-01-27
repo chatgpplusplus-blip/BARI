@@ -6,9 +6,12 @@ using BARI_web.General_Services.DataBaseConnection;
 using Npgsql;
 using BARI_web.Services;
 using Microsoft.Extensions.Options;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
-
+// Render: escucha en el puerto asignado por la plataforma
+var port = Environment.GetEnvironmentVariable("PORT") ?? "10000";
+builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 // ------------------------------
 // SERVICIOS BASE
 // ------------------------------
@@ -79,6 +82,15 @@ builder.Services.AddSingleton<PostgresReadOnlyExecutor>();
 builder.Services.AddSingleton<DeepSeekAnswerWriter>();
 builder.Services.AddSingleton<BariBotOrchestrator>();
 
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+
+    // Importante en hosting tipo Render (proxy/reverse-proxy):
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
 // ------------------------------
 // APP
 // ------------------------------
@@ -90,7 +102,7 @@ if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler("/Error");
     app.UseHsts();
 }
-
+app.UseForwardedHeaders();
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 

@@ -34,7 +34,7 @@
     gap: 10px;
 }
 
-/* Botones del men˙ */
+/* Botones del men√∫ */
 .menu-btn {
     padding: 10px 12px;
     border: 1px solid rgba(255,255,255,0.2);
@@ -51,7 +51,7 @@
         background: rgba(255,255,255,0.2);
     }
 
-    /* BotÛn peligro */
+    /* Bot√≥n peligro */
     .menu-btn.danger {
         border-color: rgba(255,0,0,0.4);
         color: #ffb3b3;
@@ -61,7 +61,7 @@
             background: rgba(255,0,0,0.2);
         }
 
-/* ¡rea principal */
+/* √Årea principal */
 .main {
     flex: 1;
     padding: 20px;
@@ -70,7 +70,7 @@
 }
 
 /* ==========================================================
-   BARI - FORZAR ESTILO "BOT”N" EN LINKS DEL SIDENAV
+   BARI - FORZAR ESTILO "BOT√ìN" EN LINKS DEL SIDENAV
    (GLOBAL, A PRUEBA DE BOOTSTRAP / CSS ISOLATION)
    ========================================================== */
 
@@ -83,7 +83,7 @@
     text-decoration: none !important;
 }
 
-/* Todos los links del men˙ como botones */
+/* Todos los links del men√∫ como botones */
 .bari-sidenav a {
     display: block !important;
     width: 100% !important;
@@ -98,7 +98,7 @@
     transition: background .15s ease, border-color .15s ease, transform .06s ease, box-shadow .15s ease !important;
 }
 
-    /* Hover s˙per visible */
+    /* Hover s√∫per visible */
     .bari-sidenav a:hover {
         background: rgba(255,255,255,.22) !important;
         border-color: rgba(255,255,255,.70) !important;
