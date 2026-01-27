@@ -34,7 +34,7 @@
     gap: 10px;
 }
 
-/* Botones del men� */
+/* Botones del menú */
 .menu-btn {
     padding: 10px 12px;
     border: 1px solid rgba(255,255,255,0.2);
@@ -51,7 +51,7 @@
         background: rgba(255,255,255,0.2);
     }
 
-    /* Bot�n peligro */
+    /* Botón peligro */
     .menu-btn.danger {
         border-color: rgba(255,0,0,0.4);
         color: #ffb3b3;
@@ -61,10 +61,68 @@
             background: rgba(255,0,0,0.2);
         }
 
-/* �rea principal */
+/* Área principal */
 .main {
     flex: 1;
     padding: 20px;
     overflow: auto;
     background: #fff;
+}
+
+/* ==========================================================
+   BARI - FORZAR ESTILO "BOTÓN" EN LINKS DEL SIDENAV
+   (GLOBAL, A PRUEBA DE BOOTSTRAP / CSS ISOLATION)
+   ========================================================== */
+
+/* Por si hay reglas globales horribles */
+.bari-sidenav a,
+.bari-sidenav a:visited,
+.bari-sidenav a:hover,
+.bari-sidenav a:active {
+    color: #fff !important;
+    text-decoration: none !important;
+}
+
+/* Todos los links del menú como botones */
+.bari-sidenav a {
+    display: block !important;
+    width: 100% !important;
+    padding: .78rem .95rem !important;
+    border-radius: .8rem !important;
+    background: rgba(255,255,255,.10) !important;
+    border: 1px solid rgba(255,255,255,.18) !important;
+    font-weight: 900 !important;
+    letter-spacing: .01em !important;
+    line-height: 1.15 !important;
+    box-shadow: 0 10px 22px rgba(0,0,0,.10) !important;
+    transition: background .15s ease, border-color .15s ease, transform .06s ease, box-shadow .15s ease !important;
+}
+
+    /* Hover súper visible */
+    .bari-sidenav a:hover {
+        background: rgba(255,255,255,.22) !important;
+        border-color: rgba(255,255,255,.70) !important;
+        box-shadow: 0 14px 26px rgba(0,0,0,.20), 0 0 0 3px rgba(255,255,255,.20) !important;
+        transform: translateY(-1px) !important;
+    }
+
+    /* Active (NavLink pone class="active") */
+    .bari-sidenav a.active {
+        background: rgba(255,255,255,.28) !important;
+        border-color: rgba(255,255,255,.85) !important;
+        box-shadow: 0 14px 26px rgba(0,0,0,.22), 0 0 0 3px rgba(255,255,255,.24) !important;
+    }
+
+    /* Focus teclado */
+    .bari-sidenav a:focus,
+    .bari-sidenav a:focus-visible {
+        outline: none !important;
+        border-color: rgba(255,255,255,.95) !important;
+        box-shadow: 0 0 0 4px rgba(255,255,255,.28) !important;
+    }
+
+/* Si usas span interno */
+.bari-sidenav .bari-navtext {
+    color: #fff !important;
+    font-size: .92rem !important;
 }
