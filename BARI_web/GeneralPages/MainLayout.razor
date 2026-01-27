@@ -1,223 +1,90 @@
 @inherits LayoutComponentBase
-@using Microsoft.AspNetCore.Components.Routing
+@implements IDisposable
+@inject NavigationManager Nav
 
+<div class="bari-layout @(menuOpen ? "menu-open" : "")">
+    <header class="bari-topbar">
+        <button class="bari-hamburger"
+                type="button"
+                @onclick="ToggleMenu"
+                aria-label="Abrir/Cerrar menú">
+            ☰
+        </button>
 
-<div class="layout-root">
-	<header class="topbar">
-		<div class="topbar-left">
-			<!-- BOTÓN TOGGLE -->
-			<button class="menu-toggle" @onclick="ToggleSidebar">
-				☰
-			</button>
+        <div class="bari-brand">
+            <img class="bari-logo"
+                 src="https://vc4a.com/wp-content/uploads/2022/06/198068246_2916680591924255_5728041621538232491_n.jpg"
+                 alt="Logo UPSA" />
+            <div class="bari-brand-text">
+                <span class="bari-title">BARI</span>
+                <span class="bari-subtitle">Inventario de Laboratorios · UPSA</span>
+            </div>
+        </div>
 
+        <div class="bari-topbar-meta">
+            <span class="bari-badge">Laboratorio base: Química</span>
+        </div>
+    </header>
 
-			<div class="topbar-brand">
-				<img class="topbar-logo"
-					 src="https://vc4a.com/wp-content/uploads/2022/06/198068246_2916680591924255_5728041621538232491_n.jpg"
-					 alt="Logo UPSA" />
-				<div class="topbar-text">
-					<span class="topbar-title">BARI</span>
-					<span class="topbar-subtitle">Inventario de Laboratorios · UPSA</span>
-				</div>
-			</div>
-		</div>
+    <div class="bari-shell">
+        <aside class="bari-sidenav" aria-label="Menú lateral">
 
+            <NavLink class="bari-navbtn" href="/" Match="NavLinkMatch.All">
+                <span class="bari-navtext">INICIO</span>
+            </NavLink>
+            <small class="bari-hint">Panel principal del inventario</small>
 
-		<div class="topbar-meta">
-			<span class="badge">Laboratorio base: Química</span>
-		</div>
-	</header>
+            <div class="bari-search">
+                <label class="bari-search-label">BUSCAR</label>
+                <input @bind="searchText" class="bari-search-input" placeholder="Escribe aquí (próximamente)" />
+            </div>
 
+            <div class="bari-navsection">MÓDULOS</div>
 
-	<div class="content">
-		<!-- SIDEBAR -->
-		<aside class="sidebar @(isSidebarOpen ? "open" : "")">
-			<NavLink class="menu-btn" href="/" Match="NavLinkMatch.All">
-				INICIO
-			</NavLink>
+            <nav class="bari-nav" aria-label="Navegación">
+                <NavLink class="bari-navbtn" href="/baribot"><span class="bari-navtext">BARI BOT</span></NavLink>
+                <NavLink class="bari-navbtn" href="/documentaciones"><span class="bari-navtext">DOCUMENTACIONES</span></NavLink>
+                <NavLink class="bari-navbtn" href="/areas"><span class="bari-navtext">ÁREAS</span></NavLink>
+                <NavLink class="bari-navbtn" href="/contenidos"><span class="bari-navtext">ASIGNATURAS, CLASES Y EXPERIENCIAS</span></NavLink>
 
+                <div class="bari-navsection">INVENTARIO</div>
 
-			<small class="hint">Panel principal del inventario</small>
+                <NavLink class="bari-navbtn" href="/inventario-materiales"><span class="bari-navtext">INVENTARIO MATERIALES</span></NavLink>
+                <NavLink class="bari-navbtn" href="/inventario-equipo"><span class="bari-navtext">INVENTARIO EQUIPO</span></NavLink>
+                <NavLink class="bari-navbtn" href="/inventario-sustancias"><span class="bari-navtext">INVENTARIO SUSTANCIAS</span></NavLink>
+                <NavLink class="bari-navbtn" href="/inventario-instalaciones"><span class="bari-navtext">INSTALACIONES</span></NavLink>
+                <NavLink class="bari-navbtn" href="/inventario-mesones"><span class="bari-navtext">MESONES</span></NavLink>
+                <NavLink class="bari-navbtn" href="/informacion-tecnica"><span class="bari-navtext">DATOS TÉCNICOS</span></NavLink>
+            </nav>
+        </aside>
+        <div class="bari-overlay" @onclick="CloseMenu" aria-hidden="true"></div>
 
-
-			<div class="search-box">
-				<label class="search-label">BUSCAR</label>
-				<input @bind="searchText" class="search-input" placeholder="Próximamente" />
-			</div>
-
-
-			<nav class="menu-list">
-				<NavLink class="menu-item" href="/baribot">BARI BOT</NavLink>
-				<NavLink class="menu-item" href="/documentaciones">DOCUMENTACIONES</NavLink>
-				<NavLink class="menu-item" href="/areas">ÁREAS</NavLink>
-				<NavLink class="menu-item" href="/contenidos">ASIGNATURAS</NavLink>
-				<NavLink class="menu-item" href="/inventario-materiales">INVENTARIO MATERIALES</NavLink>
-				<NavLink class="menu-item" href="/inventario-equipo">INVENTARIO EQUIPO</NavLink>
-				<NavLink class="menu-item" href="/inventario-sustancias">INVENTARIO SUSTANCIAS</NavLink>
-				<NavLink class="menu-item" href="/inventario-instalaciones">INSTALACIONES</NavLink>
-				<NavLink class="menu-item" href="/inventario-mesones">MESONES</NavLink>
-				<NavLink class="menu-item" href="/informacion-tecnica">DATOS TÉCNICOS</NavLink>
-			</nav>
-		</aside>
-
-
-		<!-- CONTENIDO -->
-		<main class="main" @onclick="CloseSidebarOnMobile">
-			@Body
-		</main>
-	</div>
+        <main class="bari-main">
+            @Body
+        </main>
+    </div>
 </div>
 
-
 @code {
-	private string? searchText;
-	private bool isSidebarOpen = false;
+    private bool menuOpen = false;
+    private string? searchText;
 
-
-	void ToggleSidebar()
-	{
-		isSidebarOpen = !isSidebarOpen;
-	}
-
-
-	void CloseSidebarOnMobile()
-	{
-		if (isSidebarOpen)
-			isSidebarOpen = false;
-	}
-}
-
-<style>
-    .layout-root {
-        display: flex;
-        flex-direction: column;
-        height: 100vh;
-        font-family: "Segoe UI", system-ui, sans-serif;
-    }
-
-    .topbar {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        background: #0b2a68;
-        color: white;
-        padding: 0.6rem 1rem;
-        box-shadow: 0 6px 18px rgba(0,0,0,.25);
-    }
-
-    .topbar-left {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-    }
-
-    .menu-toggle {
-        font-size: 1.6rem;
-        background: transparent;
-        border: none;
-        color: white;
-        cursor: pointer;
-    }
-
-    .topbar-brand {
-        display: flex;
-        align-items: center;
-        gap: 0.7rem;
-    }
-
-    .topbar-logo {
-        width: 46px;
-        height: 46px;
-        background: white;
-        border-radius: 10px;
-        padding: 5px;
-    }
-
-    .topbar-title {
-        font-weight: 700;
-    }
-
-    .topbar-subtitle {
-        font-size: 0.85rem;
-        color: #dbe7ff;
-    }
-
-    .content {
-        display: flex;
-        flex: 1;
-        overflow: hidden;
-    }
-
-    /* SIDEBAR */
-    .sidebar {
-        width: 280px;
-        background: linear-gradient(180deg, #052767, #2c8cb6, #68E3C8);
-        padding: 1rem;
-        display: flex;
-        flex-direction: column;
-        gap: .6rem;
-        transition: transform .3s ease;
-    }
-
-    /* MOBILE: oculto por defecto */
-    @@media (max-width: 900px) {
-        .sidebar
-
+    protected override void OnInitialized()
     {
-        position: fixed;
-        top: 64px;
-        left: 0;
-        height: calc(100vh - 64px);
-        transform: translateX(-100%);
-        z-index: 1000;
+        Nav.LocationChanged += OnLocationChanged;
     }
 
-    .sidebar.open {
-        transform: translateX(0);
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        menuOpen = false;
+        InvokeAsync(StateHasChanged);
     }
 
+    private void ToggleMenu() => menuOpen = !menuOpen;
+    private void CloseMenu() => menuOpen = false;
+
+    public void Dispose()
+    {
+        Nav.LocationChanged -= OnLocationChanged;
     }
-
-    .main {
-        flex: 1;
-        background: #f7f8fb;
-        padding: 1.5rem;
-        overflow: auto;
-    }
-
-    .menu-btn, .menu-item {
-        background: rgba(255,255,255,.12);
-        color: white;
-        padding: 0.65rem;
-        border-radius: 0.6rem;
-        text-decoration: none;
-        font-weight: 600;
-    }
-
-        .menu-btn:hover, .menu-item:hover {
-            background: rgba(255,255,255,.25);
-        }
-
-        .menu-item.active {
-            background: rgba(255,255,255,.35);
-        }
-
-    .search-input {
-        border-radius: 0.5rem;
-        padding: 0.55rem;
-        border: 1px solid rgba(255,255,255,.3);
-        background: rgba(255,255,255,.15);
-        color: white;
-    }
-
-        .search-input::placeholder {
-            color: #e2e8ff;
-        }
-
-    .badge {
-        background: rgba(255,255,255,.2);
-        padding: 0.3rem 0.7rem;
-        border-radius: 999px;
-        font-size: 0.8rem;
-    }
-</style>
+}
