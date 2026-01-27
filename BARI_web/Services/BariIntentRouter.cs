@@ -1,4 +1,5 @@
 ﻿using System.Linq;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
 
 namespace BARI_web.Services;
@@ -21,7 +22,13 @@ public sealed class BariIntentRouter
             return new RouterDecision { Intent = "needs_clarification", ClarifyingQuestion = "¿Qué quieres consultar exactamente del inventario o del laboratorio?" };
 
         var lower = q.ToLowerInvariant();
-        var hasHistory = history?.Any(m => m.Role == "assistant") == true;
+        var lastAssistant = history?.LastOrDefault(m => m.Role == "assistant")?.Content ?? string.Empty;
+        var hasHistory = !string.IsNullOrWhiteSpace(lastAssistant);
+        var mentionsPriorItems = Regex.IsMatch(lower, @"\b(las|los)?\s*(2|dos)\b") ||
+                                 lower.Contains("cual de") || lower.Contains("cuál de") ||
+                                 lower.Contains("cuales de") || lower.Contains("cuáles de") ||
+                                 lower.Contains("recomiend") || lower.Contains("recomend");
+        var hasEnumeratedContext = hasHistory && Regex.IsMatch(lastAssistant, @"(^|\n)\s*\d+[.)]\s", RegexOptions.Multiline);
         var looksFollowUp = hasHistory && (
             lower.Contains("ambos") || lower.Contains("ambas") ||
             lower.Contains("estos") || lower.Contains("estas") ||
@@ -31,7 +38,8 @@ public sealed class BariIntentRouter
             lower.Contains("diferenc") || lower.Contains("compar") ||
             lower.Contains("revisa") || lower.Contains("detall") ||
             lower.Contains("datos") || lower.Contains("anterior") ||
-            lower.Contains("lo de arriba") || lower.Contains("de arriba"));
+            lower.Contains("lo de arriba") || lower.Contains("de arriba") ||
+            (mentionsPriorItems && hasEnumeratedContext));
 
         var looksDb =
     lower.Contains("cuánt") || lower.Contains("cuantos") || lower.Contains("cantidad") ||
