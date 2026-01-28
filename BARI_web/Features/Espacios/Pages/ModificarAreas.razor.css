@@ -322,3 +322,45 @@ svg text {
     font-size: 11px;
     color: #6b7280;
 }
+
+@media (max-width: 900px) {
+    .ma-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .ma-pill {
+        max-width: 100%;
+        white-space: normal;
+    }
+
+    .editor-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .prop-panel {
+        position: static;
+        max-height: none;
+        margin-top: 10px;
+    }
+
+    .ma-canvas-box {
+        border-radius: 10px;
+    }
+
+    .ma-zoom {
+        top: 8px;
+        right: 8px;
+    }
+
+    .ma-zoom-btn {
+        width: 40px;
+        height: 40px;
+    }
+
+    .ma-hud {
+        position: static;
+        max-width: 100%;
+        margin-top: 10px;
+    }
+}
