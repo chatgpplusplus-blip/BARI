@@ -2,7 +2,14 @@
 
 <PageTitle>BARI · UPSA</PageTitle>
 
-<section class="page-card">
+<!-- LABORATORIO BASE ARRIBA -->
+<section class="page-card page-card--border">
+    <h2>Laboratorio base</h2>
+    <p>Por ahora todos los módulos trabajan en el laboratorio de química.</p>
+    <LaboratorioSelector />
+</section>
+
+<section class="page-card page-card--border">
     <h1>BARI - Bot de consulta e inventario</h1>
     <p>
         Este panel centraliza el inventario del laboratorio universitario de la UPSA,
@@ -12,56 +19,73 @@
 </section>
 
 <section class="page-grid">
-    <article class="page-card">
+    <article class="page-card page-card--border">
         <h2>Áreas</h2>
         <p>Mapa y dibujo de áreas del laboratorio con polígonos por zona.</p>
         <NavLink class="btn-primary" href="/areas">Ir a Áreas</NavLink>
     </article>
 
-    <article class="page-card">
+    <article class="page-card page-card--border">
         <h2>Inventario Materiales</h2>
         <p>Materiales de vidrio, consumibles, montaje/soporte y papelería.</p>
         <NavLink class="btn-primary" href="/inventario-materiales">Ver Materiales</NavLink>
     </article>
 
-    <article class="page-card">
+    <article class="page-card page-card--border">
         <h2>Inventario Equipo</h2>
         <p>Equipos e instrumentos con estados, ubicación y trazabilidad.</p>
         <NavLink class="btn-primary" href="/inventario-equipo">Ver Equipo</NavLink>
     </article>
 
-    <article class="page-card">
+    <article class="page-card page-card--border">
         <h2>Inventario Sustancias</h2>
         <p>Sustancias y reactivos del laboratorio con seguridad y stock.</p>
         <NavLink class="btn-primary" href="/inventario-sustancias">Ver Sustancias</NavLink>
     </article>
 
-    <article class="page-card">
+    <article class="page-card page-card--border">
         <h2>Documentaciones</h2>
         <p>Manuales, protocolos y formularios del laboratorio.</p>
         <NavLink class="btn-primary" href="/documentaciones">Ver Documentación</NavLink>
     </article>
 </section>
 
-<section class="page-card">
-    <h2>Laboratorio base</h2>
-    <p>Por ahora todos los módulos trabajan en el laboratorio de química.</p>
-    <LaboratorioSelector />
-</section>
-
 <style>
     .page-grid {
-        margin-top:1.5rem;
-        display:grid;
-        gap:1.2rem;
+        margin-top: 1.5rem;
+        display: grid;
+        gap: 1.2rem;
         grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     }
 
-    .btn-primary {
-        display:inline-flex; align-items:center; justify-content:center;
-        margin-top:0.75rem; padding:0.55rem 0.9rem; border-radius:0.6rem;
-        background:#0b2a68; color:#fff; text-decoration:none; font-weight:600;
-        box-shadow:0 8px 18px rgba(11, 42, 104, 0.2);
+    .page-card {
+        background: #fff;
+        border-radius: 1rem;
+        padding: 1.25rem;
+        box-shadow: 0 12px 30px rgba(16, 24, 40, 0.08);
     }
-    .btn-primary:hover { background:#143a84; }
+
+    /* BORDE NEGRO COMO PEDISTE */
+    .page-card--border {
+        border: 2px solid #111;
+    }
+
+    .btn-primary {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin-top: 0.75rem;
+        padding: 0.55rem 0.9rem;
+        border-radius: 0.6rem;
+        background: #0b2a68;
+        color: #fff;
+        text-decoration: none;
+        font-weight: 700;
+        box-shadow: 0 8px 18px rgba(11, 42, 104, 0.2);
+        border: 1px solid rgba(0,0,0,.15);
+    }
+
+        .btn-primary:hover {
+            background: #143a84;
+        }
 </style>

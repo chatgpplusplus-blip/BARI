@@ -1,162 +1,90 @@
-﻿@inherits LayoutComponentBase
-@using Microsoft.AspNetCore.Components.Routing
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject NavigationManager Nav
 
-<div class="layout-root">
-    <header class="topbar">
-        <div class="topbar-brand">
-            <img class="topbar-logo"
+<div class="bari-layout @(menuOpen ? "menu-open" : "")">
+    <header class="bari-topbar">
+        <button class="bari-hamburger"
+                type="button"
+                @onclick="ToggleMenu"
+                aria-label="Abrir/Cerrar menú">
+            ☰
+        </button>
+
+        <div class="bari-brand">
+            <img class="bari-logo"
                  src="https://vc4a.com/wp-content/uploads/2022/06/198068246_2916680591924255_5728041621538232491_n.jpg"
-                 alt="Logo UPSA - Universidad Privada de Santa Cruz de la Sierra" />
-            <div class="topbar-text">
-                <span class="topbar-title">BARI</span>
-                <span class="topbar-subtitle">Inventario de Laboratorios · UPSA</span>
+                 alt="Logo UPSA" />
+            <div class="bari-brand-text">
+                <span class="bari-title">BARI</span>
+                <span class="bari-subtitle">Inventario de Laboratorios · UPSA</span>
             </div>
         </div>
-        <div class="topbar-meta">
-            <span class="badge">Laboratorio base: Química</span>
+
+        <div class="bari-topbar-meta">
+            <span class="bari-badge">Laboratorio base: Química</span>
         </div>
     </header>
 
-    <div class="content">
-        <aside class="sidebar">
-            <NavLink class="menu-btn" href="/" Match="NavLinkMatch.All" title="Volver a la página principal">
-                INICIO
-            </NavLink>
-            <small class="hint">Panel principal del inventario</small>
+    <div class="bari-shell">
+        <aside class="bari-sidenav" aria-label="Menú lateral">
 
-            <div class="search-box" title="Escribe para buscar (pendiente implementar)">
-                <label class="search-label">BUSCAR</label>
-                <input @bind="searchText" class="search-input" placeholder="Escribe aquí (próximamente)" />
+            <NavLink class="bari-navbtn" href="/" Match="NavLinkMatch.All">
+                <span class="bari-navtext">INICIO</span>
+            </NavLink>
+            <small class="bari-hint">Panel principal del inventario</small>
+
+            <div class="bari-search">
+                <label class="bari-search-label">BUSCAR</label>
+                <input @bind="searchText" class="bari-search-input" placeholder="Escribe aquí (próximamente)" />
             </div>
 
-            
-            <nav class="menu-list">
+            <div class="bari-navsection">MÓDULOS</div>
 
-                <NavLink class="menu-item" href="/baribot" title="baribot">
-                    BARI BOT
-                </NavLink>
+            <nav class="bari-nav" aria-label="Navegación">
+                <NavLink class="bari-navbtn" href="/baribot"><span class="bari-navtext">BARI BOT</span></NavLink>
+                <NavLink class="bari-navbtn" href="/documentaciones"><span class="bari-navtext">DOCUMENTACIONES</span></NavLink>
+                <NavLink class="bari-navbtn" href="/areas"><span class="bari-navtext">ÁREAS</span></NavLink>
+                <NavLink class="bari-navbtn" href="/contenidos"><span class="bari-navtext">ASIGNATURAS, CLASES Y EXPERIENCIAS</span></NavLink>
 
-                <NavLink class="menu-item" href="/documentaciones" title="Documentaciones, protocolos y manuales">
-                    DOCUMENTACIONES
-                </NavLink>
+                <div class="bari-navsection">INVENTARIO</div>
 
-                <NavLink class="menu-item" href="/areas" title="Mapa de áreas y zonas del laboratorio">
-                    ÁREAS
-                </NavLink>
-
-                <NavLink class="menu-item" href="/contenidos" title="Asignaturas, contenido, experiencias">
-                    ASIGNATURAS, CLASES Y EXPERIENCIAS
-                </NavLink>
-
-                <NavLink class="menu-item" href="/inventario-materiales" title="Materiales y consumibles del laboratorio">
-                    INVENTARIO MATERIALES
-                </NavLink>
-
-                <NavLink class="menu-item" href="/inventario-equipo" title="Equipos e instrumentos del laboratorio">
-                    INVENTARIO EQUIPO
-                </NavLink>
-
-                <NavLink class="menu-item" href="/inventario-sustancias" title="Sustancias, reactivos y stock químico">
-                    INVENTARIO SUSTANCIAS
-                </NavLink>
-
-                <NavLink class="menu-item" href="/inventario-instalaciones" title="Instalaciones electricas, hidricas, etc.">
-                    INSTALACIONES
-                </NavLink>
-
-                <NavLink class="menu-item" href="/inventario-mesones" title="Mesones, etc.">
-                    MESONES
-                </NavLink>
-
-
-                <NavLink class="menu-item" href="/informacion-tecnica" title="Datos Tecnicos">
-                    DATOS TECNICOS
-                </NavLink>
-
+                <NavLink class="bari-navbtn" href="/inventario-materiales"><span class="bari-navtext">INVENTARIO MATERIALES</span></NavLink>
+                <NavLink class="bari-navbtn" href="/inventario-equipo"><span class="bari-navtext">INVENTARIO EQUIPO</span></NavLink>
+                <NavLink class="bari-navbtn" href="/inventario-sustancias"><span class="bari-navtext">INVENTARIO SUSTANCIAS</span></NavLink>
+                <NavLink class="bari-navbtn" href="/inventario-instalaciones"><span class="bari-navtext">INSTALACIONES</span></NavLink>
+                <NavLink class="bari-navbtn" href="/inventario-mesones"><span class="bari-navtext">MESONES</span></NavLink>
+                <NavLink class="bari-navbtn" href="/informacion-tecnica"><span class="bari-navtext">DATOS TÉCNICOS</span></NavLink>
             </nav>
         </aside>
+        <div class="bari-overlay" @onclick="CloseMenu" aria-hidden="true"></div>
 
-        <main class="main">
+        <main class="bari-main">
             @Body
         </main>
     </div>
 </div>
 
 @code {
+    private bool menuOpen = false;
     private string? searchText;
+
+    protected override void OnInitialized()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        menuOpen = false;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void ToggleMenu() => menuOpen = !menuOpen;
+    private void CloseMenu() => menuOpen = false;
+
+    public void Dispose()
+    {
+        Nav.LocationChanged -= OnLocationChanged;
+    }
 }
-
-<style>
-    .layout-root { display:flex; flex-direction:column; height:100vh; font-family:"Segoe UI", system-ui, -apple-system, sans-serif; }
-    .topbar {
-        display:flex; align-items:center; justify-content:space-between;
-        background:#0b2a68; color:#fff; padding:0.75rem 1.25rem; gap:1rem;
-        box-shadow:0 8px 20px rgba(10, 26, 56, 0.25);
-    }
-    .topbar-brand { display:flex; align-items:center; gap:0.85rem; }
-    .topbar-logo { width:56px; height:56px; object-fit:contain; background:#fff; padding:6px; border-radius:12px; }
-    .topbar-title { font-size:1.25rem; font-weight:700; letter-spacing:0.04em; }
-    .topbar-subtitle { font-size:0.95rem; color:#d8e5ff; }
-    .topbar-text { display:flex; flex-direction:column; }
-    .topbar-meta { display:flex; align-items:center; }
-    .badge {
-        background:rgba(255,255,255,0.18); padding:0.35rem 0.75rem; border-radius:999px;
-        font-size:0.85rem; border:1px solid rgba(255,255,255,0.2);
-    }
-    .content { display:flex; flex:1; min-height:0; }
-    .sidebar {
-        width: 280px; padding: 1rem; gap: 0.6rem; display:flex; flex-direction:column;
-        background: linear-gradient(180deg, #052767 0%, #2c8cb6 55%, #68E3C8 100%);
-    }
-    .main { flex:1; padding: 1.5rem 2rem; background:#f7f8fb; overflow:auto; }
-
-    .menu-btn, .menu-item {
-        display:block; width:100%; text-align:left; font-weight:600;
-        background:rgba(255,255,255,.08); color:#fff; border:none;
-        padding:0.7rem 0.9rem; border-radius:0.65rem; text-decoration:none; cursor:pointer;
-        transition: background .15s ease, transform .05s ease;
-    }
-    .menu-btn:hover, .menu-item:hover { background:rgba(255,255,255,.2); }
-    .menu-item.active, .menu-btn.active { background:rgba(255,255,255,.28); }
-
-    .hint { color:#e8f0ff; margin:0.2rem 0 0.6rem 0.15rem; display:block; font-size:.8rem; }
-
-    .search-box { display:flex; flex-direction:column; gap:.4rem; margin:.4rem 0 .8rem; }
-    .search-label { color:#e9f3ff; font-size:0.8rem; letter-spacing:0.08em; }
-
-    .search-input-invent {
-        min-width: 280px;
-        flex: 1 1 320px;
-        border-radius: 10px;
-        background: #ffffff; /* Cambiamos a fondo blanco sólido */
-        color: #0f172a; /* Color de texto oscuro (el que usas en tus títulos) */
-        border: 1px solid #cbd5e1; /* Un borde definido para que se vea el campo */
-    }
-
-    .search-input {
-        border-radius:0.6rem; border:1px solid rgba(255,255,255,.25);
-        padding:.6rem .7rem; outline:none; color:#fff; background:rgba(255,255,255,.12);
-    }
-    .search-input::placeholder { color:#e1e4f5; }
-
-    .menu-list { display:flex; flex-direction:column; gap:.45rem; }
-
-    .page-card {
-        background:#fff; border-radius:1rem; padding:1.25rem;
-        box-shadow:0 12px 30px rgba(16, 24, 40, 0.08);
-    }
-
-    .page-card h2 { margin:0 0 0.5rem; }
-    .page-card p { color:#4b5563; }
-
-    .lab-selector {
-        display:flex; flex-direction:column; gap:0.35rem; padding:0.75rem 1rem;
-        background:#fff; border-radius:0.9rem; box-shadow:0 8px 20px rgba(16, 24, 40, 0.08);
-    }
-    .lab-selector label { font-weight:600; color:#0b2a68; }
-    .lab-selector select {
-        border-radius:0.6rem; border:1px solid #cbd5f5; padding:0.5rem 0.7rem;
-        background:#f8fafc; color:#111827;
-    }
-    .lab-selector small { color:#6b7280; }
-</style>
