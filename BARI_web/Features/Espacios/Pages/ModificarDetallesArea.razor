@@ -952,4 +952,22 @@
     .panel-title {
         font-weight: 600;
     }
+
+    @media (max-width: 900px) {
+        .editor-layout {
+            grid-template-columns: 1fr;
+        }
+
+        .prop-panel {
+            position: static;
+            max-height: none;
+            margin-top: 12px;
+        }
+
+        .zoom-btn {
+            width: 38px;
+            height: 38px;
+            line-height: 38px;
+        }
+    }
 </style>
