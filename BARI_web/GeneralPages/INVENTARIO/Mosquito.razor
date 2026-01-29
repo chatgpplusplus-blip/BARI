@@ -1,0 +1,83 @@
+﻿@page "/Mosquito/"
+@using System.Text
+@implements IDisposable
+
+<div class="container mt-4">
+    <div class="card border-primary">
+        <div class="card-header bg-primary text-white">
+            <h4>Panel MQTT - ESP32</h4>
+        </div>
+        <div class="card-body">
+            <p><strong>Estado:</strong> @estadoConexion</p>
+            <div class="alert alert-info">
+                <strong>Último mensaje del ESP32:</strong> @ultimoMensaje
+            </div>
+            <hr />
+            <input @bind="comandoEnviar" class="form-control" placeholder="Comando para ESP32" />
+            <button class="btn btn-success mt-2" @onclick="EnviarDato">Enviar Comando</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    // Usamos el nombre completo para evitar errores de namespace
+    private MQTTnet.Client.IMqttClient? _mqttClient;
+    private string ultimoMensaje = "Esperando...";
+    private string estadoConexion = "Desconectado";
+    private string comandoEnviar = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var factory = new MQTTnet.MqttFactory();
+        _mqttClient = factory.CreateMqttClient();
+
+        var options = new MQTTnet.Client.MqttClientOptionsBuilder()
+            .WithTcpServer("broker.emqx.io", 1883)
+            .Build();
+
+        // Configurar el manejador de mensajes recibidos
+        _mqttClient.ApplicationMessageReceivedAsync += e =>
+        {
+            // En v4+, Payload es ReadOnlyMemory<byte>
+            var payloadText = Encoding.UTF8.GetString(e.ApplicationMessage.Payload.ToArray());
+            ultimoMensaje = payloadText;
+
+            InvokeAsync(StateHasChanged);
+            return Task.CompletedTask;
+        };
+
+        try
+        {
+            await _mqttClient.ConnectAsync(options);
+            estadoConexion = "Conectado al Broker";
+
+            var subscribeOptions = factory.CreateSubscribeOptionsBuilder()
+                .WithTopicFilter(f => f.WithTopic("esp32/datos"))
+                .Build();
+
+            await _mqttClient.SubscribeAsync(subscribeOptions);
+        }
+        catch (Exception ex)
+        {
+            estadoConexion = "Error: " + ex.Message;
+        }
+    }
+
+    private async Task EnviarDato()
+    {
+        if (_mqttClient != null && _mqttClient.IsConnected)
+        {
+            var message = new MQTTnet.MqttApplicationMessageBuilder()
+                .WithTopic("esp32/comandos")
+                .WithPayload(comandoEnviar)
+                .Build();
+
+            await _mqttClient.PublishAsync(message);
+        }
+    }
+
+    public void Dispose()
+    {
+        _mqttClient?.Dispose();
+    }
+}
