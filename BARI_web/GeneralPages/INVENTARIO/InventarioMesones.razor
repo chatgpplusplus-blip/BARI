@@ -42,17 +42,25 @@
         <div class="form-grid">
             <div class="field">
                 <label>ID mesón (opcional)</label>
-                <input class="border p-1" placeholder="mes_xxx (opcional)" @bind="_nuevoId" />
+                <input class="border p-1 @(Filled(_nuevoId))"
+                       placeholder="mes_xxx (opcional)"
+                       @bind="_nuevoId" />
             </div>
 
             <div class="field">
                 <label>Nombre del mesón</label>
-                <input class="border p-1" placeholder="Ej: Mesón central" @bind="_nuevoNombre" />
+                <input class="border p-1 @(Filled(_nuevoNombre))"
+                       placeholder="Ej: Mesón central"
+                       @bind="_nuevoNombre" />
             </div>
 
             <div class="field">
                 <label>Niveles totales (opcional)</label>
-                <input class="border p-1" type="number" step="1" placeholder="Ej: 3" @bind="_nuevoNiveles" />
+                <input class="border p-1 @(FilledPositiveInt(_nuevoNiveles))"
+                       type="number"
+                       step="1"
+                       placeholder="Ej: 3"
+                       @bind="_nuevoNiveles" />
             </div>
 
             <!-- Área + Visualizador -->
@@ -60,7 +68,7 @@
                 <label>Área (obligatorio)</label>
 
                 <div class="selector-split">
-                    <select class="border p-1"
+                    <select class="border p-1 @(Filled(_nuevoAreaId))"
                             value="@_nuevoAreaId"
                             @onchange="OnAreaChanged">
                         <option value="">(selecciona área)</option>
@@ -74,7 +82,7 @@
                         <div class="visual-toolbar">
                             <label class="text-xs muted">Mapa de áreas</label>
 
-                            <select class="border p-1 text-xs" @bind="_currentPlantaId">
+                            <select class="border p-1 text-xs @(Filled(_currentPlantaId))" @bind="_currentPlantaId">
                                 <option value="">Todas</option>
                                 @foreach (var planta in _plantasLookup)
                                 {
@@ -158,7 +166,7 @@
             <!-- Canvas (para crear el bloque) -->
             <div class="field">
                 <label>Canvas</label>
-                <select class="border p-1" @bind="_nuevoCanvasId">
+                <select class="border p-1 @(Filled(_nuevoCanvasId))" @bind="_nuevoCanvasId">
                     <option value="">(auto desde área)</option>
                     @foreach (var c in _canvasOptions)
                     {
@@ -175,20 +183,32 @@
             <!-- Dimensiones del bloque -->
             <div class="field">
                 <label>Ancho del bloque (m)</label>
-                <input class="border p-1" type="number" step="any" placeholder="Ej: 2.00" @bind="_nuevoBloqueAnchoM" />
+                <input class="border p-1 @(FilledPositiveDecimal(_nuevoBloqueAnchoM))"
+                       type="number"
+                       step="any"
+                       placeholder="Ej: 2.00"
+                       @bind="_nuevoBloqueAnchoM" />
             </div>
 
             <div class="field">
                 <label>Largo del bloque (m)</label>
-                <input class="border p-1" type="number" step="any" placeholder="Ej: 0.75" @bind="_nuevoBloqueLargoM" />
+                <input class="border p-1 @(FilledPositiveDecimal(_nuevoBloqueLargoM))"
+                       type="number"
+                       step="any"
+                       placeholder="Ej: 0.75"
+                       @bind="_nuevoBloqueLargoM" />
             </div>
 
             <div class="field">
                 <label>Altura (m) (opcional)</label>
-                <input class="border p-1" type="number" step="any" placeholder="Ej: 0.90" @bind="_nuevoBloqueAlturaM" />
+                <input class="border p-1 @(FilledPositiveDecimal(_nuevoBloqueAlturaM))"
+                       type="number"
+                       step="any"
+                       placeholder="Ej: 0.90"
+                       @bind="_nuevoBloqueAlturaM" />
             </div>
 
-            <div class="upload-card full-span">
+            <div class="upload-card full-span @(NuevoImagenFilled ? "is-filled" : "")">
                 <div class="upload-options">
                     <label class="text-sm">
                         <input type="radio" name="imgModoMes"
@@ -208,7 +228,7 @@
 
                 @if (_nuevoImagenModo == "url")
                 {
-                    <input class="border p-1" placeholder="Imagen URL (o ruta relativa)" @bind="_nuevoImagenUrl" />
+                    <input class="border p-1 @(Filled(_nuevoImagenUrl))" placeholder="Imagen URL (o ruta relativa)" @bind="_nuevoImagenUrl" />
                 }
                 else
                 {
@@ -245,14 +265,14 @@
         </div>
 
         <div class="category-controls">
-            <label class="toggle">
+            <label class="toggle @(_verTodos ? "is-filled" : "")">
                 <input type="checkbox"
                        checked="@_verTodos"
                        @onchange="OnVerTodosToggle" />
                 <span>Ver todos los mesones</span>
             </label>
 
-            <select class="category-select"
+            <select class="category-select @((!_verTodos && !string.IsNullOrWhiteSpace(AreaId)) ? "is-filled" : "")"
                     @onchange="OnAreaFilterChanged"
                     value="@(_verTodos ? "" : AreaId)">
                 <option value="">Todas las áreas</option>
@@ -290,7 +310,7 @@
             }
         </div>
 
-        <input class="border p-1 search-input-invent"
+        <input class="border p-1 search-input-invent @(Filled(_searchText))"
                placeholder="Buscar (nombre, área, niveles)..."
                @bind="_searchText"
                @bind:event="oninput"
@@ -397,6 +417,11 @@
     private string _nuevoImagenModo = "url";
     private string? _nuevoImagenUrl;
     private string? _nuevoImagenNombre;
+
+    private bool NuevoImagenFilled =>
+        _nuevoImagenModo == "url"
+            ? !string.IsNullOrWhiteSpace(_nuevoImagenUrl)
+            : !string.IsNullOrWhiteSpace(_nuevoImagenNombre);
 
     protected override void OnInitialized()
     {
@@ -1152,6 +1177,16 @@
         return url.StartsWith("/", StringComparison.OrdinalIgnoreCase) ? url : $"/{url}";
     }
 
+    // ===== Filled helpers (AZUL cuando hay valor válido) =====
+    private static string Filled(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "" : "is-filled";
+
+    private static string FilledPositiveInt(string? value) =>
+        (!string.IsNullOrWhiteSpace(value) && int.TryParse(value.Trim(), out var n) && n > 0) ? "is-filled" : "";
+
+    private static string FilledPositiveDecimal(string? value) =>
+        (TryParseDecimalFlexible(value, out var d) && d > 0) ? "is-filled" : "";
+
     public void Dispose()
     {
         LaboratorioState.OnChange -= HandleLaboratorioChanged;
@@ -1366,6 +1401,7 @@
         border: 1px solid #cbd5f5;
         background: #fff;
         color: #0f172a;
+        font-weight: 700;
     }
 
     .btn-link {
@@ -1466,6 +1502,7 @@
         font-size: .9rem;
         color: #0f172a;
         user-select: none;
+        white-space: nowrap;
     }
 
     .table-wrap {
@@ -1615,5 +1652,32 @@
     .thumb-material {
         width: 44px;
         height: 44px;
+    }
+
+    /* ===========================
+           ✅ FILLED STATE (AZUL)
+           =========================== */
+    .border.is-filled,
+    .category-select.is-filled,
+    .search-input-invent.is-filled {
+        background: #dbeafe !important;
+        border-color: #93c5fd !important;
+    }
+
+    .toggle.is-filled {
+        background: #dbeafe !important;
+        border-color: #93c5fd !important;
+    }
+
+    .upload-card.is-filled {
+        background: #eff6ff !important;
+        border-color: #93c5fd !important;
+    }
+
+    .border.is-filled:focus,
+    .category-select.is-filled:focus,
+    .search-input-invent.is-filled:focus {
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(147, 197, 253, .55);
     }
 </style>

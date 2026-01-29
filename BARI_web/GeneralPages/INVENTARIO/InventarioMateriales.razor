@@ -34,7 +34,8 @@
         </div>
 
         <div class="assign-row form-grid">
-            <select class="border p-1"
+
+            <select class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoMaterialCategoriaId) ? "is-filled" : "")"
                     value="@_nuevoMaterialCategoriaId"
                     @onchange="OnCategoriaMaterialChanged">
                 <option value="">Categoría</option>
@@ -44,13 +45,20 @@
                 }
             </select>
 
-
-            <input class="border p-1" placeholder="Nombre" @bind="_nuevoMaterialNombre" />
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoMaterialNombre) ? "is-filled" : "")"
+                   placeholder="Nombre"
+                   @bind="_nuevoMaterialNombre" />
 
             @if (_nuevoMaterialTipo == "VIDRIO" || _nuevoMaterialTipo == "PLASTICO")
             {
-                <input class="border p-1" placeholder="Capacidad (número)" type="number" step="any" @bind="_nuevoMaterialDetalle" />
-                <select class="border p-1" @bind="_nuevoMaterialUnidadId">
+                <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(Convert.ToString(_nuevoMaterialDetalle)) && Convert.ToString(_nuevoMaterialDetalle) != "0" ? "is-filled" : "")"
+                       placeholder="Capacidad (número)"
+                       type="number"
+                       step="any"
+                       @bind="_nuevoMaterialDetalle" />
+
+                <select class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoMaterialUnidadId) ? "is-filled" : "")"
+                        @bind="_nuevoMaterialUnidadId">
                     <option value="">Unidad (vidrio)</option>
                     @foreach (var unidad in _unidadOptions)
                     {
@@ -59,11 +67,20 @@
                 </select>
             }
 
-            <input class="border p-1" placeholder="Cantidad" type="number" step="any" @bind="_nuevoMaterialCantidad" />
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(Convert.ToString(_nuevoMaterialCantidad)) && Convert.ToString(_nuevoMaterialCantidad) != "0" ? "is-filled" : "")"
+                   placeholder="Cantidad"
+                   type="number"
+                   step="any"
+                   @bind="_nuevoMaterialCantidad" />
 
-            <input class="border p-1" placeholder="Altura (cm)" type="number" step="any" @bind="_nuevoMaterialAlturaCm" />
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(Convert.ToString(_nuevoMaterialAlturaCm)) && Convert.ToString(_nuevoMaterialAlturaCm) != "0" ? "is-filled" : "")"
+                   placeholder="Altura (cm)"
+                   type="number"
+                   step="any"
+                   @bind="_nuevoMaterialAlturaCm" />
 
-            <select class="border p-1" @bind="_nuevoMaterialEstadoId">
+            <select class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoMaterialEstadoId) ? "is-filled" : "")"
+                    @bind="_nuevoMaterialEstadoId">
                 <option value="">Estado</option>
                 @foreach (var estado in _estadoOptions)
                 {
@@ -72,7 +89,8 @@
             </select>
 
             <div class="brand-picker">
-                <select class="border p-1" @bind="_nuevoMaterialMarcaId">
+                <select class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoMaterialMarcaId) ? "is-filled" : "")"
+                        @bind="_nuevoMaterialMarcaId">
                     <option value="">Marca</option>
                     @foreach (var marca in _marcaOptions)
                     {
@@ -86,8 +104,8 @@
                 }
             </div>
 
-
-            <div class="border p-2" style="border-radius:.5rem;"
+            <div class="border p-2 subcats-box @((_nuevoMaterialSubcategoriaIds?.Count ?? 0) > 0 ? "is-filled" : "")"
+                 style="border-radius:.5rem;"
                  aria-disabled="@string.IsNullOrWhiteSpace(_nuevoMaterialCategoriaId)">
 
                 <div class="text-xs text-gray-500" style="margin-bottom:.35rem;">Subcategorías (puedes elegir varias)</div>
@@ -103,7 +121,7 @@
                         var isChecked = _nuevoMaterialSubcategoriaIds.Contains(sub.Id);
                         var checkboxId = $"subcat_{sub.Id}";
 
-                        <label for="@checkboxId" style="display:flex; gap:.5rem; align-items:center; margin:.2rem 0;">
+                        <label for="@checkboxId" class="check-row">
                             <input id="@checkboxId"
                                    type="checkbox"
                                    checked="@isChecked"
@@ -114,10 +132,8 @@
                 }
             </div>
 
-
-
             <div class="selector-split full-span">
-                <select class="border p-1"
+                <select class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoMaterialAreaId) ? "is-filled" : "")"
                         value="@_nuevoMaterialAreaId"
                         @onchange="OnAreaChanged">
                     <option value="">Área</option>
@@ -131,7 +147,8 @@
                     <div class="visual-toolbar">
                         <label class="text-xs text-gray-500">Mapa de áreas</label>
 
-                        <select class="border p-1 text-xs" @bind="_currentPlantaId">
+                        <select class="border p-1 text-xs form-control @(!string.IsNullOrWhiteSpace(_currentPlantaId) ? "is-filled" : "")"
+                                @bind="_currentPlantaId">
                             <option value="">Todas</option>
                             @foreach (var planta in _plantasLookup)
                             {
@@ -214,7 +231,7 @@
             </div>
 
             <div class="selector-split full-span">
-                <select class="border p-1"
+                <select class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoMaterialMesonId) ? "is-filled" : "")"
                         value="@_nuevoMaterialMesonId"
                         @onchange="OnMesonChanged"
                         disabled="@string.IsNullOrWhiteSpace(_nuevoMaterialAreaId)">
@@ -318,33 +335,44 @@
                 </div>
             </div>
 
-            <input class="border p-1" placeholder="Nivel" @bind="_nuevoMaterialNivel" />
-            <input class="border p-1" placeholder="Posición (ej. al fondo, en el medio)" @bind="_nuevoMaterialPosicion" />
-            <input class="border p-1" placeholder="Descripción" @bind="_nuevoMaterialDescripcion" />
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoMaterialNivel) ? "is-filled" : "")"
+                   placeholder="Nivel"
+                   @bind="_nuevoMaterialNivel" />
 
-            <div class="upload-card full-span">
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoMaterialPosicion) ? "is-filled" : "")"
+                   placeholder="Posición (ej. al fondo, en el medio)"
+                   @bind="_nuevoMaterialPosicion" />
+
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoMaterialDescripcion) ? "is-filled" : "")"
+                   placeholder="Descripción"
+                   @bind="_nuevoMaterialDescripcion" />
+
+            <div class="upload-card full-span @((!string.IsNullOrWhiteSpace(_nuevoMaterialImagenUrl) || !string.IsNullOrWhiteSpace(_nuevoMaterialImagenArchivo)) ? "is-filled" : "")">
                 <div class="upload-options">
-                    <label class="text-sm">
+                    <label class="text-sm toggle @(_nuevoMaterialImagenModo == "url" ? "is-filled" : "")">
                         <input type="radio"
                                name="imagenModo"
                                value="url"
                                checked="@(_nuevoMaterialImagenModo == "url")"
                                @onchange="OnImagenModoChanged" />
-                        Colocar un URL
+                        <span>Colocar un URL</span>
                     </label>
-                    <label class="text-sm">
+
+                    <label class="text-sm toggle @(_nuevoMaterialImagenModo == "archivo" ? "is-filled" : "")">
                         <input type="radio"
                                name="imagenModo"
                                value="archivo"
                                checked="@(_nuevoMaterialImagenModo == "archivo")"
                                @onchange="OnImagenModoChanged" />
-                        Subir archivo
+                        <span>Subir archivo</span>
                     </label>
                 </div>
 
                 @if (_nuevoMaterialImagenModo == "url")
                 {
-                    <input class="border p-1" placeholder="Imagen URL (o ruta relativa)" @bind="_nuevoMaterialImagenUrl" />
+                    <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoMaterialImagenUrl) ? "is-filled" : "")"
+                           placeholder="Imagen URL (o ruta relativa)"
+                           @bind="_nuevoMaterialImagenUrl" />
                 }
                 else
                 {
@@ -359,7 +387,9 @@
                 }
             </div>
 
-            <input class="border p-1" placeholder="Observaciones" @bind="_nuevoMaterialObservaciones" />
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoMaterialObservaciones) ? "is-filled" : "")"
+                   placeholder="Observaciones"
+                   @bind="_nuevoMaterialObservaciones" />
 
             <div class="form-actions full-span">
                 <button class="btn primary" @onclick="SubirMaterialAsync">Subir material</button>
@@ -379,15 +409,16 @@
             <h3>Guía de categorías (materiales)</h3>
             <p class="helper">Selecciona una subcategoría para ver los materiales.</p>
         </div>
-        <div class="category-controls">
-            <label class="toggle">
+
+<div class="category-controls controls-strip">
+            <label class="toggle @(_verTodos ? "is-filled" : "")">
                 <input type="checkbox"
                        checked="@_verTodos"
                        @onchange="OnVerTodosToggle" />
                 <span>Ver todos los materiales</span>
             </label>
 
-            <select class="category-select"
+            <select class="category-select form-control @((!_verTodos && !string.IsNullOrWhiteSpace(SubcategoriaId)) ? "is-filled" : "")"
                     @onchange="OnSubcategoriaChanged"
                     value="@(_verTodos ? "" : SubcategoriaId)">
                 <option value="">Todas las categorías</option>
@@ -416,7 +447,7 @@
     }
     else
     {
-        <div class="category-grid">
+        <div class="category-grid category-strip">
             @foreach (var categoria in categorias)
             {
                 <div class="category-card">
@@ -456,7 +487,7 @@
             }
         </div>
 
-        <input class="border p-1 search-input-invent"
+        <input class="border p-1 search-input-invent form-control @(string.IsNullOrWhiteSpace(_searchText) ? "" : "is-filled")"
                placeholder="Buscar (nombre, marca, área, estado, categoría, etc.)..."
                @bind="_searchText"
                @bind:event="oninput"
@@ -468,12 +499,10 @@
         }
     </div>
 
-
     @if (!string.IsNullOrWhiteSpace(loadError))
     {
         <p class="error-note">No se pudieron cargar materiales: @loadError</p>
     }
-   
     else if (materiales.Count == 0)
     {
         <div class="empty">
@@ -545,7 +574,6 @@
                                 }
                             </td>
                         </tr>
-
                     }
                 </tbody>
             </table>
@@ -553,113 +581,6 @@
     }
 </section>
 
-<style>
-    .selector-split {
-        display: flex;
-        gap: .75rem;
-        align-items: flex-start;
-        flex-wrap: wrap;
-    }
-
-    .form-header {
-        margin-top: 0.75rem;
-        margin-bottom: 0.75rem;
-    }
-
-        .form-header h4 {
-            margin: 0 0 0.25rem 0;
-            font-weight: 700;
-            color: #0f172a;
-        }
-
-    .form-hint {
-        margin: 0;
-        color: #64748b;
-        font-size: 0.95rem;
-    }
-
-    .form-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-        gap: 0.75rem;
-        align-items: start;
-    }
-
-    .full-span {
-        grid-column: 1 / -1;
-    }
-
-    .form-actions {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        flex-wrap: wrap;
-        margin-top: 0.25rem;
-    }
-
-    .btn.primary {
-        background: #2563eb;
-        color: #fff;
-        border: none;
-        padding: 0.5rem 1rem;
-        border-radius: 0.5rem;
-        font-weight: 600;
-        box-shadow: 0 6px 12px rgba(37, 99, 235, 0.18);
-    }
-
-        .btn.primary:hover {
-            background: #1d4ed8;
-        }
-
-    .visual-picker {
-        border: 1px solid #e5e7eb;
-        border-radius: .75rem;
-        padding: .6rem;
-        background: #fff;
-        min-width: 320px;
-    }
-
-    .visual-toolbar {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: .5rem;
-        margin-bottom: .5rem;
-    }
-
-    .canvas-card {
-        border: 1px solid #e5e7eb;
-        border-radius: .75rem;
-        padding: .5rem;
-        background: #fafafa;
-        margin-top: .5rem;
-    }
-
-        .canvas-card svg {
-            width: 100%;
-            height: 200px;
-            background: white;
-            border-radius: .5rem;
-        }
-
-    .meson-list {
-        list-style: none;
-        padding-left: 0;
-        margin: .5rem 0 0;
-        display: grid;
-        gap: .35rem;
-    }
-
-    .meson-item {
-        padding: .35rem .35rem;
-        border-radius: .5rem;
-    }
-
-        .meson-item.selected {
-            background: #fff7ed;
-            outline: 1px solid #f59e0b;
-        }
-</style>
 
 @code {
     [Parameter] public string? SubcategoriaId { get; set; }
@@ -744,15 +665,15 @@
     }
 
     private string? _nuevoMaterialCategoriaId; // ej: "material-vidrio"
-private readonly List<SelectOption> _categoriaMaterialOptions = new();
-private readonly Dictionary<string, List<SelectOption>> _subcategoriasByCategoria
-    = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<SelectOption> _categoriaMaterialOptions = new();
+    private readonly Dictionary<string, List<SelectOption>> _subcategoriasByCategoria
+        = new(StringComparer.OrdinalIgnoreCase);
 
-private IEnumerable<SelectOption> SubcategoriasFiltradas =>
-    (!string.IsNullOrWhiteSpace(_nuevoMaterialCategoriaId)
-     && _subcategoriasByCategoria.TryGetValue(_nuevoMaterialCategoriaId, out var list))
-        ? list
-        : Enumerable.Empty<SelectOption>();
+    private IEnumerable<SelectOption> SubcategoriasFiltradas =>
+        (!string.IsNullOrWhiteSpace(_nuevoMaterialCategoriaId)
+         && _subcategoriasByCategoria.TryGetValue(_nuevoMaterialCategoriaId, out var list))
+            ? list
+            : Enumerable.Empty<SelectOption>();
 
     private void OnCategoriaMaterialChanged(ChangeEventArgs args)
     {
@@ -887,18 +808,38 @@ private IEnumerable<SelectOption> SubcategoriasFiltradas =>
         _canvasViews.SelectMany(v => v.Areas)
             .FirstOrDefault(a => string.Equals(a.AreaId, _nuevoMaterialAreaId, StringComparison.OrdinalIgnoreCase));
 
-    private void OnImagenModoChanged(ChangeEventArgs args)
+private void OnImagenModoChanged(ChangeEventArgs args)
+{
+    var value = args.Value?.ToString();
+    if (string.IsNullOrWhiteSpace(value))
+        return;
+
+    _nuevoMaterialImagenModo = value;
+
+    // Limpieza para que no quede "relleno fantasma"
+    if (_nuevoMaterialImagenModo == "url")
     {
-        var value = args.Value?.ToString();
-        if (!string.IsNullOrWhiteSpace(value))
-            _nuevoMaterialImagenModo = value;
+        _nuevoMaterialImagenArchivo = null;
+        // (si quieres, también puedes limpiar el url al cambiar: NO lo hago para no molestar)
+    }
+    else
+    {
+        _nuevoMaterialImagenUrl = null;
     }
 
-    private async Task OnImagenArchivoSeleccionado(InputFileChangeEventArgs args)
-    {
-        if (args.FileCount == 0) return;
+    StateHasChanged();
+}
 
-        var file = args.File;
+    private async Task OnImagenArchivoSeleccionado(InputFileChangeEventArgs args)
+{
+    if (args.FileCount == 0) return;
+
+    // Si el usuario sube archivo, sincroniza modo y limpia URL
+    _nuevoMaterialImagenModo = "archivo";
+    _nuevoMaterialImagenUrl = null;
+
+    var file = args.File;
+
         var extension = Path.GetExtension(file.Name);
         var fileName = $"material_{Guid.NewGuid():N}{extension}";
         var relativePath = Path.Combine("uploads", "materiales", fileName).Replace("\\", "/");
@@ -1098,9 +1039,53 @@ private IEnumerable<SelectOption> SubcategoriasFiltradas =>
         await LoadMaterialesAsync();
         StateHasChanged();
     }
-
     private static object ParseIntOrNull(string? value) =>
-        int.TryParse(value, out var i) ? i : DBNull.Value;
+    int.TryParse(value, out var i) ? i : DBNull.Value;
+
+/* ===========================
+   ✅ Helpers UI: "relleno = azul" SOLO si es válido
+   (igual filosofía que Documentaciones, pero con números validados)
+   =========================== */
+private static string Filled(string? value)
+    => string.IsNullOrWhiteSpace(value) ? "" : "is-filled";
+
+private static string FilledAny(bool condition)
+    => condition ? "is-filled" : "";
+
+/* Para inputs type="number" bindeados a string:
+   - acepta punto o coma (InvariantCulture y CurrentCulture)
+   - por defecto NO considera 0 como "relleno válido" (cámbialo con allowZero=true)
+*/
+private static string FilledDecimal(string? value, bool allowZero = false)
+{
+    if (string.IsNullOrWhiteSpace(value)) return "";
+
+    var s = value.Trim();
+
+    if (!decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) &&
+        !decimal.TryParse(s, NumberStyles.Any, CultureInfo.CurrentCulture, out d))
+        return "";
+
+    if (!allowZero && d == 0m) return "";
+
+    return "is-filled";
+}
+
+private static string FilledInt(string? value, bool allowZero = false)
+{
+    if (string.IsNullOrWhiteSpace(value)) return "";
+
+    var s = value.Trim();
+
+    if (!int.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var i) &&
+        !int.TryParse(s, NumberStyles.Any, CultureInfo.CurrentCulture, out i))
+        return "";
+
+    if (!allowZero && i == 0) return "";
+
+    return "is-filled";
+}
+
 
     private async Task LoadCategoriasAsync()
     {
@@ -1610,14 +1595,14 @@ private IEnumerable<SelectOption> SubcategoriasFiltradas =>
 
     private bool _verTodos;
 
-private bool ComputeVerTodos()
+    private bool ComputeVerTodos()
     {
         return string.Equals(SubcategoriaId, "todos", StringComparison.OrdinalIgnoreCase);
     }
 
 
-private string? SelectedMarcaLogoUrl =>
-    _marcaOptions.FirstOrDefault(m => string.Equals(m.Id, _nuevoMaterialMarcaId, StringComparison.OrdinalIgnoreCase))?.ImageUrl;
+    private string? SelectedMarcaLogoUrl =>
+        _marcaOptions.FirstOrDefault(m => string.Equals(m.Id, _nuevoMaterialMarcaId, StringComparison.OrdinalIgnoreCase))?.ImageUrl;
 
 
     private async Task LoadMaterialesAsync()
@@ -1892,7 +1877,7 @@ a.nombre_areas, ms.nombre_meson, m.posicion
         }
     }
 
-        private static string BuildAlturaLabel(decimal? alturaCm)
+    private static string BuildAlturaLabel(decimal? alturaCm)
     {
         if (alturaCm is null) return "—";
         return alturaCm.Value.ToString(CultureInfo.InvariantCulture);
@@ -2077,23 +2062,298 @@ a.nombre_areas, ms.nombre_meson, m.posicion
         _currentPlantaId = firstAreaPlanta ?? _plantasLookup.Keys.FirstOrDefault();
     }
 }
-
-
-
 <style>
+    /* ===========================
+       Base / Cards
+       =========================== */
+    .page-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+        padding: 1rem;
+        box-shadow: 0 6px 14px rgba(15, 23, 42, 0.04);
+    }
+
+    .helper {
+        margin: .3rem 0 0;
+        color: #475569;
+        font-size: .95rem;
+    }
+
+    .muted { color: #64748b; }
+    .text-xs { font-size: .8rem; }
+    .text-sm { font-size: .9rem; }
+    .error-note { color: #b91c1c; margin-top: .75rem; }
+
+    .empty {
+        padding: .85rem 1rem;
+        border-radius: 10px;
+        background: #fef9c3;
+        border: 1px solid #fde68a;
+        color: #854d0e;
+    }
+
+    /* ===========================
+       Inputs / Helpers
+       =========================== */
+    .border {
+        border: 1px solid #e5e7eb;
+        border-radius: .5rem;
+    }
+
+    .p-1 { padding: .45rem .6rem; }
+    .p-2 { padding: .65rem .75rem; }
+
+    .form-control {
+        width: 100%;
+        background: #fff;
+        color: #0f172a;
+        border: 1px solid #cbd5e1;
+        border-radius: .5rem;
+    }
+
+    /* ===========================
+       ✅ FILLED STATE (igual que Documentaciones)
+       =========================== */
+    .form-control.is-filled,
+    .category-select.is-filled,
+    .toggle.is-filled,
+    .subcats-box.is-filled,
+    .upload-card.is-filled {
+        background: #dbeafe !important;
+        border-color: #93c5fd !important;
+    }
+
+    .form-control:focus,
+    .category-select:focus {
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(147, 197, 253, .55);
+    }
+
+    /* ===========================
+       Botones
+       =========================== */
+    .btn {
+        border: 1px solid #cbd5e1;
+        background: #fff;
+        color: #0f172a;
+        padding: .5rem .9rem;
+        border-radius: .55rem;
+        font-weight: 700;
+        cursor: pointer;
+    }
+
+    .btn.primary {
+        background: #2563eb;
+        color: #fff;
+        border: none;
+        box-shadow: 0 6px 12px rgba(37, 99, 235, 0.18);
+    }
+
+    .btn.primary:hover { background: #1d4ed8; }
+
+    .btn.link {
+        background: transparent;
+        border: none;
+        padding: 0;
+        color: #1d4ed8;
+        font-weight: 800;
+        text-decoration: none;
+    }
+
+    .btn.link:hover { text-decoration: underline; }
+
+    .btn-link {
+        color: #1d4ed8;
+        text-decoration: none;
+        font-weight: 800;
+    }
+
+    .btn-link:hover { text-decoration: underline; }
+
+    .badge {
+        background: #e2e8f0;
+        color: #0f172a;
+        padding: .2rem .55rem;
+        border-radius: 999px;
+        font-size: .85rem;
+        font-weight: 800;
+    }
+
+    /* ===========================
+       Form layout
+       =========================== */
+    .form-header { margin-top: .75rem; margin-bottom: .75rem; }
+    .form-header h4 { margin: 0 0 .25rem 0; font-weight: 800; color: #0f172a; }
+    .form-hint { margin: 0; color: #64748b; font-size: .95rem; }
+
+    .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: .75rem;
+        align-items: start;
+    }
+
+    .full-span { grid-column: 1 / -1; }
+
+    .form-actions {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+        flex-wrap: wrap;
+        margin-top: .25rem;
+    }
+
+    .assign-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .5rem;
+        align-items: center;
+        margin-top: .5rem;
+    }
+
+    /* check list */
+    .check-row {
+        display: flex;
+        gap: .5rem;
+        align-items: center;
+        margin: .2rem 0;
+        user-select: none;
+    }
+
+    /* ===========================
+       Category (guía)
+       =========================== */
     .category-header {
         display: flex;
         align-items: flex-start;
         justify-content: space-between;
         gap: 1rem;
+        flex-wrap: wrap;
     }
 
     .category-controls {
         display: flex;
         gap: .75rem;
         align-items: center;
+        flex-wrap: wrap;
     }
 
+    .toggle {
+        display: inline-flex;
+        gap: .45rem;
+        align-items: center;
+        padding: .35rem .6rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 999px;
+        background: #fff;
+        font-size: .9rem;
+        color: #0f172a;
+        user-select: none;
+        white-space: nowrap;
+    }
+
+    .category-select {
+        min-width: 220px;
+        padding: .35rem .6rem;
+        border-radius: 10px;
+        border: 1px solid #cbd5e1;
+        background: #fff;
+        color: #0f172a;
+        font-weight: 700;
+    }
+
+    .category-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 1rem;
+        margin-top: 1rem;
+    }
+
+    .category-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+        padding: 1rem;
+        box-shadow: 0 6px 14px rgba(15, 23, 42, 0.04);
+    }
+
+    .category-title {
+        font-weight: 800;
+        color: #0f172a;
+        margin-bottom: .5rem;
+    }
+
+    .category-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        gap: .35rem;
+    }
+
+    .category-link {
+        display: inline-flex;
+        padding: .35rem .6rem;
+        border-radius: 999px;
+        background: #f1f5f9;
+        color: #0f172a;
+        text-decoration: none;
+        font-size: .9rem;
+        font-weight: 800;
+    }
+
+    .category-link.active,
+    .category-link:hover {
+        background: #dbeafe;
+        color: #1d4ed8;
+    }
+
+    /* ===========================
+       Visual pickers (mapas)
+       =========================== */
+    .selector-split {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .75rem;
+        align-items: flex-start;
+    }
+
+    .visual-picker {
+        border: 1px solid #e5e7eb;
+        border-radius: .75rem;
+        padding: .6rem;
+        background: #fff;
+        min-width: 320px;
+        display: grid;
+        gap: .5rem;
+    }
+
+    .visual-toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: .5rem;
+        margin-bottom: .25rem;
+    }
+
+    .canvas-card {
+        border: 1px solid #e5e7eb;
+        border-radius: .75rem;
+        padding: .5rem;
+        background: #f8fafc;
+        display: grid;
+        gap: .35rem;
+    }
+
+    .canvas-card svg {
+        width: 100%;
+        height: 200px;
+        background: #fff;
+        border-radius: .5rem;
+    }
+
+    /* áreas */
     .area-label {
         fill: #111827;
         paint-order: stroke fill;
@@ -2101,7 +2361,7 @@ a.nombre_areas, ms.nombre_meson, m.posicion
         stroke-width: 0.04;
         pointer-events: none;
         user-select: none;
-        font-weight: 600;
+        font-weight: 700;
     }
 
     .area-shape {
@@ -2133,67 +2393,27 @@ a.nombre_areas, ms.nombre_meson, m.posicion
         filter: drop-shadow(0 3px 6px rgba(37, 99, 235, 0.2));
     }
 
-    .selector-split {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.75rem;
-        align-items: flex-start;
-    }
-
-    .visual-picker {
-        border: 1px solid #e5e7eb;
-        border-radius: 0.5rem;
-        padding: 0.5rem;
-        background: #fff;
-        min-width: 240px;
-        display: grid;
-        gap: 0.5rem;
-    }
-
-    .visual-toolbar {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        justify-content: space-between;
-    }
-
-    .canvas-card {
-        border: 1px solid #e5e7eb;
-        border-radius: 0.5rem;
-        padding: 0.5rem;
-        background: #f8fafc;
-        display: grid;
-        gap: 0.35rem;
-    }
-
-        .canvas-card svg {
-            width: 100%;
-            height: 180px;
-            background: #fff;
-        }
-
+    /* mesones */
     .meson-list {
         list-style: none;
         padding-left: 0;
-        margin: 0;
+        margin: .5rem 0 0;
         display: grid;
-        gap: 0.35rem;
+        gap: .35rem;
     }
 
-    .meson-visual {
-        cursor: pointer;
+    .meson-item {
+        padding: .35rem .35rem;
+        border-radius: .5rem;
     }
 
-    .meson-rect {
-        transition: all 0.2s ease;
+    .meson-item.selected {
+        background: #fff7ed;
+        outline: 1px solid #f59e0b;
     }
 
-    .meson-label {
-        fill: #111827;
-        font-weight: 600;
-        pointer-events: none;
-        user-select: none;
-    }
+    .meson-rect { transition: all 0.2s ease; }
+    .meson-label { fill: #111827; font-weight: 700; pointer-events: none; user-select: none; }
 
     .meson-visual:hover .meson-rect {
         stroke: #2563eb;
@@ -2201,145 +2421,49 @@ a.nombre_areas, ms.nombre_meson, m.posicion
         filter: saturate(1.1);
     }
 
+    /* ===========================
+       Upload
+       =========================== */
     .upload-card {
         border: 1px dashed #d1d5db;
-        padding: 0.6rem;
-        border-radius: 0.5rem;
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-        min-width: 220px;
+        padding: .75rem;
+        border-radius: .75rem;
+        display: grid;
+        gap: .6rem;
+        background: #fff;
     }
 
     .upload-options {
         display: flex;
-        gap: 0.75rem;
+        gap: .75rem;
         align-items: center;
+        flex-wrap: wrap;
     }
 
     .upload-drop {
         position: relative;
         display: flex;
         align-items: center;
-        gap: 0.5rem;
-        padding: 0.6rem;
+        gap: .5rem;
+        padding: .6rem;
         border: 1px solid #e5e7eb;
-        border-radius: 0.5rem;
+        border-radius: .5rem;
         color: #6b7280;
+        cursor: pointer;
+        background: #fff;
+    }
+
+    .upload-drop input[type="file"] {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
         cursor: pointer;
     }
 
-        .upload-drop input[type="file"] {
-            position: absolute;
-            inset: 0;
-            opacity: 0;
-            cursor: pointer;
-        }
-
-    .category-select {
-        min-width: 220px;
-        padding: .35rem .6rem;
-        border-radius: 8px;
-        border: 1px solid #cbd5f5;
-        background: #fff;
-        color: #0f172a;
-    }
-
-    .helper {
-        margin: .3rem 0 0;
-        color: #475569;
-        font-size: .95rem;
-    }
-
-    .btn-link {
-        color: #1d4ed8;
-        text-decoration: none;
-        font-weight: 600;
-    }
-
-        .btn-link:hover {
-            text-decoration: underline;
-        }
-
-    .category-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-        gap: 1rem;
-        margin-top: 1rem;
-    }
-
-    .category-card {
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        background: #fff;
-        padding: 1rem;
-        box-shadow: 0 6px 14px rgba(15, 23, 42, 0.04);
-    }
-
-    .category-title {
-        font-weight: 700;
-        color: #0f172a;
-        margin-bottom: .5rem;
-    }
-
-    .category-list {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-        display: grid;
-        gap: .35rem;
-    }
-
-    .category-link {
-        display: inline-flex;
-        padding: .35rem .6rem;
-        border-radius: 999px;
-        background: #f1f5f9;
-        color: #0f172a;
-        text-decoration: none;
-        font-size: .9rem;
-    }
-
-        .category-link.active,
-        .category-link:hover {
-            background: #dbeafe;
-            color: #1d4ed8;
-        }
-
-    .materials-header {
-        display: flex;
-        align-items: center;
-        gap: .75rem;
-    }
-
-    .badge {
-        background: #e2e8f0;
-        color: #0f172a;
-        padding: .2rem .55rem;
-        border-radius: 999px;
-        font-size: .85rem;
-        font-weight: 600;
-    }
-
-    .empty {
-        padding: .85rem 1rem;
-        border-radius: 10px;
-        background: #fef9c3;
-        border: 1px solid #fde68a;
-        color: #854d0e;
-    }
-
-    .assign-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-        align-items: center;
-        margin-top: 0.5rem;
-    }
-
-    .table-wrap {
-        overflow-x: auto;
-    }
+    /* ===========================
+       Tabla
+       =========================== */
+    .table-wrap { overflow-x: auto; }
 
     table {
         width: 100%;
@@ -2348,60 +2472,15 @@ a.nombre_areas, ms.nombre_meson, m.posicion
     }
 
     th, td {
-        padding: 0.6rem;
+        padding: .6rem;
         border-bottom: 1px solid #e5e7eb;
         text-align: left;
+        vertical-align: top;
     }
 
     th {
         background: #f3f4f6;
-        font-weight: 600;
-    }
-     
-    @@WIPSJS
-    
-    .error-note {
-        color: #b91c1c;
-        margin-top: 0.75rem;
-    }
-
-    .brand-picker {
-        display: flex;
-        gap: .5rem;
-        align-items: center;
-    }
-
-    .cell-media {
-        display: flex;
-        gap: .45rem;
-        align-items: center;
-    }
-
-    .thumb {
-        width: 34px;
-        height: 34px;
-        object-fit: contain;
-        border: 1px solid #e5e7eb;
-        border-radius: 10px;
-        background: #fff;
-    }
-
-    .thumb-material {
-        width: 44px;
-        height: 44px;
-    }
-
-    .toggle {
-        display: flex;
-        gap: .45rem;
-        align-items: center;
-        padding: .35rem .6rem;
-        border: 1px solid #e5e7eb;
-        border-radius: 999px;
-        background: #fff;
-        font-size: .9rem;
-        color: #0f172a;
-        user-select: none;
+        font-weight: 800;
     }
 
     .materials-header {
@@ -2423,14 +2502,116 @@ a.nombre_areas, ms.nombre_meson, m.posicion
         min-width: 280px;
         flex: 1 1 320px;
         border-radius: 10px;
-        background: #ffffff; /* Cambiamos a fondo blanco sólido */
-        color: #0f172a; /* Color de texto oscuro (el que usas en tus títulos) */
-        border: 1px solid #cbd5e1; /* Un borde definido para que se vea el campo */
+        background: #fff;
+        color: #0f172a;
+        border: 1px solid #cbd5e1;
     }
 
-        /* Esto asegura que el texto de ayuda también sea visible */
-        .search-input-invent::placeholder {
-            color: #64748b;
-            opacity: 1; /* Necesario en algunos navegadores como Firefox */
-        }
+    .search-input-invent::placeholder {
+        color: #64748b;
+        opacity: 1;
+    }
+
+    /* ===========================
+       Marca / thumbs
+       =========================== */
+    .brand-picker {
+        display: flex;
+        gap: .5rem;
+        align-items: center;
+    }
+
+    .cell-media {
+        display: flex;
+        gap: .45rem;
+        align-items: center;
+    }
+
+    .thumb {
+        width: 34px;
+        height: 34px;
+        object-fit: contain;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        background: #fff;
+    }
+
+    .thumb-material { width: 44px; height: 44px; }
+
+    /* ===========================
+       Responsive tweaks
+       =========================== */
+    @@media (max-width: 900px) {
+
+  /* clave: en móvil apila el header para que los controles ocupen 100% */
+  .category-header{
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /* ---------- Filtros: tira scrolleable ---------- */
+  .category-controls.controls-strip{
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;             
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    gap: .6rem;
+    padding: .45rem .45rem .60rem;
+    margin-top: .35rem;
+    border: 1px solid #e5e7eb;
+    background: #f8fafc;
+    border-radius: 14px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .category-controls.controls-strip::-webkit-scrollbar{ display:none; }
+
+  .category-controls.controls-strip > *{
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+  }
+
+  /* esto evita que el select "se estire 100%" y arruine el carrusel */
+  .category-controls.controls-strip .category-select{
+    min-width: 240px;
+    width: auto;
+  }
+
+  /* ---------- Categorías: carrusel ---------- */
+  .category-grid.category-strip{
+    display: flex;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    gap: 1rem;
+    padding: .25rem .45rem .75rem;
+    margin-top: 1rem;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .category-grid.category-strip::-webkit-scrollbar{ display:none; }
+
+  .category-grid.category-strip .category-card{
+    flex: 0 0 auto;
+    width: 84vw;
+    max-width: 520px;
+    scroll-snap-align: start;
+  }
+
+  /* tus tweaks que ya tenías */
+  .visual-picker{ min-width: 0; width: 100%; }
+  .search-input-invent{ min-width: 0; }
+}
+
 </style>

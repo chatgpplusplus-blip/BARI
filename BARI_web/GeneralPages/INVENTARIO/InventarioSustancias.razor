@@ -40,13 +40,24 @@
         </div>
 
         <div class="assign-row form-grid">
-            <input class="border p-1" placeholder="ID sustancia (opcional)" @bind="_nuevoSustanciaId" />
-            <input class="border p-1" placeholder="Nombre comercial" @bind="_nuevoSustanciaNombreComercial" />
-            <input class="border p-1" placeholder="Nombre químico" @bind="_nuevoSustanciaNombreQuimico" />
-            <input class="border p-1" placeholder="CAS" @bind="_nuevoSustanciaCas" />
-            <input class="border p-1" placeholder="Forma física" @bind="_nuevoSustanciaFormaFisica" />
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoSustanciaId) ? "is-filled" : "")"
+                   placeholder="ID sustancia (opcional)" @bind="_nuevoSustanciaId" />
 
-            <select class="border p-1" value="@_nuevoSustanciaCategoriaId" @onchange="OnNuevoSustanciaCategoriaChanged">
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoSustanciaNombreComercial) ? "is-filled" : "")"
+                   placeholder="Nombre comercial" @bind="_nuevoSustanciaNombreComercial" />
+
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoSustanciaNombreQuimico) ? "is-filled" : "")"
+                   placeholder="Nombre químico" @bind="_nuevoSustanciaNombreQuimico" />
+
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoSustanciaCas) ? "is-filled" : "")"
+                   placeholder="CAS" @bind="_nuevoSustanciaCas" />
+
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoSustanciaFormaFisica) ? "is-filled" : "")"
+                   placeholder="Forma física" @bind="_nuevoSustanciaFormaFisica" />
+
+            <select class="border p-1 form-control category-select @(!string.IsNullOrWhiteSpace(_nuevoSustanciaCategoriaId) ? "is-filled" : "")"
+                    value="@_nuevoSustanciaCategoriaId"
+                    @onchange="OnNuevoSustanciaCategoriaChanged">
                 <option value="">Categoría</option>
                 @foreach (var cat in _categoriaReactivoOptions)
                 {
@@ -54,11 +65,13 @@
                 }
             </select>
 
-            <div class="upload-card" style="min-width:0; width:100%; max-width:100%;">
+            <div class="upload-card @((_nuevoSustanciaSubcategoriaIds is not null && _nuevoSustanciaSubcategoriaIds.Count > 0) ? "is-filled" : "")"
+                 style="min-width:0; width:100%; max-width:100%;">
                 <div class="text-xs text-gray-500">Subcategorías (checkbox). Se muestra la categoría en cada opción.</div>
 
                 <details style="width:100%; max-width:100%; overflow:hidden;">
-                    <summary style="cursor:pointer; font-weight:600; display:block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                    <summary class="dropdown-summary @((_nuevoSustanciaSubcategoriaIds is not null && _nuevoSustanciaSubcategoriaIds.Count > 0) ? "is-filled" : "")"
+                             style="cursor:pointer; font-weight:600; display:block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
                         @_nuevoSustanciaSubcatsDropdownLabel
                     </summary>
 
@@ -92,17 +105,18 @@
                 </details>
             </div>
 
-
-            <input class="border p-1" placeholder="Descripción" @bind="_nuevoSustanciaDescripcion" />
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoSustanciaDescripcion) ? "is-filled" : "")"
+                   placeholder="Descripción" @bind="_nuevoSustanciaDescripcion" />
 
             <!-- ============================
                  GHS
                  ============================ -->
-            <div class="upload-card full-span">
+            <div class="upload-card full-span @((_nuevoSustanciaGhsIds is not null && _nuevoSustanciaGhsIds.Count > 0) ? "is-filled" : "")">
                 <div class="text-xs text-gray-500">Pictogramas GHS</div>
 
                 <details>
-                    <summary style="cursor:pointer; font-weight:600;">
+                    <summary class="dropdown-summary @((_nuevoSustanciaGhsIds is not null && _nuevoSustanciaGhsIds.Count > 0) ? "is-filled" : "")"
+                             style="cursor:pointer; font-weight:600;">
                         @GhsDropdownLabel
                     </summary>
 
@@ -139,11 +153,13 @@
             <!-- ============================
                  H codes
                  ============================ -->
-            <div class="upload-card" style="min-width:0; width:100%; max-width:100%;">
+            <div class="upload-card @((_nuevoSustanciaHIds is not null && _nuevoSustanciaHIds.Count > 0) ? "is-filled" : "")"
+                 style="min-width:0; width:100%; max-width:100%;">
                 <div class="text-xs text-gray-500">H codes (pasa el mouse sobre el código para ver el grupo)</div>
 
                 <details style="width:100%; max-width:100%; overflow:hidden;">
-                    <summary style="cursor:pointer; font-weight:600; display:block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                    <summary class="dropdown-summary @((_nuevoSustanciaHIds is not null && _nuevoSustanciaHIds.Count > 0) ? "is-filled" : "")"
+                             style="cursor:pointer; font-weight:600; display:block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
                         @HDropdownLabel
                     </summary>
 
@@ -182,11 +198,13 @@
             <!-- ============================
                  P codes
                  ============================ -->
-            <div class="upload-card" style="min-width:0; width:100%; max-width:100%;">
+            <div class="upload-card @((_nuevoSustanciaPIds is not null && _nuevoSustanciaPIds.Count > 0) ? "is-filled" : "")"
+                 style="min-width:0; width:100%; max-width:100%;">
                 <div class="text-xs text-gray-500">P codes (pasa el mouse sobre el código para ver el grupo)</div>
 
                 <details style="width:100%; max-width:100%; overflow:hidden;">
-                    <summary style="cursor:pointer; font-weight:600; display:block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                    <summary class="dropdown-summary @((_nuevoSustanciaPIds is not null && _nuevoSustanciaPIds.Count > 0) ? "is-filled" : "")"
+                             style="cursor:pointer; font-weight:600; display:block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
                         @PDropdownLabel
                     </summary>
 
@@ -225,7 +243,7 @@
             <!-- ============================
                  IMAGEN SUSTANCIA
                  ============================ -->
-            <div class="upload-card full-span">
+            <div class="upload-card full-span @(((_nuevoSustanciaImagenModo == "url" && !string.IsNullOrWhiteSpace(_nuevoSustanciaImagenUrl)) || (_nuevoSustanciaImagenModo == "archivo" && !string.IsNullOrWhiteSpace(_nuevoSustanciaImagenArchivo))) ? "is-filled" : "")">
                 <div class="upload-options">
                     <label class="text-sm">
                         <input type="radio"
@@ -247,7 +265,8 @@
 
                 @if (_nuevoSustanciaImagenModo == "url")
                 {
-                    <input class="border p-1" placeholder="Imagen URL (o ruta relativa)" @bind="_nuevoSustanciaImagenUrl" />
+                    <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoSustanciaImagenUrl) ? "is-filled" : "")"
+                           placeholder="Imagen URL (o ruta relativa)" @bind="_nuevoSustanciaImagenUrl" />
                 }
                 else
                 {
@@ -262,10 +281,12 @@
                 }
             </div>
 
-            <input class="border p-1" placeholder="Observaciones" @bind="_nuevoSustanciaObservaciones" />
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoSustanciaObservaciones) ? "is-filled" : "")"
+                   placeholder="Observaciones" @bind="_nuevoSustanciaObservaciones" />
 
-            <label class="text-sm text-gray-600">
-                <input type="checkbox" @bind="_nuevoSustanciaControlada" /> Sustancia controlada
+            <label class="toggle @(_nuevoSustanciaControlada ? "is-filled" : "")">
+                <input type="checkbox" @bind="_nuevoSustanciaControlada" />
+                <span>Sustancia controlada</span>
             </label>
 
             <div class="form-actions full-span">
@@ -294,9 +315,11 @@
         </div>
 
         <div class="assign-row form-grid">
-            <input class="border p-1" placeholder="ID contenedor (opcional)" @bind="_nuevoContenedorId" />
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoContenedorId) ? "is-filled" : "")"
+                   placeholder="ID contenedor (opcional)" @bind="_nuevoContenedorId" />
 
-            <select class="border p-1" @bind="_nuevoContenedorSustanciaId">
+            <select class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoContenedorSustanciaId) ? "is-filled" : "")"
+                    @bind="_nuevoContenedorSustanciaId">
                 <option value="">Selecciona sustancia</option>
                 @foreach (var opt in sustanciasLookup)
                 {
@@ -305,7 +328,8 @@
             </select>
 
             <div class="brand-picker">
-                <select class="border p-1" @bind="_nuevoContenedorMarcaId">
+                <select class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoContenedorMarcaId) ? "is-filled" : "")"
+                        @bind="_nuevoContenedorMarcaId">
                     <option value="">Marca</option>
                     @foreach (var marca in _marcaOptions)
                     {
@@ -319,45 +343,62 @@
                 }
             </div>
 
-            <input class="border p-1" placeholder="Densidad g/mL" @bind="_nuevoContenedorDensidad" />
-            <input class="border p-1" placeholder="Proveedor" @bind="_nuevoContenedorProveedor" />
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoContenedorDensidad) ? "is-filled" : "")"
+                   placeholder="Densidad g/mL" @bind="_nuevoContenedorDensidad" />
+
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoContenedorProveedor) ? "is-filled" : "")"
+                   placeholder="Proveedor" @bind="_nuevoContenedorProveedor" />
 
             <div class="field-stack">
                 <label class="field-label">Fecha de compra</label>
-                <input class="border p-1" type="date" @bind-value="_nuevoContenedorFechaCompra" @bind-value:format="yyyy-MM-dd" />
+                <input class="border p-1 form-control @((_nuevoContenedorFechaCompra is null) ? "" : "is-filled")"
+                       type="date" @bind-value="_nuevoContenedorFechaCompra" @bind-value:format="yyyy-MM-dd" />
             </div>
             <div class="field-stack">
                 <label class="field-label">Fecha de recepción</label>
-                <input class="border p-1" type="date" @bind-value="_nuevoContenedorFechaRecepcion" @bind-value:format="yyyy-MM-dd" />
+                <input class="border p-1 form-control @((_nuevoContenedorFechaRecepcion is null) ? "" : "is-filled")"
+                       type="date" @bind-value="_nuevoContenedorFechaRecepcion" @bind-value:format="yyyy-MM-dd" />
             </div>
             <div class="field-stack">
                 <label class="field-label">Fecha de vencimiento</label>
-                <input class="border p-1" type="date" @bind-value="_nuevoContenedorFechaVencimiento" @bind-value:format="yyyy-MM-dd" />
+                <input class="border p-1 form-control @((_nuevoContenedorFechaVencimiento is null) ? "" : "is-filled")"
+                       type="date" @bind-value="_nuevoContenedorFechaVencimiento" @bind-value:format="yyyy-MM-dd" />
             </div>
             <div class="field-stack">
                 <label class="field-label">Fecha de apertura</label>
-                <input class="border p-1" type="date" @bind-value="_nuevoContenedorFechaApertura" @bind-value:format="yyyy-MM-dd" />
+                <input class="border p-1 form-control @((_nuevoContenedorFechaApertura is null) ? "" : "is-filled")"
+                       type="date" @bind-value="_nuevoContenedorFechaApertura" @bind-value:format="yyyy-MM-dd" />
             </div>
 
-            <input class="border p-1" placeholder="Masa envase vacío (g)" @bind="_nuevoContenedorMasaEnvase" />
-            <input class="border p-1" placeholder="Masa tapa (g)" @bind="_nuevoContenedorMasaTapa" />
-            <input class="border p-1" placeholder="Color envase" @bind="_nuevoContenedorColor" />
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoContenedorMasaEnvase) ? "is-filled" : "")"
+                   placeholder="Masa envase vacío (g)" @bind="_nuevoContenedorMasaEnvase" />
 
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoContenedorMasaTapa) ? "is-filled" : "")"
+                   placeholder="Masa tapa (g)" @bind="_nuevoContenedorMasaTapa" />
 
-            <input class="border p-1" placeholder="Altura (cm)" @bind="_nuevoContenedorAlturaCm" />
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoContenedorColor) ? "is-filled" : "")"
+                   placeholder="Color envase" @bind="_nuevoContenedorColor" />
 
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoContenedorAlturaCm) ? "is-filled" : "")"
+                   placeholder="Altura (cm)" @bind="_nuevoContenedorAlturaCm" />
 
-            <select class="border p-1" @bind="_nuevoContenedorUnidadId">
+            <select class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoContenedorUnidadId) ? "is-filled" : "")"
+                    @bind="_nuevoContenedorUnidadId">
                 <option value="">Unidad</option>
                 @foreach (var unidad in _unidadOptions)
                 {
                     <option value="@unidad.Id">@unidad.Label</option>
                 }
             </select>
-            <input class="border p-1" placeholder="Cantidad nominal" @bind="_nuevoContenedorCantidadNominal" />
-            <input class="border p-1" placeholder="Cantidad actual" @bind="_nuevoContenedorCantidad" />
 
-            <select class="border p-1" @bind="_nuevoContenedorCondicionId">
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoContenedorCantidadNominal) ? "is-filled" : "")"
+                   placeholder="Cantidad nominal" @bind="_nuevoContenedorCantidadNominal" />
+
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoContenedorCantidad) ? "is-filled" : "")"
+                   placeholder="Cantidad actual" @bind="_nuevoContenedorCantidad" />
+
+            <select class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoContenedorCondicionId) ? "is-filled" : "")"
+                    @bind="_nuevoContenedorCondicionId">
                 <option value="">Condición</option>
                 @foreach (var condicion in _condicionOptions)
                 {
@@ -365,13 +406,14 @@
                 }
             </select>
 
-            <input class="border p-1" placeholder="Observaciones" @bind="_nuevoContenedorObservaciones" />
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoContenedorObservaciones) ? "is-filled" : "")"
+                   placeholder="Observaciones" @bind="_nuevoContenedorObservaciones" />
 
             <!-- ============================
                  AREA: dropdown + mapa
                  ============================ -->
             <div class="selector-split full-span">
-                <select class="border p-1"
+                <select class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoContenedorAreaId) ? "is-filled" : "")"
                         value="@_nuevoContenedorAreaId"
                         @onchange="OnContenedorAreaChanged">
                     <option value="">Área</option>
@@ -385,7 +427,8 @@
                     <div class="visual-toolbar">
                         <label class="text-xs text-gray-500">Mapa de áreas</label>
 
-                        <select class="border p-1 text-xs" @bind="_currentPlantaId">
+                        <select class="border p-1 text-xs form-control @(!string.IsNullOrWhiteSpace(_currentPlantaId) ? "is-filled" : "")"
+                                @bind="_currentPlantaId">
                             <option value="">Todas</option>
                             @foreach (var planta in _plantasLookup)
                             {
@@ -469,7 +512,7 @@
                  MESON: dropdown + mapa + lista
                  ============================ -->
             <div class="selector-split full-span">
-                <select class="border p-1"
+                <select class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoContenedorMesonId) ? "is-filled" : "")"
                         value="@_nuevoContenedorMesonId"
                         @onchange="OnContenedorMesonChanged"
                         disabled="@string.IsNullOrWhiteSpace(_nuevoContenedorAreaId)">
@@ -573,14 +616,19 @@
                 </div>
             </div>
 
-            <input class="border p-1" placeholder="Nivel" @bind="_nuevoContenedorNivel" />
-            <input class="border p-1" placeholder="Posición" @bind="_nuevoContenedorPosicion" />
-            <input class="border p-1" placeholder="QR" @bind="_nuevoContenedorQr" />
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoContenedorNivel) ? "is-filled" : "")"
+                   placeholder="Nivel" @bind="_nuevoContenedorNivel" />
+
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoContenedorPosicion) ? "is-filled" : "")"
+                   placeholder="Posición" @bind="_nuevoContenedorPosicion" />
+
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoContenedorQr) ? "is-filled" : "")"
+                   placeholder="QR" @bind="_nuevoContenedorQr" />
 
             <!-- ============================
                  IMAGEN CONTENEDOR
                  ============================ -->
-            <div class="upload-card full-span">
+            <div class="upload-card full-span @(((_nuevoContenedorImagenModo == "url" && !string.IsNullOrWhiteSpace(_nuevoContenedorImagenUrl)) || (_nuevoContenedorImagenModo == "archivo" && !string.IsNullOrWhiteSpace(_nuevoContenedorImagenArchivo))) ? "is-filled" : "")">
                 <div class="upload-options">
                     <label class="text-sm">
                         <input type="radio"
@@ -602,7 +650,8 @@
 
                 @if (_nuevoContenedorImagenModo == "url")
                 {
-                    <input class="border p-1" placeholder="Imagen URL (o ruta relativa)" @bind="_nuevoContenedorImagenUrl" />
+                    <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoContenedorImagenUrl) ? "is-filled" : "")"
+                           placeholder="Imagen URL (o ruta relativa)" @bind="_nuevoContenedorImagenUrl" />
                 }
                 else
                 {
@@ -639,14 +688,14 @@
         </div>
 
         <div class="category-controls">
-            <label class="toggle">
+            <label class="toggle @(_verTodos ? "is-filled" : "")">
                 <input type="checkbox"
                        checked="@_verTodos"
                        @onchange="OnVerTodosToggleAsync" />
                 <span>Ver todos los reactivos</span>
             </label>
 
-            <select class="category-select"
+            <select class="category-select @((!_verTodos && !string.IsNullOrWhiteSpace(SubcategoriaId)) ? "is-filled" : "")"
                     @onchange="OnSubcategoriaChanged"
                     value="@(_verTodos ? "" : SubcategoriaId)">
                 <option value="">Todas las subcategorías</option>
@@ -715,7 +764,7 @@
             }
         </div>
 
-        <input class="border p-1 search-input-invent"
+        <input class="border p-1 search-input-invent form-control @(!string.IsNullOrWhiteSpace(_searchSustanciasText) ? "is-filled" : "")"
                placeholder="Buscar (nombre, CAS, subcategoría, GHS, etc.)..."
                @bind="_searchSustanciasText"
                @bind:event="oninput"
@@ -846,7 +895,7 @@
             }
         </div>
 
-        <input class="border p-1 search-input-invent"
+        <input class="border p-1 search-input-invent form-control @(!string.IsNullOrWhiteSpace(_searchContenedoresText) ? "is-filled" : "")"
                placeholder="Buscar (reactivo, ID, marca, condición, área, QR, proveedor)..."
                @bind="_searchContenedoresText"
                @bind:event="oninput"
@@ -970,11 +1019,10 @@
     private readonly List<SelectOption> _mesonOptions = new();
     private readonly List<SelectOption> _categoriaReactivoOptions = new();
 
-// subcats: lista “bonita” con "Categoria · Subcategoria" y mapeo por categoría
-private readonly List<SelectOption> _subcategoriaAllOptions = new();
-private readonly Dictionary<string, List<SelectOption>> _subcategoriasByCategoria =
-    new(StringComparer.OrdinalIgnoreCase);
-
+    // subcats: lista “bonita” con "Categoria · Subcategoria" y mapeo por categoría
+    private readonly List<SelectOption> _subcategoriaAllOptions = new();
+    private readonly Dictionary<string, List<SelectOption>> _subcategoriasByCategoria =
+        new(StringComparer.OrdinalIgnoreCase);
 
     // Mesón visuals
     private readonly List<MesonSummary> _mesonSummaries = new();
@@ -1101,17 +1149,17 @@ private readonly Dictionary<string, List<SelectOption>> _subcategoriasByCategori
                 s.Contains(q, StringComparison.OrdinalIgnoreCase);
 
             return contenedores.Where(c =>
-    Hit(c.Id) ||
-    Hit(c.Reactivo) ||
-    Hit(c.MarcaNombre) ||
-    Hit(c.Cantidad) ||
-    Hit(c.Condicion) ||
-    Hit(c.AlturaCm) ||
-    Hit(c.Ubicacion) ||
-    Hit(c.FechaApertura) ||
-    Hit(c.FechaVencimiento) ||
-    Hit(c.Qr)
-    );
+                Hit(c.Id) ||
+                Hit(c.Reactivo) ||
+                Hit(c.MarcaNombre) ||
+                Hit(c.Cantidad) ||
+                Hit(c.Condicion) ||
+                Hit(c.AlturaCm) ||
+                Hit(c.Ubicacion) ||
+                Hit(c.FechaApertura) ||
+                Hit(c.FechaVencimiento) ||
+                Hit(c.Qr)
+            );
         }
     }
 
@@ -1230,7 +1278,6 @@ private readonly Dictionary<string, List<SelectOption>> _subcategoriasByCategori
         Nav.NavigateTo(isChecked ? "/inventario-sustancias/todos" : "/inventario-sustancias");
     }
 
-
     private void OnSubcategoriaChanged(ChangeEventArgs args)
     {
         var value = args.Value?.ToString();
@@ -1247,21 +1294,30 @@ private readonly Dictionary<string, List<SelectOption>> _subcategoriasByCategori
     // ============================
     private void ToggleGhs(string id, ChangeEventArgs e)
     {
-        var isChecked = e.Value is bool b && b;
+        var isChecked =
+            e.Value is bool b ? b :
+            string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+
         if (isChecked) _nuevoSustanciaGhsIds.Add(id);
         else _nuevoSustanciaGhsIds.Remove(id);
     }
 
     private void ToggleH(string id, ChangeEventArgs e)
     {
-        var isChecked = e.Value is bool b && b;
+        var isChecked =
+            e.Value is bool b ? b :
+            string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+
         if (isChecked) _nuevoSustanciaHIds.Add(id);
         else _nuevoSustanciaHIds.Remove(id);
     }
 
     private void ToggleP(string id, ChangeEventArgs e)
     {
-        var isChecked = e.Value is bool b && b;
+        var isChecked =
+            e.Value is bool b ? b :
+            string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+
         if (isChecked) _nuevoSustanciaPIds.Add(id);
         else _nuevoSustanciaPIds.Remove(id);
     }
@@ -1378,7 +1434,6 @@ private readonly Dictionary<string, List<SelectOption>> _subcategoriasByCategori
             return;
         }
 
-
         var sustanciaId = string.IsNullOrWhiteSpace(_nuevoSustanciaId)
             ? $"sus_{Guid.NewGuid():N}".Substring(0, 12)
             : _nuevoSustanciaId!.Trim();
@@ -1408,7 +1463,6 @@ private readonly Dictionary<string, List<SelectOption>> _subcategoriasByCategori
                 }
             }
 
-
             const string sqlSust = @"
     INSERT INTO sustancias
     (sustancia_id, nombre_comercial, nombre_quimico, cas, forma_fisica, sustancia_controlada,
@@ -1416,7 +1470,6 @@ private readonly Dictionary<string, List<SelectOption>> _subcategoriasByCategori
     VALUES (@id, @comercial, @quimico, @cas, @forma, @controlada,
             @cat, @obs, @descripcion, @imagen, @lab)
     ON CONFLICT (sustancia_id) DO NOTHING";
-
 
             int rows;
             await using (var cmd = new NpgsqlCommand(sqlSust, conn, tx))
@@ -1448,13 +1501,12 @@ private readonly Dictionary<string, List<SelectOption>> _subcategoriasByCategori
     SELECT @sid, x
     FROM unnest(@subs::varchar[]) AS x
     ON CONFLICT DO NOTHING;";
-await using (var cmd2 = new NpgsqlCommand(insSubcats, conn, tx))
-{
-    cmd2.Parameters.AddWithValue("sid", sustanciaId);
-    cmd2.Parameters.AddWithValue("subs", _nuevoSustanciaSubcategoriaIds.ToArray());
-    await cmd2.ExecuteNonQueryAsync();
-}
-
+            await using (var cmd2 = new NpgsqlCommand(insSubcats, conn, tx))
+            {
+                cmd2.Parameters.AddWithValue("sid", sustanciaId);
+                cmd2.Parameters.AddWithValue("subs", _nuevoSustanciaSubcategoriaIds.ToArray());
+                await cmd2.ExecuteNonQueryAsync();
+            }
 
             // Sync relaciones (insertar seleccionados)
             const string insH = @"INSERT INTO sustancias_h (sustancia_id, h_id) VALUES (@sid, @hid) ON CONFLICT DO NOTHING";
@@ -1662,7 +1714,7 @@ await using (var cmd2 = new NpgsqlCommand(insSubcats, conn, tx))
             cmd.Parameters.AddWithValue("cats", CategoriaReactivoIds);
 
             await using var reader = await cmd.ExecuteReaderAsync();
-            var map = new Dictionary<string, CategoriaRow>();
+            var map = new Dictionary<string, CategoriaRow>(StringComparer.OrdinalIgnoreCase);
 
             while (await reader.ReadAsync())
             {
@@ -1701,6 +1753,7 @@ await using (var cmd2 = new NpgsqlCommand(insSubcats, conn, tx))
         _condicionOptions.Clear();
         _areaOptions.Clear();
         _categoriaReactivoOptions.Clear();
+
         _subcategoriaAllOptions.Clear();
         _subcategoriasByCategoria.Clear();
 
@@ -1755,7 +1808,7 @@ await using (var cmd2 = new NpgsqlCommand(insSubcats, conn, tx))
                     _subcategoriasByCategoria[catId] = list;
                 }
 
-                // en la lista filtrada guardamos también label completo (así el checkbox “muestra la categoría”)
+                // en la lista filtrada guardamos también label completo
                 list.Add(new SelectOption(subId, label));
             }
         }
@@ -1767,24 +1820,29 @@ await using (var cmd2 = new NpgsqlCommand(insSubcats, conn, tx))
             _nuevoSustanciaCategoriaId = _categoriaReactivoOptions.FirstOrDefault()?.Id;
         }
 
-
         // Marcas (con imagen)
         await using (var cmd = new NpgsqlCommand("SELECT marca_id, nombre, imagen_url FROM marcas ORDER BY nombre", conn))
         await using (var reader = await cmd.ExecuteReaderAsync())
+        {
             while (await reader.ReadAsync())
                 _marcaOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2)));
+        }
 
         // Unidades
         await using (var cmd = new NpgsqlCommand("SELECT unidad_id, nombre, simbolo FROM unidades ORDER BY nombre", conn))
         await using (var reader = await cmd.ExecuteReaderAsync())
+        {
             while (await reader.ReadAsync())
                 _unidadOptions.Add(new SelectOption(reader.GetString(0), $"{reader.GetString(1)} ({reader.GetString(2)})"));
+        }
 
         // Condiciones
         await using (var cmd = new NpgsqlCommand("SELECT condicion_id, nombre FROM condiciones ORDER BY nombre", conn))
         await using (var reader = await cmd.ExecuteReaderAsync())
+        {
             while (await reader.ReadAsync())
                 _condicionOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
+        }
 
         // Áreas por laboratorio
         const string areaSql = @"
@@ -1877,17 +1935,16 @@ await using (var cmd2 = new NpgsqlCommand(insSubcats, conn, tx))
         while (await reader.ReadAsync())
             sustanciasLookup.Add(new SustanciaLookup(reader.GetString(0), reader.GetString(1)));
     }
+
     // ============================
     // LOAD: Sustancias (por subcat o todos) - SIN "BRINCO"
     // ============================
     private async Task LoadSustanciasAsync()
     {
-        // No limpies al inicio -> evita colapso del DOM (mini brinco)
         string? newError = null;
         string? newSubcategoriaNombre = null;
         var newList = new List<SustanciaRow>();
 
-        // Si no hay subcategoría y no está "ver todos", dejamos vacío (UI muestra mensaje)
         if (!_verTodos && string.IsNullOrWhiteSpace(SubcategoriaId))
         {
             sustancias.Clear();
@@ -1900,7 +1957,6 @@ await using (var cmd2 = new NpgsqlCommand(insSubcats, conn, tx))
         {
             await using var conn = await DataSource.OpenConnectionAsync();
 
-            // Nombre de la subcategoría cuando aplica (solo para el título)
             if (!_verTodos && !string.IsNullOrWhiteSpace(SubcategoriaId))
             {
                 const string sqlSubcategoria = @"SELECT nombre FROM subcategorias WHERE subcategoria_id = @subcategoria";
@@ -1990,7 +2046,6 @@ GROUP BY s.sustancia_id, s.nombre_comercial, s.nombre_quimico, s.cas,
 
 ORDER BY nombre, s.sustancia_id";
 
-
             await using var cmd = new NpgsqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
             cmd.Parameters.AddWithValue("cats", CategoriaReactivoIds);
@@ -2052,25 +2107,20 @@ ORDER BY nombre, s.sustancia_id";
             newError = ex.Message;
         }
 
-        // Reemplazo final (no colapsa layout durante fetch)
         sustancias.Clear();
         sustancias.AddRange(newList);
         subcategoriaNombre = newSubcategoriaNombre;
         loadError = newError;
     }
 
-
     // ============================
     // LOAD: Contenedores (por subcat o todos) - SIN "BRINCO"
     // ============================
     private async Task LoadContenedoresAsync()
     {
-        // No limpies al inicio -> evita colapso del DOM (mini brinco)
         string? newError = null;
         var newList = new List<ContenedorRow>();
 
-        // Si no hay subcategoría y no está "ver todos", aquí sí conviene dejarlo vacío
-        // (y en la UI mostrar el mensaje de "elige una subcategoría...")
         if (!_verTodos && string.IsNullOrWhiteSpace(SubcategoriaId))
         {
             contenedores.Clear();
@@ -2092,7 +2142,7 @@ SELECT c.cont_id,
        COALESCE(cond.nombre, '') AS condicion,
        COALESCE(a.nombre_areas, '') AS area,
        COALESCE(m.nombre_meson, '') AS meson,
-              COALESCE(c.posicion, '') AS posicion,
+       COALESCE(c.posicion, '') AS posicion,
        c.altura_cm,
        c.fecha_apertura,
        c.fecha_vencimiento,
@@ -2119,7 +2169,6 @@ WHERE c.laboratorio_id = @lab
   )
 ORDER BY reactivo, c.cont_id";
 
-
             await using var cmd = new NpgsqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
             cmd.Parameters.AddWithValue("cats", CategoriaReactivoIds);
@@ -2138,7 +2187,6 @@ ORDER BY reactivo, c.cont_id";
                 var marcaNombre = reader.GetString(2);
                 var marcaImagen = reader.IsDBNull(3) ? null : reader.GetString(3);
 
-                // Cantidad puede venir null dependiendo de tu SQL/DB -> tu query ya COALESCE, así que GetDecimal ok
                 var cantidad = reader.GetDecimal(4);
                 var unidad = reader.GetString(5);
 
@@ -2179,7 +2227,6 @@ ORDER BY reactivo, c.cont_id";
             newError = ex.Message;
         }
 
-        // Recién aquí reemplazas el contenido -> no colapsa el layout durante la carga
         contenedores.Clear();
         contenedores.AddRange(newList);
         contenedoresLoadError = newError;
@@ -2312,12 +2359,16 @@ ORDER BY reactivo, c.cont_id";
             var mesonId = reader.GetString(0);
             var nombre = reader.GetString(1);
 
+            // COUNT(*) en Postgres es bigint -> lee como Int64 y convierte
+            var reactivosCount = reader.IsDBNull(2) ? 0 : Convert.ToInt32(reader.GetInt64(2));
+            var equiposCount = reader.IsDBNull(3) ? 0 : Convert.ToInt32(reader.GetInt64(3));
+
             _mesonOptions.Add(new SelectOption(mesonId, nombre));
             _mesonSummaries.Add(new MesonSummary(
                 mesonId,
                 nombre,
-                reader.GetInt32(2),
-                reader.GetInt32(3)
+                reactivosCount,
+                equiposCount
             ));
         }
 
@@ -2413,7 +2464,7 @@ ORDER BY reactivo, c.cont_id";
             }
         }
 
-        // Dedup
+        // Dedup por meson_id
         var dedup = new Dictionary<string, MesonVisual>(StringComparer.OrdinalIgnoreCase);
         foreach (var v in _mesonVisuals.OrderBy(v => v.ZOrder))
         {
@@ -2449,8 +2500,10 @@ ORDER BY reactivo, c.cont_id";
 
         await using (var cmd = new NpgsqlCommand("SELECT planta_id, nombre FROM plantas ORDER BY nombre", conn))
         await using (var reader = await cmd.ExecuteReaderAsync())
+        {
             while (await reader.ReadAsync())
                 _plantasLookup[reader.GetString(0)] = reader.GetString(1);
+        }
 
         if (!string.IsNullOrWhiteSpace(previousPlantaId) && _plantasLookup.ContainsKey(previousPlantaId))
             _currentPlantaId = previousPlantaId;
@@ -2502,7 +2555,7 @@ ORDER BY reactivo, c.cont_id";
             WHERE a.laboratorio_id = @lab
             ORDER BY p.z_order, p.poly_id";
 
-        var polys = new Dictionary<string, PolygonItem>();
+        var polys = new Dictionary<string, PolygonItem>(StringComparer.OrdinalIgnoreCase);
         await using (var cmd = new NpgsqlCommand(polySql, conn))
         {
             cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
@@ -2706,6 +2759,10 @@ ORDER BY reactivo, c.cont_id";
             return 0.05m;
         return 0.03m;
     }
+
+    // ============================
+    // Sustancia: categoría + subcats
+    // ============================
     private void OnNuevoSustanciaCategoriaChanged(ChangeEventArgs args)
     {
         var v = args.Value?.ToString();
@@ -2739,6 +2796,9 @@ ORDER BY reactivo, c.cont_id";
             ? "Selecciona subcategorías…"
             : $"Subcategorías seleccionadas: {_nuevoSustanciaSubcategoriaIds.Count}";
 
+    // ============================
+    // Planta helpers
+    // ============================
     private bool IsAreaInCurrentPlanta(string? plantaId)
     {
         if (string.IsNullOrWhiteSpace(_currentPlantaId))
@@ -2820,6 +2880,7 @@ ORDER BY reactivo, c.cont_id";
         string Qr,
         string? ImagenUrl
     );
+
     private sealed record CanvasItem(string CanvasId, string Nombre, decimal Ancho, decimal largo);
     private sealed record CanvasView(CanvasItem Canvas, List<AreaItem> Areas);
     private sealed record MesonSummary(string MesonId, string Nombre, int ReactivosCount, int EquiposCount);
@@ -2895,6 +2956,7 @@ ORDER BY reactivo, c.cont_id";
     private sealed record PCodeOption(string Id, string Descripcion, string? Grupo);
 }
 
+
 <style>
     .page-card {
         border: 1px solid #e5e7eb;
@@ -2902,6 +2964,34 @@ ORDER BY reactivo, c.cont_id";
         background: #fff;
         padding: 1rem;
         box-shadow: 0 6px 14px rgba(15, 23, 42, 0.04);
+    }
+
+    /* ====== base inputs ====== */
+    .form-control {
+        border-radius: 10px;
+    }
+
+        /* ✅ Filled state (azulito como Documentaciones) */
+        .form-control.is-filled,
+        .category-select.is-filled,
+        .toggle.is-filled,
+        .upload-card.is-filled,
+        .dropdown-summary.is-filled {
+            background: #dbeafe !important;
+            border-color: #93c5fd !important;
+        }
+
+            .form-control.is-filled:focus,
+            .category-select.is-filled:focus {
+                outline: none;
+                box-shadow: 0 0 0 3px rgba(147, 197, 253, .55);
+            }
+
+    /* Summary de dropdowns (para que se note el “relleno” en GHS/H/P/Subcats) */
+    .dropdown-summary {
+        border-radius: 12px;
+        padding: .45rem .55rem;
+        border: 1px solid transparent;
     }
 
     .category-header {
@@ -3117,6 +3207,7 @@ ORDER BY reactivo, c.cont_id";
         flex-direction: column;
         gap: 0.5rem;
         min-width: 220px;
+        background: #fff;
     }
 
     .upload-options {
@@ -3136,6 +3227,7 @@ ORDER BY reactivo, c.cont_id";
         border-radius: 0.5rem;
         color: #6b7280;
         cursor: pointer;
+        background: #fff;
     }
 
         .upload-drop input[type="file"] {
@@ -3149,9 +3241,10 @@ ORDER BY reactivo, c.cont_id";
         min-width: 220px;
         padding: .35rem .6rem;
         border-radius: 8px;
-        border: 1px solid #cbd5f5;
+        border: 1px solid #cbd5e1;
         background: #fff;
         color: #0f172a;
+        font-weight: 600;
     }
 
     .helper {
@@ -3342,7 +3435,7 @@ ORDER BY reactivo, c.cont_id";
     }
 
     .toggle {
-        display: flex;
+        display: inline-flex;
         gap: .45rem;
         align-items: center;
         padding: .35rem .6rem;
@@ -3352,11 +3445,11 @@ ORDER BY reactivo, c.cont_id";
         font-size: .9rem;
         color: #0f172a;
         user-select: none;
+        white-space: nowrap;
     }
-    
-    .category-list .category-link.active {
-    background: #dbeafe;
-    color: #1d4ed8;
-}
 
+    .category-list .category-link.active {
+        background: #dbeafe;
+        color: #1d4ed8;
+    }
 </style>

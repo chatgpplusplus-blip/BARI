@@ -2,7 +2,7 @@
 using System.Text;
 using Npgsql;
 
-namespace BARI_web.Services;
+namespace BARI_web.Features.Services;
 
 public sealed class DbSchema
 {
@@ -68,14 +68,14 @@ public sealed class SchemaCatalog
     public async Task<DbSchema> GetSchemaAsync(CancellationToken ct = default)
     {
         var now = DateTimeOffset.UtcNow;
-        if (_cached is not null && (now - _lastRefresh) < CacheTtl)
+        if (_cached is not null && now - _lastRefresh < CacheTtl)
             return _cached;
 
         await _lock.WaitAsync(ct);
         try
         {
             now = DateTimeOffset.UtcNow;
-            if (_cached is not null && (now - _lastRefresh) < CacheTtl)
+            if (_cached is not null && now - _lastRefresh < CacheTtl)
                 return _cached;
 
             _cached = await LoadSchemaAsync(ct);

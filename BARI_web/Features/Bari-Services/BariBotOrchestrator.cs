@@ -1,6 +1,6 @@
 ﻿using Microsoft.Extensions.Options;
 
-namespace BARI_web.Services;
+namespace BARI_web.Features.Services;
 
 public sealed class BariBotOrchestrator
 {

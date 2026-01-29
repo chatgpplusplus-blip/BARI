@@ -1,6 +1,6 @@
 ﻿using System.Text.Json.Serialization;
 
-namespace BARI_web.Services;
+namespace BARI_web.Features.Services;
 
 public sealed class ChatMessage
 {

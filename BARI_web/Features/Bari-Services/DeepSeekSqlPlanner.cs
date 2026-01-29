@@ -1,7 +1,7 @@
 ﻿using System.Text.Json.Serialization;
 using Microsoft.Extensions.Options;
 
-namespace BARI_web.Services;
+namespace BARI_web.Features.Services;
 
 /// <summary>
 /// Un paso del plan de acciones del bot.

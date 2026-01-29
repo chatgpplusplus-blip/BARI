@@ -1,7 +1,7 @@
 ﻿using System.Data;
 using Npgsql;
 
-namespace BARI_web.Services;
+namespace BARI_web.Features.Services;
 
 public sealed class PostgresReadOnlyExecutor
 {

@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
-using BARI_web.Services;
+using BARI_web.Features.Services;
 
 namespace BARI_web.Components;
 

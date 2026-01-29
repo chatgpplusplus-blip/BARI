@@ -1,3 +1,7 @@
+/* ===========================
+   Global base
+   =========================== */
+
 .layout-root {
     display: flex;
     flex-direction: column;
@@ -23,7 +27,7 @@
     min-height: 0;
 }
 
-/* === Sidebar bonito === */
+/* === Sidebar bonito (viejo layout, lo dejo por si lo usas en otras páginas) === */
 .sidebar {
     width: 220px;
     background: linear-gradient(to bottom, #002f6c, #340068);
@@ -34,7 +38,7 @@
     gap: 10px;
 }
 
-/* Botones del menú */
+/* Botones del menú (viejo layout) */
 .menu-btn {
     padding: 10px 12px;
     border: 1px solid rgba(255,255,255,0.2);
@@ -70,21 +74,21 @@
 }
 
 /* ==========================================================
-   BARI - FORZAR ESTILO "BOTÓN" EN LINKS DEL SIDENAV
-   (GLOBAL, A PRUEBA DE BOOTSTRAP / CSS ISOLATION)
+   BARI - ESTÉTICA DE BOTONES SOLO PARA TUS NavLink (bari-navbtn)
+   (NO TOCA posicionamiento del menú ni overlay)
    ========================================================== */
 
-/* Por si hay reglas globales horribles */
-.bari-sidenav a,
-.bari-sidenav a:visited,
-.bari-sidenav a:hover,
-.bari-sidenav a:active {
+/* Quitar estilo link por defecto */
+.bari-sidenav .bari-navbtn,
+.bari-sidenav .bari-navbtn:visited,
+.bari-sidenav .bari-navbtn:hover,
+.bari-sidenav .bari-navbtn:active {
     color: #fff !important;
     text-decoration: none !important;
 }
 
-/* Todos los links del menú como botones */
-.bari-sidenav a {
+/* Links como botones */
+.bari-sidenav .bari-navbtn {
     display: block !important;
     width: 100% !important;
     padding: .78rem .95rem !important;
@@ -98,31 +102,38 @@
     transition: background .15s ease, border-color .15s ease, transform .06s ease, box-shadow .15s ease !important;
 }
 
-    /* Hover súper visible */
-    .bari-sidenav a:hover {
+    /* Hover */
+    .bari-sidenav .bari-navbtn:hover {
         background: rgba(255,255,255,.22) !important;
         border-color: rgba(255,255,255,.70) !important;
         box-shadow: 0 14px 26px rgba(0,0,0,.20), 0 0 0 3px rgba(255,255,255,.20) !important;
         transform: translateY(-1px) !important;
     }
 
-    /* Active (NavLink pone class="active") */
-    .bari-sidenav a.active {
+    /* Active (NavLink agrega .active) */
+    .bari-sidenav .bari-navbtn.active {
         background: rgba(255,255,255,.28) !important;
         border-color: rgba(255,255,255,.85) !important;
         box-shadow: 0 14px 26px rgba(0,0,0,.22), 0 0 0 3px rgba(255,255,255,.24) !important;
     }
 
     /* Focus teclado */
-    .bari-sidenav a:focus,
-    .bari-sidenav a:focus-visible {
+    .bari-sidenav .bari-navbtn:focus,
+    .bari-sidenav .bari-navbtn:focus-visible {
         outline: none !important;
         border-color: rgba(255,255,255,.95) !important;
         box-shadow: 0 0 0 4px rgba(255,255,255,.28) !important;
     }
 
-/* Si usas span interno */
+/* Texto interno */
 .bari-sidenav .bari-navtext {
     color: #fff !important;
     font-size: .92rem !important;
+}
+
+/* Rendimiento móvil: menos sombras */
+@media (max-width: 900px) {
+    .bari-sidenav .bari-navbtn {
+        box-shadow: none !important;
+    }
 }

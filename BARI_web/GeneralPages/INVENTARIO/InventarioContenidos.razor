@@ -37,27 +37,39 @@
             <div class="form-grid">
                 <div class="field">
                     <label>ID (opcional)</label>
-                    <input class="border p-1" placeholder="asig_xxx" @bind="_newAsigId" />
+                    <input class="border p-1 form-control @Filled(_newAsigId)"
+                           placeholder="asig_xxx"
+                           @bind="_newAsigId" />
                 </div>
 
                 <div class="field">
                     <label>Nombre</label>
-                    <input class="border p-1" placeholder="Ej: Química General I" @bind="_newAsigNombre" />
+                    <input class="border p-1 form-control @Filled(_newAsigNombre)"
+                           placeholder="Ej: Química General I"
+                           @bind="_newAsigNombre" />
                 </div>
 
                 <div class="field">
                     <label>Código clase (único)</label>
-                    <input class="border p-1" placeholder="Ej: QG-101" @bind="_newAsigCodigo" />
+                    <input class="border p-1 form-control @Filled(_newAsigCodigo)"
+                           placeholder="Ej: QG-101"
+                           @bind="_newAsigCodigo" />
                 </div>
 
                 <div class="field full-span">
                     <label>Descripción</label>
-                    <textarea class="border p-1" rows="2" placeholder="Descripción corta" @bind="_newAsigDesc"></textarea>
+                    <textarea class="border p-1 form-control @Filled(_newAsigDesc)"
+                              rows="2"
+                              placeholder="Descripción corta"
+                              @bind="_newAsigDesc"></textarea>
                 </div>
 
                 <div class="field full-span">
                     <label>Descripción detallada</label>
-                    <textarea class="border p-1" rows="3" placeholder="Detalles, objetivos, etc." @bind="_newAsigDetalle"></textarea>
+                    <textarea class="border p-1 form-control @Filled(_newAsigDetalle)"
+                              rows="3"
+                              placeholder="Detalles, objetivos, etc."
+                              @bind="_newAsigDetalle"></textarea>
                 </div>
 
                 <div class="form-actions full-span">
@@ -79,12 +91,15 @@
             <div class="form-grid">
                 <div class="field">
                     <label>ID (opcional)</label>
-                    <input class="border p-1" placeholder="labreal_xxx" @bind="_newLabRealId" />
+                    <input class="border p-1 form-control @Filled(_newLabRealId)"
+                           placeholder="labreal_xxx"
+                           @bind="_newLabRealId" />
                 </div>
 
                 <div class="field">
                     <label>Asignatura</label>
-                    <select class="border p-1" @bind="_newLabRealAsigId">
+                    <select class="border p-1 form-control @Filled(_newLabRealAsigId)"
+                            @bind="_newLabRealAsigId">
                         <option value="">(selecciona)</option>
                         @foreach (var a in _asignaturaOptions)
                         {
@@ -95,12 +110,17 @@
 
                 <div class="field full-span">
                     <label>Nombre</label>
-                    <input class="border p-1" placeholder="Ej: Laboratorio 1 - Mediciones y material volumétrico" @bind="_newLabRealNombre" />
+                    <input class="border p-1 form-control @Filled(_newLabRealNombre)"
+                           placeholder="Ej: Laboratorio 1 - Mediciones y material volumétrico"
+                           @bind="_newLabRealNombre" />
                 </div>
 
                 <div class="field full-span">
                     <label>Descripción</label>
-                    <textarea class="border p-1" rows="3" placeholder="Qué se hace, objetivos, etc." @bind="_newLabRealDesc"></textarea>
+                    <textarea class="border p-1 form-control @Filled(_newLabRealDesc)"
+                              rows="3"
+                              placeholder="Qué se hace, objetivos, etc."
+                              @bind="_newLabRealDesc"></textarea>
                 </div>
 
                 <div class="form-actions full-span">
@@ -122,12 +142,16 @@
             <div class="form-grid">
                 <div class="field">
                     <label>ID (opcional)</label>
-                    <input class="border p-1" placeholder="exp_xxx" @bind="_newExpId" />
+                    <input class="border p-1 form-control @Filled(_newExpId)"
+                           placeholder="exp_xxx"
+                           @bind="_newExpId" />
                 </div>
 
                 <div class="field">
                     <label>Asignatura (obligatorio)</label>
-                    <select class="border p-1" value="@_newExpAsigId" @onchange="OnNewExpAsignaturaChanged">
+                    <select class="border p-1 form-control @Filled(_newExpAsigId)"
+                            value="@_newExpAsigId"
+                            @onchange="OnNewExpAsignaturaChanged">
                         <option value="">(selecciona)</option>
                         @foreach (var a in _asignaturaOptions)
                         {
@@ -138,7 +162,9 @@
 
                 <div class="field">
                     <label>Laboratorio - Clase (Obligatorio)</label>
-                    <select class="border p-1" @bind="_newExpLabRealId" disabled="@string.IsNullOrWhiteSpace(_newExpAsigId)">
+                    <select class="border p-1 form-control @Filled(_newExpLabRealId)"
+                            @bind="_newExpLabRealId"
+                            disabled="@string.IsNullOrWhiteSpace(_newExpAsigId)">
                         <option value="">(selecciona)</option>
                         @foreach (var lr in LabRealizadoOptionsParaNewExp)
                         {
@@ -149,52 +175,74 @@
 
                 <div class="field full-span">
                     <label>Nombre</label>
-                    <input class="border p-1" placeholder="Ej: Determinación de densidad" @bind="_newExpNombre" />
+                    <input class="border p-1 form-control @Filled(_newExpNombre)"
+                           placeholder="Ej: Determinación de densidad"
+                           @bind="_newExpNombre" />
                 </div>
 
                 <div class="field">
                     <label>Orden (opcional)</label>
-                    <input class="border p-1" type="number" step="1" placeholder="1, 2, 3..." @bind="_newExpOrden" />
+                    <input class="border p-1 form-control @Filled(_newExpOrden)"
+                           type="number" step="1"
+                           placeholder="1, 2, 3..."
+                           @bind="_newExpOrden" />
                 </div>
 
                 <div class="field">
                     <label>Tiempo estimado (min, opcional)</label>
-                    <input class="border p-1" type="number" step="1" placeholder="Ej: 60" @bind="_newExpTiempoMin" />
+                    <input class="border p-1 form-control @Filled(_newExpTiempoMin)"
+                           type="number" step="1"
+                           placeholder="Ej: 60"
+                           @bind="_newExpTiempoMin" />
                 </div>
 
                 <div class="field full-span">
                     <label>Procedimientos</label>
-                    <textarea class="border p-1" rows="4" placeholder="Paso a paso..." @bind="_newExpProcedimientos"></textarea>
+                    <textarea class="border p-1 form-control @Filled(_newExpProcedimientos)"
+                              rows="4"
+                              placeholder="Paso a paso..."
+                              @bind="_newExpProcedimientos"></textarea>
                 </div>
 
                 <div class="field full-span">
                     <label>Precauciones</label>
-                    <textarea class="border p-1" rows="3" placeholder="EPP, riesgos, etc." @bind="_newExpPrecauciones"></textarea>
+                    <textarea class="border p-1 form-control @Filled(_newExpPrecauciones)"
+                              rows="3"
+                              placeholder="EPP, riesgos, etc."
+                              @bind="_newExpPrecauciones"></textarea>
                 </div>
 
                 <div class="field full-span">
                     <label>Observaciones</label>
-                    <textarea class="border p-1" rows="2" placeholder="Notas adicionales..." @bind="_newExpObservaciones"></textarea>
+                    <textarea class="border p-1 form-control @Filled(_newExpObservaciones)"
+                              rows="2"
+                              placeholder="Notas adicionales..."
+                              @bind="_newExpObservaciones"></textarea>
                 </div>
 
                 <div class="field full-span">
                     <label>Descripción detallada</label>
-                    <textarea class="border p-1" rows="3" placeholder="Detalles extendidos..." @bind="_newExpDetalle"></textarea>
+                    <textarea class="border p-1 form-control @Filled(_newExpDetalle)"
+                              rows="3"
+                              placeholder="Detalles extendidos..."
+                              @bind="_newExpDetalle"></textarea>
                 </div>
 
                 <div class="field full-span">
                     <label class="muted">Vincular recursos (opcional) · aparecerán en el detalle con miniaturas si hay imagen</label>
 
                     <div class="rel-grid">
-                        <div class="rel-card">
+                        <div class="rel-card @(FilledCount(_newExpEquiposSel.Count))">
                             <div class="rel-title">Modelos de Equipos (@_newExpEquiposSel.Count)</div>
-                            <input class="border p-1 rel-search" placeholder="Buscar equipo..."
+                            <input class="border p-1 rel-search form-control @Filled(_relEqSearch)"
+                                   placeholder="Buscar equipo..."
                                    @bind="_relEqSearch" @bind:event="oninput" />
                             <div class="rel-list">
                                 @foreach (var opt in EquiposOptionsFiltradas)
                                 {
-                                    <label class="check-row">
-                                        <input type="checkbox" checked="@_newExpEquiposSel.Contains(opt.Id)"
+                                    <label class="check-row @(_newExpEquiposSel.Contains(opt.Id) ? "is-filled" : "")">
+                                        <input type="checkbox"
+                                               checked="@_newExpEquiposSel.Contains(opt.Id)"
                                                @onchange="@(() => Toggle(_newExpEquiposSel, opt.Id))" />
                                         @if (!string.IsNullOrWhiteSpace(opt.ImageUrl))
                                         {
@@ -210,15 +258,17 @@
                             </div>
                         </div>
 
-                        <div class="rel-card">
+                        <div class="rel-card @(FilledCount(_newExpMaterialesSel.Count))">
                             <div class="rel-title">Materiales (@_newExpMaterialesSel.Count)</div>
-                            <input class="border p-1 rel-search" placeholder="Buscar material..."
+                            <input class="border p-1 rel-search form-control @Filled(_relMatSearch)"
+                                   placeholder="Buscar material..."
                                    @bind="_relMatSearch" @bind:event="oninput" />
                             <div class="rel-list">
                                 @foreach (var opt in MaterialesOptionsFiltradas)
                                 {
-                                    <label class="check-row">
-                                        <input type="checkbox" checked="@_newExpMaterialesSel.Contains(opt.Id)"
+                                    <label class="check-row @(_newExpMaterialesSel.Contains(opt.Id) ? "is-filled" : "")">
+                                        <input type="checkbox"
+                                               checked="@_newExpMaterialesSel.Contains(opt.Id)"
                                                @onchange="@(() => Toggle(_newExpMaterialesSel, opt.Id))" />
                                         @if (!string.IsNullOrWhiteSpace(opt.ImageUrl))
                                         {
@@ -234,15 +284,17 @@
                             </div>
                         </div>
 
-                        <div class="rel-card">
+                        <div class="rel-card @(FilledCount(_newExpSustanciasSel.Count))">
                             <div class="rel-title">Sustancias (@_newExpSustanciasSel.Count)</div>
-                            <input class="border p-1 rel-search" placeholder="Buscar sustancia..."
+                            <input class="border p-1 rel-search form-control @Filled(_relSusSearch)"
+                                   placeholder="Buscar sustancia..."
                                    @bind="_relSusSearch" @bind:event="oninput" />
                             <div class="rel-list">
                                 @foreach (var opt in SustanciasOptionsFiltradas)
                                 {
-                                    <label class="check-row">
-                                        <input type="checkbox" checked="@_newExpSustanciasSel.Contains(opt.Id)"
+                                    <label class="check-row @(_newExpSustanciasSel.Contains(opt.Id) ? "is-filled" : "")">
+                                        <input type="checkbox"
+                                               checked="@_newExpSustanciasSel.Contains(opt.Id)"
                                                @onchange="@(() => Toggle(_newExpSustanciasSel, opt.Id))" />
                                         @if (!string.IsNullOrWhiteSpace(opt.ImageUrl))
                                         {
@@ -283,19 +335,19 @@
         </div>
 
         <div class="category-controls">
-            <label class="toggle">
+            <label class="toggle @(_incluirGlobales ? "is-filled" : "")">
                 <input type="checkbox"
                        checked="@_incluirGlobales"
                        @onchange="OnToggleGlobales" />
                 <span>Incluir globales</span>
             </label>
 
-            <input class="border p-1 search-input-invent"
+            <input class="border p-1 search-input-invent form-control @Filled(_searchAsig)"
                    placeholder="Buscar (nombre, código, descripción)..."
                    @bind="_searchAsig"
                    @bind:event="oninput" />
 
-            <label class="toggle">
+            <label class="toggle @(_soloConContenido ? "is-filled" : "")">
                 <input type="checkbox"
                        checked="@_soloConContenido"
                        @onchange="OnToggleSoloConContenido" />
@@ -583,7 +635,6 @@
                 </div>
             }
         </details>
-
     }
 </section>
 
@@ -681,8 +732,6 @@
     {
         await ReloadAllAsync();
     }
-
-
 
     private void HandleLaboratorioChanged()
     {
@@ -821,7 +870,6 @@
             }
         }
 
-
         // Materiales
         const string matSql = @"
             SELECT material_id,
@@ -958,7 +1006,7 @@
             }
         }
 
-        // Docs vinculados (ASIGNATURA o EXPERIENCIA) -> por CONTEXTO, no por laboratorio_id target
+        // Docs vinculados (ASIGNATURA o EXPERIENCIA) -> por CONTEXTO
         const string docSql = @"
             SELECT documento_id, titulo, procedencia, alcance,
                    COALESCE(asignatura_id,'') AS asignatura_id,
@@ -1013,7 +1061,6 @@
                 AddRel(_expEquipos, r.GetString(0),
                     new RelItem(r.GetString(1), r.GetString(2), r.IsDBNull(3) ? null : r.GetString(3)));
         }
-
 
         // Materiales
         const string reMat = @"
@@ -1077,7 +1124,7 @@
         // LabReal names
         var labRealNames = _labsRealizados.ToDictionary(x => x.LaboratorioRealizadoId, x => x.Nombre, StringComparer.OrdinalIgnoreCase);
 
-        // Experiencias por asignatura + asignar nombre labreal (ACTUALIZANDO _experiencias)
+        // Experiencias por asignatura + asignar nombre labreal
         for (int i = 0; i < _experiencias.Count; i++)
         {
             var exp = _experiencias[i];
@@ -1089,7 +1136,7 @@
                     : null;
 
             var exp2 = exp with { LabRealizadoNombre = lrName };
-            _experiencias[i] = exp2; // ✅ clave: ahora la 3ra tabla lo verá
+            _experiencias[i] = exp2;
 
             if (!ExperienciasPorAsignatura.TryGetValue(exp2.AsignaturaId, out var list))
                 ExperienciasPorAsignatura[exp2.AsignaturaId] = list = new List<ExperienciaRow>();
@@ -1209,7 +1256,6 @@
         }
     }
 
-
     private IEnumerable<ExperienciaRow> ExperienciasFiltradas
     {
         get
@@ -1237,7 +1283,6 @@
             return list;
         }
     }
-
 
     // ===================== Lookups para selects =====================
     private IEnumerable<SelectOption> LabRealizadoOptionsParaNewExp =>
@@ -1461,7 +1506,6 @@
             await InsertRelAsync(conn, tx, "experiencia_materiales", "material_id", _newExpMaterialesSel, id);
             await InsertRelAsync(conn, tx, "experiencia_sustancias", "sustancia_id", _newExpSustanciasSel, id);
 
-
             await tx.CommitAsync();
 
             _msgExp = "Experiencia registrada.";
@@ -1588,6 +1632,10 @@
         return t.Substring(0, max - 1) + "…";
     }
 
+    // ✅ Igual que en Documentaciones: marca campos ya rellenados
+    private static string Filled(string? value) => string.IsNullOrWhiteSpace(value) ? "" : "is-filled";
+    private static string FilledCount(int count) => count > 0 ? "is-filled" : "";
+
     public void Dispose()
     {
         LaboratorioState.OnChange -= HandleLaboratorioChanged;
@@ -1700,6 +1748,12 @@
         padding: .45rem .6rem;
     }
 
+    /* Base para inputs/selects/textarea cuando usas form-control en clases */
+    .form-control {
+        width: 100%;
+        box-sizing: border-box;
+    }
+
     .btn.primary {
         background: #2563eb;
         color: #fff;
@@ -1804,6 +1858,7 @@
         font-size: .9rem;
         color: #0f172a;
         user-select: none;
+        white-space: nowrap;
     }
 
     .category-header {
@@ -1821,6 +1876,9 @@
         flex-wrap: wrap;
     }
 
+    .search-input-invent {
+        min-width: 260px;
+    }
 
     /* Create area */
     .create-grid {
@@ -1889,13 +1947,16 @@
         gap: .6rem;
     }
 
-    .panel-title {
+    /* En tu markup usas panel-summary */
+    .panel-summary {
+        cursor: pointer;
         font-weight: 900;
         color: #0f172a;
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: .5rem;
+        list-style: none;
     }
 
     /* Tables */
@@ -1998,4 +2059,43 @@
         border-radius: 10px;
         background: #fff;
     }
+
+    /* ==========================================================
+           ✅ FILLED STATE (azul) — igual que en Documentaciones
+           ========================================================== */
+
+    /* Inputs / selects / textareas */
+    .form-control.is-filled {
+        background: #dbeafe !important;
+        border-color: #93c5fd !important;
+    }
+
+        .form-control.is-filled:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(147, 197, 253, .55);
+        }
+
+    /* Toggles (checkbox tipo pill) */
+    .toggle.is-filled {
+        background: #dbeafe !important;
+        border-color: #93c5fd !important;
+    }
+
+    /* Cards de relaciones: si tiene selecciones */
+    .rel-card.is-filled {
+        border-color: #93c5fd;
+        background: #f8fbff;
+        box-shadow: 0 8px 16px rgba(37, 99, 235, .10);
+    }
+
+    /* Filas de checks: si ese item está seleccionado */
+    .check-row.is-filled {
+        background: #dbeafe;
+        border-color: #93c5fd;
+    }
+
+        /* Que el checkbox no quede opacado */
+        .check-row.is-filled input[type="checkbox"] {
+            accent-color: #2563eb;
+        }
 </style>

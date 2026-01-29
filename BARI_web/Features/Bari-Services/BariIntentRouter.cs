@@ -2,7 +2,7 @@
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
 
-namespace BARI_web.Services;
+namespace BARI_web.Features.Services;
 
 public sealed class BariIntentRouter
 {
@@ -39,7 +39,7 @@ public sealed class BariIntentRouter
             lower.Contains("revisa") || lower.Contains("detall") ||
             lower.Contains("datos") || lower.Contains("anterior") ||
             lower.Contains("lo de arriba") || lower.Contains("de arriba") ||
-            (mentionsPriorItems && hasEnumeratedContext));
+            mentionsPriorItems && hasEnumeratedContext);
 
         var looksDb =
     lower.Contains("cuánt") || lower.Contains("cuantos") || lower.Contains("cantidad") ||

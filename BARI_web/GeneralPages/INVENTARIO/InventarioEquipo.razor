@@ -43,11 +43,15 @@
         </div>
 
         <div class="assign-row form-grid">
-            <input class="border p-1" placeholder="ID modelo (opcional)" @bind="_nuevoModeloId" />
-            <input class="border p-1" placeholder="Nombre del modelo (obligatorio)" @bind="_nuevoModeloNombre" />
+            <input class="border p-1 form-control @(string.IsNullOrWhiteSpace(_nuevoModeloId) ? "" : "is-filled")"
+                   placeholder="ID modelo (opcional)" @bind="_nuevoModeloId" />
+
+            <input class="border p-1 form-control @(string.IsNullOrWhiteSpace(_nuevoModeloNombre) ? "" : "is-filled")"
+                   placeholder="Nombre del modelo (obligatorio)" @bind="_nuevoModeloNombre" />
 
             <div class="brand-picker">
-                <select class="border p-1" @bind="_nuevoModeloMarcaId">
+                <select class="border p-1 form-control @(string.IsNullOrWhiteSpace(_nuevoModeloMarcaId) ? "" : "is-filled")"
+                        @bind="_nuevoModeloMarcaId">
                     <option value="">Marca (opcional)</option>
                     @foreach (var m in _marcaOptions)
                     {
@@ -61,7 +65,9 @@
                 }
             </div>
 
-            <select class="border p-1" value="@_nuevoModeloCategoriaId" @onchange="OnNuevoModeloCategoriaChanged">
+            <select class="border p-1 form-control @(string.IsNullOrWhiteSpace(_nuevoModeloCategoriaId) ? "" : "is-filled")"
+                    value="@_nuevoModeloCategoriaId"
+                    @onchange="OnNuevoModeloCategoriaChanged">
                 <option value="">Categoría (obligatorio)</option>
                 @foreach (var cat in _categoriaEquipoOptions)
                 {
@@ -69,16 +75,17 @@
                 }
             </select>
 
-            <label class="text-sm text-gray-600">
+            <label class="toggle @(_nuevoModeloEsCalibrable ? "is-filled" : "")">
                 <input type="checkbox" @bind="_nuevoModeloEsCalibrable" />
-                Es calibrable (modelo)
+                <span>Es calibrable (modelo)</span>
             </label>
 
-            <!-- ✅ NUEVO: altura del modelo -->
-            <input class="border p-1" placeholder="Altura (cm) (opcional)" type="number" step="any" @bind="_nuevoModeloAlturaCm" />
+            <input class="border p-1 form-control @(string.IsNullOrWhiteSpace((_nuevoModeloAlturaCm?.ToString())) ? "" : "is-filled")"
+                   placeholder="Altura (cm) (opcional)" type="number" step="any" @bind="_nuevoModeloAlturaCm" />
 
             <div class="full-span">
-                <select class="border p-1" @bind="_nuevoModeloManualDocTemplateId">
+                <select class="border p-1 form-control @(string.IsNullOrWhiteSpace(_nuevoModeloManualDocTemplateId) ? "" : "is-filled")"
+                        @bind="_nuevoModeloManualDocTemplateId">
                     <option value="">Manual (opcional) · seleccionar documento (alcance EQUIPO)</option>
                     @foreach (var d in _manualDocTemplates)
                     {
@@ -93,11 +100,15 @@
                 </div>
             </div>
 
-            <input class="border p-1" placeholder="Descripción (opcional)" @bind="_nuevoModeloDescripcion" />
-            <input class="border p-1" placeholder="Notas (opcional)" @bind="_nuevoModeloNotas" />
+            <input class="border p-1 form-control @(string.IsNullOrWhiteSpace(_nuevoModeloDescripcion) ? "" : "is-filled")"
+                   placeholder="Descripción (opcional)" @bind="_nuevoModeloDescripcion" />
+
+            <input class="border p-1 form-control @(string.IsNullOrWhiteSpace(_nuevoModeloNotas) ? "" : "is-filled")"
+                   placeholder="Notas (opcional)" @bind="_nuevoModeloNotas" />
 
             <!-- Subcategorías (checkbox) -->
-            <div class="upload-card full-span" style="min-width:0; width:100%; max-width:100%;">
+            <div class="upload-card full-span @( _nuevoModeloSubcategoriaIds is not null && _nuevoModeloSubcategoriaIds.Count > 0 ? "is-filled" : "" )"
+                 style="min-width:0; width:100%; max-width:100%;">
 
                 <details style="width:100%; max-width:100%; overflow:hidden;">
                     <summary style="cursor:pointer; font-weight:600; display:block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
@@ -135,7 +146,7 @@
             </div>
 
             <!-- Imagen modelo -->
-            <div class="upload-card full-span">
+            <div class="upload-card full-span @((!string.IsNullOrWhiteSpace(_nuevoModeloImagenUrl) || !string.IsNullOrWhiteSpace(_nuevoModeloImagenArchivo)) ? "is-filled" : "")">
                 <div class="upload-options">
                     <label class="text-sm">
                         <input type="radio"
@@ -157,11 +168,12 @@
 
                 @if (_nuevoModeloImagenModo == "url")
                 {
-                    <input class="border p-1" placeholder="Imagen URL (o ruta relativa)" @bind="_nuevoModeloImagenUrl" />
+                    <input class="border p-1 form-control @(string.IsNullOrWhiteSpace(_nuevoModeloImagenUrl) ? "" : "is-filled")"
+                           placeholder="Imagen URL (o ruta relativa)" @bind="_nuevoModeloImagenUrl" />
                 }
                 else
                 {
-                    <label class="upload-drop">
+                    <label class="upload-drop @(string.IsNullOrWhiteSpace(_nuevoModeloImagenArchivo) ? "" : "is-filled")">
                         <InputFile OnChange="OnModeloImagenArchivoSeleccionado" accept="image/png,image/jpeg,image/jpg,image/webp" />
                         <span>Arrastra una imagen o haz clic para buscar</span>
                     </label>
@@ -211,11 +223,16 @@
         </div>
 
         <div class="assign-row form-grid">
-            <input class="border p-1" placeholder="ID equipo (opcional)" @bind="_nuevoEquipoId" />
-            <input class="border p-1" placeholder="Nombre del equipo (obligatorio)" @bind="_nuevoEquipoNombre" />
+            <input class="border p-1 form-control @(string.IsNullOrWhiteSpace(_nuevoEquipoId) ? "" : "is-filled")"
+                   placeholder="ID equipo (opcional)" @bind="_nuevoEquipoId" />
+
+            <input class="border p-1 form-control @(string.IsNullOrWhiteSpace(_nuevoEquipoNombre) ? "" : "is-filled")"
+                   placeholder="Nombre del equipo (obligatorio)" @bind="_nuevoEquipoNombre" />
 
             <div class="brand-picker">
-                <select class="border p-1" value="@_nuevoEquipoModeloId" @onchange="OnEquipoModeloChanged">
+                <select class="border p-1 form-control @(string.IsNullOrWhiteSpace(_nuevoEquipoModeloId) ? "" : "is-filled")"
+                        value="@_nuevoEquipoModeloId"
+                        @onchange="OnEquipoModeloChanged">
                     <option value="">Modelo </option>
                     @foreach (var opt in _modeloLookupOptions)
                     {
@@ -229,9 +246,11 @@
                 }
             </div>
 
-            <input class="border p-1" placeholder="Serie (opcional)" @bind="_nuevoEquipoSerie" />
+            <input class="border p-1 form-control @(string.IsNullOrWhiteSpace(_nuevoEquipoSerie) ? "" : "is-filled")"
+                   placeholder="Serie (opcional)" @bind="_nuevoEquipoSerie" />
 
-            <select class="border p-1" @bind="_nuevoEquipoEstadoId">
+            <select class="border p-1 form-control @(string.IsNullOrWhiteSpace(_nuevoEquipoEstadoId) ? "" : "is-filled")"
+                    @bind="_nuevoEquipoEstadoId">
                 <option value="">Estado (opcional)</option>
                 @foreach (var estado in _estadoOptions)
                 {
@@ -241,7 +260,7 @@
 
             <!-- Área: dropdown + mapa -->
             <div class="selector-split full-span">
-                <select class="border p-1"
+                <select class="border p-1 form-control @(string.IsNullOrWhiteSpace(_nuevoEquipoAreaId) ? "" : "is-filled")"
                         value="@_nuevoEquipoAreaId"
                         @onchange="OnAreaChanged">
                     <option value="">Área (obligatorio)</option>
@@ -251,11 +270,12 @@
                     }
                 </select>
 
-                <div class="visual-picker">
+                <div class="visual-picker @(string.IsNullOrWhiteSpace(_nuevoEquipoAreaId) ? "" : "is-filled")">
                     <div class="visual-toolbar">
                         <label class="text-xs text-gray-500">Mapa de áreas</label>
 
-                        <select class="border p-1 text-xs" @bind="_currentPlantaId">
+                        <select class="border p-1 text-xs form-control @(string.IsNullOrWhiteSpace(_currentPlantaId) ? "" : "is-filled")"
+                                @bind="_currentPlantaId">
                             <option value="">Todas</option>
                             @foreach (var planta in _plantasLookup)
                             {
@@ -338,7 +358,7 @@
 
             <!-- Mesón: dropdown + mapa -->
             <div class="selector-split full-span">
-                <select class="border p-1"
+                <select class="border p-1 form-control @(string.IsNullOrWhiteSpace(_nuevoEquipoMesonId) ? "" : "is-filled")"
                         value="@_nuevoEquipoMesonId"
                         @onchange="OnMesonChanged"
                         disabled="@string.IsNullOrWhiteSpace(_nuevoEquipoAreaId)">
@@ -349,7 +369,7 @@
                     }
                 </select>
 
-                <div class="visual-picker">
+                <div class="visual-picker @(string.IsNullOrWhiteSpace(_nuevoEquipoMesonId) ? "" : "is-filled")">
                     <div class="text-xs text-gray-500">Mesones del área seleccionada</div>
 
                     @if (SelectedAreaForMap is not null)
@@ -443,23 +463,29 @@
                 </div>
             </div>
 
-            <input class="border p-1" placeholder="Nivel (número)" @bind="_nuevoEquipoNivel" />
-            <input class="border p-1" placeholder="Posición (opcional)" @bind="_nuevoEquipoPosicion" />
+            <input class="border p-1 form-control @(string.IsNullOrWhiteSpace(_nuevoEquipoNivel) ? "" : "is-filled")"
+                   placeholder="Nivel (número)" @bind="_nuevoEquipoNivel" />
 
-            <div class="field-stack">
+            <input class="border p-1 form-control @(string.IsNullOrWhiteSpace(_nuevoEquipoPosicion) ? "" : "is-filled")"
+                   placeholder="Posición (opcional)" @bind="_nuevoEquipoPosicion" />
+
+            <div class="field-stack @((_nuevoEquipoFechaCompra.HasValue) ? "is-filled" : "")">
                 <label class="field-label">Fecha de compra</label>
-                <input class="border p-1" type="date" @bind-value="_nuevoEquipoFechaCompra" @bind-value:format="yyyy-MM-dd" />
+                <input class="border p-1 form-control" type="date"
+                       @bind-value="_nuevoEquipoFechaCompra" @bind-value:format="yyyy-MM-dd" />
             </div>
 
-            <div class="field-stack">
+            <div class="field-stack @((_nuevoEquipoGarantiaHasta.HasValue) ? "is-filled" : "")">
                 <label class="field-label">Garantía hasta</label>
-                <input class="border p-1" type="date" @bind-value="_nuevoEquipoGarantiaHasta" @bind-value:format="yyyy-MM-dd" />
+                <input class="border p-1 form-control" type="date"
+                       @bind-value="_nuevoEquipoGarantiaHasta" @bind-value:format="yyyy-MM-dd" />
             </div>
 
-            <input class="border p-1" placeholder="Observaciones" @bind="_nuevoEquipoObservaciones" />
+            <input class="border p-1 form-control @(string.IsNullOrWhiteSpace(_nuevoEquipoObservaciones) ? "" : "is-filled")"
+                   placeholder="Observaciones" @bind="_nuevoEquipoObservaciones" />
 
             <!-- Imagen equipo -->
-            <div class="upload-card full-span">
+            <div class="upload-card full-span @((!string.IsNullOrWhiteSpace(_nuevoEquipoImagenUrl) || !string.IsNullOrWhiteSpace(_nuevoEquipoImagenArchivo)) ? "is-filled" : "")">
                 <div class="upload-options">
                     <label class="text-sm">
                         <input type="radio"
@@ -481,11 +507,12 @@
 
                 @if (_nuevoEquipoImagenModo == "url")
                 {
-                    <input class="border p-1" placeholder="Imagen URL (o ruta relativa)" @bind="_nuevoEquipoImagenUrl" />
+                    <input class="border p-1 form-control @(string.IsNullOrWhiteSpace(_nuevoEquipoImagenUrl) ? "" : "is-filled")"
+                           placeholder="Imagen URL (o ruta relativa)" @bind="_nuevoEquipoImagenUrl" />
                 }
                 else
                 {
-                    <label class="upload-drop">
+                    <label class="upload-drop @(string.IsNullOrWhiteSpace(_nuevoEquipoImagenArchivo) ? "" : "is-filled")">
                         <InputFile OnChange="OnEquipoImagenArchivoSeleccionado" accept="image/png,image/jpeg,image/jpg,image/webp" />
                         <span>Arrastra una imagen o haz clic para buscar</span>
                     </label>
@@ -508,9 +535,9 @@
                 }
             </div>
 
-            <label class="text-sm text-gray-600">
+            <label class="toggle @(_nuevoEquipoRequiereCalibracion ? "is-filled" : "")">
                 <input type="checkbox" @bind="_nuevoEquipoRequiereCalibracion" />
-                Requiere calibración (instancia)
+                <span>Requiere calibración (instancia)</span>
             </label>
 
             <div class="form-actions full-span">
@@ -534,15 +561,15 @@
             <p class="helper">Selecciona una subcategoría para ver modelos/equipos, o activa “Ver todos”.</p>
         </div>
 
-        <div class="category-controls">
-            <label class="toggle">
+        <div class="category-controls controls-strip" aria-label="Filtros">
+            <label class="toggle @(_verTodos ? "is-filled" : "")">
                 <input type="checkbox"
                        checked="@_verTodos"
                        @onchange="OnVerTodosToggleAsync" />
                 <span>Ver todo</span>
             </label>
 
-            <select class="category-select"
+            <select class="category-select form-control @((!_verTodos && !string.IsNullOrWhiteSpace(SubcategoriaId)) ? "is-filled" : "")"
                     @onchange="OnSubcategoriaChanged"
                     value="@(_verTodos ? "" : SubcategoriaId)">
                 <option value="">Todas las subcategorías</option>
@@ -570,7 +597,7 @@
     }
     else
     {
-        <div class="category-grid">
+        <div class="category-grid category-strip">
             @foreach (var categoria in categorias)
             {
                 <div class="category-card">
@@ -611,7 +638,7 @@
             }
         </div>
 
-        <input class="border p-1 search-input-invent"
+        <input class="border p-1 form-control search-input-invent @((string.IsNullOrWhiteSpace(_searchModelosText) ? "" : "is-filled"))"
                placeholder="Buscar (modelo, marca, categoría, subcategoría, altura, manual)..."
                @bind="_searchModelosText"
                @bind:event="oninput"
@@ -731,7 +758,7 @@
             }
         </div>
 
-        <input class="border p-1 search-input-invent"
+        <input class="border p-1 form-control search-input-invent @((string.IsNullOrWhiteSpace(_searchEquiposText) ? "" : "is-filled"))"
                placeholder="Buscar (nombre, serie, modelo, marca, estado, área, altura, calibración)..."
                @bind="_searchEquiposText"
                @bind:event="oninput"
@@ -887,7 +914,7 @@
     private string? _nuevoModeloCategoriaId = "equipo-mixto";
     private bool _nuevoModeloEsCalibrable;
 
-    // ✅ NUEVO: altura_cm (string para bind)
+    // ✅ altura_cm (string para bind)
     private string? _nuevoModeloAlturaCm;
 
     // Manual (selección por documento, como plantilla)
@@ -1389,15 +1416,19 @@
             return;
         }
 
-        // ✅ Parse altura_cm
+        // ✅ Parse altura_cm (acepta punto o coma)
         decimal? alturaCm = null;
         if (!string.IsNullOrWhiteSpace(_nuevoModeloAlturaCm))
         {
-            if (!decimal.TryParse(_nuevoModeloAlturaCm, NumberStyles.Any, CultureInfo.InvariantCulture, out var alt))
+            var raw = _nuevoModeloAlturaCm!.Trim();
+
+            if (!decimal.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out var alt)
+                && !decimal.TryParse(raw, NumberStyles.Any, CultureInfo.CurrentCulture, out alt))
             {
                 _nuevoModeloMsg = "Altura (cm) inválida.";
                 return;
             }
+
             alturaCm = alt;
         }
 
@@ -2503,7 +2534,7 @@ ORDER BY equipo_nombre, e.equipo_id;";
     }
 
     // ============================
-    // Canvas + áreas (igual patrón que sustancias)
+    // Canvas + áreas
     // ============================
     private async Task LoadCanvasAreasAsync()
     {
@@ -2649,8 +2680,9 @@ ORDER BY equipo_nombre, e.equipo_id;";
             : DBNull.Value;
     }
 
+    // ✅ FIX: esto sí compila y funciona
     private static object ParseDateOrNull(DateTime? value) =>
-        value ?? (object)DBNull.Value;
+        value is null ? (object)DBNull.Value : value.Value;
 
     private static string BuildUbicacion(string area, string meson, int? nivel, string posicion)
     {
@@ -2954,28 +2986,29 @@ ORDER BY equipo_nombre, e.equipo_id;";
         box-shadow: 0 6px 14px rgba(15, 23, 42, 0.04);
     }
 
-    .category-header {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 1rem;
-        flex-wrap: wrap;
+    .helper {
+        margin: .3rem 0 0;
+        color: #475569;
+        font-size: .95rem;
     }
 
-    .category-controls {
-        display: flex;
-        gap: .75rem;
-        align-items: center;
-        flex-wrap: wrap;
+    .btn-link {
+        color: #1d4ed8;
+        text-decoration: none;
+        font-weight: 600;
     }
+
+        .btn-link:hover {
+            text-decoration: underline;
+        }
 
     .form-header {
-        margin-top: 0.75rem;
-        margin-bottom: 0.75rem;
+        margin-top: .75rem;
+        margin-bottom: .75rem;
     }
 
         .form-header h4 {
-            margin: 0 0 0.25rem 0;
+            margin: 0 0 .25rem 0;
             font-weight: 700;
             color: #0f172a;
         }
@@ -2983,47 +3016,49 @@ ORDER BY equipo_nombre, e.equipo_id;";
     .form-hint {
         margin: 0;
         color: #64748b;
-        font-size: 0.95rem;
+        font-size: .95rem;
     }
 
     .form-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-        gap: 0.75rem;
+        gap: .75rem;
         align-items: start;
-    }
-
-    .field-stack {
-        display: flex;
-        flex-direction: column;
-        gap: 0.25rem;
-    }
-
-    .field-label {
-        font-size: 0.75rem;
-        color: #64748b;
     }
 
     .full-span {
         grid-column: 1 / -1;
     }
 
+    .field-stack {
+        display: flex;
+        flex-direction: column;
+        gap: .25rem;
+    }
+
+    .field-label {
+        font-size: .75rem;
+        color: #64748b;
+        font-weight: 600;
+    }
+
     .form-actions {
         display: flex;
         align-items: center;
-        gap: 0.75rem;
+        gap: .75rem;
         flex-wrap: wrap;
-        margin-top: 0.25rem;
+        margin-top: .25rem;
     }
 
     .btn.primary {
         background: #2563eb;
         color: #fff;
         border: none;
-        padding: 0.5rem 1rem;
-        border-radius: 0.5rem;
+        padding: .5rem 1rem;
+        border-radius: .5rem;
         font-weight: 600;
-        box-shadow: 0 6px 12px rgba(37, 99, 235, 0.18);
+        box-shadow: 0 6px 12px rgba(37, 99, 235, .18);
+        cursor: pointer;
     }
 
         .btn.primary:hover {
@@ -3043,30 +3078,31 @@ ORDER BY equipo_nombre, e.equipo_id;";
             text-decoration: underline;
         }
 
+    /* ======= GUÍA CATEGORÍAS ======= */
+    .category-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .category-controls {
+        display: flex;
+        gap: .75rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
     .category-select {
         min-width: 220px;
         padding: .35rem .6rem;
-        border-radius: 8px;
+        border-radius: 10px;
         border: 1px solid #cbd5f5;
         background: #fff;
         color: #0f172a;
-    }
-
-    .helper {
-        margin: .3rem 0 0;
-        color: #475569;
-        font-size: .95rem;
-    }
-
-    .btn-link {
-        color: #1d4ed8;
-        text-decoration: none;
         font-weight: 600;
     }
-
-        .btn-link:hover {
-            text-decoration: underline;
-        }
 
     .category-grid {
         display: grid;
@@ -3105,6 +3141,7 @@ ORDER BY equipo_nombre, e.equipo_id;";
         color: #0f172a;
         text-decoration: none;
         font-size: .9rem;
+        font-weight: 600;
     }
 
         .category-link.active,
@@ -3113,6 +3150,7 @@ ORDER BY equipo_nombre, e.equipo_id;";
             color: #1d4ed8;
         }
 
+    /* ======= LISTADOS + TABLAS ======= */
     .materials-header {
         display: flex;
         align-items: center;
@@ -3153,7 +3191,7 @@ ORDER BY equipo_nombre, e.equipo_id;";
 
     .error-note {
         color: #b91c1c;
-        margin-top: 0.75rem;
+        margin-top: .75rem;
     }
 
     .search-input-invent {
@@ -3181,7 +3219,7 @@ ORDER BY equipo_nombre, e.equipo_id;";
     }
 
     th, td {
-        padding: 0.6rem;
+        padding: .6rem;
         border-bottom: 1px solid #e5e7eb;
         text-align: left;
         vertical-align: top;
@@ -3192,37 +3230,38 @@ ORDER BY equipo_nombre, e.equipo_id;";
         font-weight: 600;
     }
 
+    /* ======= SELECTOR VISUAL (mapas) ======= */
     .selector-split {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.75rem;
+        gap: .75rem;
         align-items: flex-start;
     }
 
     .visual-picker {
         border: 1px solid #e5e7eb;
-        border-radius: 0.5rem;
-        padding: 0.5rem;
+        border-radius: .5rem;
+        padding: .5rem;
         background: #fff;
         min-width: 240px;
         display: grid;
-        gap: 0.5rem;
+        gap: .5rem;
     }
 
     .visual-toolbar {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: .5rem;
         justify-content: space-between;
     }
 
     .canvas-card {
         border: 1px solid #e5e7eb;
-        border-radius: 0.5rem;
-        padding: 0.5rem;
+        border-radius: .5rem;
+        padding: .5rem;
         background: #f8fafc;
         display: grid;
-        gap: 0.35rem;
+        gap: .35rem;
     }
 
         .canvas-card svg {
@@ -3236,7 +3275,7 @@ ORDER BY equipo_nombre, e.equipo_id;";
         padding-left: 0;
         margin: 0;
         display: grid;
-        gap: 0.35rem;
+        gap: .35rem;
     }
 
     .meson-item {
@@ -3249,19 +3288,21 @@ ORDER BY equipo_nombre, e.equipo_id;";
             outline: 1px solid #f59e0b;
         }
 
+    /* ======= UPLOAD ======= */
     .upload-card {
         border: 1px dashed #d1d5db;
-        padding: 0.6rem;
-        border-radius: 0.5rem;
+        padding: .6rem;
+        border-radius: .5rem;
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
+        gap: .5rem;
         min-width: 220px;
+        background: #fff;
     }
 
     .upload-options {
         display: flex;
-        gap: 0.75rem;
+        gap: .75rem;
         align-items: center;
         flex-wrap: wrap;
     }
@@ -3270,12 +3311,13 @@ ORDER BY equipo_nombre, e.equipo_id;";
         position: relative;
         display: flex;
         align-items: center;
-        gap: 0.5rem;
-        padding: 0.6rem;
+        gap: .5rem;
+        padding: .6rem;
         border: 1px solid #e5e7eb;
-        border-radius: 0.5rem;
+        border-radius: .5rem;
         color: #6b7280;
         cursor: pointer;
+        background: #fff;
     }
 
         .upload-drop input[type="file"] {
@@ -3302,6 +3344,7 @@ ORDER BY equipo_nombre, e.equipo_id;";
         border: 1px solid #e5e7eb;
     }
 
+    /* ======= MEDIA / THUMBS ======= */
     .brand-picker {
         display: flex;
         gap: .5rem;
@@ -3335,8 +3378,9 @@ ORDER BY equipo_nombre, e.equipo_id;";
         border-radius: 8px;
     }
 
+    /* ======= TOGGLE estilo Documentaciones ======= */
     .toggle {
-        display: flex;
+        display: inline-flex;
         gap: .45rem;
         align-items: center;
         padding: .35rem .6rem;
@@ -3346,8 +3390,44 @@ ORDER BY equipo_nombre, e.equipo_id;";
         font-size: .9rem;
         color: #0f172a;
         user-select: none;
+        white-space: nowrap;
     }
 
+        /* ===========================
+           ✅ FILLED STATE (AZUL) como Documentaciones
+           =========================== */
+        .form-control.is-filled,
+        .category-select.is-filled,
+        .toggle.is-filled {
+            background: #dbeafe !important;
+            border-color: #93c5fd !important;
+        }
+
+    .upload-card.is-filled {
+        border-color: #93c5fd !important;
+        background: #eff6ff !important;
+    }
+
+    .upload-drop.is-filled {
+        border-color: #93c5fd !important;
+        background: #eff6ff !important;
+        color: #0f172a;
+        font-weight: 600;
+    }
+
+    /* Para wrappers de fecha */
+    .field-stack.is-filled .form-control {
+        background: #dbeafe !important;
+        border-color: #93c5fd !important;
+    }
+
+    .form-control:focus,
+    .category-select:focus {
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(147, 197, 253, .55);
+    }
+
+    /* ======= SVG estilos (como ya tenías) ======= */
     .area-label {
         fill: #111827;
         paint-order: stroke fill;
@@ -3402,5 +3482,65 @@ ORDER BY equipo_nombre, e.equipo_id;";
         stroke: #2563eb;
         stroke-width: 0.06;
         filter: saturate(1.1);
+    }
+
+    /* ===========================
+           ✅ MÓVIL: filtros en fila deslizable + categorías en carrusel
+           =========================== */
+    @@media (max-width: 900px) {
+
+        .category-controls.controls-strip {
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            gap: .6rem;
+            padding: .45rem .45rem .60rem;
+            margin-top: .35rem;
+            border: 1px solid #e5e7eb;
+            background: #f8fafc;
+            border-radius: 14px;
+            scroll-snap-type: x proximity;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+            .category-controls.controls-strip::-webkit-scrollbar {
+                display: none;
+            }
+
+            .category-controls.controls-strip > * {
+                flex: 0 0 auto;
+                scroll-snap-align: start;
+            }
+
+            .category-controls.controls-strip .category-select {
+                min-width: 240px;
+            }
+
+        .category-grid.category-strip {
+            display: flex;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            gap: 1rem;
+            padding: .25rem .45rem .75rem;
+            margin-top: 1rem;
+            scroll-snap-type: x mandatory;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+            .category-grid.category-strip::-webkit-scrollbar {
+                display: none;
+            }
+
+            .category-grid.category-strip .category-card {
+                flex: 0 0 auto;
+                width: 84vw;
+                max-width: 520px;
+                scroll-snap-align: start;
+            }
     }
 </style>

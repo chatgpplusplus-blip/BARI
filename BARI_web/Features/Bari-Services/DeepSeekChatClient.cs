@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 
-namespace BARI_web.Services;
+namespace BARI_web.Features.Services;
 
 public sealed class DeepSeekChatClient
 {

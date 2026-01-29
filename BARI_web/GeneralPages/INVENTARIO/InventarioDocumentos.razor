@@ -51,18 +51,20 @@
         <div class="form-grid">
             <div class="field">
                 <label>ID documento (opcional)</label>
-                <input class="border p-1" placeholder="doc_xxx (opcional)" @bind="_nuevoDocumentoId" />
+                <input class="border p-1 form-control @Filled(_nuevoDocumentoId)" placeholder="doc_xxx (opcional)" @bind="_nuevoDocumentoId" />
                 <div class="text-xs muted">Si lo dejas vacío, se genera automáticamente.</div>
             </div>
 
             <div class="field">
                 <label>Título</label>
-                <input class="border p-1" placeholder="Título del documento" @bind="_nuevoTitulo" />
+                <input class="border p-1 form-control @Filled(_nuevoTitulo)" placeholder="Título del documento" @bind="_nuevoTitulo" />
             </div>
 
             <div class="field">
                 <label>Procedencia</label>
-                <select class="border p-1" value="@_nuevoProcedencia" @onchange="OnNuevoProcedenciaChanged">
+                <select class="border p-1 form-control @Filled(_nuevoProcedencia)"
+                        value="@_nuevoProcedencia"
+                        @onchange="OnNuevoProcedenciaChanged">
                     <option value="INTERNO LABORATORIO">INTERNO LABORATORIO</option>
                     <option value="INSTITUCION INTERNACIONAL">INSTITUCION INTERNACIONAL</option>
                     <option value="UPSA">UPSA</option>
@@ -82,7 +84,7 @@
                 }
                 else
                 {
-                    <select class="border p-1" @bind="_nuevoMarcaId">
+                    <select class="border p-1 form-control @Filled(_nuevoMarcaId)" @bind="_nuevoMarcaId">
                         <option value="">(selecciona marca)</option>
                         @foreach (var m in _marcaOptions.OrderBy(x => x.Label))
                         {
@@ -98,19 +100,18 @@
 
             <div class="field">
                 <label>Contexto</label>
-                <label class="toggle">
+                <label class="toggle @( _nuevoEsGlobal ? "is-filled" : "" )">
                     <input type="checkbox" checked="@_nuevoEsGlobal" @onchange="OnNuevoEsGlobalChanged" />
-                    <span>Documento general </span>
+                    <span>Documento general</span>
                 </label>
                 <div class="text-xs muted">
                     Si NO es general, se guarda con laboratorio_contexto_id = <b>@LabLabel(LaboratorioState.LaboratorioId)</b>.
                 </div>
-
             </div>
 
             <div class="field">
                 <label>Alcance (pegado)</label>
-                <select class="border p-1" value="@_nuevoAlcance" @onchange="OnNuevoAlcanceChanged">
+                <select class="border p-1 form-control @Filled(_nuevoAlcance)" value="@_nuevoAlcance" @onchange="OnNuevoAlcanceChanged">
                     <option value="GENERAL">GENERAL</option>
                     <option value="MARCA">MARCA</option>
                     <option value="LABORATORIO">LABORATORIO</option>
@@ -126,7 +127,7 @@
 
             <div class="field">
                 <label>Categoría (documentación)</label>
-                <select class="border p-1" value="@_nuevoCategoriaId" @onchange="OnNuevoCategoriaChanged">
+                <select class="border p-1 form-control @Filled(_nuevoCategoriaId)" value="@_nuevoCategoriaId" @onchange="OnNuevoCategoriaChanged">
                     <option value="">(selecciona)</option>
                     @foreach (var c in _categoriaOptions.OrderBy(x => x.Label))
                     {
@@ -137,7 +138,7 @@
 
             <div class="field">
                 <label>Subcategoría</label>
-                <select class="border p-1"
+                <select class="border p-1 form-control @Filled(_nuevoSubcategoriaId)"
                         @bind="_nuevoSubcategoriaId"
                         disabled="@string.IsNullOrWhiteSpace(_nuevoCategoriaId)">
                     <option value="">(selecciona)</option>
@@ -169,7 +170,7 @@
                 else if (_nuevoAlcance == "LABORATORIO")
                 {
                     <label>Laboratorio físico (target laboratorio_id)</label>
-                    <select class="border p-1" @bind="_nuevoLaboratorioFisicoId">
+                    <select class="border p-1 form-control @Filled(_nuevoLaboratorioFisicoId)" @bind="_nuevoLaboratorioFisicoId">
                         <option value="">(selecciona)</option>
                         @foreach (var l in _laboratorioFisicoOptions.OrderBy(x => x.Label))
                         {
@@ -181,7 +182,7 @@
                 else if (_nuevoAlcance == "CLASE")
                 {
                     <label>Clase / Laboratorio realizado</label>
-                    <select class="border p-1" @bind="_nuevoLaboratorioRealizadoId">
+                    <select class="border p-1 form-control @Filled(_nuevoLaboratorioRealizadoId)" @bind="_nuevoLaboratorioRealizadoId">
                         <option value="">(selecciona)</option>
                         @foreach (var lr in _labRealizadoOptions.OrderBy(x => x.Label))
                         {
@@ -192,7 +193,7 @@
                 else if (_nuevoAlcance == "ASIGNATURA")
                 {
                     <label>Asignatura</label>
-                    <select class="border p-1" @bind="_nuevoAsignaturaId">
+                    <select class="border p-1 form-control @Filled(_nuevoAsignaturaId)" @bind="_nuevoAsignaturaId">
                         <option value="">(selecciona)</option>
                         @foreach (var a in _asignaturaOptions.OrderBy(x => x.Label))
                         {
@@ -203,7 +204,7 @@
                 else if (_nuevoAlcance == "EXPERIENCIA")
                 {
                     <label>Experiencia</label>
-                    <select class="border p-1" @bind="_nuevoExperienciaId">
+                    <select class="border p-1 form-control @Filled(_nuevoExperienciaId)" @bind="_nuevoExperienciaId">
                         <option value="">(selecciona)</option>
                         @foreach (var e in _experienciaOptions.OrderBy(x => x.Label))
                         {
@@ -214,7 +215,7 @@
                 else if (_nuevoAlcance == "EQUIPO")
                 {
                     <label>Modelo de equipo</label>
-                    <select class="border p-1" @bind="_nuevoEquipoId">
+                    <select class="border p-1 form-control @Filled(_nuevoEquipoId)" @bind="_nuevoEquipoId">
                         <option value="">(selecciona)</option>
                         @foreach (var e in _equipoOptions.OrderBy(x => x.Label))
                         {
@@ -223,11 +224,10 @@
                     </select>
                     <div class="text-xs muted">Se pegará al modelo (no a la unidad física/serie).</div>
                 }
-
                 else if (_nuevoAlcance == "MATERIAL")
                 {
                     <label>Material</label>
-                    <select class="border p-1" @bind="_nuevoMaterialId">
+                    <select class="border p-1 form-control @Filled(_nuevoMaterialId)" @bind="_nuevoMaterialId">
                         <option value="">(selecciona)</option>
                         @foreach (var m in _materialOptions.OrderBy(x => x.Label))
                         {
@@ -238,7 +238,7 @@
                 else if (_nuevoAlcance == "SUSTANCIA")
                 {
                     <label>Sustancia</label>
-                    <select class="border p-1" @bind="_nuevoSustanciaId">
+                    <select class="border p-1 form-control @Filled(_nuevoSustanciaId)" @bind="_nuevoSustanciaId">
                         <option value="">(selecciona)</option>
                         @foreach (var s in _sustanciaOptions.OrderBy(x => x.Label))
                         {
@@ -249,7 +249,7 @@
                 else if (_nuevoAlcance == "CONTENEDOR")
                 {
                     <label>Contenedor</label>
-                    <select class="border p-1" @bind="_nuevoContenedorId">
+                    <select class="border p-1 form-control @Filled(_nuevoContenedorId)" @bind="_nuevoContenedorId">
                         <option value="">(selecciona)</option>
                         @foreach (var c in _contenedorOptions.OrderBy(x => x.Label))
                         {
@@ -261,12 +261,12 @@
 
             <div class="field full-span">
                 <label>Descripción (detalle)</label>
-                <textarea class="border p-1" rows="3" placeholder="Descripción detallada" @bind="_nuevoDescripcionDetalle"></textarea>
+                <textarea class="border p-1 form-control @Filled(_nuevoDescripcionDetalle)" rows="3" placeholder="Descripción detallada" @bind="_nuevoDescripcionDetalle"></textarea>
             </div>
 
             <div class="field full-span">
                 <label>Notas</label>
-                <textarea class="border p-1" rows="3" placeholder="Notas internas" @bind="_nuevoNotas"></textarea>
+                <textarea class="border p-1 form-control @Filled(_nuevoNotas)" rows="3" placeholder="Notas internas" @bind="_nuevoNotas"></textarea>
             </div>
 
             <!-- Documento (URL o archivo) -->
@@ -290,7 +290,7 @@
 
                 @if (_nuevoDocModo == "url")
                 {
-                    <input class="border p-1" placeholder="URL del documento" @bind="_nuevoUrl" />
+                    <input class="border p-1 form-control @Filled(_nuevoUrl)" placeholder="URL del documento" @bind="_nuevoUrl" />
                     @if (!string.IsNullOrWhiteSpace(_nuevoUrl))
                     {
                         <div class="text-xs muted">Se guardará URL: <code>@_nuevoUrl</code></div>
@@ -337,7 +337,7 @@
 
                 @if (_nuevoImagenModo == "url")
                 {
-                    <input class="border p-1" placeholder="Imagen URL (opcional)" @bind="_nuevoImagenUrl" />
+                    <input class="border p-1 form-control @Filled(_nuevoImagenUrl)" placeholder="Imagen URL (opcional)" @bind="_nuevoImagenUrl" />
                 }
                 else
                 {
@@ -386,8 +386,9 @@
             <p class="helper">Selecciona una subcategoría para ver documentos (o usa “Ver todos”).</p>
         </div>
 
-        <div class="category-controls">
-            <label class="toggle">
+        <!-- ✅ FILTROS: en móvil serán una sola fila deslizable -->
+        <div class="category-controls controls-strip" aria-label="Filtros de listado">
+            <label class="toggle @(_verTodos ? "is-filled" : "")">
                 <input type="checkbox"
                        checked="@_verTodos"
                        disabled="@isLoadingDocs"
@@ -395,7 +396,7 @@
                 <span>Ver todos</span>
             </label>
 
-            <select class="category-select"
+            <select class="category-select @((!_verTodos && !string.IsNullOrWhiteSpace(SubcategoriaId)) ? "is-filled" : "")"
                     disabled="@isLoadingDocs"
                     @onchange="OnSubcategoriaChanged"
                     value="@(_verTodos ? "" : SubcategoriaId)">
@@ -411,7 +412,10 @@
                 }
             </select>
 
-            <select class="category-select" disabled="@isLoadingDocs" value="@(_filtroAlcance ?? "")" @onchange="OnFiltroAlcanceChanged">
+            <select class="category-select @(string.IsNullOrWhiteSpace(_filtroAlcance) ? "" : "is-filled")"
+                    disabled="@isLoadingDocs"
+                    value="@(_filtroAlcance ?? "")"
+                    @onchange="OnFiltroAlcanceChanged">
                 <option value="">Todos los alcances</option>
                 <option value="GENERAL">GENERAL</option>
                 <option value="MARCA">MARCA</option>
@@ -425,14 +429,20 @@
                 <option value="CONTENEDOR">CONTENEDOR</option>
             </select>
 
-            <select class="category-select" disabled="@isLoadingDocs" value="@(_filtroProcedencia ?? "")" @onchange="OnFiltroProcedenciaChanged">
+            <select class="category-select @(string.IsNullOrWhiteSpace(_filtroProcedencia) ? "" : "is-filled")"
+                    disabled="@isLoadingDocs"
+                    value="@(_filtroProcedencia ?? "")"
+                    @onchange="OnFiltroProcedenciaChanged">
                 <option value="">Todas las procedencias</option>
                 <option value="INTERNO LABORATORIO">INTERNO LABORATORIO</option>
                 <option value="INSTITUCION INTERNACIONAL">INSTITUCION INTERNACIONAL</option>
                 <option value="UPSA">UPSA</option>
             </select>
 
-            <select class="category-select" disabled="@isLoadingDocs" value="@(_filtroMarcaId ?? "")" @onchange="OnFiltroMarcaChanged">
+            <select class="category-select @(string.IsNullOrWhiteSpace(_filtroMarcaId) ? "" : "is-filled")"
+                    disabled="@isLoadingDocs"
+                    value="@(_filtroMarcaId ?? "")"
+                    @onchange="OnFiltroMarcaChanged">
                 <option value="">Todas las marcas</option>
                 <option value="@MarcaNullSentinel">(Sin marca)</option>
                 @foreach (var m in _marcaOptions.OrderBy(x => x.Label))
@@ -441,12 +451,12 @@
                 }
             </select>
 
-            <label class="toggle">
+            <label class="toggle @(_soloGlobal ? "is-filled" : "")">
                 <input type="checkbox" checked="@_soloGlobal" disabled="@isLoadingDocs" @onchange="OnSoloGlobalChanged" />
                 <span>Solo globales</span>
             </label>
 
-            <label class="toggle">
+            <label class="toggle @(_soloContextoLab ? "is-filled" : "")">
                 <input type="checkbox" checked="@_soloContextoLab" disabled="@isLoadingDocs" @onchange="OnSoloContextoLabChanged" />
                 <span>Solo de este laboratorio</span>
             </label>
@@ -464,7 +474,8 @@
     }
     else
     {
-        <div class="category-grid">
+        <!-- ✅ CATEGORÍAS: en móvil se vuelven tarjetas en fila deslizable -->
+        <div class="category-grid category-strip">
             @foreach (var categoria in categoriasGuia.OrderBy(x => x.Nombre))
             {
                 <div class="category-card">
@@ -484,6 +495,7 @@
         </div>
     }
 </section>
+
 <!-- =========================================================
      3) LISTADO (CARDS CON HIPERVÍNCULOS)
 ========================================================= -->
@@ -513,7 +525,7 @@
             }
         </div>
 
-        <input class="border p-1 search-input-invent"
+        <input class="border p-1 search-input-invent form-control @(string.IsNullOrWhiteSpace(_searchText) ? "" : "is-filled")"
                placeholder="Buscar (título, notas, marca, categoría, alcance, pegado...)"
                @bind="_searchText"
                @bind:event="oninput"
@@ -806,8 +818,6 @@
         loadDocsError = null;
         subcategoriaNombre = null;
 
-        // ✅ NO borres categoriasGuia/documentos aquí (eso es lo que provoca el salto)
-
         _categoriaOptions.Clear();
         _subcategoriasByCategoria.Clear();
 
@@ -844,7 +854,6 @@
 
     private async Task LoadCategoriasGuiaAsync()
     {
-        // ✅ Buffer para no colapsar la guía mientras consulta
         var newCategorias = new List<CategoriaRow>();
 
         await using var conn = await DataSource.OpenConnectionAsync();
@@ -878,18 +887,16 @@
                 cat.Subcategorias.Add(new SubcategoriaRow(r.GetString(2), r.GetString(3)));
         }
 
-        // ✅ Swap al final
         categoriasGuia.Clear();
         categoriasGuia.AddRange(newCategorias);
     }
 
     private static readonly string[] CategoriaEquipoIds = new[]
     {
-    "equipo-medicion",
-    "equipo-operacion",
-    "equipo-mixto"
-};
-
+        "equipo-medicion",
+        "equipo-operacion",
+        "equipo-mixto"
+    };
 
     private async Task LoadSubcategoriaNombreAsync(string subId)
     {
@@ -902,7 +909,6 @@
 
     private async Task LoadLookupsAsync()
     {
-        // ✅ Temporales para evitar “vacío” intermedio y salto de scroll
         var newCategoriaOptions = new List<SelectOption>();
         var newSubByCat = new Dictionary<string, List<SelectOption>>(StringComparer.OrdinalIgnoreCase);
 
@@ -1026,20 +1032,20 @@
         }
 
         const string eqSql = @"
-    SELECT me.modelo_id,
-           COALESCE(NULLIF(me.nombre_modelo,''), me.modelo_id) AS nombre_modelo,
-           COALESCE(ma.nombre,'') AS marca_nombre,
-           COALESCE(stats.eq_count, 0) AS instancias_en_lab
-    FROM modelos_equipo me
-    LEFT JOIN marcas ma ON ma.marca_id = me.marca_id
-    LEFT JOIN LATERAL (
-        SELECT COUNT(*) AS eq_count
-        FROM equipos e
-        WHERE e.modelo_id = me.modelo_id
-          AND e.laboratorio_id = @lab
-    ) stats ON true
-    WHERE me.categoria_id = ANY(@cats)
-    ORDER BY nombre_modelo, me.modelo_id;";
+            SELECT me.modelo_id,
+                   COALESCE(NULLIF(me.nombre_modelo,''), me.modelo_id) AS nombre_modelo,
+                   COALESCE(ma.nombre,'') AS marca_nombre,
+                   COALESCE(stats.eq_count, 0) AS instancias_en_lab
+            FROM modelos_equipo me
+            LEFT JOIN marcas ma ON ma.marca_id = me.marca_id
+            LEFT JOIN LATERAL (
+                SELECT COUNT(*) AS eq_count
+                FROM equipos e
+                WHERE e.modelo_id = me.modelo_id
+                  AND e.laboratorio_id = @lab
+            ) stats ON true
+            WHERE me.categoria_id = ANY(@cats)
+            ORDER BY nombre_modelo, me.modelo_id;";
         await using (var cmd = new NpgsqlCommand(eqSql, conn))
         {
             cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
@@ -1060,7 +1066,6 @@
                 newEquipoOptions.Add(new SelectOption(id, label));
             }
         }
-
 
         const string matSql = @"
             SELECT material_id,
@@ -1113,7 +1118,6 @@
             }
         }
 
-        // ✅ Reemplazo "de una"
         _categoriaOptions.Clear();
         _categoriaOptions.AddRange(newCategoriaOptions);
 
@@ -1162,7 +1166,6 @@
         if (!PuedeListar)
             return;
 
-        // ✅ Buffer: NO toques "documentos" hasta tener todo listo
         var newDocs = new List<DocumentoRow>();
 
         try
@@ -1195,7 +1198,7 @@
               COALESCE(NULLIF(lr.nombre,''), d.laboratorio_realizado_id) AS clase_nombre,
               COALESCE(NULLIF(a.nombre,''), d.asignatura_id) AS asignatura_nombre,
               COALESCE(NULLIF(ec.nombre,''), d.experiencia_id) AS experiencia_nombre,
-             COALESCE(NULLIF(me.nombre_modelo,''), d.modelo_equipo_id) AS equipo_nombre,
+              COALESCE(NULLIF(me.nombre_modelo,''), d.modelo_equipo_id) AS equipo_nombre,
               COALESCE(NULLIF(mat.nombre,''), d.material_id) AS material_nombre,
               COALESCE(NULLIF(mat.tipo,''), '') AS material_tipo,
               COALESCE(NULLIF(s.nombre_comercial,''), NULLIF(s.nombre_quimico,''), d.sustancia_id) AS sustancia_nombre,
@@ -1309,13 +1312,11 @@
                     });
             }
 
-            // ✅ Swap al final: 1 solo cambio de DOM (evita salto por colapso)
             documentos.Clear();
             documentos.AddRange(newDocs);
         }
         catch (Exception ex)
         {
-            // ✅ Si falla, NO borres lo que ya se estaba viendo (evita salto + deja UI usable)
             loadDocsError = ex.Message;
         }
     }
@@ -1507,9 +1508,7 @@
                         _nuevoMsg = "Selecciona el modelo de equipo.";
                         return;
                     }
-                    modeloEquipoId = _nuevoEquipoId; // ✅ ahora es modelo_id
-                    break;
-
+                    modeloEquipoId = _nuevoEquipoId;
                     break;
 
                 case "MATERIAL":
@@ -1581,7 +1580,7 @@
                  laboratorio_id, laboratorio_realizado_id,
                  asignatura_id, experiencia_id,
                  modelo_equipo_id, material_id, sustancia_id,
-                cont_id
+                 cont_id)
                 VALUES
                 (@id, @titulo,
                  @cat, @subcat,
@@ -1704,7 +1703,6 @@
         Nav.NavigateTo($"/documentaciones/categoria/{value}#docs-list");
     }
 
-
     private async Task OnVerTodosToggle(ChangeEventArgs args)
     {
         var isChecked =
@@ -1716,15 +1714,11 @@
         if (_verTodos)
             ResetListadoFiltersForVerTodos();
 
-        // ✅ Carga inmediata (arregla el caso “recién cargó la página”)
         await LoadDocsAsync();
         await InvokeAsync(StateHasChanged);
 
-        // ✅ URL consistente (y sin # para evitar brinco)
         Nav.NavigateTo(_verTodos ? "/documentaciones/todos" : "/documentaciones", replace: true);
     }
-
-
 
     private async Task OnFiltroAlcanceChanged(ChangeEventArgs e)
     {
@@ -1734,7 +1728,6 @@
         JumpToListado();
     }
 
-
     private async Task OnFiltroProcedenciaChanged(ChangeEventArgs e)
     {
         _filtroProcedencia = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? null : e.Value?.ToString();
@@ -1742,7 +1735,6 @@
         await InvokeAsync(StateHasChanged);
         JumpToListado();
     }
-
 
     private async Task OnFiltroMarcaChanged(ChangeEventArgs e)
     {
@@ -1752,16 +1744,14 @@
         JumpToListado();
     }
 
-
     private async Task OnSoloGlobalChanged(ChangeEventArgs e)
-{
-    _soloGlobal = e.Value is bool b && b;
-    if (_soloGlobal) _soloContextoLab = false;
-    await LoadDocsAsync();
-    await InvokeAsync(StateHasChanged);
-    JumpToListado();
-}
-
+    {
+        _soloGlobal = e.Value is bool b && b;
+        if (_soloGlobal) _soloContextoLab = false;
+        await LoadDocsAsync();
+        await InvokeAsync(StateHasChanged);
+        JumpToListado();
+    }
 
     private async Task OnSoloContextoLabChanged(ChangeEventArgs e)
     {
@@ -1771,7 +1761,6 @@
         await InvokeAsync(StateHasChanged);
         JumpToListado();
     }
-
 
     private async Task ClearExtraFilters()
     {
@@ -1786,17 +1775,14 @@
         JumpToListado();
     }
 
-
     private void JumpToListado()
     {
-        // Quita hash actual y fuerza el hash del listado, sin ensuciar historial
         var baseUri = Nav.Uri.Split('#')[0];
         var target = $"{baseUri}#docs-list";
 
         if (!string.Equals(Nav.Uri, target, StringComparison.OrdinalIgnoreCase))
             Nav.NavigateTo(target, replace: true);
     }
-
 
     // ===================== Form handlers =====================
     private void OnNuevoCategoriaChanged(ChangeEventArgs args)
@@ -2038,6 +2024,9 @@
         if (t.Length <= max) return t;
         return t.Substring(0, max - 1) + "…";
     }
+
+    // ✅ Filled state (azulito cuando tiene valor)
+    private static string Filled(string? value) => string.IsNullOrWhiteSpace(value) ? "" : "is-filled";
 
     public void Dispose()
     {
@@ -2341,7 +2330,7 @@
         display: flex;
         gap: .6rem;
         align-items: center;
-        flex-wrap: wrap;
+        flex-wrap: wrap; /* desktop normal */
     }
 
     .category-select {
@@ -2395,6 +2384,11 @@
     }
 
         .category-link:hover {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+
+        .category-link.active {
             background: #dbeafe;
             color: #1d4ed8;
         }
@@ -2522,10 +2516,6 @@
             margin-right: .35rem;
         }
 
-    .category-link.active {
-        background: #dbeafe;
-        color: #1d4ed8;
-    }
     .doc-notes {
         margin-top: .25rem;
         color: #334155;
@@ -2557,4 +2547,83 @@
         color: #0f172a;
         white-space: nowrap;
     }
+
+    /* ===========================
+           ✅ Filled state (azulito)
+           =========================== */
+    .form-control.is-filled,
+    .category-select.is-filled,
+    .toggle.is-filled {
+        background: #dbeafe !important;
+        border-color: #93c5fd !important;
+    }
+
+        .form-control.is-filled:focus,
+        .category-select.is-filled:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(147, 197, 253, .55);
+        }
+
+    /* ===========================
+       ✅ MÓVIL: filtros en una sola fila deslizable (sin perder checks / selects)
+       ✅ MÓVIL: categorías como tarjetas en carrusel horizontal
+       =========================== */
+    @@media (max-width: 900px) {
+        /* ====== FILTROS: barra horizontal “bonita” ====== */
+        .category-controls.controls-strip {
+            flex-wrap: nowrap; /* una sola fila */
+            overflow-x: auto; /* scroll horizontal */
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            gap: .6rem;
+            padding: .45rem .45rem .60rem;
+            margin-top: .35rem;
+            border: 1px solid #e5e7eb;
+            background: #f8fafc;
+            border-radius: 14px;
+            scroll-snap-type: x proximity; /* snap suave, no brusco */
+            scrollbar-width: none; /* Firefox */
+            -ms-overflow-style: none; /* IE/Edge viejo */
+        }
+
+            .category-controls.controls-strip::-webkit-scrollbar {
+                display: none; /* Chrome/Safari */
+            }
+
+            .category-controls.controls-strip > * {
+                flex: 0 0 auto;
+                scroll-snap-align: start;
+            }
+            /* evita que los selects se aplasten demasiado */
+            .category-controls.controls-strip .category-select {
+                min-width: 240px;
+            }
+        /* ====== CATEGORÍAS: carrusel horizontal de cards ====== */
+        .category-grid.category-strip {
+            display: flex;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            gap: 1rem;
+            padding: .25rem .45rem .75rem;
+            margin-top: 1rem;
+            scroll-snap-type: x mandatory;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+            .category-grid.category-strip::-webkit-scrollbar {
+                display: none;
+            }
+
+            .category-grid.category-strip .category-card {
+                flex: 0 0 auto;
+                /* ancho tipo “tarjeta”, deja ver un poco la siguiente */
+                width: 84vw;
+                max-width: 520px;
+                scroll-snap-align: start;
+            }
+    }
+
 </style>

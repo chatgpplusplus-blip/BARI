@@ -42,18 +42,22 @@
         <div class="form-grid">
             <div class="field">
                 <label>ID instalación (opcional)</label>
-                <input class="border p-1" placeholder="inst_xxx (opcional)" @bind="_nuevoId" />
+                <input class="border p-1 form-control @Filled(_nuevoId)"
+                       placeholder="inst_xxx (opcional)"
+                       @bind="_nuevoId" />
             </div>
 
             <div class="field">
                 <label>Nombre</label>
-                <input class="border p-1" placeholder="Ej: Campana extractora principal" @bind="_nuevoNombre" />
+                <input class="border p-1 form-control @Filled(_nuevoNombre)"
+                       placeholder="Ej: Campana extractora principal"
+                       @bind="_nuevoNombre" />
             </div>
 
             <!-- ✅ Estándar como materiales: Categoría -> Subcategoría filtrada -->
             <div class="field">
                 <label>Categoría</label>
-                <select class="border p-1"
+                <select class="border p-1 form-control @Filled(_nuevoCategoriaId)"
                         value="@_nuevoCategoriaId"
                         @onchange="OnCategoriaInstChanged">
                     <option value="">(selecciona)</option>
@@ -66,7 +70,7 @@
 
             <div class="field">
                 <label>Subcategoría</label>
-                <select class="border p-1"
+                <select class="border p-1 form-control @Filled(_nuevoSubcategoriaId)"
                         @bind="_nuevoSubcategoriaId"
                         disabled="@string.IsNullOrWhiteSpace(_nuevoCategoriaId)">
                     <option value="">(selecciona)</option>
@@ -79,7 +83,7 @@
 
             <div class="field">
                 <label>Estado</label>
-                <select class="border p-1" @bind="_nuevoEstadoId">
+                <select class="border p-1 form-control @Filled(_nuevoEstadoId)" @bind="_nuevoEstadoId">
                     <option value="">(sin estado)</option>
                     @foreach (var e in _estadoOptions)
                     {
@@ -90,22 +94,33 @@
 
             <div class="field">
                 <label>Proveedor de servicio</label>
-                <input class="border p-1" placeholder="Ej: Empresa de gas" @bind="_nuevoProveedorServicio" />
+                <input class="border p-1 form-control @Filled(_nuevoProveedorServicio)"
+                       placeholder="Ej: Empresa de gas"
+                       @bind="_nuevoProveedorServicio" />
             </div>
 
             <div class="field">
                 <label>Fecha instalación</label>
-                <input class="border p-1" type="date" @bind-value="_nuevoFechaInstalacion" @bind-value:format="yyyy-MM-dd" />
+                <input class="border p-1 form-control @FilledDate(_nuevoFechaInstalacion)"
+                       type="date"
+                       @bind-value="_nuevoFechaInstalacion"
+                       @bind-value:format="yyyy-MM-dd" />
             </div>
 
             <div class="field">
                 <label>Última revisión</label>
-                <input class="border p-1" type="date" @bind-value="_nuevoFechaUltimaRevision" @bind-value:format="yyyy-MM-dd" />
+                <input class="border p-1 form-control @FilledDate(_nuevoFechaUltimaRevision)"
+                       type="date"
+                       @bind-value="_nuevoFechaUltimaRevision"
+                       @bind-value:format="yyyy-MM-dd" />
             </div>
 
             <div class="field">
                 <label>Próxima revisión</label>
-                <input class="border p-1" type="date" @bind-value="_nuevoFechaProximaRevision" @bind-value:format="yyyy-MM-dd" />
+                <input class="border p-1 form-control @FilledDate(_nuevoFechaProximaRevision)"
+                       type="date"
+                       @bind-value="_nuevoFechaProximaRevision"
+                       @bind-value:format="yyyy-MM-dd" />
             </div>
 
             <!-- Área + Visualizador -->
@@ -113,7 +128,7 @@
                 <label>Área (opcional, recomendado)</label>
 
                 <div class="selector-split">
-                    <select class="border p-1"
+                    <select class="border p-1 form-control @Filled(_nuevoAreaId)"
                             value="@_nuevoAreaId"
                             @onchange="OnAreaChanged">
                         <option value="">(sin área)</option>
@@ -127,7 +142,7 @@
                         <div class="visual-toolbar">
                             <label class="text-xs muted">Mapa de áreas</label>
 
-                            <select class="border p-1 text-xs" @bind="_currentPlantaId">
+                            <select class="border p-1 text-xs form-control @Filled(_currentPlantaId)" @bind="_currentPlantaId">
                                 <option value="">Todas</option>
                                 @foreach (var planta in _plantasLookup)
                                 {
@@ -216,7 +231,7 @@
             <!-- Canvas -->
             <div class="field">
                 <label>Canvas</label>
-                <select class="border p-1" @bind="_nuevoCanvasId">
+                <select class="border p-1 form-control @Filled(_nuevoCanvasId)" @bind="_nuevoCanvasId">
                     <option value="">(sin canvas)</option>
                     @foreach (var c in _canvasOptions)
                     {
@@ -233,27 +248,45 @@
             <!-- ✅ Dimensiones del bloque (requeridas) -->
             <div class="field">
                 <label>Ancho del bloque (m)</label>
-                <input class="border p-1" type="number" step="any" placeholder="Ej: 1.20" @bind="_nuevoBloqueAnchoM" />
+                <input class="border p-1 form-control @Filled(_nuevoBloqueAnchoM)"
+                       type="number"
+                       step="any"
+                       placeholder="Ej: 1.20"
+                       @bind="_nuevoBloqueAnchoM" />
             </div>
 
             <div class="field">
                 <label>Largo del bloque (m)</label>
-                <input class="border p-1" type="number" step="any" placeholder="Ej: 0.60" @bind="_nuevoBloqueLargoM" />
+                <input class="border p-1 form-control @Filled(_nuevoBloqueLargoM)"
+                       type="number"
+                       step="any"
+                       placeholder="Ej: 0.60"
+                       @bind="_nuevoBloqueLargoM" />
             </div>
 
             <div class="field">
                 <label>Altura (m) (opcional)</label>
-                <input class="border p-1" type="number" step="any" placeholder="Ej: 2.10" @bind="_nuevoBloqueAlturaM" />
+                <input class="border p-1 form-control @Filled(_nuevoBloqueAlturaM)"
+                       type="number"
+                       step="any"
+                       placeholder="Ej: 2.10"
+                       @bind="_nuevoBloqueAlturaM" />
             </div>
 
             <div class="field full-span">
                 <label>Descripción</label>
-                <textarea class="border p-1" rows="3" placeholder="Descripción" @bind="_nuevoDescripcion"></textarea>
+                <textarea class="border p-1 form-control @Filled(_nuevoDescripcion)"
+                          rows="3"
+                          placeholder="Descripción"
+                          @bind="_nuevoDescripcion"></textarea>
             </div>
 
             <div class="field full-span">
                 <label>Observaciones</label>
-                <textarea class="border p-1" rows="3" placeholder="Observaciones" @bind="_nuevoObservaciones"></textarea>
+                <textarea class="border p-1 form-control @Filled(_nuevoObservaciones)"
+                          rows="3"
+                          placeholder="Observaciones"
+                          @bind="_nuevoObservaciones"></textarea>
             </div>
 
             <div class="upload-card full-span">
@@ -276,7 +309,9 @@
 
                 @if (_nuevoImagenModo == "url")
                 {
-                    <input class="border p-1" placeholder="Imagen URL (o ruta relativa)" @bind="_nuevoImagenUrl" />
+                    <input class="border p-1 form-control @Filled(_nuevoImagenUrl)"
+                           placeholder="Imagen URL (o ruta relativa)"
+                           @bind="_nuevoImagenUrl" />
                 }
                 else
                 {
@@ -313,14 +348,14 @@
         </div>
 
         <div class="category-controls">
-            <label class="toggle">
+            <label class="toggle @(_verTodos ? "is-filled" : "")">
                 <input type="checkbox"
                        checked="@_verTodos"
                        @onchange="OnVerTodosToggle" />
                 <span>Ver todas las instalaciones</span>
             </label>
 
-            <select class="category-select"
+            <select class="category-select form-control @((!_verTodos && !string.IsNullOrWhiteSpace(SubcategoriaId)) ? "is-filled" : "")"
                     @onchange="OnSubcategoriaChanged"
                     value="@(_verTodos ? "" : SubcategoriaId)">
                 <option value="">Todas las subcategorías</option>
@@ -391,7 +426,7 @@
             }
         </div>
 
-        <input class="border p-1 search-input-invent"
+        <input class="border p-1 search-input-invent form-control @Filled(_searchText)"
                placeholder="Buscar (nombre, categoría, subcategoría, área, estado, proveedor, etc.)..."
                @bind="_searchText"
                @bind:event="oninput"
@@ -1524,6 +1559,10 @@
         return t.Substring(0, max - 1) + "…";
     }
 
+    // ✅ Filled state (mismo patrón que Documentaciones)
+    private static string Filled(string? value) => string.IsNullOrWhiteSpace(value) ? "" : "is-filled";
+    private static string FilledDate(DateTime? value) => value.HasValue ? "is-filled" : "";
+
     public void Dispose()
     {
         LaboratorioState.OnChange -= HandleLaboratorioChanged;
@@ -1689,7 +1728,7 @@
 
     private sealed record PointItem(decimal X, decimal Y);
 }
-
+```html
 <style>
     .page-card {
         border: 1px solid #e5e7eb;
@@ -2085,4 +2124,23 @@
         width: 44px;
         height: 44px;
     }
+
+    /* ==========================================================
+           ✅ FILLED STATE (igual que Documentaciones)
+           - cuando un input/select/textarea tiene class="is-filled"
+           - y cuando un toggle tiene class="is-filled"
+           ========================================================== */
+    .form-control.is-filled,
+    .category-select.is-filled,
+    .toggle.is-filled {
+        background: #dbeafe !important;
+        border-color: #93c5fd !important;
+    }
+
+        .form-control.is-filled:focus,
+        .category-select.is-filled:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(147, 197, 253, .55);
+        }
 </style>
+```

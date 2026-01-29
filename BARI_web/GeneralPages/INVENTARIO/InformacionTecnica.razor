@@ -1,12 +1,11 @@
-﻿
-@page "/informacion-tecnica"
+﻿@page "/informacion-tecnica"
 @using Npgsql
 @using System.Globalization
+@using Microsoft.AspNetCore.Components.Forms
 @inject NpgsqlDataSource DataSource
 @inject LaboratorioState LaboratorioState
-@implements IDisposable
-@using Microsoft.AspNetCore.Components.Forms
 @inject IWebHostEnvironment HostEnvironment
+@implements IDisposable
 
 <PageTitle>Información técnica</PageTitle>
 
@@ -40,11 +39,11 @@
         <div class="form-grid" style="margin-top:.75rem;">
             <div class="field">
                 <label>ID (opcional)</label>
-                <input class="border p-1" placeholder="marca_xxx" @bind="_newMarcaId" />
+                <input class="border p-1 val-hint" placeholder="marca_xxx" @bind="_newMarcaId" />
             </div>
             <div class="field">
                 <label>Nombre</label>
-                <input class="border p-1" placeholder="Nombre de la marca" @bind="_newMarcaNombre" />
+                <input class="border p-1 val-hint" placeholder="Nombre de la marca" @bind="_newMarcaNombre" />
             </div>
 
             <div class="field full-span">
@@ -73,7 +72,9 @@
 
                     @if (_newMarcaImagenModo == "url")
                     {
-                        <input class="border p-1" placeholder="Logo URL (o ruta relativa /uploads/...)" @bind="_newMarcaImagenUrl" />
+                        <input class="border p-1 val-hint"
+                               placeholder="Logo URL (o ruta relativa /uploads/...)"
+                               @bind="_newMarcaImagenUrl" />
                     }
                     else
                     {
@@ -97,7 +98,6 @@
                     }
                 </div>
             </div>
-
 
             <div class="form-actions full-span">
                 <button class="btn primary" type="button" @onclick="AddMarcaAsync" disabled="@_isSaving">Guardar</button>
@@ -131,7 +131,7 @@
                         @if (!editing)
                         {
                             <td>@m.Nombre</td>
-                            
+
                             <td>
                                 @if (!string.IsNullOrWhiteSpace(m.ImagenUrl))
                                 {
@@ -154,12 +154,10 @@
                         {
                             var ed = _editMarca[m.MarcaId];
 
-                            
-                            <!-- NOMBRE (edit) -->
                             <td>
-                                <input class="border p-1" @bind="ed.Nombre" />
+                                <input class="border p-1 val-hint" @bind="ed.Nombre" />
                             </td>
-                            <!-- LOGO (edit) -->
+
                             <td>
                                 @if (!string.IsNullOrWhiteSpace(ed.ImagenUrl))
                                 {
@@ -192,7 +190,8 @@
 
                                 @if (ed.ImagenModo == "url")
                                 {
-                                    <input class="border p-1" placeholder="Logo URL /uploads/..."
+                                    <input class="border p-1 val-hint"
+                                           placeholder="Logo URL /uploads/..."
                                            @bind="ed.ImagenUrl" />
                                 }
                                 else
@@ -217,7 +216,6 @@
                                 </div>
                             </td>
 
-                            <!-- ACCIONES (edit) -->
                             <td>
                                 <button class="btn primary" type="button" @onclick="() => SaveMarcaAsync(m.MarcaId)" disabled="@_isSaving">Guardar</button>
                                 <button class="btn" type="button" @onclick="() => CancelEditMarca(m.MarcaId)" disabled="@_isSaving">Cancelar</button>
@@ -246,15 +244,15 @@
         <div class="form-grid" style="margin-top:.75rem;">
             <div class="field">
                 <label>ID</label>
-                <input class="border p-1" placeholder="ml, g, L, ..." @bind="_newUnidadId" />
+                <input class="border p-1 val-hint" placeholder="ml, g, L, ..." @bind="_newUnidadId" />
             </div>
             <div class="field">
                 <label>Nombre</label>
-                <input class="border p-1" placeholder="Mililitro" @bind="_newUnidadNombre" />
+                <input class="border p-1 val-hint" placeholder="Mililitro" @bind="_newUnidadNombre" />
             </div>
             <div class="field">
                 <label>Símbolo</label>
-                <input class="border p-1" placeholder="mL" @bind="_newUnidadSimbolo" />
+                <input class="border p-1 val-hint" placeholder="mL" @bind="_newUnidadSimbolo" />
             </div>
 
             <div class="form-actions full-span">
@@ -296,8 +294,8 @@
                         }
                         else
                         {
-                            <td><input class="border p-1" @bind="_editUnidad[u.UnidadId].Nombre" /></td>
-                            <td><input class="border p-1" @bind="_editUnidad[u.UnidadId].Simbolo" /></td>
+                            <td><input class="border p-1 val-hint" @bind="_editUnidad[u.UnidadId].Nombre" /></td>
+                            <td><input class="border p-1 val-hint" @bind="_editUnidad[u.UnidadId].Simbolo" /></td>
                             <td>
                                 <button class="btn primary" type="button" @onclick="() => SaveUnidadAsync(u.UnidadId)" disabled="@_isSaving">Guardar</button>
                                 <button class="btn" type="button" @onclick="() => CancelEditUnidad(u.UnidadId)" disabled="@_isSaving">Cancelar</button>
@@ -325,11 +323,11 @@
         <div class="form-grid" style="margin-top:.75rem;">
             <div class="field">
                 <label>ID</label>
-                <input class="border p-1" placeholder="estado_xxx" @bind="_newEstadoId" />
+                <input class="border p-1 val-hint" placeholder="estado_xxx" @bind="_newEstadoId" />
             </div>
             <div class="field">
                 <label>Nombre</label>
-                <input class="border p-1" placeholder="Operativo / Fuera de servicio..." @bind="_newEstadoNombre" />
+                <input class="border p-1 val-hint" placeholder="Operativo / Fuera de servicio..." @bind="_newEstadoNombre" />
             </div>
 
             <div class="form-actions full-span">
@@ -369,7 +367,7 @@
                         }
                         else
                         {
-                            <td><input class="border p-1" @bind="_editEstado[e.EstadoId].Nombre" /></td>
+                            <td><input class="border p-1 val-hint" @bind="_editEstado[e.EstadoId].Nombre" /></td>
                             <td>
                                 <button class="btn primary" type="button" @onclick="() => SaveEstadoAsync(e.EstadoId)" disabled="@_isSaving">Guardar</button>
                                 <button class="btn" type="button" @onclick="() => CancelEditEstado(e.EstadoId)" disabled="@_isSaving">Cancelar</button>
@@ -397,12 +395,12 @@
         <div class="form-grid" style="margin-top:.75rem;">
             <div class="field">
                 <label>ID (opcional)</label>
-                <input class="border p-1" placeholder="(si vacío se auto-asigna)" @bind="_newLabId" />
+                <input class="border p-1 val-hint" placeholder="(si vacío se auto-asigna)" @bind="_newLabId" />
                 <div class="text-xs muted">Si lo dejas vacío, se usa MAX(laboratorio_id)+1.</div>
             </div>
             <div class="field">
                 <label>Nombre</label>
-                <input class="border p-1" placeholder="Nombre del laboratorio" @bind="_newLabNombre" />
+                <input class="border p-1 val-hint" placeholder="Nombre del laboratorio" @bind="_newLabNombre" />
             </div>
             <div class="field">
                 <label>¿Tiene GHS?</label>
@@ -452,7 +450,7 @@
                         else
                         {
                             <td>
-                                <input class="border p-1" @bind="_editLab[l.LaboratorioId].Nombre" />
+                                <input class="border p-1 val-hint" @bind="_editLab[l.LaboratorioId].Nombre" />
                             </td>
                             <td>
                                 <label class="check">
@@ -497,19 +495,19 @@
         <div class="form-grid" style="margin-top:.75rem;">
             <div class="field">
                 <label>ID (opcional)</label>
-                <input class="border p-1" placeholder="asig_xxx" @bind="_newAsigId" />
+                <input class="border p-1 val-hint" placeholder="asig_xxx" @bind="_newAsigId" />
             </div>
             <div class="field">
                 <label>Código clase (UNIQUE)</label>
-                <input class="border p-1" placeholder="QUIM-101" @bind="_newAsigCodigo" />
+                <input class="border p-1 val-hint" placeholder="QUIM-101" @bind="_newAsigCodigo" />
             </div>
             <div class="field">
                 <label>Nombre</label>
-                <input class="border p-1" placeholder="Química General" @bind="_newAsigNombre" />
+                <input class="border p-1 val-hint" placeholder="Química General" @bind="_newAsigNombre" />
             </div>
             <div class="field">
                 <label>Laboratorio (opcional)</label>
-                <select class="border p-1" value="@_newAsigLabId" @onchange="OnNewAsigLabChanged">
+                <select class="border p-1 val-select" value="@(_newAsigLabId ?? "")" @onchange="OnNewAsigLabChanged">
                     <option value="">(global / sin lab)</option>
                     @foreach (var l in _laboratorios.OrderBy(x => x.Nombre))
                     {
@@ -519,11 +517,11 @@
             </div>
             <div class="field full-span">
                 <label>Descripción</label>
-                <textarea class="border p-1" rows="2" @bind="_newAsigDescripcion"></textarea>
+                <textarea class="border p-1 val-hint" rows="2" @bind="_newAsigDescripcion" placeholder="(opcional)"></textarea>
             </div>
             <div class="field full-span">
                 <label>Descripción detalle</label>
-                <textarea class="border p-1" rows="3" @bind="_newAsigDescripcionDetalle"></textarea>
+                <textarea class="border p-1 val-hint" rows="3" @bind="_newAsigDescripcionDetalle" placeholder="(opcional)"></textarea>
             </div>
 
             <div class="form-actions full-span">
@@ -574,19 +572,19 @@
                         else
                         {
                             <td>
-                                <input class="border p-1" @bind="_editAsig[a.AsignaturaId].Nombre" />
+                                <input class="border p-1 val-hint" @bind="_editAsig[a.AsignaturaId].Nombre" />
                                 <div style="margin-top:.35rem;">
-                                    <textarea class="border p-1" rows="2" @bind="_editAsig[a.AsignaturaId].Descripcion"></textarea>
+                                    <textarea class="border p-1 val-hint" rows="2" @bind="_editAsig[a.AsignaturaId].Descripcion" placeholder="(opcional)"></textarea>
                                 </div>
                                 <div style="margin-top:.35rem;">
-                                    <textarea class="border p-1" rows="2" @bind="_editAsig[a.AsignaturaId].DescripcionDetalle"></textarea>
+                                    <textarea class="border p-1 val-hint" rows="2" @bind="_editAsig[a.AsignaturaId].DescripcionDetalle" placeholder="(opcional)"></textarea>
                                 </div>
                             </td>
                             <td>
-                                <input class="border p-1" @bind="_editAsig[a.AsignaturaId].CodigoClase" />
+                                <input class="border p-1 val-hint" @bind="_editAsig[a.AsignaturaId].CodigoClase" />
                             </td>
                             <td>
-                                <select class="border p-1" value="@_editAsig[a.AsignaturaId].LaboratorioIdText" @onchange="(e) => OnEditAsigLabChanged(a.AsignaturaId, e)">
+                                <select class="border p-1 val-select" value="@(_editAsig[a.AsignaturaId].LaboratorioIdText ?? "")" @onchange="(e) => OnEditAsigLabChanged(a.AsignaturaId, e)">
                                     <option value="">(global)</option>
                                     @foreach (var l in _laboratorios.OrderBy(x => x.Nombre))
                                     {
@@ -606,12 +604,185 @@
     </div>
 </section>
 
+@* ============================
+   MODELOS DE EQUIPO (FIX: usa tabla M:N modelo_equipo_subcategorias)
+   ============================ *@
+<section class="page-card" style="margin-top:1rem;">
+    <div class="section-head">
+        <h3>Modelos de equipo</h3>
+        <span class="badge">@_modelos.Count</span>
+    </div>
+
+    <details style="margin-top:.5rem;">
+        <summary style="cursor:pointer; font-weight:800;">Agregar modelo</summary>
+
+        <div class="form-grid" style="margin-top:.75rem;">
+            <div class="field">
+                <label>ID (opcional)</label>
+                <input class="border p-1 val-hint" placeholder="mod_xxx" @bind="_newModeloId" />
+            </div>
+
+            <div class="field">
+                <label>Nombre modelo</label>
+                <input class="border p-1 val-hint" placeholder="Balanza analítica..." @bind="_newModeloNombre" />
+            </div>
+
+            <div class="field">
+                <label>Marca (opcional)</label>
+                <select class="border p-1 val-select" value="@(_newModeloMarcaId ?? "")" @onchange="(e) => _newModeloMarcaId = e.Value?.ToString()">
+                    <option value="">(sin marca)</option>
+                    @foreach (var m in _marcas.OrderBy(x => x.Nombre))
+                    {
+                        <option value="@m.MarcaId">@m.Nombre (@m.MarcaId)</option>
+                    }
+                </select>
+            </div>
+
+            <div class="field">
+                <label>Subcategoría (opcional)</label>
+                <select class="border p-1 val-select" value="@(_newModeloSubcatId ?? "")" @onchange="(e) => _newModeloSubcatId = e.Value?.ToString()">
+                    <option value="">(sin subcategoría)</option>
+                    @foreach (var s in _subcatsEquipo.OrderBy(x => x.Label))
+                    {
+                        <option value="@s.Id">@s.Label (@s.Id)</option>
+                    }
+                </select>
+                <div class="text-xs muted">Este formulario guarda 0 ó 1 subcategoría. Si quieres múltiples, lo ampliamos a multiselect.</div>
+            </div>
+
+            <div class="field">
+                <label>¿Calibrable?</label>
+                <label class="check">
+                    <input type="checkbox" checked="@_newModeloCalibrable" @onchange="OnNewModeloCalibrableChanged" />
+                    <span class="muted">es_calibrable</span>
+                </label>
+            </div>
+
+            <div class="field full-span">
+                <label>Manual (documento_id / url)</label>
+                <input class="border p-1 val-hint" placeholder="(opcional) documento_id o url" @bind="_newModeloManualUrl" />
+            </div>
+
+            <div class="field full-span">
+                <label>Imagen URL</label>
+                <input class="border p-1 val-hint" placeholder="(opcional) /uploads/..." @bind="_newModeloImagenUrl" />
+            </div>
+
+            <div class="field full-span">
+                <label>Descripción</label>
+                <textarea class="border p-1 val-hint" rows="2" @bind="_newModeloDescripcion" placeholder="(opcional)"></textarea>
+            </div>
+
+            <div class="field full-span">
+                <label>Notas</label>
+                <textarea class="border p-1 val-hint" rows="2" @bind="_newModeloNotas" placeholder="(opcional)"></textarea>
+            </div>
+
+            <div class="form-actions full-span">
+                <button class="btn primary" type="button" @onclick="AddModeloAsync" disabled="@_isSaving">Guardar</button>
+                @if (!string.IsNullOrWhiteSpace(_msgModelos))
+                {
+                    <span class="text-sm muted">@_msgModelos</span>
+                }
+            </div>
+        </div>
+    </details>
+
+    <div class="table-wrap" style="margin-top:1rem;">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:180px;">ID</th>
+                    <th>Modelo</th>
+                    <th style="width:200px;">Marca</th>
+                    <th style="width:220px;">Subcategoría(s)</th>
+                    <th style="width:120px;">Calibrable</th>
+                    <th style="width:260px;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var m in _modelos.OrderBy(x => x.NombreModelo))
+                {
+                    var editing = _editingModelos.Contains(m.ModeloId);
+
+                    <tr>
+                        <td><code>@m.ModeloId</code></td>
+
+                        @if (!editing)
+                        {
+                            <td>
+                                <div style="font-weight:900">@m.NombreModelo</div>
+                                @if (!string.IsNullOrWhiteSpace(m.Descripcion))
+                                {
+                                    <div class="text-xs muted" title="@m.Descripcion">@Trunc(m.Descripcion, 90)</div>
+                                }
+                            </td>
+                            <td>@MarcaLabel(m.MarcaId)</td>
+                            <td>@(string.IsNullOrWhiteSpace(m.SubcategoriasCsv) ? "—" : m.SubcategoriasCsv)</td>
+                            <td>@(m.EsCalibrable ? "Sí" : "No")</td>
+                            <td>
+                                <button class="btn" type="button" @onclick="() => StartEditModelo(m.ModeloId)">Editar</button>
+                                <button class="btn danger" type="button" @onclick="() => DeleteModeloAsync(m.ModeloId)" disabled="@_isSaving">Eliminar</button>
+                            </td>
+                        }
+                        else
+                        {
+                            var ed = _editModelo[m.ModeloId];
+
+                            <td>
+                                <input class="border p-1 val-hint" @bind="ed.NombreModelo" />
+                                <div style="margin-top:.35rem;">
+                                    <textarea class="border p-1 val-hint" rows="2" @bind="ed.Descripcion" placeholder="(opcional)"></textarea>
+                                </div>
+                                <div style="margin-top:.35rem;">
+                                    <textarea class="border p-1 val-hint" rows="2" @bind="ed.Notas" placeholder="(opcional)"></textarea>
+                                </div>
+                            </td>
+
+                            <td>
+                                <select class="border p-1 val-select" value="@(ed.MarcaId ?? "")" @onchange="(e) => ed.MarcaId = e.Value?.ToString()">
+                                    <option value="">(sin marca)</option>
+                                    @foreach (var mr in _marcas.OrderBy(x => x.Nombre))
+                                    {
+                                        <option value="@mr.MarcaId">@mr.Nombre (@mr.MarcaId)</option>
+                                    }
+                                </select>
+                            </td>
+
+                            <td>
+                                <select class="border p-1 val-select" value="@(ed.SubcategoriaId ?? "")" @onchange="(e) => ed.SubcategoriaId = e.Value?.ToString()">
+                                    <option value="">(sin subcategoría)</option>
+                                    @foreach (var s in _subcatsEquipo.OrderBy(x => x.Label))
+                                    {
+                                        <option value="@s.Id">@s.Label (@s.Id)</option>
+                                    }
+                                </select>
+                                <div class="text-xs muted" style="margin-top:.25rem;">(se guarda en tabla intermedia)</div>
+                            </td>
+
+                            <td>
+                                <label class="check">
+                                    <input type="checkbox" checked="@ed.EsCalibrable" @onchange="(e) => OnEditModeloCalibrableChanged(m.ModeloId, e)" />
+                                    <span class="muted">calibrable</span>
+                                </label>
+                            </td>
+
+                            <td>
+                                <button class="btn primary" type="button" @onclick="() => SaveModeloAsync(m.ModeloId)" disabled="@_isSaving">Guardar</button>
+                                <button class="btn" type="button" @onclick="() => CancelEditModelo(m.ModeloId)" disabled="@_isSaving">Cancelar</button>
+                            </td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
 
 @code {
     // ====== Estado general ======
     private bool _isSaving;
     private string? _loadError;
-
 
     // ====== MARCAS ======
     private readonly List<MarcaRow> _marcas = new();
@@ -687,7 +858,9 @@
     private readonly HashSet<string> _editingModelos = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ModeloEdit> _editModelo = new(StringComparer.OrdinalIgnoreCase);
 
-    // Subcategorías equipo (categoria_id = 'equipo-instrumento')
+    // Subcategorías equipo (de una categoría concreta; ajusta si quieres mezclar medición/operación)
+    // IMPORTANTE: aquí está el cambio: antes tu código consultaba 'equipo-instrumento' (no existe en tu seed)
+    private const string EquipoSubcatCategoriaId = "equipo-medicion";
     private readonly List<SelectOption> _subcatsEquipo = new();
 
     protected override void OnInitialized()
@@ -753,26 +926,14 @@
     }
 
     // ===================== LOADERS =====================
-    private static async Task<List<(string id, string nombre)>> ReadIdNombreAsync(NpgsqlConnection conn, string sql, params (string name, object value)[] ps)
-    {
-        var list = new List<(string, string)>();
-        await using var cmd = new NpgsqlCommand(sql, conn);
-        foreach (var (n, v) in ps) cmd.Parameters.AddWithValue(n, v ?? DBNull.Value);
-        await using var r = await cmd.ExecuteReaderAsync();
-        while (await r.ReadAsync())
-            list.Add((r.GetString(0), r.GetString(1)));
-        return list;
-    }
-
     private async Task LoadMarcasAsync(NpgsqlConnection conn)
     {
         await using var cmd = new NpgsqlCommand(
-     "SELECT marca_id, nombre, COALESCE(imagen_url,'') FROM marcas ORDER BY nombre", conn);
+            "SELECT marca_id, nombre, COALESCE(imagen_url,'') FROM marcas ORDER BY nombre", conn);
 
         await using var r = await cmd.ExecuteReaderAsync();
         while (await r.ReadAsync())
             _marcas.Add(new MarcaRow(r.GetString(0), r.GetString(1), EmptyToNull(r.GetString(2))));
-
     }
 
     private async Task LoadUnidadesAsync(NpgsqlConnection conn)
@@ -804,9 +965,11 @@
         const string sql = @"
             SELECT subcategoria_id, nombre
             FROM subcategorias
-            WHERE categoria_id = 'equipo-instrumento'
+            WHERE categoria_id = @cat
             ORDER BY nombre";
         await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("cat", EquipoSubcatCategoriaId);
+
         await using var r = await cmd.ExecuteReaderAsync();
         while (await r.ReadAsync())
             _subcatsEquipo.Add(new SelectOption(r.GetString(0), r.GetString(1)));
@@ -826,6 +989,7 @@
                 ORDER BY nombre";
             await using var cmd = new NpgsqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+
             await using var r = await cmd.ExecuteReaderAsync();
             while (await r.ReadAsync())
                 _asignaturas.Add(new AsignaturaRow(
@@ -858,20 +1022,26 @@
         }
     }
 
+    // ✅ FIX PRINCIPAL: modelos_equipo NO tiene subcategoria_id. Se lee desde modelo_equipo_subcategorias.
     private async Task LoadModelosAsync(NpgsqlConnection conn)
     {
         const string sql = @"
-            SELECT modelo_id,
-                   COALESCE(marca_id,'') AS marca_id,
-                   COALESCE(subcategoria_id,'') AS subcategoria_id,
-                   nombre_modelo,
-                   es_calibrable,
-                   COALESCE(manual_url,''),
-                   COALESCE(notas,''),
-                   COALESCE(descripcion,''),
-                   COALESCE(imagen_url,'')
-            FROM modelos_equipo
-            ORDER BY nombre_modelo";
+            SELECT
+                m.modelo_id,
+                COALESCE(m.marca_id,'') AS marca_id,
+                COALESCE(string_agg(ms.subcategoria_id, ',' ORDER BY ms.subcategoria_id), '') AS subcats_csv,
+                m.nombre_modelo,
+                m.es_calibrable,
+                COALESCE(m.manual_url,'') AS manual_url,
+                COALESCE(m.notas,'') AS notas,
+                COALESCE(m.descripcion,'') AS descripcion,
+                COALESCE(m.imagen_url,'') AS imagen_url
+            FROM modelos_equipo m
+            LEFT JOIN modelo_equipo_subcategorias ms
+                ON ms.modelo_id = m.modelo_id
+            GROUP BY m.modelo_id
+            ORDER BY m.nombre_modelo";
+
         await using var cmd = new NpgsqlCommand(sql, conn);
         await using var r = await cmd.ExecuteReaderAsync();
         while (await r.ReadAsync())
@@ -905,7 +1075,6 @@
                 ImagenArchivo = null
             };
     }
-
 
     private void CancelEditMarca(string id)
     {
@@ -943,7 +1112,6 @@
             cmd.Parameters.AddWithValue("nombre", _newMarcaNombre.Trim());
             cmd.Parameters.AddWithValue("img", DbOrNull(_newMarcaImagenUrl));
 
-
             var rows = await cmd.ExecuteNonQueryAsync();
             await tx.CommitAsync();
 
@@ -953,7 +1121,6 @@
             _newMarcaImagenUrl = null;
             _newMarcaImagenModo = "url";
             _newMarcaImagenArchivo = null;
-
 
             await ReloadAllAsync();
         }
@@ -968,47 +1135,44 @@
     }
 
     private void OnMarcaImagenModoChanged(ChangeEventArgs args)
-{
-    var value = args.Value?.ToString();
-    if (string.IsNullOrWhiteSpace(value)) return;
-
-    _newMarcaImagenModo = value;
-
-    // opcional: si cambias a URL, limpia el nombre del archivo
-    if (_newMarcaImagenModo == "url")
-        _newMarcaImagenArchivo = null;
-}
-
-private async Task OnMarcaImagenArchivoSeleccionado(InputFileChangeEventArgs args)
-{
-    if (args.FileCount == 0) return;
-
-    var file = args.File;
-
-    // Validación mínima (opcional)
-    var extension = Path.GetExtension(file.Name).ToLowerInvariant();
-    var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".png", ".jpg", ".jpeg", ".webp" };
-    if (!allowed.Contains(extension))
     {
-        _msgMarcas = "Formato no permitido. Usa PNG/JPG/WEBP.";
-        return;
+        var value = args.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(value)) return;
+
+        _newMarcaImagenModo = value;
+
+        if (_newMarcaImagenModo == "url")
+            _newMarcaImagenArchivo = null;
     }
 
-    var fileName = $"marca_{Guid.NewGuid():N}{extension}";
-    var relativePath = Path.Combine("uploads", "marcas", fileName).Replace("\\", "/");
-    var absolutePath = Path.Combine(HostEnvironment.WebRootPath, relativePath);
+    private async Task OnMarcaImagenArchivoSeleccionado(InputFileChangeEventArgs args)
+    {
+        if (args.FileCount == 0) return;
 
-    Directory.CreateDirectory(Path.GetDirectoryName(absolutePath)!);
+        var file = args.File;
 
-    await using var stream = file.OpenReadStream(5 * 1024 * 1024); // 5MB
-    await using var fileStream = File.Create(absolutePath);
-    await stream.CopyToAsync(fileStream);
+        var extension = Path.GetExtension(file.Name).ToLowerInvariant();
+        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".png", ".jpg", ".jpeg", ".webp" };
+        if (!allowed.Contains(extension))
+        {
+            _msgMarcas = "Formato no permitido. Usa PNG/JPG/WEBP.";
+            return;
+        }
 
-    _newMarcaImagenUrl = $"/{relativePath}";
-    _newMarcaImagenArchivo = file.Name;
-    _msgMarcas = $"Logo cargado: {file.Name}";
-}
+        var fileName = $"marca_{Guid.NewGuid():N}{extension}";
+        var relativePath = Path.Combine("uploads", "marcas", fileName).Replace("\\", "/");
+        var absolutePath = Path.Combine(HostEnvironment.WebRootPath, relativePath);
 
+        Directory.CreateDirectory(Path.GetDirectoryName(absolutePath)!);
+
+        await using var stream = file.OpenReadStream(5 * 1024 * 1024); // 5MB
+        await using var fileStream = File.Create(absolutePath);
+        await stream.CopyToAsync(fileStream);
+
+        _newMarcaImagenUrl = $"/{relativePath}";
+        _newMarcaImagenArchivo = file.Name;
+        _msgMarcas = $"Logo cargado: {file.Name}";
+    }
 
     private async Task SaveMarcaAsync(string id)
     {
@@ -1033,7 +1197,6 @@ private async Task OnMarcaImagenArchivoSeleccionado(InputFileChangeEventArgs arg
             cmd.Parameters.AddWithValue("img", DbOrNull(ed.ImagenUrl));
 
             await cmd.ExecuteNonQueryAsync();
-
             await tx.CommitAsync();
 
             CancelEditMarca(id);
@@ -1078,6 +1241,50 @@ private async Task OnMarcaImagenArchivoSeleccionado(InputFileChangeEventArgs arg
         {
             _isSaving = false;
         }
+    }
+
+    private void OnEditMarcaImagenModoChanged(string marcaId, ChangeEventArgs args)
+    {
+        if (!_editMarca.TryGetValue(marcaId, out var ed)) return;
+
+        var value = args.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(value)) return;
+
+        ed.ImagenModo = value;
+
+        if (ed.ImagenModo == "url")
+            ed.ImagenArchivo = null;
+    }
+
+    private async Task OnEditMarcaImagenArchivoSeleccionado(string marcaId, InputFileChangeEventArgs args)
+    {
+        if (!_editMarca.TryGetValue(marcaId, out var ed)) return;
+        if (args.FileCount == 0) return;
+
+        var file = args.File;
+
+        var extension = Path.GetExtension(file.Name).ToLowerInvariant();
+        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".png", ".jpg", ".jpeg", ".webp" };
+        if (!allowed.Contains(extension))
+        {
+            _msgMarcas = "Formato no permitido. Usa PNG/JPG/WEBP.";
+            return;
+        }
+
+        var fileName = $"marca_{Guid.NewGuid():N}{extension}";
+        var relativePath = Path.Combine("uploads", "marcas", fileName).Replace("\\", "/");
+        var absolutePath = Path.Combine(HostEnvironment.WebRootPath, relativePath);
+
+        Directory.CreateDirectory(Path.GetDirectoryName(absolutePath)!);
+
+        await using var stream = file.OpenReadStream(5 * 1024 * 1024);
+        await using var fileStream = File.Create(absolutePath);
+        await stream.CopyToAsync(fileStream);
+
+        ed.ImagenUrl = $"/{relativePath}";
+        ed.ImagenArchivo = file.Name;
+
+        _msgMarcas = $"Logo cargado: {file.Name}";
     }
 
     // ===================== UNIDADES CRUD =====================
@@ -1495,7 +1702,7 @@ private async Task OnMarcaImagenArchivoSeleccionado(InputFileChangeEventArgs arg
                 await using var conn = await DataSource.OpenConnectionAsync();
                 await LoadAsignaturasAsync(conn);
             }
-            catch { /* silencioso */ }
+            catch { }
             StateHasChanged();
         });
     }
@@ -1555,7 +1762,6 @@ private async Task OnMarcaImagenArchivoSeleccionado(InputFileChangeEventArgs arg
         }
         else
         {
-            // comodidad: si hay lab seleccionado, úsalo
             if (LaboratorioState.LaboratorioId > 0) labId = LaboratorioState.LaboratorioId;
         }
 
@@ -1689,7 +1895,7 @@ private async Task OnMarcaImagenArchivoSeleccionado(InputFileChangeEventArgs arg
         }
     }
 
-    // ===================== MODELOS CRUD =====================
+    // ===================== MODELOS CRUD (FIX) =====================
     private void OnNewModeloCalibrableChanged(ChangeEventArgs e)
     {
         _newModeloCalibrable = e.Value is bool b && b;
@@ -1701,11 +1907,17 @@ private async Task OnMarcaImagenArchivoSeleccionado(InputFileChangeEventArgs arg
         if (m is null) return;
 
         _editingModelos.Add(id);
+
+        // En esta UI simplificada guardamos 0..1 subcat; si el CSV trae varias, tomamos la primera.
+        var firstSub = (m.SubcategoriasCsv ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault();
+
         _editModelo[id] = new ModeloEdit
             {
                 NombreModelo = m.NombreModelo,
                 MarcaId = m.MarcaId,
-                SubcategoriaId = m.SubcategoriaId,
+                SubcategoriaId = string.IsNullOrWhiteSpace(firstSub) ? null : firstSub,
                 EsCalibrable = m.EsCalibrable,
                 ManualUrl = m.ManualUrl,
                 ImagenUrl = m.ImagenUrl,
@@ -1736,10 +1948,9 @@ private async Task OnMarcaImagenArchivoSeleccionado(InputFileChangeEventArgs arg
             return;
         }
 
-        // si se elige subcat, blindaje: debe ser equipo-instrumento
         if (!string.IsNullOrWhiteSpace(_newModeloSubcatId) && !_subcatsEquipo.Any(s => s.Id.Equals(_newModeloSubcatId, StringComparison.OrdinalIgnoreCase)))
         {
-            _msgModelos = "Subcategoría inválida (no es de equipo-instrumento).";
+            _msgModelos = "Subcategoría inválida (no pertenece a la lista cargada).";
             return;
         }
 
@@ -1753,24 +1964,41 @@ private async Task OnMarcaImagenArchivoSeleccionado(InputFileChangeEventArgs arg
             await using var conn = await DataSource.OpenConnectionAsync();
             await using var tx = await conn.BeginTransactionAsync();
 
+            // ✅ FIX: modelos_equipo NO tiene subcategoria_id.
             const string sql = @"
                 INSERT INTO modelos_equipo
-                (modelo_id, marca_id, subcategoria_id, nombre_modelo, es_calibrable, manual_url, notas, descripcion, imagen_url)
+                (modelo_id, marca_id, categoria_id, nombre_modelo, es_calibrable, manual_url, notas, descripcion, imagen_url)
                 VALUES
-                (@id, @marca, @subcat, @nombre, @cal, @manual, @notas, @desc, @img)";
-            await using var cmd = new NpgsqlCommand(sql, conn, tx);
+                (@id, @marca, @cat, @nombre, @cal, @manual, @notas, @desc, @img)";
 
-            cmd.Parameters.AddWithValue("id", id);
-            cmd.Parameters.AddWithValue("marca", DbOrNull(_newModeloMarcaId));
-            cmd.Parameters.AddWithValue("subcat", DbOrNull(_newModeloSubcatId));
-            cmd.Parameters.AddWithValue("nombre", _newModeloNombre.Trim());
-            cmd.Parameters.AddWithValue("cal", _newModeloCalibrable);
-            cmd.Parameters.AddWithValue("manual", DbOrNull(_newModeloManualUrl));
-            cmd.Parameters.AddWithValue("notas", DbOrNull(_newModeloNotas));
-            cmd.Parameters.AddWithValue("desc", DbOrNull(_newModeloDescripcion));
-            cmd.Parameters.AddWithValue("img", DbOrNull(_newModeloImagenUrl));
+            await using (var cmd = new NpgsqlCommand(sql, conn, tx))
+            {
+                cmd.Parameters.AddWithValue("id", id);
+                cmd.Parameters.AddWithValue("marca", DbOrNull(_newModeloMarcaId));
+                cmd.Parameters.AddWithValue("cat", EquipoSubcatCategoriaId); // o 'equipo-mixto' si prefieres
+                cmd.Parameters.AddWithValue("nombre", _newModeloNombre.Trim());
+                cmd.Parameters.AddWithValue("cal", _newModeloCalibrable);
+                cmd.Parameters.AddWithValue("manual", DbOrNull(_newModeloManualUrl));
+                cmd.Parameters.AddWithValue("notas", DbOrNull(_newModeloNotas));
+                cmd.Parameters.AddWithValue("desc", DbOrNull(_newModeloDescripcion));
+                cmd.Parameters.AddWithValue("img", DbOrNull(_newModeloImagenUrl));
 
-            await cmd.ExecuteNonQueryAsync();
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            // ✅ FIX: subcategoría se inserta en tabla intermedia
+            if (!string.IsNullOrWhiteSpace(_newModeloSubcatId))
+            {
+                const string sqlSub = @"
+                    INSERT INTO modelo_equipo_subcategorias (modelo_id, subcategoria_id)
+                    VALUES (@id, @sub)";
+
+                await using var cmdSub = new NpgsqlCommand(sqlSub, conn, tx);
+                cmdSub.Parameters.AddWithValue("id", id);
+                cmdSub.Parameters.AddWithValue("sub", _newModeloSubcatId);
+                await cmdSub.ExecuteNonQueryAsync();
+            }
+
             await tx.CommitAsync();
 
             _msgModelos = "Modelo guardado.";
@@ -1809,7 +2037,7 @@ private async Task OnMarcaImagenArchivoSeleccionado(InputFileChangeEventArgs arg
 
         if (!string.IsNullOrWhiteSpace(ed.SubcategoriaId) && !_subcatsEquipo.Any(s => s.Id.Equals(ed.SubcategoriaId, StringComparison.OrdinalIgnoreCase)))
         {
-            _msgModelos = "Subcategoría inválida (no es de equipo-instrumento).";
+            _msgModelos = "Subcategoría inválida.";
             return;
         }
 
@@ -1819,10 +2047,10 @@ private async Task OnMarcaImagenArchivoSeleccionado(InputFileChangeEventArgs arg
             await using var conn = await DataSource.OpenConnectionAsync();
             await using var tx = await conn.BeginTransactionAsync();
 
+            // ✅ FIX: sin subcategoria_id
             const string sql = @"
                 UPDATE modelos_equipo
                 SET marca_id=@marca,
-                    subcategoria_id=@subcat,
                     nombre_modelo=@nombre,
                     es_calibrable=@cal,
                     manual_url=@manual,
@@ -1830,19 +2058,37 @@ private async Task OnMarcaImagenArchivoSeleccionado(InputFileChangeEventArgs arg
                     descripcion=@desc,
                     imagen_url=@img
                 WHERE modelo_id=@id";
-            await using var cmd = new NpgsqlCommand(sql, conn, tx);
 
-            cmd.Parameters.AddWithValue("id", id);
-            cmd.Parameters.AddWithValue("marca", DbOrNull(ed.MarcaId));
-            cmd.Parameters.AddWithValue("subcat", DbOrNull(ed.SubcategoriaId));
-            cmd.Parameters.AddWithValue("nombre", ed.NombreModelo.Trim());
-            cmd.Parameters.AddWithValue("cal", ed.EsCalibrable);
-            cmd.Parameters.AddWithValue("manual", DbOrNull(ed.ManualUrl));
-            cmd.Parameters.AddWithValue("notas", DbOrNull(ed.Notas));
-            cmd.Parameters.AddWithValue("desc", DbOrNull(ed.Descripcion));
-            cmd.Parameters.AddWithValue("img", DbOrNull(ed.ImagenUrl));
+            await using (var cmd = new NpgsqlCommand(sql, conn, tx))
+            {
+                cmd.Parameters.AddWithValue("id", id);
+                cmd.Parameters.AddWithValue("marca", DbOrNull(ed.MarcaId));
+                cmd.Parameters.AddWithValue("nombre", ed.NombreModelo.Trim());
+                cmd.Parameters.AddWithValue("cal", ed.EsCalibrable);
+                cmd.Parameters.AddWithValue("manual", DbOrNull(ed.ManualUrl));
+                cmd.Parameters.AddWithValue("notas", DbOrNull(ed.Notas));
+                cmd.Parameters.AddWithValue("desc", DbOrNull(ed.Descripcion));
+                cmd.Parameters.AddWithValue("img", DbOrNull(ed.ImagenUrl));
+                await cmd.ExecuteNonQueryAsync();
+            }
 
-            await cmd.ExecuteNonQueryAsync();
+            // ✅ FIX: reemplaza subcats (en esta UI guardamos 0..1)
+            await using (var del = new NpgsqlCommand("DELETE FROM modelo_equipo_subcategorias WHERE modelo_id=@id", conn, tx))
+            {
+                del.Parameters.AddWithValue("id", id);
+                await del.ExecuteNonQueryAsync();
+            }
+
+            if (!string.IsNullOrWhiteSpace(ed.SubcategoriaId))
+            {
+                await using var ins = new NpgsqlCommand(
+                    "INSERT INTO modelo_equipo_subcategorias (modelo_id, subcategoria_id) VALUES (@id,@s)",
+                    conn, tx);
+                ins.Parameters.AddWithValue("id", id);
+                ins.Parameters.AddWithValue("s", ed.SubcategoriaId);
+                await ins.ExecuteNonQueryAsync();
+            }
+
             await tx.CommitAsync();
 
             CancelEditModelo(id);
@@ -1869,10 +2115,19 @@ private async Task OnMarcaImagenArchivoSeleccionado(InputFileChangeEventArgs arg
             await using var conn = await DataSource.OpenConnectionAsync();
             await using var tx = await conn.BeginTransactionAsync();
 
+            // borra subcats primero por FK o para dejar limpio
+            await using (var delRel = new NpgsqlCommand("DELETE FROM modelo_equipo_subcategorias WHERE modelo_id=@id", conn, tx))
+            {
+                delRel.Parameters.AddWithValue("id", id);
+                await delRel.ExecuteNonQueryAsync();
+            }
+
             const string sql = @"DELETE FROM modelos_equipo WHERE modelo_id=@id";
-            await using var cmd = new NpgsqlCommand(sql, conn, tx);
-            cmd.Parameters.AddWithValue("id", id);
-            await cmd.ExecuteNonQueryAsync();
+            await using (var cmd = new NpgsqlCommand(sql, conn, tx))
+            {
+                cmd.Parameters.AddWithValue("id", id);
+                await cmd.ExecuteNonQueryAsync();
+            }
 
             await tx.CommitAsync();
 
@@ -1896,22 +2151,14 @@ private async Task OnMarcaImagenArchivoSeleccionado(InputFileChangeEventArgs arg
         return _marcas.FirstOrDefault(x => x.MarcaId.Equals(marcaId, StringComparison.OrdinalIgnoreCase))?.Nombre ?? marcaId;
     }
 
-    private string SubcatLabel(string? subcatId)
-    {
-        if (string.IsNullOrWhiteSpace(subcatId)) return "—";
-        return _subcatsEquipo.FirstOrDefault(x => x.Id.Equals(subcatId, StringComparison.OrdinalIgnoreCase))?.Label ?? subcatId;
-    }
-
     private string LabLabel(int labId)
-    {
-        return _laboratorios.FirstOrDefault(x => x.LaboratorioId == labId)?.Nombre ?? $"Lab {labId}";
-    }
+        => _laboratorios.FirstOrDefault(x => x.LaboratorioId == labId)?.Nombre ?? $"Lab {labId}";
 
-    private static object DbOrNull(string? s) =>
-        string.IsNullOrWhiteSpace(s) ? (object)DBNull.Value : s!.Trim();
+    private static object DbOrNull(string? s)
+        => string.IsNullOrWhiteSpace(s) ? (object)DBNull.Value : s!.Trim();
 
-    private static string? EmptyToNull(string s) =>
-        string.IsNullOrWhiteSpace(s) ? null : s;
+    private static string? EmptyToNull(string s)
+        => string.IsNullOrWhiteSpace(s) ? null : s;
 
     private static string ResolveUrl(string? url)
     {
@@ -1933,50 +2180,6 @@ private async Task OnMarcaImagenArchivoSeleccionado(InputFileChangeEventArgs arg
         LaboratorioState.OnChange -= HandleLaboratorioChanged;
     }
 
-    private void OnEditMarcaImagenModoChanged(string marcaId, ChangeEventArgs args)
-    {
-        if (!_editMarca.TryGetValue(marcaId, out var ed)) return;
-
-        var value = args.Value?.ToString();
-        if (string.IsNullOrWhiteSpace(value)) return;
-
-        ed.ImagenModo = value;
-
-        if (ed.ImagenModo == "url")
-            ed.ImagenArchivo = null;
-    }
-
-    private async Task OnEditMarcaImagenArchivoSeleccionado(string marcaId, InputFileChangeEventArgs args)
-    {
-        if (!_editMarca.TryGetValue(marcaId, out var ed)) return;
-        if (args.FileCount == 0) return;
-
-        var file = args.File;
-
-        var extension = Path.GetExtension(file.Name).ToLowerInvariant();
-        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".png", ".jpg", ".jpeg", ".webp" };
-        if (!allowed.Contains(extension))
-        {
-            _msgMarcas = "Formato no permitido. Usa PNG/JPG/WEBP.";
-            return;
-        }
-
-        var fileName = $"marca_{Guid.NewGuid():N}{extension}";
-        var relativePath = Path.Combine("uploads", "marcas", fileName).Replace("\\", "/");
-        var absolutePath = Path.Combine(HostEnvironment.WebRootPath, relativePath);
-
-        Directory.CreateDirectory(Path.GetDirectoryName(absolutePath)!);
-
-        await using var stream = file.OpenReadStream(5 * 1024 * 1024);
-        await using var fileStream = File.Create(absolutePath);
-        await stream.CopyToAsync(fileStream);
-
-        ed.ImagenUrl = $"/{relativePath}";
-        ed.ImagenArchivo = file.Name;
-
-        _msgMarcas = $"Logo cargado: {file.Name}";
-    }
-
     // ===================== MODELOS DATOS =====================
     private sealed record SelectOption(string Id, string Label);
 
@@ -1985,10 +2188,8 @@ private async Task OnMarcaImagenArchivoSeleccionado(InputFileChangeEventArgs arg
     {
         public string Nombre { get; set; } = "";
         public string? ImagenUrl { get; set; }
-
-        // UI state
-        public string ImagenModo { get; set; } = "url";   // "url" | "archivo"
-        public string? ImagenArchivo { get; set; }        // nombre original
+        public string ImagenModo { get; set; } = "url";
+        public string? ImagenArchivo { get; set; }
     }
 
     private sealed record UnidadRow(string UnidadId, string Nombre, string Simbolo);
@@ -2015,13 +2216,14 @@ private async Task OnMarcaImagenArchivoSeleccionado(InputFileChangeEventArgs arg
         public string CodigoClase { get; set; } = "";
         public string? Descripcion { get; set; }
         public string? DescripcionDetalle { get; set; }
-        public string LaboratorioIdText { get; set; } = ""; // "" => null
+        public string LaboratorioIdText { get; set; } = "";
     }
 
+    // ✅ ModeloRow ahora guarda CSV de subcategorías (derivado de tabla intermedia)
     private sealed record ModeloRow(
         string ModeloId,
         string? MarcaId,
-        string? SubcategoriaId,
+        string? SubcategoriasCsv,
         string NombreModelo,
         bool EsCalibrable,
         string? ManualUrl,
@@ -2034,7 +2236,7 @@ private async Task OnMarcaImagenArchivoSeleccionado(InputFileChangeEventArgs arg
     {
         public string NombreModelo { get; set; } = "";
         public string? MarcaId { get; set; }
-        public string? SubcategoriaId { get; set; }
+        public string? SubcategoriaId { get; set; } // UI simple: 0..1
         public bool EsCalibrable { get; set; }
         public string? ManualUrl { get; set; }
         public string? Notas { get; set; }
@@ -2155,40 +2357,6 @@ private async Task OnMarcaImagenArchivoSeleccionado(InputFileChangeEventArgs arg
                 background: #1d4ed8;
             }
 
-            .upload-card {
-    border: 1px dashed #cbd5e1;
-    border-radius: 12px;
-    padding: .75rem;
-    background: #f8fafc;
-}
-
-.upload-options {
-    display: flex;
-    gap: 1rem;
-    align-items: center;
-    flex-wrap: wrap;
-    margin-bottom: .5rem;
-}
-
-.upload-drop {
-    display: flex;
-    gap: .6rem;
-    align-items: center;
-    justify-content: space-between;
-    border: 1px dashed #cbd5e1;
-    border-radius: 12px;
-    padding: .7rem .8rem;
-    background: #fff;
-    cursor: pointer;
-}
-
-.upload-drop span {
-    color: #475569;
-    font-weight: 700;
-    font-size: .9rem;
-}
-
-
         .btn.danger {
             background: #b91c1c;
             color: #fff;
@@ -2202,16 +2370,6 @@ private async Task OnMarcaImagenArchivoSeleccionado(InputFileChangeEventArgs arg
         .btn:disabled {
             opacity: .65;
             cursor: not-allowed;
-        }
-
-    .btn-link {
-        color: #1d4ed8;
-        text-decoration: none;
-        font-weight: 800;
-    }
-
-        .btn-link:hover {
-            text-decoration: underline;
         }
 
     .check {
@@ -2242,5 +2400,62 @@ private async Task OnMarcaImagenArchivoSeleccionado(InputFileChangeEventArgs arg
     th {
         background: #f3f4f6;
         font-weight: 900;
+    }
+
+    .upload-card {
+        border: 1px dashed #cbd5e1;
+        border-radius: 12px;
+        padding: .75rem;
+        background: #f8fafc;
+    }
+
+    .upload-options {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: .5rem;
+    }
+
+    .upload-drop {
+        display: flex;
+        gap: .6rem;
+        align-items: center;
+        justify-content: space-between;
+        border: 1px dashed #cbd5e1;
+        border-radius: 12px;
+        padding: .7rem .8rem;
+        background: #fff;
+        cursor: pointer;
+    }
+
+        .upload-drop span {
+            color: #475569;
+            font-weight: 700;
+            font-size: .9rem;
+        }
+
+    /* =========================================================
+           UI pedido: vacío -> blanco, con valor -> azul claro
+           - Para input/textarea usamos placeholder para detectar "vacío"
+           - Para select usamos atributo value="" del option vacío
+           ========================================================= */
+
+    /* inputs y textareas: si NO está mostrando placeholder => tiene algo escrito */
+    .val-hint:not(:placeholder-shown) {
+        background-color: #eff6ff;
+        border-color: #93c5fd;
+    }
+
+    /* selects: si value != "" => tiene selección */
+    .val-select:not([value=""]) {
+        background-color: #eff6ff;
+        border-color: #93c5fd;
+    }
+
+    input:focus, select:focus, textarea:focus {
+        outline: none;
+        border-color: #2563eb;
+        box-shadow: 0 0 0 2px rgba(37,99,235,.15);
     }
 </style>

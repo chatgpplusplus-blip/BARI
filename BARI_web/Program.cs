@@ -4,9 +4,9 @@ using BARI_web.Features.Seguridad_Quimica.Models;
 using BARI_web.General_Services;
 using BARI_web.General_Services.DataBaseConnection;
 using Npgsql;
-using BARI_web.Services;
 using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.HttpOverrides;
+using BARI_web.Features.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 // Render: escucha en el puerto asignado por la plataforma

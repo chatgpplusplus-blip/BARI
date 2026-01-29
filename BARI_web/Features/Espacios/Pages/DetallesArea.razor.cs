@@ -59,6 +59,9 @@ namespace BARI_web.Features.Espacios.Pages
         {
             public string poly_in_id { get; set; } = "";
             public string area_poly_id { get; set; } = "";
+
+            public int z_order { get; set; } = 0;   // ✅ NUEVO
+
             public decimal eje_x_rel_m { get; set; }
             public decimal eje_y_rel_m { get; set; }
             public decimal ancho_m { get; set; }
@@ -1104,6 +1107,9 @@ namespace BARI_web.Features.Espacios.Pages
                     {
                         poly_in_id = Get(r, "poly_in_id"),
                         area_poly_id = area_poly_id,
+
+                        z_order = Int(Get(r, "z_order", "0")),   // ✅ NUEVO (si no existe la columna, queda 0)
+
                         eje_x_rel_m = eje_x_rel_m,
                         eje_y_rel_m = eje_y_rel_m,
                         ancho_m = ancho_m,
