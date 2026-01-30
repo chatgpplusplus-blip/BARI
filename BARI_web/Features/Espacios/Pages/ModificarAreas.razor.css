@@ -322,3 +322,125 @@ svg text {
     font-size: 11px;
     color: #6b7280;
 }
+/* ===========================
+   FIX: el canvas debe tener alto real
+   (en desktop también ayuda)
+   =========================== */
+.ma-canvas-box {
+    /* usa tu variable --ar que ya estás seteando inline */
+    aspect-ratio: var(--ar);
+    width: 100%;
+    max-width: 1150px;
+    /* evita colapsos */
+    min-height: 420px;
+}
+
+    /* SVG debe ocupar toda la caja */
+    .ma-canvas-box svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+        /* importante para interacción en móvil */
+        touch-action: none;
+    }
+
+/* ===========================
+   FIX: grid responsive
+   =========================== */
+.editor-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1150px) 420px;
+    gap: 16px;
+    align-items: start;
+    /* opcional pero recomendado */
+    grid-template-areas: "canvas panel";
+}
+
+/* asignamos áreas (no rompe nada si no usas grid-template-areas) */
+.ma-canvas-host {
+    grid-area: canvas;
+    min-width: 0;
+}
+
+.ma-prop-panel {
+    grid-area: panel;
+    min-width: 0;
+}
+
+/* ===========================
+   MÓVIL: apilar canvas + panel
+   =========================== */
+@media (max-width: 900px) {
+
+    /* 1 columna */
+    .editor-layout {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+            "canvas"
+            "panel";
+    }
+
+    /* el panel sticky en móvil molesta: lo hacemos normal */
+    .prop-panel {
+        position: static;
+        top: auto;
+        max-height: none;
+        overflow: visible;
+    }
+
+    /* el host no debe forzar scroll raro */
+    .ma-canvas-host {
+        overflow: visible;
+    }
+
+    /* el canvas en móvil: dale altura tipo “editor” */
+    .ma-canvas-box {
+        max-width: 100%;
+        min-height: 62vh; /* para que realmente se vea grande */
+    }
+
+    /* Botonera flotante: que no tape todo y sea usable */
+    .ma-floating-card {
+        left: 10px !important;
+        right: 10px !important;
+        bottom: 10px !important;
+        width: auto;
+    }
+
+    /* La fila tiene MUCHOS controles: la hacemos carrusel horizontal */
+    .ma-floating-row {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        gap: 10px;
+        padding-bottom: 6px;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+    }
+
+        .ma-floating-row::-webkit-scrollbar {
+            display: none;
+        }
+
+        .ma-floating-row > * {
+            flex: 0 0 auto;
+            white-space: nowrap;
+        }
+
+    /* evita que selects/inputs rompan ancho */
+    .ma-mini-select {
+        max-width: 70vw;
+    }
+
+    .ma-mini-input {
+        max-width: 50vw;
+    }
+
+    /* HUD: si te estorba en móvil, lo haces más compacto */
+    .ma-hud {
+        max-width: 220px;
+        left: 10px;
+        top: 80px;
+    }
+}
