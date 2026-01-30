@@ -2,16 +2,22 @@
 @using Microsoft.AspNetCore.Components.Forms
 @using MQTTnet
 @using System.Security.Cryptography
+@using System.Text
+@using System.Text.Json
+@using System.Net.Http
+@using System.Net.Http.Headers
 @using System.IO
+@using System.IO.Compression
 
 @inject IWebHostEnvironment Env
+@inject IConfiguration Configuration
 
 @implements IAsyncDisposable
 
 <div class="container">
     <div class="card mt-4">
         <div class="card-header bg-primary text-white">
-            <h3>Panel ESP32 (MQTT + OTA HTTP Pull)</h3>
+            <h3>Panel ESP32 (MQTT + OTA HTTP + GitHub)</h3>
         </div>
 
         <div class="card-body">
@@ -43,50 +49,81 @@
 
             <hr class="my-4" />
 
-            <h4>OTA rápido (HTTP Pull) + MQTT “notificación”</h4>
-            <div class="alert alert-warning">
-                <div><strong>IMPORTANTE:</strong> El ESP32 descargará el firmware desde:</div>
-                <div><code>@PUBLIC_BASE_URL</code></div>
-                <div><small>Debe ser una URL pública accesible desde Internet (no localhost, no IP privada).</small></div>
+            <h4>Compilar y enviar firmware desde código (GitHub → OTA HTTP)</h4>
+
+            <div class="alert alert-info">
+                <p class="mb-1">
+                    El ESP32 se actualizará vía <strong>HTTP OTA</strong> descargando el firmware desde:
+                </p>
+                <code>@PublicBaseUrl</code>
+                <p class="mb-0">
+                    y recibiendo la orden por MQTT en <code>bari/esp32/bari1/ota/http</code>.
+                </p>
             </div>
 
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <label class="form-label">Firmware (.bin)</label>
-                    <InputFile OnChange="OnFileSelected" accept=".bin" />
-                    <div class="mt-2"><small class="text-muted">@archivoInfo</small></div>
-                    <div class="mt-1"><small class="text-muted">@saveInfo</small></div>
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <label class="form-label">WiFi SSID (red del ESP32)</label>
+                    <input class="form-control" @bind="wifiSsid" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">WiFi password</label>
+                    <input type="password" class="form-control" @bind="wifiPass" />
                 </div>
             </div>
 
-            <div class="mt-3">
-                <button class="btn btn-primary"
-                        @onclick="GuardarYNotificarOta"
-                        disabled="@(_file is null || !_mqttConectado || enviandoOta)">
-                    @(enviandoOta ? "Procesando..." : "Guardar firmware y notificar al ESP32")
+            <div class="mb-3">
+                <label class="form-label">Código de aplicación (user_app.cpp)</label>
+                <textarea class="form-control"
+                          style="min-height: 320px; font-family: Consolas, monospace; font-size: 0.9rem;"
+                          @bind="userCode">
+                </textarea>
+                <small class="text-muted">
+                    Aquí defines <code>UserSetup</code> y <code>UserLoop</code>. El core OTA/MQTT no se puede editar desde la web.
+                </small>
+            </div>
+
+            <div class="d-flex gap-2 mb-2 flex-wrap">
+                <button class="btn btn-outline-secondary" @onclick="GuardarCodigoAsync">
+                    Guardar código (lastcode.cpp)
+                </button>
+
+                <button class="btn btn-warning"
+                        @onclick="CompilarYEnviarAsync"
+                        disabled="@(!_mqttConectado || compilando)">
+                    @(compilando ? "Compilando en GitHub y enviando..." : "Compilar en GitHub y enviar OTA")
                 </button>
             </div>
 
-            <div class="mt-3">
-                <strong>@statusOta</strong>
+            <div class="mb-2">
+                <strong>Estado compilación/OTA:</strong>
+                <span class="ms-2">@compilacionEstado</span>
             </div>
+
+            @if (!string.IsNullOrWhiteSpace(compilacionLog))
+            {
+                <div class="mb-2">
+                    <strong>Log compilador / GitHub:</strong>
+                    <pre class="bg-dark text-light p-2" style="max-height: 240px; overflow:auto;">
+                        @compilacionLog
+                        </pre>
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(saveInfo))
+            {
+                <div class="mt-2">
+                    <small class="text-muted">@saveInfo</small>
+                </div>
+            }
 
         </div>
     </div>
 </div>
 
 @code {
-    // ====== CONFIG ======
+    // ===== CONFIG BÁSICA =====
     private const string BaseTopic = "bari/esp32/bari1";
-
-    // ✅ PON AQUÍ TU DOMINIO / URL PÚBLICA REAL (Cloudflare Tunnel / VPS / etc.)
-    // Ejemplos:
-    // "https://miapp.midominio.com"
-    // "https://xxxx.trycloudflare.com"
-    private const string PUBLIC_BASE_URL = "https://bari-f57y.onrender.com/";
-
-    private const long MaxBinSize = 50 * 1024 * 1024; // 50MB
-
     private static string T(string tail) => $"{BaseTopic}/{tail}";
 
     private readonly string TopicCmd = T("comandos");
@@ -94,42 +131,132 @@
     private readonly string TopicStatus = T("status");
     private readonly string TopicOtaHttp = T("ota/http");
 
-    // ====== MQTT ======
-    private MqttClientFactory? _factory;
-    private IMqttClient? _mqttClient;
-    private bool _mqttConectado => _mqttClient?.IsConnected == true;
+    private string PublicBaseUrl =>
+        (Configuration["PublicBaseUrl"] ?? "https://bari-f57y.onrender.com").TrimEnd('/');
 
-    // ====== UI ======
+    private string GitHubOwner => Configuration["GitHub:Owner"] ?? "chatgpplusplus-blip";
+    private string GitHubRepo => Configuration["GitHub:Repo"] ?? "esp32-builder";
+    private string GitHubWorkflowFile => Configuration["GitHub:WorkflowFile"] ?? "build-ota.yml";
+
+    // ===== MQTT =====
+    private MQTTnet.MqttClientFactory? _factory;
+    private object? _mqttClientObj;   // usamos dynamic para no depender de MQTTnet.Client.*
+
+    private bool _mqttConectado =>
+        _mqttClientObj is not null && IsClientConnected(_mqttClientObj);
+
+    private static bool IsClientConnected(object client)
+    {
+        try
+        {
+            dynamic c = client;
+            return c.IsConnected == true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    // ===== UI / ESTADO =====
     private string estadoMqtt = "Desconectado";
     private string comandoEnviar = "";
 
     private string ultimoLog = "(sin logs aún)";
     private string ultimoStatus = "(esperando...)";
 
-    private IBrowserFile? _file;
-    private string archivoInfo = "Ningún archivo seleccionado";
-    private string saveInfo = "";
-    private string statusOta = "";
-    private bool enviandoOta = false;
+    // Código de usuario
+    private const string DefaultUserCode = @"#include <Arduino.h>
+#include ""user_app.h""
 
+const int APP_LED_PIN = 13;
+
+void UserSetup() {
+    Serial.begin(115200);
+    delay(500);
+    Serial.println(""=== UserSetup desde web ==="");
+    pinMode(APP_LED_PIN, OUTPUT);
+    digitalWrite(APP_LED_PIN, LOW);
+}
+
+void UserLoop() {
+    digitalWrite(APP_LED_PIN, HIGH);
+    delay(200);
+    digitalWrite(APP_LED_PIN, LOW);
+    delay(200);
+}
+";
+
+    private string userCode = DefaultUserCode;
+    private string compilacionEstado = "";
+    private string compilacionLog = "";
+    private bool compilando = false;
+
+    private string wifiSsid = "";
+    private string wifiPass = "";
+    private string saveInfo = "";
+
+    // lastcode.cpp
+    private static readonly string UserCodeFileName = "lastcode.cpp";
+    private string UserCodeDir => Path.Combine(Env.ContentRootPath, "UserCode");
+    private string UserCodePath => Path.Combine(UserCodeDir, UserCodeFileName);
+
+    // HttpClient único para GitHub
+    private static readonly HttpClient httpClient = CreateHttpClient();
+
+    private static HttpClient CreateHttpClient()
+    {
+        var c = new HttpClient();
+        c.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("BARI_web", "1.0"));
+        c.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+        return c;
+    }
+
+    // Clases para deserializar respuestas de GitHub
+    private sealed class WorkflowRunsResponse
+    {
+        public List<WorkflowRun> workflow_runs { get; set; } = new();
+    }
+
+    private sealed class WorkflowRun
+    {
+        public long id { get; set; }
+        public string status { get; set; } = "";
+        public string conclusion { get; set; } = "";
+    }
+
+    private sealed class ArtifactsResponse
+    {
+        public List<Artifact> artifacts { get; set; } = new();
+    }
+
+    private sealed class Artifact
+    {
+        public long id { get; set; }
+        public string name { get; set; } = "";
+    }
+
+    // ===== INICIALIZACIÓN =====
     protected override async Task OnInitializedAsync()
     {
-        _factory = new MqttClientFactory();
-        _mqttClient = _factory.CreateMqttClient();
+        // MQTT
+        _factory = new MQTTnet.MqttClientFactory();
+        var mqttClient = _factory.CreateMqttClient();
+        _mqttClientObj = mqttClient;
 
-        _mqttClient.ConnectedAsync += _ =>
+        mqttClient.ConnectedAsync += async _ =>
         {
             estadoMqtt = "Conectado ✅";
-            return InvokeAsync(StateHasChanged);
+            await InvokeAsync(StateHasChanged);
         };
 
-        _mqttClient.DisconnectedAsync += _ =>
+        mqttClient.DisconnectedAsync += async _ =>
         {
             estadoMqtt = "Desconectado ❌";
-            return InvokeAsync(StateHasChanged);
+            await InvokeAsync(StateHasChanged);
         };
 
-        _mqttClient.ApplicationMessageReceivedAsync += e =>
+        mqttClient.ApplicationMessageReceivedAsync += async e =>
         {
             var topic = e.ApplicationMessage.Topic ?? "";
             var text = e.ApplicationMessage.ConvertPayloadToString() ?? "";
@@ -137,7 +264,7 @@
             if (topic == TopicLog) ultimoLog = text;
             else if (topic == TopicStatus) ultimoStatus = text;
 
-            return InvokeAsync(StateHasChanged);
+            await InvokeAsync(StateHasChanged);
         };
 
         var options = _factory.CreateClientOptionsBuilder()
@@ -149,167 +276,288 @@
         try
         {
             estadoMqtt = "Conectando...";
-            await _mqttClient.ConnectAsync(options, CancellationToken.None);
+            await mqttClient.ConnectAsync(options, CancellationToken.None);
 
             var subs = _factory.CreateSubscribeOptionsBuilder()
                 .WithTopicFilter(TopicLog)
                 .WithTopicFilter(TopicStatus)
                 .Build();
 
-            await _mqttClient.SubscribeAsync(subs, CancellationToken.None);
+            await mqttClient.SubscribeAsync(subs, CancellationToken.None);
         }
         catch (Exception ex)
         {
             estadoMqtt = "Error MQTT: " + ex.Message;
         }
+
+        // Cargar lastcode.cpp si existe
+        try
+        {
+            Directory.CreateDirectory(UserCodeDir);
+            if (File.Exists(UserCodePath))
+            {
+                userCode = await File.ReadAllTextAsync(UserCodePath);
+            }
+            else
+            {
+                userCode = DefaultUserCode;
+                await File.WriteAllTextAsync(UserCodePath, userCode);
+            }
+        }
+        catch
+        {
+            // si algo falla, nos quedamos con DefaultUserCode
+        }
     }
 
-    private void OnFileSelected(InputFileChangeEventArgs e)
-    {
-        _file = e.File;
-        archivoInfo = $"{_file.Name} ({_file.Size} bytes)";
-        saveInfo = "";
-        statusOta = "";
-    }
-
+    // ===== MQTT: ENVIAR COMANDO =====
     private async Task EnviarDato()
     {
-        if (!_mqttConectado) return;
+        if (_mqttClientObj is null) return;
 
-        var msg = _factory!.CreateApplicationMessageBuilder()
+        dynamic mqttClient = _mqttClientObj;
+
+        var msg = new MqttApplicationMessageBuilder()
             .WithTopic(TopicCmd)
             .WithPayload(comandoEnviar ?? "")
             .Build();
 
-        await _mqttClient!.PublishAsync(msg, CancellationToken.None);
+        await mqttClient.PublishAsync(msg, CancellationToken.None);
         comandoEnviar = "";
     }
 
-    private static string MakeSafeFileName(string name)
+    // ===== GUARDAR lastcode.cpp =====
+    private async Task GuardarCodigoAsync()
     {
-        name = Path.GetFileName(name);
-        foreach (var c in Path.GetInvalidFileNameChars())
-            name = name.Replace(c, '_');
-        return name;
-    }
-
-    private async Task GuardarYNotificarOta()
-    {
-        if (_file is null || !_mqttConectado || enviandoOta) return;
-
-        if (!_file.Name.EndsWith(".bin", StringComparison.OrdinalIgnoreCase))
-        {
-            statusOta = "Error: El archivo debe ser .bin";
-            return;
-        }
-
-        if (_file.Size <= 0 || _file.Size > MaxBinSize)
-        {
-            statusOta = $"Error: Tamaño inválido. Máximo permitido: {MaxBinSize} bytes";
-            return;
-        }
-
-        if (PUBLIC_BASE_URL.Contains("TU-DOMINIO-PUBLICO"))
-        {
-            statusOta = "Error: Debes configurar PUBLIC_BASE_URL con una URL pública real.";
-            return;
-        }
-
-        enviandoOta = true;
-        statusOta = "Guardando firmware en el servidor...";
-        saveInfo = "";
-        await InvokeAsync(StateHasChanged);
-
         try
         {
-            var fwDir = Path.Combine(Env.WebRootPath, "firmware");
-            Directory.CreateDirectory(fwDir);
-
-            var safeOrig = MakeSafeFileName(_file.Name);
-            var storedName = $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}_{safeOrig}";
-            var fullPath = Path.Combine(fwDir, storedName);
-
-            long total = _file.Size;
-            long written = 0;
-
-            using var sha = SHA256.Create();
-
-            await using var input = _file.OpenReadStream(maxAllowedSize: MaxBinSize);
-            await using var output = File.Create(fullPath);
-
-            var buffer = new byte[64 * 1024]; // 64 KB
-            while (true)
-            {
-                int read = await input.ReadAsync(buffer, 0, buffer.Length);
-                if (read <= 0) break;
-
-                await output.WriteAsync(buffer, 0, read);
-                sha.TransformBlock(buffer, 0, read, null, 0);
-
-                written += read;
-                if (written % (256 * 1024) < 65536)
-                {
-                    saveInfo = $"Guardando... {written}/{total} bytes";
-                    await InvokeAsync(StateHasChanged);
-                }
-            }
-
-            sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
-            var shaHex = Convert.ToHexString(sha.Hash!).ToLowerInvariant();
-
-            if (written != total)
-                throw new Exception($"Copia incompleta: {written}/{total}");
-
-            // ✅ URL pública fija, no depende del usuario que abrió la página
-            var url = $"{PUBLIC_BASE_URL.TrimEnd('/')}/firmware/{storedName}";
-
-            saveInfo = $"Guardado ✅ URL: {url}";
-            statusOta = "Notificando por MQTT al ESP32...";
-            await InvokeAsync(StateHasChanged);
-
-            // Mensaje: HTTP|url|size|sha256|filename
-            var payload = $"HTTP|{url}|{total}|{shaHex}|{safeOrig}";
-            var mqttMsg = _factory!.CreateApplicationMessageBuilder()
-                .WithTopic(TopicOtaHttp)
-                .WithPayload(payload)
-                .Build();
-
-            await _mqttClient!.PublishAsync(mqttMsg, CancellationToken.None);
-
-            statusOta = $"Notificado ✅ ESP32 descargará. SHA256={shaHex}";
-            await InvokeAsync(StateHasChanged);
+            Directory.CreateDirectory(UserCodeDir);
+            await File.WriteAllTextAsync(UserCodePath, userCode ?? string.Empty);
+            compilacionEstado = $"Código guardado en {UserCodeFileName}";
+            compilacionLog = "";
         }
         catch (Exception ex)
         {
-            statusOta = "Error OTA: " + ex.Message;
-            await InvokeAsync(StateHasChanged);
+            compilacionEstado = "Error guardando código";
+            compilacionLog = ex.ToString();
         }
-        finally
-        {
-            enviandoOta = false;
-            await InvokeAsync(StateHasChanged);
-        }
+
+        StateHasChanged();
     }
 
-    public async ValueTask DisposeAsync()
+    // Helper para escapar JSON manual
+    private static string EscapeJson(string s)
     {
-        if (_mqttClient is null) return;
+        if (string.IsNullOrEmpty(s)) return "";
+        return s.Replace("\\", "\\\\").Replace("\"", "\\\"");
+    }
+
+    // ===== COMPILAR EN GITHUB Y ENVIAR OTA =====
+    private async Task CompilarYEnviarAsync()
+    {
+        if (!_mqttConectado || compilando) return;
+
+        if (string.IsNullOrWhiteSpace(wifiSsid) || string.IsNullOrWhiteSpace(wifiPass))
+        {
+            compilacionEstado = "Debes indicar WiFi SSID y password.";
+            StateHasChanged();
+            return;
+        }
+
+        compilando = true;
+        compilacionEstado = "Guardando código...";
+        compilacionLog = "";
+        saveInfo = "";
+        StateHasChanged();
 
         try
         {
-            if (_mqttClient.IsConnected)
-            {
-                var disconnectOptions = _factory!.CreateClientDisconnectOptionsBuilder()
-                    .WithReason(MqttClientDisconnectOptionsReason.NormalDisconnection)
-                    .Build();
+            await GuardarCodigoAsync();
 
-                await _mqttClient.DisconnectAsync(disconnectOptions, CancellationToken.None);
+            var token = Configuration["GitHub:Token"];
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                compilacionEstado = "GitHub:Token no está configurado (appsettings o variables de entorno).";
+                return;
             }
+
+            httpClient.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", token);
+
+            // 1) Lanzar workflow_dispatch
+            compilacionEstado = "Lanzando build en GitHub Actions...";
+            StateHasChanged();
+
+            var codeBytes = Encoding.UTF8.GetBytes(userCode ?? "");
+            var codeB64 = Convert.ToBase64String(codeBytes);
+
+            var dispatchUrl =
+                $"https://api.github.com/repos/{GitHubOwner}/{GitHubRepo}/actions/workflows/{GitHubWorkflowFile}/dispatches";
+
+            var json = "{"
+                       + "\"ref\":\"main\","
+                       + "\"inputs\":{"
+                       + "\"code_b64\":\"" + EscapeJson(codeB64) + "\","
+                       + "\"ssid\":\"" + EscapeJson(wifiSsid) + "\","
+                       + "\"pass\":\"" + EscapeJson(wifiPass) + "\""
+                       + "}"
+                       + "}";
+
+            var resp = await httpClient.PostAsync(
+                dispatchUrl,
+                new StringContent(json, Encoding.UTF8, "application/json"));
+
+            if (!resp.IsSuccessStatusCode)
+            {
+                var err = await resp.Content.ReadAsStringAsync();
+                compilacionEstado = $"Error lanzando workflow: {(int)resp.StatusCode} {resp.ReasonPhrase}";
+                compilacionLog = err;
+                return;
+            }
+
+            // 2) Esperar run completado
+            compilacionEstado = "Esperando a que GitHub compile...";
+            StateHasChanged();
+
+            var runsUrl =
+                $"https://api.github.com/repos/{GitHubOwner}/{GitHubRepo}/actions/workflows/{GitHubWorkflowFile}/runs?branch=main&event=workflow_dispatch&per_page=1";
+
+            WorkflowRun? run = null;
+            for (int i = 0; i < 30; i++)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5));
+
+                var runsResp = await httpClient.GetAsync(runsUrl);
+                var runsJson = await runsResp.Content.ReadAsStringAsync();
+                var runs = JsonSerializer.Deserialize<WorkflowRunsResponse>(runsJson);
+
+                run = runs?.workflow_runs?.FirstOrDefault();
+                if (run != null &&
+                    string.Equals(run.status, "completed", StringComparison.OrdinalIgnoreCase))
+                    break;
+            }
+
+            if (run == null)
+            {
+                compilacionEstado = "No se encontró run de workflow reciente.";
+                return;
+            }
+
+            if (!string.Equals(run.status, "completed", StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(run.conclusion, "success", StringComparison.OrdinalIgnoreCase))
+            {
+                compilacionEstado = $"Build no OK. status={run.status}, conclusion={run.conclusion}";
+                return;
+            }
+
+            // 3) Obtener artifact "firmware"
+            compilacionEstado = "Descargando firmware desde GitHub...";
+            StateHasChanged();
+
+            var artifactsUrl =
+                $"https://api.github.com/repos/{GitHubOwner}/{GitHubRepo}/actions/runs/{run.id}/artifacts";
+            var artifactsResp = await httpClient.GetAsync(artifactsUrl);
+            var artifactsJson = await artifactsResp.Content.ReadAsStringAsync();
+            var artifacts = JsonSerializer.Deserialize<ArtifactsResponse>(artifactsJson);
+
+            var firmwareArtifact = artifacts?.artifacts?.FirstOrDefault(a => a.name == "firmware");
+            if (firmwareArtifact == null)
+            {
+                compilacionEstado = "No se encontró artifact 'firmware'.";
+                compilacionLog = artifactsJson;
+                return;
+            }
+
+            var artifactZipUrl =
+                $"https://api.github.com/repos/{GitHubOwner}/{GitHubRepo}/actions/artifacts/{firmwareArtifact.id}/zip";
+            var zipBytes = await httpClient.GetByteArrayAsync(artifactZipUrl);
+
+            // 4) Extraer .bin y guardar en wwwroot/firmware
+            var fwDir = Path.Combine(Env.WebRootPath, "firmware");
+            Directory.CreateDirectory(fwDir);
+
+            string storedName;
+
+            using (var ms = new MemoryStream(zipBytes))
+            using (var archive = new ZipArchive(ms))
+            {
+                var binEntry = archive.Entries
+                    .FirstOrDefault(e => e.FullName.EndsWith(".bin", StringComparison.OrdinalIgnoreCase));
+                if (binEntry == null)
+                {
+                    compilacionEstado = "Artifact zip no contiene .bin";
+                    return;
+                }
+
+                storedName = $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}_fromGithub.bin";
+                var fullDest = Path.Combine(fwDir, storedName);
+
+                await using var entryStream = binEntry.Open();
+                await using var outStream = File.Create(fullDest);
+                await entryStream.CopyToAsync(outStream);
+            }
+
+            var fullPath = Path.Combine(fwDir, storedName);
+            long totalSize = new FileInfo(fullPath).Length;
+
+            // 5) SHA256
+            string shaHex;
+            using (var sha = SHA256.Create())
+            await using (var fs = File.OpenRead(fullPath))
+            {
+                var hash = await sha.ComputeHashAsync(fs);
+                shaHex = Convert.ToHexString(hash).ToLowerInvariant();
+            }
+
+            var url = $"{PublicBaseUrl}/firmware/{storedName}";
+            saveInfo = $"Firmware guardado en servidor: {url}";
+
+            // 6) Notificar al ESP32 por MQTT
+            var payloadOta = $"HTTP|{url}|{totalSize}|{shaHex}|fromGithub.bin";
+            var mqttMsg = new MqttApplicationMessageBuilder()
+                .WithTopic(TopicOtaHttp)
+                .WithPayload(payloadOta)
+                .Build();
+
+            if (_mqttClientObj is not null)
+            {
+                dynamic mqttClient = _mqttClientObj;
+                await mqttClient.PublishAsync(mqttMsg, CancellationToken.None);
+            }
+
+            compilacionEstado = $"Compilado y enviado ✅ ({totalSize} bytes). ESP32 descargará por HTTP. SHA256={shaHex}";
         }
-        catch { }
+        catch (Exception ex)
+        {
+            compilacionEstado = "Error en CompilarYEnviarAsync";
+            compilacionLog = ex.ToString();
+        }
         finally
         {
-            _mqttClient.Dispose();
+            compilando = false;
+            StateHasChanged();
+        }
+    }
+
+    // ===== DISPOSE =====
+    public async ValueTask DisposeAsync()
+    {
+        if (_mqttClientObj is null) return;
+
+        try
+        {
+            dynamic mqttClient = _mqttClientObj;
+            await mqttClient.DisconnectAsync();
+        }
+        catch
+        {
+        }
+        finally
+        {
+            if (_mqttClientObj is IDisposable d)
+            {
+                d.Dispose();
+            }
         }
     }
 }
