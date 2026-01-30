@@ -382,7 +382,7 @@ void UserLoop() {
             }
 
             httpClient.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Bearer", token);
+            new AuthenticationHeaderValue("token", token);
 
             // 1) Lanzar workflow_dispatch
             compilacionEstado = "Lanzando build en GitHub Actions...";
