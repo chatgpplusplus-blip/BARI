@@ -347,7 +347,8 @@
             <p class="helper">Selecciona una subcategoría para ver las instalaciones.</p>
         </div>
 
-        <div class="category-controls">
+        <!-- ✅ clave: controls-strip (carrusel en móvil) -->
+        <div class="category-controls controls-strip">
             <label class="toggle @(_verTodos ? "is-filled" : "")">
                 <input type="checkbox"
                        checked="@_verTodos"
@@ -383,7 +384,8 @@
     }
     else
     {
-        <div class="category-grid">
+        <!-- ✅ opcional: category-strip (carrusel de cards en móvil, igual que materiales) -->
+        <div class="category-grid category-strip">
             @foreach (var categoria in categoriasGuia)
             {
                 <div class="category-card">
@@ -405,6 +407,7 @@
         </div>
     }
 </section>
+
 
 <!-- =========================================================
      3) TABLA + BUSCADOR
@@ -2142,5 +2145,108 @@
             outline: none;
             box-shadow: 0 0 0 3px rgba(147, 197, 253, .55);
         }
+
+    /* ===========================
+       Anti-overflow (evita scroll global)
+       =========================== */
+    .page-card,
+    .category-header,
+    .materials-header {
+        max-width: 100%;
+    }
+
+        .category-header > *,
+        .materials-header > * {
+            min-width: 0; /* clave: hijos flex no empujan overflow */
+        }
+
+    /* ===========================
+       Responsive: filtros/categorías como carrusel en móvil
+       =========================== */
+    @@media (max-width: 900px) {
+        /* Header apilado para que nada empuje ancho */
+        .category-header
+
+    {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    /* ---------- Filtros: carrusel horizontal ---------- */
+    .category-controls.controls-strip {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-x: contain;
+        gap: .6rem;
+        padding: .45rem .45rem .60rem;
+        margin-top: .35rem;
+        border: 1px solid #e5e7eb;
+        background: #f8fafc;
+        border-radius: 14px;
+        scroll-snap-type: x proximity;
+        scrollbar-width: none; /* Firefox */
+        -ms-overflow-style: none; /* IE/Edge legacy */
+    }
+
+        .category-controls.controls-strip::-webkit-scrollbar {
+            display: none; /* Chrome/Safari */
+        }
+
+        .category-controls.controls-strip > * {
+            flex: 0 0 auto;
+            scroll-snap-align: start;
+        }
+
+        /* evita que el select se estire 100% dentro del carrusel */
+        .category-controls.controls-strip .category-select {
+            min-width: 240px;
+            width: auto;
+        }
+
+    /* ---------- Categorías: carrusel (si usas category-strip) ---------- */
+    .category-grid.category-strip {
+        display: flex;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-x: contain;
+        gap: 1rem;
+        padding: .25rem .45rem .75rem;
+        margin-top: 1rem;
+        scroll-snap-type: x mandatory;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+    }
+
+        .category-grid.category-strip::-webkit-scrollbar {
+            display: none;
+        }
+
+        .category-grid.category-strip .category-card {
+            flex: 0 0 auto;
+            width: min(520px, calc(100vw - 3.5rem)); /* evita “vw” que provoque overflow */
+            scroll-snap-align: start;
+        }
+
+    /* mapas y buscador: que nunca fuercen ancho */
+    .visual-picker {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .search-input-invent {
+        min-width: 0;
+    }
+
+    }
 </style>
 ```

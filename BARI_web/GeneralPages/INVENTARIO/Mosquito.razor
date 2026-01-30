@@ -1,83 +1,315 @@
-﻿@page "/Mosquito/"
-@using System.Text
-@implements IDisposable
+﻿@page "/Mosquito"
+@using Microsoft.AspNetCore.Components.Forms
+@using MQTTnet
+@using System.Security.Cryptography
+@using System.IO
 
-<div class="container mt-4">
-    <div class="card border-primary">
+@inject IWebHostEnvironment Env
+
+@implements IAsyncDisposable
+
+<div class="container">
+    <div class="card mt-4">
         <div class="card-header bg-primary text-white">
-            <h4>Panel MQTT - ESP32</h4>
+            <h3>Panel ESP32 (MQTT + OTA HTTP Pull)</h3>
         </div>
+
         <div class="card-body">
-            <p><strong>Estado:</strong> @estadoConexion</p>
-            <div class="alert alert-info">
-                <strong>Último mensaje del ESP32:</strong> @ultimoMensaje
+
+            <div class="row">
+                <div class="col-md-6">
+                    <h4>LOG (Serial → Web)</h4>
+                    <div class="alert alert-dark mt-3">
+                        <strong>Último log:</strong>
+                        <span class="text-success">@ultimoLog</span>
+                    </div>
+
+                    <div class="alert alert-secondary mt-3">
+                        <strong>Último status:</strong>
+                        <span class="text-primary">@ultimoStatus</span>
+                    </div>
+
+                    <div><small class="text-muted">Estado MQTT: @estadoMqtt</small></div>
+                </div>
+
+                <div class="col-md-6">
+                    <h4>Enviar Comando (Web → ESP32)</h4>
+                    <div class="input-group">
+                        <input @bind="comandoEnviar" class="form-control" placeholder="Ej: LED_ON / LED_OFF / texto" />
+                        <button class="btn btn-success" @onclick="EnviarDato" disabled="@(!_mqttConectado)">Enviar</button>
+                    </div>
+                </div>
             </div>
-            <hr />
-            <input @bind="comandoEnviar" class="form-control" placeholder="Comando para ESP32" />
-            <button class="btn btn-success mt-2" @onclick="EnviarDato">Enviar Comando</button>
+
+            <hr class="my-4" />
+
+            <h4>OTA rápido (HTTP Pull) + MQTT “notificación”</h4>
+            <div class="alert alert-warning">
+                <div><strong>IMPORTANTE:</strong> El ESP32 descargará el firmware desde:</div>
+                <div><code>@PUBLIC_BASE_URL</code></div>
+                <div><small>Debe ser una URL pública accesible desde Internet (no localhost, no IP privada).</small></div>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Firmware (.bin)</label>
+                    <InputFile OnChange="OnFileSelected" accept=".bin" />
+                    <div class="mt-2"><small class="text-muted">@archivoInfo</small></div>
+                    <div class="mt-1"><small class="text-muted">@saveInfo</small></div>
+                </div>
+            </div>
+
+            <div class="mt-3">
+                <button class="btn btn-primary"
+                        @onclick="GuardarYNotificarOta"
+                        disabled="@(_file is null || !_mqttConectado || enviandoOta)">
+                    @(enviandoOta ? "Procesando..." : "Guardar firmware y notificar al ESP32")
+                </button>
+            </div>
+
+            <div class="mt-3">
+                <strong>@statusOta</strong>
+            </div>
+
         </div>
     </div>
 </div>
 
 @code {
-    // Usamos el nombre completo para evitar errores de namespace
-    private MQTTnet.Client.IMqttClient? _mqttClient;
-    private string ultimoMensaje = "Esperando...";
-    private string estadoConexion = "Desconectado";
+    // ====== CONFIG ======
+    private const string BaseTopic = "bari/esp32/bari1";
+
+    // ✅ PON AQUÍ TU DOMINIO / URL PÚBLICA REAL (Cloudflare Tunnel / VPS / etc.)
+    // Ejemplos:
+    // "https://miapp.midominio.com"
+    // "https://xxxx.trycloudflare.com"
+    private const string PUBLIC_BASE_URL = "https://bari-f57y.onrender.com/";
+
+    private const long MaxBinSize = 50 * 1024 * 1024; // 50MB
+
+    private static string T(string tail) => $"{BaseTopic}/{tail}";
+
+    private readonly string TopicCmd = T("comandos");
+    private readonly string TopicLog = T("log");
+    private readonly string TopicStatus = T("status");
+    private readonly string TopicOtaHttp = T("ota/http");
+
+    // ====== MQTT ======
+    private MqttClientFactory? _factory;
+    private IMqttClient? _mqttClient;
+    private bool _mqttConectado => _mqttClient?.IsConnected == true;
+
+    // ====== UI ======
+    private string estadoMqtt = "Desconectado";
     private string comandoEnviar = "";
+
+    private string ultimoLog = "(sin logs aún)";
+    private string ultimoStatus = "(esperando...)";
+
+    private IBrowserFile? _file;
+    private string archivoInfo = "Ningún archivo seleccionado";
+    private string saveInfo = "";
+    private string statusOta = "";
+    private bool enviandoOta = false;
 
     protected override async Task OnInitializedAsync()
     {
-        var factory = new MQTTnet.MqttFactory();
-        _mqttClient = factory.CreateMqttClient();
+        _factory = new MqttClientFactory();
+        _mqttClient = _factory.CreateMqttClient();
 
-        var options = new MQTTnet.Client.MqttClientOptionsBuilder()
-            .WithTcpServer("broker.emqx.io", 1883)
-            .Build();
+        _mqttClient.ConnectedAsync += _ =>
+        {
+            estadoMqtt = "Conectado ✅";
+            return InvokeAsync(StateHasChanged);
+        };
 
-        // Configurar el manejador de mensajes recibidos
+        _mqttClient.DisconnectedAsync += _ =>
+        {
+            estadoMqtt = "Desconectado ❌";
+            return InvokeAsync(StateHasChanged);
+        };
+
         _mqttClient.ApplicationMessageReceivedAsync += e =>
         {
-            // En v4+, Payload es ReadOnlyMemory<byte>
-            var payloadText = Encoding.UTF8.GetString(e.ApplicationMessage.Payload.ToArray());
-            ultimoMensaje = payloadText;
+            var topic = e.ApplicationMessage.Topic ?? "";
+            var text = e.ApplicationMessage.ConvertPayloadToString() ?? "";
 
-            InvokeAsync(StateHasChanged);
-            return Task.CompletedTask;
+            if (topic == TopicLog) ultimoLog = text;
+            else if (topic == TopicStatus) ultimoStatus = text;
+
+            return InvokeAsync(StateHasChanged);
         };
+
+        var options = _factory.CreateClientOptionsBuilder()
+            .WithTcpServer("broker.emqx.io", 1883)
+            .WithClientId($"BARI_web_{Guid.NewGuid():N}")
+            .WithKeepAlivePeriod(TimeSpan.FromSeconds(30))
+            .Build();
 
         try
         {
-            await _mqttClient.ConnectAsync(options);
-            estadoConexion = "Conectado al Broker";
+            estadoMqtt = "Conectando...";
+            await _mqttClient.ConnectAsync(options, CancellationToken.None);
 
-            var subscribeOptions = factory.CreateSubscribeOptionsBuilder()
-                .WithTopicFilter(f => f.WithTopic("esp32/datos"))
+            var subs = _factory.CreateSubscribeOptionsBuilder()
+                .WithTopicFilter(TopicLog)
+                .WithTopicFilter(TopicStatus)
                 .Build();
 
-            await _mqttClient.SubscribeAsync(subscribeOptions);
+            await _mqttClient.SubscribeAsync(subs, CancellationToken.None);
         }
         catch (Exception ex)
         {
-            estadoConexion = "Error: " + ex.Message;
+            estadoMqtt = "Error MQTT: " + ex.Message;
         }
+    }
+
+    private void OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _file = e.File;
+        archivoInfo = $"{_file.Name} ({_file.Size} bytes)";
+        saveInfo = "";
+        statusOta = "";
     }
 
     private async Task EnviarDato()
     {
-        if (_mqttClient != null && _mqttClient.IsConnected)
+        if (!_mqttConectado) return;
+
+        var msg = _factory!.CreateApplicationMessageBuilder()
+            .WithTopic(TopicCmd)
+            .WithPayload(comandoEnviar ?? "")
+            .Build();
+
+        await _mqttClient!.PublishAsync(msg, CancellationToken.None);
+        comandoEnviar = "";
+    }
+
+    private static string MakeSafeFileName(string name)
+    {
+        name = Path.GetFileName(name);
+        foreach (var c in Path.GetInvalidFileNameChars())
+            name = name.Replace(c, '_');
+        return name;
+    }
+
+    private async Task GuardarYNotificarOta()
+    {
+        if (_file is null || !_mqttConectado || enviandoOta) return;
+
+        if (!_file.Name.EndsWith(".bin", StringComparison.OrdinalIgnoreCase))
         {
-            var message = new MQTTnet.MqttApplicationMessageBuilder()
-                .WithTopic("esp32/comandos")
-                .WithPayload(comandoEnviar)
+            statusOta = "Error: El archivo debe ser .bin";
+            return;
+        }
+
+        if (_file.Size <= 0 || _file.Size > MaxBinSize)
+        {
+            statusOta = $"Error: Tamaño inválido. Máximo permitido: {MaxBinSize} bytes";
+            return;
+        }
+
+        if (PUBLIC_BASE_URL.Contains("TU-DOMINIO-PUBLICO"))
+        {
+            statusOta = "Error: Debes configurar PUBLIC_BASE_URL con una URL pública real.";
+            return;
+        }
+
+        enviandoOta = true;
+        statusOta = "Guardando firmware en el servidor...";
+        saveInfo = "";
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var fwDir = Path.Combine(Env.WebRootPath, "firmware");
+            Directory.CreateDirectory(fwDir);
+
+            var safeOrig = MakeSafeFileName(_file.Name);
+            var storedName = $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}_{safeOrig}";
+            var fullPath = Path.Combine(fwDir, storedName);
+
+            long total = _file.Size;
+            long written = 0;
+
+            using var sha = SHA256.Create();
+
+            await using var input = _file.OpenReadStream(maxAllowedSize: MaxBinSize);
+            await using var output = File.Create(fullPath);
+
+            var buffer = new byte[64 * 1024]; // 64 KB
+            while (true)
+            {
+                int read = await input.ReadAsync(buffer, 0, buffer.Length);
+                if (read <= 0) break;
+
+                await output.WriteAsync(buffer, 0, read);
+                sha.TransformBlock(buffer, 0, read, null, 0);
+
+                written += read;
+                if (written % (256 * 1024) < 65536)
+                {
+                    saveInfo = $"Guardando... {written}/{total} bytes";
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+
+            sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+            var shaHex = Convert.ToHexString(sha.Hash!).ToLowerInvariant();
+
+            if (written != total)
+                throw new Exception($"Copia incompleta: {written}/{total}");
+
+            // ✅ URL pública fija, no depende del usuario que abrió la página
+            var url = $"{PUBLIC_BASE_URL.TrimEnd('/')}/firmware/{storedName}";
+
+            saveInfo = $"Guardado ✅ URL: {url}";
+            statusOta = "Notificando por MQTT al ESP32...";
+            await InvokeAsync(StateHasChanged);
+
+            // Mensaje: HTTP|url|size|sha256|filename
+            var payload = $"HTTP|{url}|{total}|{shaHex}|{safeOrig}";
+            var mqttMsg = _factory!.CreateApplicationMessageBuilder()
+                .WithTopic(TopicOtaHttp)
+                .WithPayload(payload)
                 .Build();
 
-            await _mqttClient.PublishAsync(message);
+            await _mqttClient!.PublishAsync(mqttMsg, CancellationToken.None);
+
+            statusOta = $"Notificado ✅ ESP32 descargará. SHA256={shaHex}";
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            statusOta = "Error OTA: " + ex.Message;
+            await InvokeAsync(StateHasChanged);
+        }
+        finally
+        {
+            enviandoOta = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        _mqttClient?.Dispose();
+        if (_mqttClient is null) return;
+
+        try
+        {
+            if (_mqttClient.IsConnected)
+            {
+                var disconnectOptions = _factory!.CreateClientDisconnectOptionsBuilder()
+                    .WithReason(MqttClientDisconnectOptionsReason.NormalDisconnection)
+                    .Build();
+
+                await _mqttClient.DisconnectAsync(disconnectOptions, CancellationToken.None);
+            }
+        }
+        catch { }
+        finally
+        {
+            _mqttClient.Dispose();
+        }
     }
 }
