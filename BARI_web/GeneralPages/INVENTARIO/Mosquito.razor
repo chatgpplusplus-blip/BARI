@@ -1,563 +1,553 @@
 ﻿@page "/Mosquito"
-@using Microsoft.AspNetCore.Components.Forms
-@using MQTTnet
-@using System.Security.Cryptography
 @using System.Text
 @using System.Text.Json
 @using System.Net.Http
-@using System.Net.Http.Headers
 @using System.IO
-@using System.IO.Compression
 
 @inject IWebHostEnvironment Env
-@inject IConfiguration Configuration
 
 @implements IAsyncDisposable
 
 <div class="container">
     <div class="card mt-4">
         <div class="card-header bg-primary text-white">
-            <h3>Panel ESP32 (MQTT + OTA HTTP + GitHub)</h3>
+            <h3>Panel ESP32 (MicroPython + HTTP directo)</h3>
         </div>
 
         <div class="card-body">
 
-            <div class="row">
+            <div class="alert alert-info">
+                <div class="mb-1">
+                    Este panel envía <strong>main.py / boot.py</strong> directo por <strong>HTTP</strong> al ESP32 (sin GitHub, sin compilar).
+                </div>
+                <div class="mb-0">
+                    Requisito: el ESP32 debe estar corriendo el servidor MicroPython <code>api_server.py</code> (te lo dejo abajo).
+                </div>
+            </div>
+
+            <div class="row g-3 mb-3">
                 <div class="col-md-6">
-                    <h4>LOG (Serial → Web)</h4>
-                    <div class="alert alert-dark mt-3">
-                        <strong>Último log:</strong>
-                        <span class="text-success">@ultimoLog</span>
-                    </div>
-
-                    <div class="alert alert-secondary mt-3">
-                        <strong>Último status:</strong>
-                        <span class="text-primary">@ultimoStatus</span>
-                    </div>
-
-                    <div><small class="text-muted">Estado MQTT: @estadoMqtt</small></div>
+                    <label class="form-label">ESP32 Base URL</label>
+                    <input class="form-control" @bind="esp32BaseUrl" placeholder="Ej: http://192.168.1.50" />
+                    <small class="text-muted">Debe ser accesible desde donde corre tu Blazor (misma LAN si es IP privada).</small>
                 </div>
 
                 <div class="col-md-6">
-                    <h4>Enviar Comando (Web → ESP32)</h4>
+                    <label class="form-label">API Key (opcional, recomendado)</label>
+                    <input type="password" class="form-control" @bind="apiKey" placeholder="Ej: 1234" />
+                    <small class="text-muted">Se envía como header <code>X-Api-Key</code>. Configura lo mismo en el ESP32.</small>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 flex-wrap mb-3">
+                <button class="btn btn-outline-primary" @onclick="ProbarConexionAsync" disabled="@enviando">Probar conexión</button>
+                <button class="btn btn-outline-danger" @onclick="ResetAsync" disabled="@enviando">Reiniciar ESP32</button>
+
+                <div class="form-check ms-2">
+                    <input class="form-check-input" type="checkbox" id="chkAuto"
+                           @bind="autoStatus" />
+                    <label class="form-check-label" for="chkAuto">
+                        Auto status (cada 3s)
+                    </label>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <div class="alert alert-secondary mb-2">
+                        <strong>Estado HTTP:</strong> <span class="ms-2">@estadoHttp</span>
+                    </div>
+
+                    <div class="alert alert-dark mb-2">
+                        <strong>Status ESP32:</strong> <span class="ms-2 text-success">@ultimoStatus</span>
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(ultimoError))
+                    {
+                        <div class="alert alert-warning mb-2">
+                            <strong>Último error:</strong>
+                            <div><small>@ultimoError</small></div>
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(ultimaRespuestaCruda))
+                    {
+                        <div class="mb-2">
+                            <strong>Respuesta cruda:</strong>
+                            <pre class="bg-dark text-light p-2" style="max-height: 220px; overflow:auto;">@ultimaRespuestaCruda</pre>
+                        </div>
+                    }
+                </div>
+
+                <div class="col-md-6">
+                    <h5>Enviar comando por HTTP</h5>
                     <div class="input-group">
                         <input @bind="comandoEnviar" class="form-control" placeholder="Ej: LED_ON / LED_OFF / texto" />
-                        <button class="btn btn-success" @onclick="EnviarDato" disabled="@(!_mqttConectado)">Enviar</button>
+                        <button class="btn btn-success" @onclick="EnviarComandoAsync" disabled="@enviando">Enviar</button>
                     </div>
+                    <small class="text-muted">El ESP32 recibe en <code>POST /api/cmd</code>. Tú decides qué hace con ese comando en MicroPython.</small>
                 </div>
             </div>
 
             <hr class="my-4" />
 
-            <h4>Compilar y enviar firmware desde código (GitHub → OTA HTTP)</h4>
-
-            <div class="alert alert-info">
-                <p class="mb-1">
-                    El ESP32 se actualizará vía <strong>HTTP OTA</strong> descargando el firmware desde:
-                </p>
-                <code>@PublicBaseUrl</code>
-                <p class="mb-0">
-                    y recibiendo la orden por MQTT en <code>bari/esp32/bari1/ota/http</code>.
-                </p>
-            </div>
+            <h4>Editar y enviar MicroPython</h4>
 
             <div class="row g-3 mb-3">
-                <div class="col-md-4">
-                    <label class="form-label">WiFi SSID (red del ESP32)</label>
-                    <input class="form-control" @bind="wifiSsid" />
+                <div class="col-md-6">
+                    <h5>main.py</h5>
+                    <textarea class="form-control"
+                              style="min-height: 320px; font-family: Consolas, monospace; font-size: 0.9rem;"
+                              @bind="mainPy">
+                    </textarea>
+
+                    <div class="d-flex gap-2 mt-2 flex-wrap">
+                        <button class="btn btn-outline-secondary" @onclick="GuardarMainAsync" disabled="@enviando">Guardar main local</button>
+                        <button class="btn btn-primary" @onclick="SubirMainAsync" disabled="@enviando">
+                            @(enviando ? "Enviando..." : "Enviar main.py al ESP32")
+                        </button>
+                    </div>
                 </div>
-                <div class="col-md-4">
-                    <label class="form-label">WiFi password</label>
-                    <input type="password" class="form-control" @bind="wifiPass" />
+
+                <div class="col-md-6">
+                    <h5>boot.py (opcional)</h5>
+                    <textarea class="form-control"
+                              style="min-height: 320px; font-family: Consolas, monospace; font-size: 0.9rem;"
+                              @bind="bootPy">
+                    </textarea>
+
+                    <div class="d-flex gap-2 mt-2 flex-wrap">
+                        <button class="btn btn-outline-secondary" @onclick="GuardarBootAsync" disabled="@enviando">Guardar boot local</button>
+                        <button class="btn btn-warning" @onclick="SubirBootAsync" disabled="@enviando">
+                            @(enviando ? "Enviando..." : "Enviar boot.py al ESP32")
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            <div class="mb-3">
-                <label class="form-label">Código de aplicación (user_app.cpp)</label>
-                <textarea class="form-control"
-                          style="min-height: 320px; font-family: Consolas, monospace; font-size: 0.9rem;"
-                          @bind="userCode">
-                </textarea>
-                <small class="text-muted">
-                    Aquí defines <code>UserSetup</code> y <code>UserLoop</code>. El core OTA/MQTT no se puede editar desde la web.
-                </small>
+            <div class="form-check mt-2">
+                <input class="form-check-input" type="checkbox" id="chkReset"
+                       @bind="resetDespuesDeSubir" />
+                <label class="form-check-label" for="chkReset">
+                    Reiniciar ESP32 después de subir archivos
+                </label>
             </div>
-
-            <div class="d-flex gap-2 mb-2 flex-wrap">
-                <button class="btn btn-outline-secondary" @onclick="GuardarCodigoAsync">
-                    Guardar código (lastcode.cpp)
-                </button>
-
-                <button class="btn btn-warning"
-                        @onclick="CompilarYEnviarAsync"
-                        disabled="@(!_mqttConectado || compilando)">
-                    @(compilando ? "Compilando en GitHub y enviando..." : "Compilar en GitHub y enviar OTA")
-                </button>
-            </div>
-
-            <div class="mb-2">
-                <strong>Estado compilación/OTA:</strong>
-                <span class="ms-2">@compilacionEstado</span>
-            </div>
-
-            @if (!string.IsNullOrWhiteSpace(compilacionLog))
-            {
-                <div class="mb-2">
-                    <strong>Log compilador / GitHub:</strong>
-                    <pre class="bg-dark text-light p-2" style="max-height: 240px; overflow:auto;">
-                        @compilacionLog
-                        </pre>
-                </div>
-            }
 
             @if (!string.IsNullOrWhiteSpace(saveInfo))
             {
-                <div class="mt-2">
+                <div class="mt-3">
                     <small class="text-muted">@saveInfo</small>
                 </div>
             }
+
+            <hr class="my-4" />
+
+            <div class="alert alert-light">
+                <strong>Cómo funciona (resumen):</strong>
+                <ul class="mb-0">
+                    <li>Tu Blazor manda JSON a <code>POST /api/fs/write</code> con <code>path</code> y <code>content_b64</code>.</li>
+                    <li>El ESP32 decodifica base64 y escribe el archivo en su FS (<code>:/main.py</code> o <code>:/boot.py</code>).</li>
+                    <li>Opcionalmente llamas <code>POST /api/reset</code> para que reinicie y ejecute el nuevo <code>main.py</code>.</li>
+                </ul>
+            </div>
 
         </div>
     </div>
 </div>
 
 @code {
-    // ===== CONFIG BÁSICA =====
-    private const string BaseTopic = "bari/esp32/bari1";
-    private static string T(string tail) => $"{BaseTopic}/{tail}";
+    // ========= HTTP =========
+    private static readonly HttpClient http = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(15)
+        };
 
-    private readonly string TopicCmd = T("comandos");
-    private readonly string TopicLog = T("log");
-    private readonly string TopicStatus = T("status");
-    private readonly string TopicOtaHttp = T("ota/http");
+    // ========= UI =========
+    private string esp32BaseUrl = "http://192.168.1.50";
+    private string apiKey = "";
+    private string estadoHttp = "Sin probar";
+    private string ultimoStatus = "(sin status aún)";
+    private string comandoEnviar = "";
+    private string saveInfo = "";
+    private string ultimoError = "";
+    private string ultimaRespuestaCruda = "";
+    private bool enviando = false;
 
-    private string PublicBaseUrl =>
-        (Configuration["PublicBaseUrl"] ?? "https://bari-f57y.onrender.com").TrimEnd('/');
+    private bool resetDespuesDeSubir = true;
+    private bool autoStatus = true;
 
-    private string GitHubOwner => Configuration["GitHub:Owner"] ?? "chatgpplusplus-blip";
-    private string GitHubRepo => Configuration["GitHub:Repo"] ?? "esp32-builder";
-    private string GitHubWorkflowFile => Configuration["GitHub:WorkflowFile"] ?? "build-ota.yml";
+    // ========= CÓDIGO =========
+    private const string DefaultMainPy = @"print(""Hola desde main.py (MicroPython)!"")";
 
-    // ===== MQTT =====
-    private MQTTnet.MqttClientFactory? _factory;
-    private object? _mqttClientObj;   // usamos dynamic para no depender de MQTTnet.Client.*
+    private const string DefaultBootPy = @"# boot.py (opcional)
+# Aquí normalmente conectas WiFi y arrancas tu API server.
+# Si no lo necesitas, puedes dejarlo vacío.
+";
 
-    private bool _mqttConectado =>
-        _mqttClientObj is not null && IsClientConnected(_mqttClientObj);
+    private string mainPy = DefaultMainPy;
+    private string bootPy = DefaultBootPy;
 
-    private static bool IsClientConnected(object client)
+    // ========= Persistencia local (servidor Blazor) =========
+    private string UserCodeDir => Path.Combine(Env.ContentRootPath, "UserCode");
+    private string MainPath => Path.Combine(UserCodeDir, "last_main.py");
+    private string BootPath => Path.Combine(UserCodeDir, "last_boot.py");
+
+    // ========= Polling =========
+    private CancellationTokenSource? _pollCts;
+    private Task? _pollTask;
+
+    private sealed class ApiResult
     {
+        public bool ok { get; set; }
+        public string? error { get; set; }
+        public string? path { get; set; }
+        public int bytes { get; set; }
+    }
+
+    private sealed class ApiStatus
+    {
+        public bool ok { get; set; }
+        public string? error { get; set; }
+        public string? status { get; set; }
+        public int free_mem { get; set; }
+        public long uptime_ms { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Directory.CreateDirectory(UserCodeDir);
+
         try
         {
-            dynamic c = client;
-            return c.IsConnected == true;
+            if (File.Exists(MainPath)) mainPy = await File.ReadAllTextAsync(MainPath);
+        }
+        catch { /* ignore */ }
+
+        try
+        {
+            if (File.Exists(BootPath)) bootPy = await File.ReadAllTextAsync(BootPath);
+        }
+        catch { /* ignore */ }
+
+        _pollCts = new CancellationTokenSource();
+        _pollTask = PollLoopAsync(_pollCts.Token);
+    }
+
+    private async Task PollLoopAsync(CancellationToken ct)
+    {
+        var timer = new PeriodicTimer(TimeSpan.FromSeconds(3));
+
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                if (!autoStatus) continue;
+                if (string.IsNullOrWhiteSpace(esp32BaseUrl)) continue;
+
+                await GetStatusAsync(silent: true);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // normal
         }
         catch
         {
-            return false;
+            // evita romper la página por polling
         }
     }
 
-    // ===== UI / ESTADO =====
-    private string estadoMqtt = "Desconectado";
-    private string comandoEnviar = "";
-
-    private string ultimoLog = "(sin logs aún)";
-    private string ultimoStatus = "(esperando...)";
-
-    // Código de usuario
-    private const string DefaultUserCode = @"#include <Arduino.h>
-#include ""user_app.h""
-
-const int APP_LED_PIN = 13;
-
-void UserSetup() {
-    Serial.begin(115200);
-    delay(500);
-    Serial.println(""=== UserSetup desde web ==="");
-    pinMode(APP_LED_PIN, OUTPUT);
-    digitalWrite(APP_LED_PIN, LOW);
-}
-
-void UserLoop() {
-    digitalWrite(APP_LED_PIN, HIGH);
-    delay(200);
-    digitalWrite(APP_LED_PIN, LOW);
-    delay(200);
-}
-";
-
-    private string userCode = DefaultUserCode;
-    private string compilacionEstado = "";
-    private string compilacionLog = "";
-    private bool compilando = false;
-
-    private string wifiSsid = "";
-    private string wifiPass = "";
-    private string saveInfo = "";
-
-    // lastcode.cpp
-    private static readonly string UserCodeFileName = "lastcode.cpp";
-    private string UserCodeDir => Path.Combine(Env.ContentRootPath, "UserCode");
-    private string UserCodePath => Path.Combine(UserCodeDir, UserCodeFileName);
-
-    // HttpClient único para GitHub
-    private static readonly HttpClient httpClient = CreateHttpClient();
-
-    private static HttpClient CreateHttpClient()
+    private string NormalizeBaseUrl(string s)
     {
-        var c = new HttpClient();
-        c.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("BARI_web", "1.0"));
-        c.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
-        return c;
-    }
-
-    // Clases para deserializar respuestas de GitHub
-    private sealed class WorkflowRunsResponse
-    {
-        public List<WorkflowRun> workflow_runs { get; set; } = new();
-    }
-
-    private sealed class WorkflowRun
-    {
-        public long id { get; set; }
-        public string status { get; set; } = "";
-        public string conclusion { get; set; } = "";
-    }
-
-    private sealed class ArtifactsResponse
-    {
-        public List<Artifact> artifacts { get; set; } = new();
-    }
-
-    private sealed class Artifact
-    {
-        public long id { get; set; }
-        public string name { get; set; } = "";
-    }
-
-    // ===== INICIALIZACIÓN =====
-    protected override async Task OnInitializedAsync()
-    {
-        // MQTT
-        _factory = new MQTTnet.MqttClientFactory();
-        var mqttClient = _factory.CreateMqttClient();
-        _mqttClientObj = mqttClient;
-
-        mqttClient.ConnectedAsync += async _ =>
+        s = (s ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(s)) return s;
+        if (!s.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+            !s.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
         {
-            estadoMqtt = "Conectado ✅";
-            await InvokeAsync(StateHasChanged);
-        };
+            s = "http://" + s;
+        }
+        return s.TrimEnd('/');
+    }
 
-        mqttClient.DisconnectedAsync += async _ =>
+    private HttpRequestMessage NewRequest(HttpMethod method, string relativePath)
+    {
+        var baseUrl = NormalizeBaseUrl(esp32BaseUrl);
+        var url = $"{baseUrl}{relativePath}";
+        var req = new HttpRequestMessage(method, url);
+
+        if (!string.IsNullOrWhiteSpace(apiKey))
         {
-            estadoMqtt = "Desconectado ❌";
-            await InvokeAsync(StateHasChanged);
-        };
+            req.Headers.TryAddWithoutValidation("X-Api-Key", apiKey.Trim());
+        }
 
-        mqttClient.ApplicationMessageReceivedAsync += async e =>
+        return req;
+    }
+
+    private async Task<(bool ok, string raw, T? data, string err)> SendJsonAsync<T>(HttpMethod method, string path, object? payload)
+    {
+        var req = NewRequest(method, path);
+
+        if (payload is not null)
         {
-            var topic = e.ApplicationMessage.Topic ?? "";
-            var text = e.ApplicationMessage.ConvertPayloadToString() ?? "";
+            var json = JsonSerializer.Serialize(payload);
+            req.Content = new StringContent(json, Encoding.UTF8, "application/json");
+        }
 
-            if (topic == TopicLog) ultimoLog = text;
-            else if (topic == TopicStatus) ultimoStatus = text;
+        using var resp = await http.SendAsync(req);
+        var raw = await resp.Content.ReadAsStringAsync();
 
-            await InvokeAsync(StateHasChanged);
-        };
-
-        var options = _factory.CreateClientOptionsBuilder()
-            .WithTcpServer("broker.emqx.io", 1883)
-            .WithClientId($"BARI_web_{Guid.NewGuid():N}")
-            .WithKeepAlivePeriod(TimeSpan.FromSeconds(30))
-            .Build();
+        if (!resp.IsSuccessStatusCode)
+        {
+            return (false, raw, default, $"HTTP {(int)resp.StatusCode} {resp.ReasonPhrase}");
+        }
 
         try
         {
-            estadoMqtt = "Conectando...";
-            await mqttClient.ConnectAsync(options, CancellationToken.None);
-
-            var subs = _factory.CreateSubscribeOptionsBuilder()
-                .WithTopicFilter(TopicLog)
-                .WithTopicFilter(TopicStatus)
-                .Build();
-
-            await mqttClient.SubscribeAsync(subs, CancellationToken.None);
+            var obj = JsonSerializer.Deserialize<T>(raw);
+            return (true, raw, obj, "");
         }
         catch (Exception ex)
         {
-            estadoMqtt = "Error MQTT: " + ex.Message;
+            return (false, raw, default, "No pude parsear JSON: " + ex.Message);
         }
+    }
 
-        // Cargar lastcode.cpp si existe
+    private async Task ProbarConexionAsync()
+    {
+        await GetStatusAsync(silent: false);
+    }
+
+    private async Task GetStatusAsync(bool silent)
+    {
+        ultimoError = "";
+        saveInfo = "";
+
+        try
+        {
+            estadoHttp = "Consultando /api/status...";
+            StateHasChanged();
+
+            var (ok, raw, data, err) = await SendJsonAsync<ApiStatus>(HttpMethod.Get, "/api/status", payload: null);
+            ultimaRespuestaCruda = raw;
+
+            if (!ok || data is null || !data.ok)
+            {
+                estadoHttp = "Sin conexión ❌";
+                if (!silent) ultimoError = data?.error ?? err ?? "Error desconocido";
+                return;
+            }
+
+            estadoHttp = "Conectado ✅";
+            ultimoStatus = $"{data.status} | mem={data.free_mem} | uptime_ms={data.uptime_ms}";
+        }
+        catch (Exception ex)
+        {
+            estadoHttp = "Error ❌";
+            if (!silent) ultimoError = ex.Message;
+        }
+        finally
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task GuardarMainAsync()
+    {
         try
         {
             Directory.CreateDirectory(UserCodeDir);
-            if (File.Exists(UserCodePath))
+            await File.WriteAllTextAsync(MainPath, mainPy ?? "");
+            saveInfo = "main.py guardado (last_main.py).";
+        }
+        catch (Exception ex)
+        {
+            saveInfo = "Error guardando main.py: " + ex.Message;
+        }
+    }
+
+    private async Task GuardarBootAsync()
+    {
+        try
+        {
+            Directory.CreateDirectory(UserCodeDir);
+            await File.WriteAllTextAsync(BootPath, bootPy ?? "");
+            saveInfo = "boot.py guardado (last_boot.py).";
+        }
+        catch (Exception ex)
+        {
+            saveInfo = "Error guardando boot.py: " + ex.Message;
+        }
+    }
+
+    private async Task SubirMainAsync()
+    {
+        await SubirArchivoAsync("/main.py", mainPy ?? "");
+    }
+
+    private async Task SubirBootAsync()
+    {
+        await SubirArchivoAsync("/boot.py", bootPy ?? "");
+    }
+
+    private async Task SubirArchivoAsync(string pathEnEsp, string contentText)
+    {
+        if (enviando) return;
+        enviando = true;
+        ultimoError = "";
+        saveInfo = "";
+        ultimaRespuestaCruda = "";
+
+        try
+        {
+            // guardar copia local en el server Blazor
+            if (pathEnEsp.Equals("/main.py", StringComparison.OrdinalIgnoreCase)) await GuardarMainAsync();
+            if (pathEnEsp.Equals("/boot.py", StringComparison.OrdinalIgnoreCase)) await GuardarBootAsync();
+
+            estadoHttp = $"Subiendo {pathEnEsp}...";
+            StateHasChanged();
+
+            var b64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(contentText));
+
+            var payload = new
             {
-                userCode = await File.ReadAllTextAsync(UserCodePath);
+                path = pathEnEsp,
+                content_b64 = b64
+            };
+
+            var (ok, raw, data, err) = await SendJsonAsync<ApiResult>(HttpMethod.Post, "/api/fs/write", payload);
+            ultimaRespuestaCruda = raw;
+
+            if (!ok || data is null || !data.ok)
+            {
+                estadoHttp = "Falló la subida ❌";
+                ultimoError = data?.error ?? err ?? "Error desconocido";
+                return;
+            }
+
+            estadoHttp = "Subido ✅";
+            saveInfo = $"ESP32 guardó {data.path} ({data.bytes} bytes).";
+
+            if (resetDespuesDeSubir)
+            {
+                await ResetAsync();
             }
             else
             {
-                userCode = DefaultUserCode;
-                await File.WriteAllTextAsync(UserCodePath, userCode);
+                // refrescar status
+                await GetStatusAsync(silent: true);
             }
-        }
-        catch
-        {
-            // si algo falla, nos quedamos con DefaultUserCode
-        }
-    }
-
-    // ===== MQTT: ENVIAR COMANDO =====
-    private async Task EnviarDato()
-    {
-        if (_mqttClientObj is null) return;
-
-        dynamic mqttClient = _mqttClientObj;
-
-        var msg = new MqttApplicationMessageBuilder()
-            .WithTopic(TopicCmd)
-            .WithPayload(comandoEnviar ?? "")
-            .Build();
-
-        await mqttClient.PublishAsync(msg, CancellationToken.None);
-        comandoEnviar = "";
-    }
-
-    // ===== GUARDAR lastcode.cpp =====
-    private async Task GuardarCodigoAsync()
-    {
-        try
-        {
-            Directory.CreateDirectory(UserCodeDir);
-            await File.WriteAllTextAsync(UserCodePath, userCode ?? string.Empty);
-            compilacionEstado = $"Código guardado en {UserCodeFileName}";
-            compilacionLog = "";
         }
         catch (Exception ex)
         {
-            compilacionEstado = "Error guardando código";
-            compilacionLog = ex.ToString();
-        }
-
-        StateHasChanged();
-    }
-
-    // Helper para escapar JSON manual
-    private static string EscapeJson(string s)
-    {
-        if (string.IsNullOrEmpty(s)) return "";
-        return s.Replace("\\", "\\\\").Replace("\"", "\\\"");
-    }
-
-    // ===== COMPILAR EN GITHUB Y ENVIAR OTA =====
-    private async Task CompilarYEnviarAsync()
-    {
-        if (!_mqttConectado || compilando) return;
-
-        if (string.IsNullOrWhiteSpace(wifiSsid) || string.IsNullOrWhiteSpace(wifiPass))
-        {
-            compilacionEstado = "Debes indicar WiFi SSID y password.";
-            StateHasChanged();
-            return;
-        }
-
-        compilando = true;
-        compilacionEstado = "Guardando código...";
-        compilacionLog = "";
-        saveInfo = "";
-        StateHasChanged();
-
-        try
-        {
-            await GuardarCodigoAsync();
-
-            var token = Configuration["GitHub:Token"];
-            if (string.IsNullOrWhiteSpace(token))
-            {
-                compilacionEstado = "GitHub:Token no está configurado (appsettings o variables de entorno).";
-                return;
-            }
-
-            httpClient.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("token", token);
-
-            // 1) Lanzar workflow_dispatch
-            compilacionEstado = "Lanzando build en GitHub Actions...";
-            StateHasChanged();
-
-            var codeBytes = Encoding.UTF8.GetBytes(userCode ?? "");
-            var codeB64 = Convert.ToBase64String(codeBytes);
-
-            var dispatchUrl =
-                $"https://api.github.com/repos/{GitHubOwner}/{GitHubRepo}/actions/workflows/{GitHubWorkflowFile}/dispatches";
-
-            var json = "{"
-                       + "\"ref\":\"main\","
-                       + "\"inputs\":{"
-                       + "\"code_b64\":\"" + EscapeJson(codeB64) + "\","
-                       + "\"ssid\":\"" + EscapeJson(wifiSsid) + "\","
-                       + "\"pass\":\"" + EscapeJson(wifiPass) + "\""
-                       + "}"
-                       + "}";
-
-            var resp = await httpClient.PostAsync(
-                dispatchUrl,
-                new StringContent(json, Encoding.UTF8, "application/json"));
-
-            if (!resp.IsSuccessStatusCode)
-            {
-                var err = await resp.Content.ReadAsStringAsync();
-                compilacionEstado = $"Error lanzando workflow: {(int)resp.StatusCode} {resp.ReasonPhrase}";
-                compilacionLog = err;
-                return;
-            }
-
-            // 2) Esperar run completado
-            compilacionEstado = "Esperando a que GitHub compile...";
-            StateHasChanged();
-
-            var runsUrl =
-                $"https://api.github.com/repos/{GitHubOwner}/{GitHubRepo}/actions/workflows/{GitHubWorkflowFile}/runs?branch=main&event=workflow_dispatch&per_page=1";
-
-            WorkflowRun? run = null;
-            for (int i = 0; i < 30; i++)
-            {
-                await Task.Delay(TimeSpan.FromSeconds(5));
-
-                var runsResp = await httpClient.GetAsync(runsUrl);
-                var runsJson = await runsResp.Content.ReadAsStringAsync();
-                var runs = JsonSerializer.Deserialize<WorkflowRunsResponse>(runsJson);
-
-                run = runs?.workflow_runs?.FirstOrDefault();
-                if (run != null &&
-                    string.Equals(run.status, "completed", StringComparison.OrdinalIgnoreCase))
-                    break;
-            }
-
-            if (run == null)
-            {
-                compilacionEstado = "No se encontró run de workflow reciente.";
-                return;
-            }
-
-            if (!string.Equals(run.status, "completed", StringComparison.OrdinalIgnoreCase) ||
-                !string.Equals(run.conclusion, "success", StringComparison.OrdinalIgnoreCase))
-            {
-                compilacionEstado = $"Build no OK. status={run.status}, conclusion={run.conclusion}";
-                return;
-            }
-
-            // 3) Obtener artifact "firmware"
-            compilacionEstado = "Descargando firmware desde GitHub...";
-            StateHasChanged();
-
-            var artifactsUrl =
-                $"https://api.github.com/repos/{GitHubOwner}/{GitHubRepo}/actions/runs/{run.id}/artifacts";
-            var artifactsResp = await httpClient.GetAsync(artifactsUrl);
-            var artifactsJson = await artifactsResp.Content.ReadAsStringAsync();
-            var artifacts = JsonSerializer.Deserialize<ArtifactsResponse>(artifactsJson);
-
-            var firmwareArtifact = artifacts?.artifacts?.FirstOrDefault(a => a.name == "firmware");
-            if (firmwareArtifact == null)
-            {
-                compilacionEstado = "No se encontró artifact 'firmware'.";
-                compilacionLog = artifactsJson;
-                return;
-            }
-
-            var artifactZipUrl =
-                $"https://api.github.com/repos/{GitHubOwner}/{GitHubRepo}/actions/artifacts/{firmwareArtifact.id}/zip";
-            var zipBytes = await httpClient.GetByteArrayAsync(artifactZipUrl);
-
-            // 4) Extraer .bin y guardar en wwwroot/firmware
-            var fwDir = Path.Combine(Env.WebRootPath, "firmware");
-            Directory.CreateDirectory(fwDir);
-
-            string storedName;
-
-            using (var ms = new MemoryStream(zipBytes))
-            using (var archive = new ZipArchive(ms))
-            {
-                var binEntry = archive.Entries
-                    .FirstOrDefault(e => e.FullName.EndsWith(".bin", StringComparison.OrdinalIgnoreCase));
-                if (binEntry == null)
-                {
-                    compilacionEstado = "Artifact zip no contiene .bin";
-                    return;
-                }
-
-                storedName = $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}_fromGithub.bin";
-                var fullDest = Path.Combine(fwDir, storedName);
-
-                await using var entryStream = binEntry.Open();
-                await using var outStream = File.Create(fullDest);
-                await entryStream.CopyToAsync(outStream);
-            }
-
-            var fullPath = Path.Combine(fwDir, storedName);
-            long totalSize = new FileInfo(fullPath).Length;
-
-            // 5) SHA256
-            string shaHex;
-            using (var sha = SHA256.Create())
-            await using (var fs = File.OpenRead(fullPath))
-            {
-                var hash = await sha.ComputeHashAsync(fs);
-                shaHex = Convert.ToHexString(hash).ToLowerInvariant();
-            }
-
-            var url = $"{PublicBaseUrl}/firmware/{storedName}";
-            saveInfo = $"Firmware guardado en servidor: {url}";
-
-            // 6) Notificar al ESP32 por MQTT
-            var payloadOta = $"HTTP|{url}|{totalSize}|{shaHex}|fromGithub.bin";
-            var mqttMsg = new MqttApplicationMessageBuilder()
-                .WithTopic(TopicOtaHttp)
-                .WithPayload(payloadOta)
-                .Build();
-
-            if (_mqttClientObj is not null)
-            {
-                dynamic mqttClient = _mqttClientObj;
-                await mqttClient.PublishAsync(mqttMsg, CancellationToken.None);
-            }
-
-            compilacionEstado = $"Compilado y enviado ✅ ({totalSize} bytes). ESP32 descargará por HTTP. SHA256={shaHex}";
-        }
-        catch (Exception ex)
-        {
-            compilacionEstado = "Error en CompilarYEnviarAsync";
-            compilacionLog = ex.ToString();
+            estadoHttp = "Error ❌";
+            ultimoError = ex.ToString();
         }
         finally
         {
-            compilando = false;
+            enviando = false;
             StateHasChanged();
         }
     }
 
-    // ===== DISPOSE =====
+    private async Task EnviarComandoAsync()
+    {
+        if (enviando) return;
+        if (string.IsNullOrWhiteSpace(comandoEnviar)) return;
+
+        enviando = true;
+        ultimoError = "";
+        saveInfo = "";
+        ultimaRespuestaCruda = "";
+
+        try
+        {
+            estadoHttp = "Enviando comando...";
+            StateHasChanged();
+
+            var payload = new { cmd = comandoEnviar.Trim() };
+
+            var (ok, raw, data, err) = await SendJsonAsync<ApiResult>(HttpMethod.Post, "/api/cmd", payload);
+            ultimaRespuestaCruda = raw;
+
+            if (!ok || data is null || !data.ok)
+            {
+                estadoHttp = "Falló comando ❌";
+                ultimoError = data?.error ?? err ?? "Error desconocido";
+                return;
+            }
+
+            estadoHttp = "Comando enviado ✅";
+            saveInfo = $"Comando enviado: {comandoEnviar.Trim()}";
+            comandoEnviar = "";
+
+            await GetStatusAsync(silent: true);
+        }
+        catch (Exception ex)
+        {
+            estadoHttp = "Error ❌";
+            ultimoError = ex.Message;
+        }
+        finally
+        {
+            enviando = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ResetAsync()
+    {
+        ultimoError = "";
+        saveInfo = "";
+        ultimaRespuestaCruda = "";
+
+        try
+        {
+            estadoHttp = "Reiniciando...";
+            StateHasChanged();
+
+            var (ok, raw, data, err) = await SendJsonAsync<ApiResult>(HttpMethod.Post, "/api/reset", new { });
+            ultimaRespuestaCruda = raw;
+
+            if (!ok || data is null || !data.ok)
+            {
+                estadoHttp = "No pude reiniciar ❌";
+                ultimoError = data?.error ?? err ?? "Error desconocido";
+                return;
+            }
+
+            estadoHttp = "Reset solicitado ✅";
+            saveInfo = "El ESP32 debería reiniciar ahora.";
+
+            // espera un poquito y reconsulta status
+            await Task.Delay(1200);
+            await GetStatusAsync(silent: true);
+        }
+        catch (Exception ex)
+        {
+            estadoHttp = "Error ❌";
+            ultimoError = ex.Message;
+        }
+        finally
+        {
+            StateHasChanged();
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
-        if (_mqttClientObj is null) return;
-
         try
         {
-            dynamic mqttClient = _mqttClientObj;
-            await mqttClient.DisconnectAsync();
-        }
-        catch
-        {
-        }
-        finally
-        {
-            if (_mqttClientObj is IDisposable d)
+            if (_pollCts is not null)
             {
-                d.Dispose();
+                _pollCts.Cancel();
+                _pollCts.Dispose();
+            }
+            if (_pollTask is not null)
+            {
+                // no forzamos await si ya canceló, pero intentamos
+                try { await _pollTask; } catch { /* ignore */ }
             }
         }
+        catch { /* ignore */ }
     }
 }
