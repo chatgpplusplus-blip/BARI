@@ -179,7 +179,7 @@ namespace BARI_web.Features.Espacios.Pages
         private readonly Dictionary<string, string> _mesonLabelFromInner = new(StringComparer.OrdinalIgnoreCase);
 
         // ===== apariencia / tolerancias =====
-        private const decimal OutlineStroke = 0.28m;
+        private const decimal OutlineStroke = 2.2m;
         private const decimal TextPad = 0.20m;
         private const decimal Tolerance = 0.004m;
         private static decimal RoundToTolerance(decimal v) => Math.Round(v / Tolerance) * Tolerance;
@@ -1561,10 +1561,30 @@ LEFT JOIN instalaciones ins
         }
 
         // mismas reglas que en Areas.razor.cs (eje, no dirección)
-        private static decimal DoorEndX(Door d) => d.x_m + ((d.orientacion is "E" or "W") ? d.largo_m : 0m);
-        private static decimal DoorEndY(Door d) => d.y_m + ((d.orientacion is "N" or "S") ? d.largo_m : 0m);
-        private static decimal WinEndX(Win w) => w.x_m + ((w.orientacion is "E" or "W") ? w.largo_m : 0m);
-        private static decimal WinEndY(Win w) => w.y_m + ((w.orientacion is "N" or "S") ? w.largo_m : 0m);
+        private static decimal DoorEndX(Door d) => d.x_m + (d.orientacion switch
+        {
+            "E" => d.largo_m,
+            "W" => -d.largo_m,
+            _ => 0m
+        });
+        private static decimal DoorEndY(Door d) => d.y_m + (d.orientacion switch
+        {
+            "S" => d.largo_m,
+            "N" => -d.largo_m,
+            _ => 0m
+        });
+        private static decimal WinEndX(Win w) => w.x_m + (w.orientacion switch
+        {
+            "E" => w.largo_m,
+            "W" => -w.largo_m,
+            _ => 0m
+        });
+        private static decimal WinEndY(Win w) => w.y_m + (w.orientacion switch
+        {
+            "S" => w.largo_m,
+            "N" => -w.largo_m,
+            _ => 0m
+        });
 
         private static string Slugify(string s)
         {
@@ -1759,4 +1779,3 @@ LEFT JOIN instalaciones ins
         }
     }
 }
-

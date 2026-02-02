@@ -33,20 +33,20 @@
 
         <!-- fondo -->
         <rect x="@S(VX)" y="@S(VY)" width="@S(VW)" height="@S(VH)"
-              fill="white" stroke="#ddd" stroke-width="@S(0.03m)"
+              fill="white" stroke="#ddd" stroke-width="1.2"
               vector-effect="non-scaling-stroke" />
 
         <!-- grilla -->
         @for (var gx = GridStartX; gx <= GridEndX; gx += 1m)
         {
             <line x1="@S(gx)" y1="@S(VY)" x2="@S(gx)" y2="@S(VY + VH)"
-                  stroke="#f1f1f1" stroke-width="@S(0.02m)"
+                  stroke="#f1f1f1" stroke-width="0.6"
                   vector-effect="non-scaling-stroke" />
         }
         @for (var gy = GridStartY; gy <= GridEndY; gy += 1m)
         {
             <line x1="@S(VX)" y1="@S(gy)" x2="@S(VX + VW)" y2="@S(gy)"
-                  stroke="#f1f1f1" stroke-width="@S(0.02m)"
+                  stroke="#f1f1f1" stroke-width="0.6"
                   vector-effect="non-scaling-stroke" />
         }
 
@@ -130,7 +130,7 @@
                         <rect x="@S(it.abs_x)" y="@S(it.abs_y)"
                               width="@S(it.ancho_m)" height="@S(it.largo_m)"
                               fill="@it.fill" opacity="@S(it.opacidad)"
-                              stroke="#111827" stroke-width="@S(0.06m)"
+                              stroke="#111827" stroke-width="1.2"
                               vector-effect="non-scaling-stroke"
                               style="pointer-events:all" />
 
@@ -220,7 +220,7 @@
                               fill="@(string.IsNullOrWhiteSpace(b.color_hex) ? "#2563eb" : b.color_hex)"
                               opacity="0.35"
                               stroke="#111827"
-                              stroke-width="@S(0.06m)"
+                              stroke-width="1.2"
                               vector-effect="non-scaling-stroke"
                               style="pointer-events:all" />
 
@@ -284,7 +284,7 @@
                 <line x1="@S(d.x_m)" y1="@S(d.y_m)"
                       x2="@S(DoorEndX(d))" y2="@S(DoorEndY(d))"
                       stroke="#13A076"
-                      stroke-width="@S(0.22m)"
+                      stroke-width="3"
                       stroke-linecap="round"
                       vector-effect="non-scaling-stroke" />
             }
@@ -295,7 +295,7 @@
                 <line x1="@S(w.x_m)" y1="@S(w.y_m)"
                       x2="@S(WinEndX(w))" y2="@S(WinEndY(w))"
                       stroke="#66CCFF"
-                      stroke-width="@S(0.16m)"
+                      stroke-width="2.5"
                       stroke-linecap="round"
                       vector-effect="non-scaling-stroke" />
             }

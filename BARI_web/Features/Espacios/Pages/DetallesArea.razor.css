@@ -278,6 +278,14 @@ svg .softshadow {
     .toolbar-actions .btn {
         width: 100%;
     }
+    .map-frame {
+        overflow: hidden;
+        max-height: none;
+    }
+    .map-svg {
+        min-width: 0;
+        height: auto;
+    }
     .map-svg text {
         font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
     }
@@ -285,6 +293,9 @@ svg .softshadow {
         paint-order: stroke;
         stroke: rgba(255,255,255,0.85);
         stroke-width: 0.6px;
+    }
+    svg .softshadow {
+        filter: none;
     }
 
 }
