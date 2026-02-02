@@ -57,7 +57,7 @@
                     </div>
 
                     <details class="mt-2">
-                        <summary>Historial (últimos @MaxHist)</summary>
+                        <summary>Historial corto (últimos @MaxHist)</summary>
                         <pre class="bg-dark text-light p-2" style="max-height:180px; overflow:auto;">@string.Join("\n", hist)</pre>
                     </details>
                 </div>
@@ -68,12 +68,15 @@
                         <input @bind="comandoEnviar" class="form-control" placeholder="Ej: LED_ON / LED_OFF / texto" />
                         <button class="btn btn-success" @onclick="EnviarDato" disabled="@(!_mqttConectado)">Enviar</button>
                     </div>
+                    <small class="text-muted">
+                        Nota: ahora se manda como JSON <code>{"key":"...","cmd":"..."}</code>.
+                    </small>
 
                     <div class="mt-3">
-                        <label class="form-label">DeviceKey (recomendado)</label>
+                        <label class="form-label">DeviceKey (OBLIGATORIO si el ESP tiene /device.json)</label>
                         <input class="form-control" @bind="deviceKey" placeholder="Debe coincidir con /device.json en el ESP32" />
                         <small class="text-muted">
-                            Si el ESP tiene key no vacía, sin este token rechazará updates directos.
+                            Con el boot.py nuevo, SIN key correcta el ESP responderá <code>AUTH DENIED ...</code>.
                         </small>
                     </div>
 
@@ -87,6 +90,20 @@
                     </div>
                 </div>
             </div>
+
+            <hr class="my-4" />
+
+            <!-- ===== Recuadro grande: TODO lo recibido ===== -->
+            <div class="d-flex justify-content-between align-items-center">
+                <h4 class="mb-2">Todo lo recibido (scroll)</h4>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="LimpiarStream">Limpiar</button>
+                    <span class="text-muted small">líneas: @rxAll.Count / @MaxRxAll</span>
+                </div>
+            </div>
+
+            <pre class="bg-dark text-light p-2"
+                 style="height: 320px; overflow:auto; white-space:pre-wrap; border-radius:6px;">@string.Join("\n", rxAll)</pre>
 
             <hr class="my-4" />
 
@@ -287,6 +304,7 @@
     private string ultimoStatus = "(esperando...)";
     private string ultimoRx = "(nunca)";
 
+    // Historial corto
     private const int MaxHist = 60;
     private readonly List<string> hist = new();
     private void PushHist(string line)
@@ -296,15 +314,31 @@
         if (hist.Count > MaxHist) hist.RemoveAt(hist.Count - 1);
     }
 
+    // Stream largo (scroll)
+    private const int MaxRxAll = 2000;
+    private readonly List<string> rxAll = new();
+    private void PushRxAll(string topic, string payload)
+    {
+        var line = $"{DateTime.UtcNow:HH:mm:ss}Z {topic} {payload}";
+        rxAll.Add(line);
+        if (rxAll.Count > MaxRxAll)
+            rxAll.RemoveRange(0, rxAll.Count - MaxRxAll);
+    }
+    private void LimpiarStream()
+    {
+        rxAll.Clear();
+        PushRxAll("ui", "stream limpiado");
+    }
+
     // Validación
     private string validacionError = "";
     private string validacionWarn = "";
     private bool PuedePublicar => string.IsNullOrWhiteSpace(validacionError);
 
-    // Seguridad opcional
+    // Seguridad
     private string deviceKey = "";
 
-    // WiFi opcional (si quieres actualizar wifi.json desde la web)
+    // WiFi opcional
     private string wifiSsid = "";
     private string wifiPass = "";
 
@@ -356,10 +390,16 @@ while True:
     private string UserCodeDir => Path.Combine(Env.ContentRootPath, "UserCode");
     private string UserCodePath => Path.Combine(UserCodeDir, UserCodeFileName);
 
-    // ================== DIRECT ACK tracking (opcional, simple) ==================
+    // ================== DIRECT ACK tracking ==================
     private readonly object _ackLock = new();
     private string? _directIdInFlight;
     private readonly Dictionary<int, TaskCompletionSource<bool>> _ackWaiters = new();
+
+    // JSON opts
+    private static readonly JsonSerializerOptions _jsonOpts = new()
+        {
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+        };
 
     // ================== INIT ==================
     protected override async Task OnInitializedAsync()
@@ -374,6 +414,7 @@ while True:
         {
             estadoMqtt = "Conectado ✅";
             PushHist("MQTT CONNECTED");
+            PushRxAll("mqtt", "CONNECTED");
             await InvokeAsync(StateHasChanged);
         };
 
@@ -381,6 +422,7 @@ while True:
         {
             estadoMqtt = "Desconectado ❌";
             PushHist("MQTT DISCONNECTED");
+            PushRxAll("mqtt", "DISCONNECTED");
             await InvokeAsync(StateHasChanged);
         };
 
@@ -390,6 +432,9 @@ while True:
 
             var topic = e.ApplicationMessage.Topic ?? "";
             var text = e.ApplicationMessage.ConvertPayloadToString() ?? "";
+
+            // guardar todo
+            PushRxAll(topic, text);
 
             if (topic == TopicLog) { ultimoLog = text; PushHist("LOG: " + text); }
             else if (topic == TopicStatus) { ultimoStatus = text; PushHist("STATUS: " + text); }
@@ -418,6 +463,8 @@ while True:
             }
         }
         catch { }
+
+        PushRxAll("ui", "inicializado");
     }
 
     private async Task ReconectarAsync()
@@ -447,12 +494,13 @@ while True:
             await mqttClient.ConnectAsync(options, CancellationToken.None);
 
             var subs = _factory.CreateSubscribeOptionsBuilder()
-                .WithTopicFilter(TopicLog)
-                .WithTopicFilter(TopicStatus)
-                .WithTopicFilter(TopicMpyInfo)
-                .WithTopicFilter(TopicMpyFileChunk)
-                .WithTopicFilter(TopicMpyDirectAck)
-                .Build();
+    .WithTopicFilter(TopicLog)
+    .WithTopicFilter(TopicStatus)
+    .WithTopicFilter(TopicMpyInfo)
+    .WithTopicFilter(TopicMpyFileChunk)
+    .WithTopicFilter(TopicMpyDirectAck)
+    .Build();
+
 
             await mqttClient.SubscribeAsync(subs, CancellationToken.None);
 
@@ -462,6 +510,7 @@ while True:
         {
             estadoMqtt = "Error MQTT: " + ex.Message;
             PushHist("MQTT ERROR: " + ex.Message);
+            PushRxAll("mqtt", "ERROR " + ex.Message);
         }
         finally
         {
@@ -520,15 +569,32 @@ while True:
         }
     }
 
-    // ================== MQTT: COMANDOS ==================
+    private string? KeyOrNull()
+        => string.IsNullOrWhiteSpace(deviceKey) ? null : deviceKey.Trim();
+
+    // ================== MQTT: COMANDOS (AUTH JSON) ==================
+    private sealed class CmdReq
+    {
+        public string? key { get; set; }
+        public string cmd { get; set; } = "";
+    }
+
     private async Task EnviarDato()
     {
         if (_mqttClientObj is null) return;
         dynamic mqttClient = _mqttClientObj;
 
+        var payload = new CmdReq
+            {
+                key = KeyOrNull(),
+                cmd = (comandoEnviar ?? "").Trim()
+            };
+
+        var json = JsonSerializer.Serialize(payload, _jsonOpts);
+
         var msg = new MqttApplicationMessageBuilder()
             .WithTopic(TopicCmd)
-            .WithPayload(comandoEnviar ?? "")
+            .WithPayload(json)
             .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
             .Build();
 
@@ -674,7 +740,6 @@ while True:
             if (codeBytes.Length > 262_144)
                 throw new Exception("Código demasiado grande para el límite del ESP (MAX_FILE_BYTES).");
 
-            // SHA256
             using var sha = SHA256.Create();
             var hash = sha.ComputeHash(codeBytes);
             var shaHex = Convert.ToHexString(hash).ToLowerInvariant();
@@ -688,11 +753,6 @@ while True:
             ultimaSha256 = shaHex;
             ultimaChunks = chunks;
 
-            var jsonOpts = new JsonSerializerOptions
-                {
-                    DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
-                };
-
             dynamic mqttClient = _mqttClientObj!;
 
             // START
@@ -703,7 +763,7 @@ while True:
                     size = codeBytes.Length,
                     sha256 = shaHex,
                     chunks = chunks,
-                    key = string.IsNullOrWhiteSpace(deviceKey) ? null : deviceKey.Trim()
+                    key = KeyOrNull()
                 };
 
             if (!string.IsNullOrWhiteSpace(wifiSsid))
@@ -712,7 +772,7 @@ while True:
                 start.pass = wifiPass ?? "";
             }
 
-            var startJson = JsonSerializer.Serialize(start, jsonOpts);
+            var startJson = JsonSerializer.Serialize(start, _jsonOpts);
 
             publicacionEstado = $"Enviando START (chunks={chunks})...";
             StateHasChanged();
@@ -726,7 +786,6 @@ while True:
                 CancellationToken.None
             );
 
-            // Opcional: esperar ack start (seq=-1) (si no llega, seguimos igual)
             try { await WaitAckAsync(id, -1, TimeSpan.FromSeconds(3)); } catch { }
 
             // CHUNKS
@@ -744,10 +803,10 @@ while True:
                         id = id,
                         seq = i,
                         b64 = b64,
-                        key = string.IsNullOrWhiteSpace(deviceKey) ? null : deviceKey.Trim()
+                        key = KeyOrNull()
                     };
 
-                var chJson = JsonSerializer.Serialize(ch, jsonOpts);
+                var chJson = JsonSerializer.Serialize(ch, _jsonOpts);
 
                 publicacionEstado = $"Enviando chunk {i + 1}/{chunks}...";
                 StateHasChanged();
@@ -761,7 +820,6 @@ while True:
                     CancellationToken.None
                 );
 
-                // Esperar ACK del chunk (seq=i) con timeout; reintenta 1 vez si falla
                 try
                 {
                     await WaitAckAsync(id, i, TimeSpan.FromSeconds(6));
@@ -785,9 +843,10 @@ while True:
             var end = new MpyDirectEnd
                 {
                     id = id,
-                    key = string.IsNullOrWhiteSpace(deviceKey) ? null : deviceKey.Trim()
+                    key = KeyOrNull()
                 };
-            var endJson = JsonSerializer.Serialize(end, jsonOpts);
+
+            var endJson = JsonSerializer.Serialize(end, _jsonOpts);
 
             publicacionEstado = "Enviando END (ESP debe escribir y reiniciar)...";
             StateHasChanged();
@@ -801,7 +860,6 @@ while True:
                 CancellationToken.None
             );
 
-            // opcional: esperar ack end (seq=-2) unos segundos
             try { await WaitAckAsync(id, -2, TimeSpan.FromSeconds(6)); } catch { }
 
             publicacionEstado = "Enviado ✅ (espera status DIRECT UPDATE OK y reboot)";
@@ -819,11 +877,12 @@ while True:
         }
     }
 
-    // ================== INFO GET ==================
+    // ================== INFO GET (AUTH JSON) ==================
     private sealed class MpyInfoGetReq
     {
         public string type { get; set; } = "mpy_info_get";
         public string path { get; set; } = "/main.py";
+        public string? key { get; set; }
     }
 
     private sealed class MpyInfoResp
@@ -842,8 +901,13 @@ while True:
         if (_mqttClientObj is null) return;
         dynamic mqttClient = _mqttClientObj;
 
-        var req = new MpyInfoGetReq { path = NormalizarRemotePath() };
-        var json = JsonSerializer.Serialize(req);
+        var req = new MpyInfoGetReq
+            {
+                path = NormalizarRemotePath(),
+                key = KeyOrNull()
+            };
+
+        var json = JsonSerializer.Serialize(req, _jsonOpts);
 
         infoEspEstado = "Solicitando info al ESP32...";
         StateHasChanged();
@@ -878,7 +942,7 @@ while True:
         }
     }
 
-    // ================== FILE GET (chunks) ==================
+    // ================== FILE GET (AUTH JSON) ==================
     private sealed class MpyFileGetReq
     {
         public string type { get; set; } = "mpy_file_get";
@@ -886,6 +950,7 @@ while True:
         public string path { get; set; } = "/main.py";
         public int chunk { get; set; } = 1024;
         public int max { get; set; } = 65536;
+        public string? key { get; set; }
     }
 
     private sealed class MpyFileChunk
@@ -915,10 +980,11 @@ while True:
                 id = _fileReqId,
                 path = NormalizarRemotePath(),
                 chunk = 1024,
-                max = 65536
+                max = 65536,
+                key = KeyOrNull()
             };
 
-        var json = JsonSerializer.Serialize(req);
+        var json = JsonSerializer.Serialize(req, _jsonOpts);
 
         var mqttMsg = new MqttApplicationMessageBuilder()
             .WithTopic(TopicMpyFileGet)
