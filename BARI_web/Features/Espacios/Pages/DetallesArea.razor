@@ -26,7 +26,7 @@
     {
 <div class="map-frame">
     <svg class="map-svg"
-         width="100%" height="100%"
+         width="100%"
          viewBox="@ViewBox()"
          preserveAspectRatio="xMidYMid meet"
          style="background:#fafafa">
@@ -206,6 +206,7 @@
                     var clickable = !string.IsNullOrWhiteSpace(b.meson_id) || !string.IsNullOrWhiteSpace(b.instalacion_id) || !string.IsNullOrWhiteSpace(blockLabel);
 
                     <g @key="b.bloque_id"
+                       class="map-block @(clickable ? "is-clickable" : "")"
                        style="cursor:@(clickable ? "pointer" : "default")"
                        @onclick="(() => { if (clickable) OnSvgItemClick(b); })">
 
@@ -214,7 +215,7 @@
                             <title>@blockLabel</title>
                         }
 
-                        <rect x="@S(bx)" y="@S(by)"
+                        <rect class="block-rect" x="@S(bx)" y="@S(by)"
                               width="@S(b.ancho)" height="@S(b.largo)"
                               fill="@(string.IsNullOrWhiteSpace(b.color_hex) ? "#2563eb" : b.color_hex)"
                               opacity="0.35"
