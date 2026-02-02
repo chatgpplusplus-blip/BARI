@@ -7,6 +7,8 @@ using Npgsql;
 using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.HttpOverrides;
 using BARI_web.Features.Services;
+using Microsoft.AspNetCore.SignalR;
+
 
 var builder = WebApplication.CreateBuilder(args);
 // Render: escucha en el puerto asignado por la plataforma
@@ -29,7 +31,22 @@ builder.Services.AddRazorPages(options =>
 {
     options.RootDirectory = "/GeneralPages";
 });
-builder.Services.AddServerSideBlazor();
+
+builder.Services.AddServerSideBlazor()
+    .AddHubOptions(options =>
+    {
+        // Más tolerancia a móvil (al abrir galería/cámara puede pausar la pestaña)
+        options.ClientTimeoutInterval = TimeSpan.FromMinutes(2);
+        options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+
+        // Por si tu app manda payloads grandes por SignalR (ej. base64, etc.)
+        options.MaximumReceiveMessageSize = 20 * 1024 * 1024; // 20 MB
+    })
+    .AddCircuitOptions(options =>
+    {
+        // Retiene el circuito más tiempo si el móvil "duerme" la pestaña un momento
+        options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromMinutes(10);
+    });
 
 // Postgres (Supabase)
 var pgConnStr = builder.Configuration["Database:PostgresConnectionString"]!;
