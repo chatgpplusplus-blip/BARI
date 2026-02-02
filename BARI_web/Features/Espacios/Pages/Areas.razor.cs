@@ -697,16 +697,13 @@ namespace BARI_web.Features.Espacios.Pages
                && string.Equals(PlantaOfArea(areaId) ?? "", _currentPlantaId ?? "", StringComparison.OrdinalIgnoreCase);
 
         private bool IsDoorVisible(Door d)
-        {
-            if (string.IsNullOrWhiteSpace(d.area_id_a)) return false;
-            return IsAreaInCurrentPlanta(d.area_id_a);
-        }
+            => IsOpeningVisible(d.area_id_a, d.area_id_b);
 
         private bool IsWinVisible(Win w)
-        {
-            if (string.IsNullOrWhiteSpace(w.area_id_a)) return false;
-            return IsAreaInCurrentPlanta(w.area_id_a);
-        }
+            => IsOpeningVisible(w.area_id_a, w.area_id_b);
+
+        private bool IsOpeningVisible(string? areaIdA, string? areaIdB)
+            => IsAreaInCurrentPlanta(areaIdA) || IsAreaInCurrentPlanta(areaIdB);
 
         private void OnChangePlanta(string? plantaId)
         {

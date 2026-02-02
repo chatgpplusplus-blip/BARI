@@ -121,7 +121,8 @@
 /* ===== Mapa (NO gigante) ===== */
 .map-frame {
     width: 100%;
-    height: min(60vh, 520px);
+    height: auto;
+    max-height: min(60vh, 520px);
     border: 1px solid #e5e7eb;
     border-radius: 0.75rem;
     overflow: hidden;
@@ -247,16 +248,13 @@ svg .softshadow {
 
 .map-block.is-clickable .block-rect {
     cursor: pointer;
-    transition: filter 0.12s ease, opacity 0.12s ease;
+    transition: filter 0.12s ease, opacity 0.12s ease, stroke 0.12s ease;
 }
 
 .map-block.is-clickable:hover .block-rect {
-    filter: brightness(1.08) saturate(1.15);
-    opacity: 0.70; /* se nota el hover */
-}
-
-.map-block.is-clickable:hover .block-rect {
-    stroke: #1d4ed8;
+    filter: brightness(0.9) saturate(1.1);
+    opacity: 0.55; /* se nota el hover */
+    stroke: #0f172a;
 }
 
 .block-text {
@@ -275,11 +273,16 @@ svg .softshadow {
     }
 
     .toolbar-actions {
-        justify-content: flex-start;
+        flex-direction: column;
+        align-items: stretch;
     }
 
     .map-frame {
-        height: min(55vh, 420px);
+        max-height: none;
+    }
+
+    .toolbar-actions .btn {
+        width: 100%;
     }
     .map-svg text {
         font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
