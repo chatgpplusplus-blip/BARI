@@ -1,5 +1,6 @@
 ﻿@page "/detalles/{AreaSlug}"
 @namespace BARI_web.Features.Espacios.Pages
+@using System.Globalization
 
 <div class="areas-wrap">
     <div class="toolbar">
@@ -24,8 +25,8 @@
     }
     else
     {
-<div class="map-frame" style="aspect-ratio:@AspectRatioString();">
-    <svg class="map-svg"
+        <div class="map-frame" style="--map-ar:@(((double)VW / (double)VH).ToString("0.###", CultureInfo.InvariantCulture));">
+            <svg class="map-svg"
          width="100%"
          viewBox="@ViewBox()"
          preserveAspectRatio="xMidYMid meet"

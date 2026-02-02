@@ -118,7 +118,7 @@
         color: #0f172a;
     }
 
-/* ===== Mapa (NO gigante) ===== */
+/* ===== Mapa ===== */
 .map-frame {
     width: 100%;
     border: 1px solid #e5e7eb;
@@ -134,7 +134,12 @@
     display: block;
 }
 
-/* ===== Campos (inputs/select) ===== */
+    /* Tipografía SVG (una sola vez) */
+    .map-svg text {
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    }
+
+/* ===== Campos ===== */
 .field {
     padding: 0.5rem 0.65rem;
     border-radius: 0.6rem;
@@ -162,7 +167,7 @@ select.field {
     appearance: auto;
 }
 
-/* ===== Grids y filas ===== */
+/* ===== Grids ===== */
 .info-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -190,7 +195,7 @@ select.field {
     color: #6b7280;
 }
 
-/* ===== Listas clickeables ===== */
+/* ===== Listas ===== */
 .list-row {
     display: flex;
     align-items: center;
@@ -239,19 +244,26 @@ select.field {
         box-shadow: inset 0 0 0 1px #e5e7eb;
     }
 
-/* ===== SVG hover/click para bloques ===== */
+/* ===== SVG hover/click ===== */
 svg .softshadow {
     filter: drop-shadow(0 1px 1px rgba(0,0,0,.10));
 }
 
+/* iOS/Safari: evita artefactos al mezclar clip-path + filter */
+@supports (-webkit-touch-callout: none) {
+    svg .softshadow {
+        filter: none !important;
+        -webkit-filter: none !important;
+    }
+}
+
 .map-block.is-clickable .block-rect {
     cursor: pointer;
-    transition: filter 0.12s ease, opacity 0.12s ease, stroke 0.12s ease;
+    transition: opacity 0.12s ease, stroke 0.12s ease;
 }
 
 .map-block.is-clickable:hover .block-rect {
-    filter: brightness(0.9) saturate(1.1);
-    opacity: 0.55; /* se nota el hover */
+    opacity: 0.55;
     stroke: #0f172a;
 }
 
@@ -275,24 +287,27 @@ svg .softshadow {
         align-items: stretch;
     }
 
-    .toolbar-actions .btn {
-        width: 100%;
-    }
+        .toolbar-actions .btn {
+            width: 100%;
+        }
+
+    /* Mapa usable en móvil */
     .map-frame {
-        overflow: auto;
-        max-height: 75vh;
+        height: min(60vh, 520px);
+        aspect-ratio: auto !important; /* anula tu inline */
+        overflow: hidden;
     }
+
     .map-svg {
-        min-width: 520px;
+        width: 100%;
         height: 100%;
+        display: block;
     }
-    .map-svg text {
-        font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-    }
+
+    /* Texto más legible sobre fondos */
     .block-text, .area-label {
         paint-order: stroke;
         stroke: rgba(255,255,255,0.85);
-        stroke-width: 0.6px;
+        stroke-width: 1px;
     }
-
 }
