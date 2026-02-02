@@ -1,6 +1,6 @@
 ﻿@page "/Mosquito"
-@using Microsoft.AspNetCore.Components.Forms
 @using MQTTnet
+@using MQTTnet.Client
 @using System.Security.Cryptography
 @using System.Text
 @using System.Text.Json
@@ -14,7 +14,7 @@
 <div class="container">
     <div class="card mt-4">
         <div class="card-header bg-primary text-white">
-            <h3>Panel ESP32 (MQTT + Update MicroPython por HTTP)</h3>
+            <h3>Panel ESP32 (MQTT + MicroPython Update por HTTP)</h3>
         </div>
 
         <div class="card-body">
@@ -51,13 +51,13 @@
 
             <div class="alert alert-info">
                 <p class="mb-1">
-                    Esta página <strong>publica</strong> tu código como un archivo HTTP en el servidor:
+                    La web <strong>publica</strong> tu código como un archivo HTTP:
                 </p>
                 <code>@PublicBaseUrl/mpy/&lt;archivo&gt;.py</code>
                 <p class="mb-0">
-                    Luego se manda una orden por MQTT al topic:
+                    Luego envía una orden por MQTT al topic:
                     <code>@TopicMpyHttp</code>
-                    para que el ESP32 descargue el script y lo guarde como <code>:/main.py</code>.
+                    para que el ESP32 descargue el script y lo guarde en el path indicado.
                 </p>
             </div>
 
@@ -77,19 +77,42 @@
 
                 <div class="col-md-4">
                     <label class="form-label">Nombre destino en el ESP32</label>
-                    <input class="form-control" @bind="remotePath" />
-                    <small class="text-muted">Por defecto: <code>/main.py</code> (equivale a <code>:/main.py</code>).</small>
+                    <input class="form-control" @bind="remotePath" @bind:event="oninput" />
+                    <small class="text-muted">Por defecto: <code>/main.py</code></small>
+
+                    @if (!string.IsNullOrWhiteSpace(remotePathError))
+                    {
+                        <div class="text-danger mt-1"><small>@remotePathError</small></div>
+                    }
                 </div>
             </div>
 
             <div class="mb-3">
-                <label class="form-label">Código MicroPython (main.py)</label>
+                <label class="form-label">Código MicroPython</label>
+
                 <textarea class="form-control"
                           style="min-height: 320px; font-family: Consolas, monospace; font-size: 0.9rem;"
-                          @bind="userCode">
+                          @bind="userCode"
+                          @bind:event="oninput">
                 </textarea>
+
+                <div class="mt-2">
+                    @if (!string.IsNullOrWhiteSpace(validacionError))
+                    {
+                        <div class="alert alert-danger py-2 mb-2">@validacionError</div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(validacionWarn))
+                    {
+                        <div class="alert alert-warning py-2 mb-2">@validacionWarn</div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-success py-2 mb-2">Validación OK ✅</div>
+                    }
+                </div>
+
                 <small class="text-muted">
-                    Este código es lo que irá a <code>:/main.py</code>. Tu <code>boot.py</code> “core” (WiFi+MQTT+Update) queda fijo/oculto en el ESP32.
+                    Recomendación: deja WiFi/MQTT en <code>boot.py</code> core fijo; aquí solo lógica del usuario.
                 </small>
             </div>
 
@@ -100,9 +123,28 @@
 
                 <button class="btn btn-warning"
                         @onclick="PublicarYActualizarAsync"
-                        disabled="@(!_mqttConectado || publicando)">
+                        disabled="@(!_mqttConectado || publicando || !PuedePublicar)">
                     @(publicando ? "Publicando y enviando..." : "Publicar por HTTP y actualizar ESP32")
                 </button>
+
+                <button class="btn btn-outline-primary"
+                        @onclick="SolicitarInfoAsync"
+                        disabled="@(!_mqttConectado)">
+                    Consultar “código corriendo”
+                </button>
+
+                <button class="btn btn-outline-dark"
+                        @onclick="LeerArchivoDelEspAsync"
+                        disabled="@(!_mqttConectado || leyendoArchivo)">
+                    @(leyendoArchivo ? "Leyendo main.py..." : "Leer main.py del ESP32 (hasta 64KB)")
+                </button>
+
+                @if (!string.IsNullOrWhiteSpace(codigoLeidoDelEsp))
+                {
+                    <button class="btn btn-outline-success" @onclick="CopiarCodigoEspAlEditor">
+                        Copiar lo leído → editor
+                    </button>
+                }
             </div>
 
             <div class="mb-2">
@@ -122,6 +164,49 @@
                 </div>
             }
 
+            <hr class="my-4" />
+
+            <h4>Estado “código corriendo” (según el ESP32)</h4>
+            <div class="alert alert-secondary">
+                <div><strong>Path:</strong> <code>@(espRunPath ?? "(sin datos)")</code></div>
+                <div><strong>Size:</strong> @(espRunSize?.ToString() ?? "(sin datos)")</div>
+                <div><strong>SHA256:</strong> <code>@(espRunSha ?? "(sin datos)")</code></div>
+                <div><strong>IP:</strong> @(espIp ?? "(?)")</div>
+                <div><strong>SSID:</strong> @(espSsid ?? "(?)")</div>
+
+                <div class="mt-2">
+                    @if (!string.IsNullOrWhiteSpace(ultimaSha256) && !string.IsNullOrWhiteSpace(espRunSha))
+                    {
+                        if (string.Equals(ultimaSha256, espRunSha, StringComparison.OrdinalIgnoreCase))
+                        {
+                            <span class="badge bg-success">Coincide con lo último publicado ✅</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-warning text-dark">NO coincide con lo último publicado ⚠️</span>
+                        }
+                    }
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(infoEspEstado))
+                {
+                    <div class="mt-2"><small class="text-muted">@infoEspEstado</small></div>
+                }
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(estadoLecturaArchivo))
+            {
+                <div class="alert alert-info py-2">@estadoLecturaArchivo</div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(codigoLeidoDelEsp))
+            {
+                <div class="mb-2">
+                    <strong>main.py leído del ESP32:</strong>
+                    <pre class="bg-dark text-light p-2" style="max-height: 280px; overflow:auto;">@codigoLeidoDelEsp</pre>
+                </div>
+            }
+
             @if (!string.IsNullOrWhiteSpace(publicacionLog))
             {
                 <div class="mb-2">
@@ -129,13 +214,12 @@
                     <pre class="bg-dark text-light p-2" style="max-height: 240px; overflow:auto;">@publicacionLog</pre>
                 </div>
             }
-
         </div>
     </div>
 </div>
 
 @code {
-    // ================== CONFIG BÁSICA ==================
+    // ================== CONFIG ==================
     private const string BaseTopic = "bari/esp32/bari1";
     private static string T(string tail) => $"{BaseTopic}/{tail}";
 
@@ -143,28 +227,21 @@
     private readonly string TopicLog = T("log");
     private readonly string TopicStatus = T("status");
 
-    // Nuevo topic: actualización de MicroPython por HTTP
-    // (Tu boot.py core del ESP32 debe suscribirse a esto)
     private readonly string TopicMpyHttp = T("mpy/http");
+    private readonly string TopicMpyInfoGet = T("mpy/info/get");
+    private readonly string TopicMpyInfo = T("mpy/info");
+    private readonly string TopicMpyFileGet = T("mpy/file/get");
+    private readonly string TopicMpyFileChunk = T("mpy/file/chunk");
 
     private string PublicBaseUrl =>
         (Configuration["PublicBaseUrl"] ?? "https://bari-f57y.onrender.com").TrimEnd('/');
 
     // ================== MQTT ==================
-    private MQTTnet.MqttClientFactory? _factory;
-    private object? _mqttClientObj; // dynamic para no depender de MQTTnet.Client.*
+    private MqttFactory? _mqttFactory;
+    private IMqttClient? _mqttClient;
+    private MqttClientOptions? _mqttOptions;
 
-    private bool _mqttConectado => _mqttClientObj is not null && IsClientConnected(_mqttClientObj);
-
-    private static bool IsClientConnected(object client)
-    {
-        try
-        {
-            dynamic c = client;
-            return c.IsConnected == true;
-        }
-        catch { return false; }
-    }
+    private bool _mqttConectado => _mqttClient?.IsConnected == true; // API estándar :contentReference[oaicite:4]{index=4}
 
     // ================== UI / ESTADO ==================
     private string estadoMqtt = "Desconectado";
@@ -173,9 +250,30 @@
     private string ultimoLog = "(sin logs aún)";
     private string ultimoStatus = "(esperando...)";
 
-    // Código MicroPython de ejemplo
+    private string validacionError = "";
+    private string validacionWarn = "";
+
+    private string remotePathError = "";
+    private bool PuedePublicar =>
+        string.IsNullOrWhiteSpace(validacionError) && string.IsNullOrWhiteSpace(remotePathError);
+
+    // Info ESP
+    private string? espRunPath;
+    private long? espRunSize;
+    private string? espRunSha;
+    private string? espIp;
+    private string? espSsid;
+    private string infoEspEstado = "";
+
+    // Lectura archivo
+    private bool leyendoArchivo = false;
+    private string estadoLecturaArchivo = "";
+    private string codigoLeidoDelEsp = "";
+    private string? _fileReqId;
+    private MemoryStream? _fileAcc;
+    private int _fileSeqEsperado = 0;
+
     private const string DefaultUserCode = @"print(""Hola desde main.py (MicroPython)!"")
-# Ejemplo: parpadeo LED (GPIO2 suele ser LED en muchas placas ESP32)
 import machine, time
 led = machine.Pin(2, machine.Pin.OUT)
 
@@ -186,11 +284,30 @@ while True:
     time.sleep(0.2)
 ";
 
-    private string userCode = DefaultUserCode;
+    private string _userCode = DefaultUserCode;
+    private string userCode
+    {
+        get => _userCode;
+        set
+        {
+            _userCode = value ?? "";
+            ValidarCodigo();
+        }
+    }
 
     private string wifiSsid = "";
     private string wifiPass = "";
-    private string remotePath = "/main.py";
+
+    private string _remotePath = "/main.py";
+    private string remotePath
+    {
+        get => _remotePath;
+        set
+        {
+            _remotePath = value ?? "";
+            ValidarRemotePath();
+        }
+    }
 
     private bool publicando = false;
     private string publicacionEstado = "";
@@ -201,69 +318,88 @@ while True:
     private long ultimaSize = 0;
     private string ultimaSha256 = "";
 
-    // lastcode.py (guardar en el servidor para recordar lo último escrito)
+    // lastcode.py
     private static readonly string UserCodeFileName = "lastcode.py";
     private string UserCodeDir => Path.Combine(Env.ContentRootPath, "UserCode");
     private string UserCodePath => Path.Combine(UserCodeDir, UserCodeFileName);
 
-    // Carpeta pública para servir scripts por HTTP
-    private string MpyDir => Path.Combine(Env.WebRootPath, "mpy");
+    // HTTP scripts
+    private string MpyDir
+    {
+        get
+        {
+            // Env.WebRootPath puede ser null en algunos hosts raros; por si acaso.
+            var webRoot = Env.WebRootPath;
+            if (string.IsNullOrWhiteSpace(webRoot))
+                webRoot = Path.Combine(Env.ContentRootPath, "wwwroot");
+            return Path.Combine(webRoot, "mpy");
+        }
+    }
 
-    // ================== INICIALIZACIÓN ==================
+    // ================== INIT ==================
     protected override async Task OnInitializedAsync()
     {
-        // MQTT init
-        _factory = new MQTTnet.MqttClientFactory();
-        var mqttClient = _factory.CreateMqttClient();
-        _mqttClientObj = mqttClient;
+        ValidarCodigo();
+        ValidarRemotePath();
 
-        mqttClient.ConnectedAsync += async _ =>
+        _mqttFactory = new MqttFactory(); // creación estándar :contentReference[oaicite:5]{index=5}
+        _mqttClient = _mqttFactory.CreateMqttClient();
+
+        _mqttClient.ConnectedAsync += async _ =>
         {
             estadoMqtt = "Conectado ✅";
             await InvokeAsync(StateHasChanged);
         };
 
-        mqttClient.DisconnectedAsync += async _ =>
+        _mqttClient.DisconnectedAsync += async _ =>
         {
             estadoMqtt = "Desconectado ❌";
             await InvokeAsync(StateHasChanged);
         };
 
-        mqttClient.ApplicationMessageReceivedAsync += async e =>
+        _mqttClient.ApplicationMessageReceivedAsync += async e =>
         {
             var topic = e.ApplicationMessage.Topic ?? "";
-            var text = e.ApplicationMessage.ConvertPayloadToString() ?? "";
+
+            // Payload estándar: byte[] :contentReference[oaicite:6]{index=6}
+            var payloadBytes = e.ApplicationMessage.Payload ?? Array.Empty<byte>();
+            var text = Encoding.UTF8.GetString(payloadBytes);
 
             if (topic == TopicLog) ultimoLog = text;
             else if (topic == TopicStatus) ultimoStatus = text;
+            else if (topic == TopicMpyInfo) ProcesarInfoEsp(text);
+            else if (topic == TopicMpyFileChunk) ProcesarChunkArchivo(text);
 
             await InvokeAsync(StateHasChanged);
         };
 
-        var options = _factory.CreateClientOptionsBuilder()
+        _mqttOptions = new MqttClientOptionsBuilder()
             .WithTcpServer("broker.emqx.io", 1883)
             .WithClientId($"BARI_web_{Guid.NewGuid():N}")
             .WithKeepAlivePeriod(TimeSpan.FromSeconds(30))
-            .Build();
+            .WithCleanSession()
+            .Build(); // MqttClientOptions :contentReference[oaicite:7]{index=7}
 
         try
         {
             estadoMqtt = "Conectando...";
-            await mqttClient.ConnectAsync(options, CancellationToken.None);
+            await _mqttClient.ConnectAsync(_mqttOptions, CancellationToken.None); // ejemplo estándar :contentReference[oaicite:8]{index=8}
 
-            var subs = _factory.CreateSubscribeOptionsBuilder()
-                .WithTopicFilter(TopicLog)
-                .WithTopicFilter(TopicStatus)
-                .Build();
+            var subs = new MqttClientSubscribeOptionsBuilder()
+                .WithTopicFilter(f => f.WithTopic(TopicLog))
+                .WithTopicFilter(f => f.WithTopic(TopicStatus))
+                .WithTopicFilter(f => f.WithTopic(TopicMpyInfo))
+                .WithTopicFilter(f => f.WithTopic(TopicMpyFileChunk))
+                .Build(); // subscribe builder estándar :contentReference[oaicite:9]{index=9}
 
-            await mqttClient.SubscribeAsync(subs, CancellationToken.None);
+            await _mqttClient.SubscribeAsync(subs, CancellationToken.None);
         }
         catch (Exception ex)
         {
             estadoMqtt = "Error MQTT: " + ex.Message;
         }
 
-        // Cargar lastcode.py si existe
+        // cargar lastcode.py
         try
         {
             Directory.CreateDirectory(UserCodeDir);
@@ -277,29 +413,77 @@ while True:
                 await File.WriteAllTextAsync(UserCodePath, userCode);
             }
         }
-        catch
+        catch { }
+    }
+
+    private string NormalizarRemotePath()
+    {
+        var p = (remotePath ?? "/main.py").Trim();
+        if (string.IsNullOrWhiteSpace(p)) p = "/main.py";
+        if (!p.StartsWith("/")) p = "/" + p;
+        return p;
+    }
+
+    private void ValidarRemotePath()
+    {
+        remotePathError = "";
+
+        var p = NormalizarRemotePath();
+        var low = p.ToLowerInvariant();
+
+        if (low == "/boot.py" || low == "/wifi.json" || low == "/lib" || low.StartsWith("/lib/"))
         {
-            // si falla, dejamos DefaultUserCode
+            remotePathError = "Bloqueado por seguridad: no se permite escribir boot.py, wifi.json o /lib/*.";
+            return;
         }
     }
 
-    // ================== MQTT: ENVIAR COMANDO ==================
+    private void ValidarCodigo()
+    {
+        validacionError = "";
+        validacionWarn = "";
+
+        var code = userCode ?? "";
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            validacionError = "El código está vacío.";
+            return;
+        }
+
+        var lower = code.ToLowerInvariant();
+        if (lower.Contains("#include") || lower.Contains("void setup") || lower.Contains("void loop") || lower.Contains(".ino"))
+        {
+            validacionError = "Esto parece Arduino/C++. Aquí debe ir MicroPython.";
+            return;
+        }
+
+        if (code.Length > 64_000)
+        {
+            validacionError = "Código demasiado grande (>64KB). Reduce el tamaño.";
+            return;
+        }
+
+        if (lower.Contains("import network") || lower.Contains("umqtt"))
+        {
+            validacionWarn = "Ojo: normalmente WiFi/MQTT van en boot.py core, no en main.py del usuario.";
+        }
+    }
+
+    // ================== MQTT: COMANDOS ==================
     private async Task EnviarDato()
     {
-        if (_mqttClientObj is null) return;
-
-        dynamic mqttClient = _mqttClientObj;
+        if (_mqttClient is null) return;
 
         var msg = new MqttApplicationMessageBuilder()
             .WithTopic(TopicCmd)
             .WithPayload(comandoEnviar ?? "")
-            .Build();
+            .Build(); // builder estándar :contentReference[oaicite:10]{index=10}
 
-        await mqttClient.PublishAsync(msg, CancellationToken.None);
+        await _mqttClient.PublishAsync(msg, CancellationToken.None); // estándar :contentReference[oaicite:11]{index=11}
         comandoEnviar = "";
     }
 
-    // ================== GUARDAR lastcode.py ==================
+    // ================== GUARDAR ==================
     private async Task GuardarCodigoAsync()
     {
         try
@@ -318,7 +502,7 @@ while True:
         StateHasChanged();
     }
 
-    // ================== PUBLICAR POR HTTP + ORDENAR UPDATE ==================
+    // ================== UPDATE ==================
     private sealed class MpyUpdateMessage
     {
         public string type { get; set; } = "mpy_http_update";
@@ -326,15 +510,14 @@ while True:
         public string path { get; set; } = "/main.py";
         public long size { get; set; }
         public string sha256 { get; set; } = "";
-
-        // Opcional: update de credenciales
         public string? ssid { get; set; }
         public string? pass { get; set; }
     }
 
     private async Task PublicarYActualizarAsync()
     {
-        if (!_mqttConectado || publicando) return;
+        if (_mqttClient is null || !_mqttConectado || publicando) return;
+        if (!PuedePublicar) return;
 
         publicando = true;
         publicacionEstado = "Guardando código...";
@@ -347,20 +530,16 @@ while True:
 
         try
         {
-            // 1) Guardar lastcode.py
             await GuardarCodigoAsync();
 
-            // 2) Guardar el script en wwwroot/mpy para servirlo por HTTP
             Directory.CreateDirectory(MpyDir);
 
-            // Nombre único para evitar caché
             var storedName = $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}.py";
             var fullDest = Path.Combine(MpyDir, storedName);
 
             var codeText = userCode ?? "";
             await File.WriteAllTextAsync(fullDest, codeText, Encoding.UTF8);
 
-            // 3) Calcular size y SHA256
             var fileInfo = new FileInfo(fullDest);
             ultimaSize = fileInfo.Length;
 
@@ -372,11 +551,7 @@ while True:
             }
 
             ultimaUrlPublicada = $"{PublicBaseUrl}/mpy/{storedName}";
-
-            // 4) Construir mensaje para el ESP32 (boot.py core lo procesa)
-            var path = (remotePath ?? "/main.py").Trim();
-            if (string.IsNullOrWhiteSpace(path)) path = "/main.py";
-            if (!path.StartsWith("/")) path = "/" + path;
+            var path = NormalizarRemotePath();
 
             var msgObj = new MpyUpdateMessage
                 {
@@ -386,7 +561,6 @@ while True:
                     sha256 = ultimaSha256,
                 };
 
-            // si el user llenó ssid o pass, mandamos ambos (o al menos ssid)
             if (!string.IsNullOrWhiteSpace(wifiSsid))
             {
                 msgObj.ssid = wifiSsid.Trim();
@@ -395,21 +569,18 @@ while True:
 
             var json = JsonSerializer.Serialize(msgObj);
 
-            // 5) Publicar por MQTT la orden de update
             publicacionEstado = "Enviando orden de update por MQTT...";
             StateHasChanged();
 
-            dynamic mqttClient = _mqttClientObj!;
             var mqttMsg = new MqttApplicationMessageBuilder()
                 .WithTopic(TopicMpyHttp)
                 .WithPayload(json)
                 .Build();
 
-            await mqttClient.PublishAsync(mqttMsg, CancellationToken.None);
+            await _mqttClient.PublishAsync(mqttMsg, CancellationToken.None);
 
-            publicacionEstado = "Enviado ✅ (ESP32 debería descargar por HTTP y reiniciar)";
-            publicacionInfo =
-                $"El ESP32 debe: descargar {msgObj.url}, verificar SHA256, escribir en :{msgObj.path}, y reiniciar.";
+            publicacionEstado = "Enviado ✅ (ESP32 debe descargar, escribir y reiniciar)";
+            publicacionInfo = $"ESP32: descarga → verifica SHA256 → escribe {msgObj.path} → reinicia.";
         }
         catch (Exception ex)
         {
@@ -423,24 +594,197 @@ while True:
         }
     }
 
-    // ================== DISPOSE ==================
-    public async ValueTask DisposeAsync()
+    // ================== INFO GET ==================
+    private sealed class MpyInfoGetReq
     {
-        if (_mqttClientObj is null) return;
+        public string type { get; set; } = "mpy_info_get";
+        public string path { get; set; } = "/main.py";
+    }
 
+    private sealed class MpyInfoResp
+    {
+        public string? type { get; set; }
+        public string? path { get; set; }
+        public long? size { get; set; }
+        public string? sha256 { get; set; }
+        public string? ip { get; set; }
+        public string? ssid { get; set; }
+        public string? msg { get; set; }
+    }
+
+    private async Task SolicitarInfoAsync()
+    {
+        if (_mqttClient is null) return;
+
+        var req = new MpyInfoGetReq { path = NormalizarRemotePath() };
+        var json = JsonSerializer.Serialize(req);
+
+        infoEspEstado = "Solicitando info al ESP32...";
+        StateHasChanged();
+
+        var mqttMsg = new MqttApplicationMessageBuilder()
+            .WithTopic(TopicMpyInfoGet)
+            .WithPayload(json)
+            .Build();
+
+        await _mqttClient.PublishAsync(mqttMsg, CancellationToken.None);
+    }
+
+    private void ProcesarInfoEsp(string payload)
+    {
         try
         {
-            dynamic mqttClient = _mqttClientObj;
-            await mqttClient.DisconnectAsync();
+            var resp = JsonSerializer.Deserialize<MpyInfoResp>(payload);
+            if (resp is null) return;
+
+            if (!string.IsNullOrWhiteSpace(resp.path)) espRunPath = resp.path;
+            if (resp.size.HasValue) espRunSize = resp.size.Value;
+            if (!string.IsNullOrWhiteSpace(resp.sha256)) espRunSha = resp.sha256;
+            if (!string.IsNullOrWhiteSpace(resp.ip)) espIp = resp.ip;
+            if (!string.IsNullOrWhiteSpace(resp.ssid)) espSsid = resp.ssid;
+
+            infoEspEstado = resp.msg ?? "Info recibida ✅";
         }
         catch
         {
-            // ignore
+            infoEspEstado = payload;
         }
-        finally
+    }
+
+    // ================== FILE GET (chunks) ==================
+    private sealed class MpyFileGetReq
+    {
+        public string type { get; set; } = "mpy_file_get";
+        public string id { get; set; } = "";
+        public string path { get; set; } = "/main.py";
+        public int chunk { get; set; } = 1024;
+        public int max { get; set; } = 65536;
+    }
+
+    private sealed class MpyFileChunk
+    {
+        public string? type { get; set; }
+        public string? id { get; set; }
+        public int? seq { get; set; }
+        public bool? eof { get; set; }
+        public string? b64 { get; set; }
+        public string? error { get; set; }
+    }
+
+    private async Task LeerArchivoDelEspAsync()
+    {
+        if (_mqttClient is null || leyendoArchivo) return;
+
+        leyendoArchivo = true;
+        estadoLecturaArchivo = "Solicitando main.py al ESP32...";
+        codigoLeidoDelEsp = "";
+        _fileReqId = Guid.NewGuid().ToString("N");
+        _fileAcc = new MemoryStream();
+        _fileSeqEsperado = 0;
+
+        var req = new MpyFileGetReq
+            {
+                id = _fileReqId,
+                path = NormalizarRemotePath(),
+                chunk = 1024,
+                max = 65536
+            };
+
+        var json = JsonSerializer.Serialize(req);
+
+        var mqttMsg = new MqttApplicationMessageBuilder()
+            .WithTopic(TopicMpyFileGet)
+            .WithPayload(json)
+            .Build();
+
+        await _mqttClient.PublishAsync(mqttMsg, CancellationToken.None);
+        StateHasChanged();
+    }
+
+    private void CancelarLectura(string motivo)
+    {
+        estadoLecturaArchivo = motivo;
+        leyendoArchivo = false;
+        _fileReqId = null;
+        _fileAcc?.Dispose();
+        _fileAcc = null;
+    }
+
+    private void ProcesarChunkArchivo(string payload)
+    {
+        MpyFileChunk? ch;
+        try { ch = JsonSerializer.Deserialize<MpyFileChunk>(payload); }
+        catch { return; }
+
+        if (ch is null || string.IsNullOrWhiteSpace(ch.id) || _fileReqId is null) return;
+        if (!string.Equals(ch.id, _fileReqId, StringComparison.OrdinalIgnoreCase)) return;
+
+        if (!string.IsNullOrWhiteSpace(ch.error))
         {
-            if (_mqttClientObj is IDisposable d)
-                d.Dispose();
+            CancelarLectura("Error leyendo archivo: " + ch.error);
+            return;
         }
+
+        if (ch.seq is null)
+        {
+            CancelarLectura("Chunk inválido: seq null.");
+            return;
+        }
+
+        // Enforce orden (si llega fuera de orden, cortamos para no corromper)
+        if (ch.seq.Value != _fileSeqEsperado)
+        {
+            CancelarLectura($"Chunk fuera de orden. Esperado={_fileSeqEsperado} llegó={ch.seq.Value}");
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(ch.b64) && _fileAcc is not null)
+        {
+            try
+            {
+                var bytes = Convert.FromBase64String(ch.b64);
+                _fileAcc.Write(bytes, 0, bytes.Length);
+                _fileSeqEsperado++;
+                estadoLecturaArchivo = $"Recibiendo... {_fileAcc.Length} bytes";
+            }
+            catch
+            {
+                CancelarLectura("Error decodificando base64 del ESP.");
+                return;
+            }
+        }
+
+        if (ch.eof == true)
+        {
+            try
+            {
+                var text = Encoding.UTF8.GetString(_fileAcc?.ToArray() ?? Array.Empty<byte>());
+                codigoLeidoDelEsp = text;
+                estadoLecturaArchivo = $"Listo ✅ leídos {(_fileAcc?.Length ?? 0)} bytes.";
+            }
+            finally
+            {
+                CancelarLectura(estadoLecturaArchivo);
+            }
+        }
+    }
+
+    private void CopiarCodigoEspAlEditor()
+    {
+        if (!string.IsNullOrWhiteSpace(codigoLeidoDelEsp))
+        {
+            userCode = codigoLeidoDelEsp;
+        }
+    }
+
+    // ================== DISPOSE ==================
+    public async ValueTask DisposeAsync()
+    {
+        if (_mqttClient is null) return;
+
+        try { await _mqttClient.DisconnectAsync(); }
+        catch { }
+
+        _mqttClient?.Dispose();
     }
 }
