@@ -86,7 +86,7 @@
 
 /* === Canvas / Mapa === */
 .canvas-card {
-    background: #fffff;
+    background: #ffffff;
     border: 1px solid var(--border);
     border-radius: 0.75rem;
     padding: 1rem;
@@ -122,13 +122,13 @@
 
 .grid-path {
     stroke: #f1f5f9;
-    stroke-width: 0.02;
+    stroke-width: 1; /* antes 0.02 */
 }
 
 /* 1. Áreas (Polígonos) */
 .area-shape {
     stroke: #94a3b8; /* Borde gris medio por defecto */
-    stroke-width: 0.06;
+    stroke-width: 1; /* antes 0.06 */
     stroke-linejoin: round;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); /* Transición suave */
     fill-opacity: 0.85; /* Un poco transparente para ver la grilla */
@@ -137,7 +137,7 @@
 /* 2. HOVER EN EL ÁREA: Hacemos que "salte" a la vista */
 .area:hover .area-shape {
     stroke: var(--hover-stroke); /* Azul brillante */
-    stroke-width: 0.18; /* Borde MUCHO más grueso */
+    stroke-width: 2; /* antes 0.18 */
     fill-opacity: 1; /* Color sólido */
     filter: saturate(1.5) brightness(0.95); /* Hace el color más intenso */
 }
@@ -163,7 +163,7 @@
     /* TRUCO PARA EL DESBORDE: Hacemos el fondo semitransparente */
     fill: rgba(255, 255, 255, 0.75);
     stroke: rgba(255, 255, 255, 0.2);
-    stroke-width: 0.02;
+    stroke-width: 1;
     transition: all 0.2s ease;
 }
 
@@ -172,7 +172,7 @@
     fill: rgba(255, 255, 255, 1);
     filter: drop-shadow(0 4px 6px rgba(0,0,0,0.15)); /* Sombra fuerte para elevarlo */
     stroke: var(--hover-stroke); /* Borde azul a la cajita también */
-    stroke-width: 0.04;
+    stroke-width: 1;
     pointer-events: none;
 }
 
@@ -184,14 +184,14 @@
 /* Puertas y Ventanas */
 .door-line {
     stroke: #10b981;
-    stroke-width: 0.12;
+    stroke-width: 4; /* antes 0.12 */
     stroke-linecap: round;
     opacity: 0.9;
 }
 
 .win-line {
     stroke: #3b82f6;
-    stroke-width: 0.10;
+    stroke-width: 3; /* antes 0.10 */
     stroke-linecap: round;
     opacity: 0.9;
 }
@@ -340,7 +340,7 @@
 
 /* Botón primary más visible (fondo sólido y texto/ícono bien contrastado) */
 .btn.primary {
-    background: #64748b ;
+    background: #64748b;
     border-color: var(--primary);
     color: #ffff;
     font-weight: 700;
