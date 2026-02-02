@@ -665,7 +665,11 @@ while True:
                 msgObj.pass = wifiPass ?? "";
             }
 
-            var json = JsonSerializer.Serialize(msgObj);
+            var jsonOpts = new JsonSerializerOptions
+                {
+                    DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+                };
+            var json = JsonSerializer.Serialize(msgObj, jsonOpts);
 
             publicacionEstado = "Enviando orden de update por MQTT...";
             StateHasChanged();
