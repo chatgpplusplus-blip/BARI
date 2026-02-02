@@ -18,6 +18,31 @@
 
         <div class="card-body">
 
+            <!-- ===== Config MQTT ===== -->
+            <div class="row g-3 mb-3">
+                <div class="col-md-3">
+                    <label class="form-label">Broker</label>
+                    <input class="form-control" @bind="mqttHost" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Puerto</label>
+                    <input type="number" class="form-control" @bind="mqttPort" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">BaseTopic</label>
+                    <input class="form-control" @bind="baseTopic" />
+                    <small class="text-muted">Debe coincidir con BASE_TOPIC en tu boot.py</small>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Estado MQTT</label>
+                    <div class="d-flex align-items-center gap-2">
+                        <span>@estadoMqtt</span>
+                        <button class="btn btn-sm btn-outline-dark" @onclick="ReconectarAsync">Reconectar</button>
+                    </div>
+                    <div><small class="text-muted">Último RX: @ultimoRx</small></div>
+                </div>
+            </div>
+
             <div class="row">
                 <div class="col-md-6">
                     <h4>LOG (ESP32 → Web)</h4>
@@ -32,7 +57,10 @@
                         <span class="text-primary">@ultimoStatus</span>
                     </div>
 
-                    <div><small class="text-muted">Estado MQTT: @estadoMqtt</small></div>
+                    <details class="mt-2">
+                        <summary>Historial (últimos @MaxHist)</summary>
+                        <pre class="bg-dark text-light p-2" style="max-height:180px; overflow:auto;">@string.Join("\n", hist)</pre>
+                    </details>
                 </div>
 
                 <div class="col-md-6">
@@ -40,6 +68,14 @@
                     <div class="input-group">
                         <input @bind="comandoEnviar" class="form-control" placeholder="Ej: LED_ON / LED_OFF / texto" />
                         <button class="btn btn-success" @onclick="EnviarDato" disabled="@(!_mqttConectado)">Enviar</button>
+                    </div>
+
+                    <div class="mt-3">
+                        <label class="form-label">DeviceKey (opcional / recomendado)</label>
+                        <input class="form-control" @bind="deviceKey" placeholder="Token compartido (si lo validas en boot.py)" />
+                        <small class="text-muted">
+                            Si aplicas validación en el ESP32, sin este token rechazará updates por MQTT.
+                        </small>
                     </div>
                 </div>
             </div>
@@ -77,7 +113,9 @@
                 <div class="col-md-4">
                     <label class="form-label">Nombre destino en el ESP32</label>
                     <input class="form-control" @bind="remotePath" />
-                    <small class="text-muted">Por defecto: <code>/main.py</code></small>
+                    <small class="text-muted">
+                        Por defecto: <code>/main.py</code>. Bloqueado: <code>/boot.py</code>, <code>/wifi.json</code>, <code>/lib/*</code>
+                    </small>
                 </div>
             </div>
 
@@ -167,6 +205,7 @@
                 <div><strong>SHA256:</strong> <code>@(espRunSha ?? "(sin datos)")</code></div>
                 <div><strong>IP:</strong> @(espIp ?? "(?)")</div>
                 <div><strong>SSID:</strong> @(espSsid ?? "(?)")</div>
+
                 <div class="mt-2">
                     @if (!string.IsNullOrWhiteSpace(ultimaSha256) && !string.IsNullOrWhiteSpace(espRunSha))
                     {
@@ -180,6 +219,7 @@
                         }
                     }
                 </div>
+
                 @if (!string.IsNullOrWhiteSpace(infoEspEstado))
                 {
                     <div class="mt-2"><small class="text-muted">@infoEspEstado</small></div>
@@ -206,29 +246,62 @@
                     <pre class="bg-dark text-light p-2" style="max-height: 240px; overflow:auto;">@publicacionLog</pre>
                 </div>
             }
+
+            <hr class="my-4" />
+
+            <h4>Scripts publicados en el servidor</h4>
+            <div class="d-flex gap-2 flex-wrap mb-2">
+                <button class="btn btn-outline-secondary" @onclick="RefrescarListaScripts">Refrescar lista</button>
+                <button class="btn btn-outline-danger" @onclick="LimpiarAntiguosAsync">Borrar antiguos (mantener @KeepLast)</button>
+            </div>
+
+            @if (scripts.Count == 0)
+            {
+                <div class="text-muted">(sin scripts en /wwwroot/mpy)</div>
+            }
+            else
+            {
+                <div class="list-group">
+                    @foreach (var s in scripts)
+                    {
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <div><code>@s.Name</code></div>
+                                <small class="text-muted">@s.Size bytes · @s.Utc</small>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <a class="btn btn-sm btn-outline-primary" href="@($"{PublicBaseUrl}/mpy/{s.Name}")" target="_blank">Abrir</a>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => BorrarScriptAsync(s.Name)">Borrar</button>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+
         </div>
     </div>
 </div>
 
 @code {
-    // ================== CONFIG ==================
-    private const string BaseTopic = "bari/esp32/bari1";
-    private static string T(string tail) => $"{BaseTopic}/{tail}";
-
-    private readonly string TopicCmd = T("comandos");
-    private readonly string TopicLog = T("log");
-    private readonly string TopicStatus = T("status");
-
-    private readonly string TopicMpyHttp = T("mpy/http");
-    private readonly string TopicMpyInfoGet = T("mpy/info/get");
-    private readonly string TopicMpyInfo = T("mpy/info");
-    private readonly string TopicMpyFileGet = T("mpy/file/get");
-    private readonly string TopicMpyFileChunk = T("mpy/file/chunk");
+    // ================== MQTT / CONFIG ==================
+    private string mqttHost = "broker.emqx.io";
+    private int mqttPort = 1883;
+    private string baseTopic = "bari/esp32/bari1";
 
     private string PublicBaseUrl =>
         (Configuration["PublicBaseUrl"] ?? "https://bari-f57y.onrender.com").TrimEnd('/');
 
-    // ================== MQTT (estilo compatible) ==================
+    // Topics (calculados, porque baseTopic es editable)
+    private string TopicCmd => $"{baseTopic}/comandos";
+    private string TopicLog => $"{baseTopic}/log";
+    private string TopicStatus => $"{baseTopic}/status";
+    private string TopicMpyHttp => $"{baseTopic}/mpy/http";
+    private string TopicMpyInfoGet => $"{baseTopic}/mpy/info/get";
+    private string TopicMpyInfo => $"{baseTopic}/mpy/info";
+    private string TopicMpyFileGet => $"{baseTopic}/mpy/file/get";
+    private string TopicMpyFileChunk => $"{baseTopic}/mpy/file/chunk";
+
+    // ================== MQTT (API COMPATIBLE CON TU PROYECTO) ==================
     private MQTTnet.MqttClientFactory? _factory;
     private object? _mqttClientObj; // guardamos el cliente real aquí
 
@@ -246,10 +319,26 @@
 
     private string ultimoLog = "(sin logs aún)";
     private string ultimoStatus = "(esperando...)";
+    private string ultimoRx = "(nunca)";
 
+    // Historial
+    private const int MaxHist = 60;
+    private readonly List<string> hist = new();
+
+    private void PushHist(string line)
+    {
+        var s = $"{DateTime.UtcNow:HH:mm:ss}Z {line}";
+        hist.Insert(0, s);
+        if (hist.Count > MaxHist) hist.RemoveAt(hist.Count - 1);
+    }
+
+    // Validación
     private string validacionError = "";
     private string validacionWarn = "";
     private bool PuedePublicar => string.IsNullOrWhiteSpace(validacionError);
+
+    // Seguridad opcional
+    private string deviceKey = "";
 
     // Info ESP
     private string? espRunPath;
@@ -267,6 +356,7 @@
     private MemoryStream? _fileAcc;
     private int _fileSeqEsperado = 0;
 
+    // Código user
     private const string DefaultUserCode = @"print(""Hola desde main.py (MicroPython)!"")
 import machine, time
 led = machine.Pin(2, machine.Pin.OUT)
@@ -277,22 +367,13 @@ while True:
     led.value(0)
     time.sleep(0.2)
 ";
-
-    private string _userCode = DefaultUserCode;
-    private string userCode
-    {
-        get => _userCode;
-        set
-        {
-            _userCode = value ?? "";
-            ValidarCodigo();
-        }
-    }
+    private string userCode = DefaultUserCode;
 
     private string wifiSsid = "";
     private string wifiPass = "";
     private string remotePath = "/main.py";
 
+    // Publicación
     private bool publicando = false;
     private string publicacionEstado = "";
     private string publicacionLog = "";
@@ -310,6 +391,16 @@ while True:
     // HTTP scripts
     private string MpyDir => Path.Combine(Env.WebRootPath, "mpy");
 
+    // Lista scripts publicados
+    private sealed class ScriptItem
+    {
+        public string Name { get; set; } = "";
+        public long Size { get; set; }
+        public string Utc { get; set; } = "";
+    }
+    private readonly List<ScriptItem> scripts = new();
+    private const int KeepLast = 25;
+
     // ================== INIT ==================
     protected override async Task OnInitializedAsync()
     {
@@ -317,44 +408,84 @@ while True:
 
         _factory = new MQTTnet.MqttClientFactory();
 
-        // IMPORTANTE: NO dynamic aquí (para poder usar += con eventos)
         var mqttClient = _factory.CreateMqttClient();
         _mqttClientObj = mqttClient;
 
         mqttClient.ConnectedAsync += async _ =>
         {
             estadoMqtt = "Conectado ✅";
+            PushHist("MQTT CONNECTED");
             await InvokeAsync(StateHasChanged);
         };
 
         mqttClient.DisconnectedAsync += async _ =>
         {
             estadoMqtt = "Desconectado ❌";
+            PushHist("MQTT DISCONNECTED");
             await InvokeAsync(StateHasChanged);
         };
 
         mqttClient.ApplicationMessageReceivedAsync += async e =>
         {
+            ultimoRx = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss 'UTC'");
+
             var topic = e.ApplicationMessage.Topic ?? "";
             var text = e.ApplicationMessage.ConvertPayloadToString() ?? "";
 
-            if (topic == TopicLog) ultimoLog = text;
-            else if (topic == TopicStatus) ultimoStatus = text;
-            else if (topic == TopicMpyInfo) ProcesarInfoEsp(text);
-            else if (topic == TopicMpyFileChunk) ProcesarChunkArchivo(text);
+            if (topic == TopicLog) { ultimoLog = text; PushHist("LOG: " + text); }
+            else if (topic == TopicStatus) { ultimoStatus = text; PushHist("STATUS: " + text); }
+            else if (topic == TopicMpyInfo) { ProcesarInfoEsp(text); PushHist("INFO: " + text); }
+            else if (topic == TopicMpyFileChunk) { ProcesarChunkArchivo(text); }
 
             await InvokeAsync(StateHasChanged);
         };
 
-        var options = _factory.CreateClientOptionsBuilder()
-            .WithTcpServer("broker.emqx.io", 1883)
-            .WithClientId($"BARI_web_{Guid.NewGuid():N}")
-            .WithKeepAlivePeriod(TimeSpan.FromSeconds(30))
-            .Build();
+        await ReconectarAsync();
+
+        // cargar lastcode.py
+        try
+        {
+            Directory.CreateDirectory(UserCodeDir);
+            if (File.Exists(UserCodePath))
+            {
+                userCode = await File.ReadAllTextAsync(UserCodePath);
+                ValidarCodigo();
+            }
+            else
+            {
+                userCode = DefaultUserCode;
+                await WriteUtf8NoBomAsync(UserCodePath, userCode);
+            }
+        }
+        catch { }
+
+        RefrescarListaScripts();
+    }
+
+    private async Task ReconectarAsync()
+    {
+        if (_factory is null || _mqttClientObj is null) return;
 
         try
         {
+            dynamic mqttClient = _mqttClientObj;
+
+            if (IsClientConnected(_mqttClientObj))
+            {
+                estadoMqtt = "Conectado ✅";
+                StateHasChanged();
+                return;
+            }
+
+            var options = _factory.CreateClientOptionsBuilder()
+                .WithTcpServer(mqttHost, mqttPort)
+                .WithClientId($"BARI_web_{Guid.NewGuid():N}")
+                .WithKeepAlivePeriod(TimeSpan.FromSeconds(30))
+                .Build();
+
             estadoMqtt = "Conectando...";
+            StateHasChanged();
+
             await mqttClient.ConnectAsync(options, CancellationToken.None);
 
             var subs = _factory.CreateSubscribeOptionsBuilder()
@@ -365,27 +496,18 @@ while True:
                 .Build();
 
             await mqttClient.SubscribeAsync(subs, CancellationToken.None);
+
+            estadoMqtt = "Conectado ✅";
         }
         catch (Exception ex)
         {
             estadoMqtt = "Error MQTT: " + ex.Message;
+            PushHist("MQTT ERROR: " + ex.Message);
         }
-
-        // cargar lastcode.py
-        try
+        finally
         {
-            Directory.CreateDirectory(UserCodeDir);
-            if (File.Exists(UserCodePath))
-            {
-                userCode = await File.ReadAllTextAsync(UserCodePath);
-            }
-            else
-            {
-                userCode = DefaultUserCode;
-                await File.WriteAllTextAsync(UserCodePath, userCode);
-            }
+            StateHasChanged();
         }
-        catch { }
     }
 
     private string NormalizarRemotePath()
@@ -408,6 +530,12 @@ while True:
             return;
         }
 
+        if (code.Length > 64_000)
+        {
+            validacionError = "Código demasiado grande (>64KB). Reduce el tamaño.";
+            return;
+        }
+
         var lower = code.ToLowerInvariant();
         if (lower.Contains("#include") || lower.Contains("void setup") || lower.Contains("void loop") || lower.Contains(".ino"))
         {
@@ -415,9 +543,10 @@ while True:
             return;
         }
 
-        if (code.Length > 64_000)
+        var rp = NormalizarRemotePath().ToLowerInvariant();
+        if (rp == "/boot.py" || rp == "/wifi.json" || rp.StartsWith("/lib") || rp.StartsWith("/lib/"))
         {
-            validacionError = "Código demasiado grande (>64KB). Reduce el tamaño.";
+            validacionError = "RemotePath bloqueado: no se permite escribir boot.py / wifi.json / lib/*.";
             return;
         }
 
@@ -443,12 +572,18 @@ while True:
     }
 
     // ================== GUARDAR ==================
+    private static Task WriteUtf8NoBomAsync(string path, string text)
+    {
+        var enc = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+        return File.WriteAllTextAsync(path, text ?? "", enc);
+    }
+
     private async Task GuardarCodigoAsync()
     {
         try
         {
             Directory.CreateDirectory(UserCodeDir);
-            await File.WriteAllTextAsync(UserCodePath, userCode ?? string.Empty);
+            await WriteUtf8NoBomAsync(UserCodePath, userCode ?? string.Empty);
             publicacionEstado = $"Código guardado en {UserCodeFileName}";
             publicacionLog = "";
         }
@@ -471,11 +606,14 @@ while True:
         public string sha256 { get; set; } = "";
         public string? ssid { get; set; }
         public string? pass { get; set; }
+        public string? key { get; set; } // token opcional
     }
 
     private async Task PublicarYActualizarAsync()
     {
         if (!_mqttConectado || publicando) return;
+
+        ValidarCodigo();
         if (!PuedePublicar) return;
 
         publicando = true;
@@ -497,7 +635,7 @@ while True:
             var fullDest = Path.Combine(MpyDir, storedName);
 
             var codeText = userCode ?? "";
-            await File.WriteAllTextAsync(fullDest, codeText, Encoding.UTF8);
+            await WriteUtf8NoBomAsync(fullDest, codeText);
 
             var fileInfo = new FileInfo(fullDest);
             ultimaSize = fileInfo.Length;
@@ -518,6 +656,7 @@ while True:
                     path = path,
                     size = ultimaSize,
                     sha256 = ultimaSha256,
+                    key = string.IsNullOrWhiteSpace(deviceKey) ? null : deviceKey.Trim()
                 };
 
             if (!string.IsNullOrWhiteSpace(wifiSsid))
@@ -541,6 +680,8 @@ while True:
 
             publicacionEstado = "Enviado ✅ (ESP32 debe descargar, escribir y reiniciar)";
             publicacionInfo = $"ESP32: descarga {msgObj.url} → verifica SHA256 → escribe {msgObj.path} → reinicia.";
+
+            RefrescarListaScripts();
         }
         catch (Exception ex)
         {
@@ -675,23 +816,22 @@ while True:
         if (!string.IsNullOrWhiteSpace(ch.error))
         {
             estadoLecturaArchivo = "Error leyendo archivo: " + ch.error;
-            leyendoArchivo = false;
-            _fileReqId = null;
-            _fileAcc?.Dispose();
-            _fileAcc = null;
+            ResetFileRx();
             return;
         }
 
+        // Si llega fuera de orden, ignoramos para no corromper.
         if (ch.seq.HasValue && ch.seq.Value != _fileSeqEsperado)
         {
-            estadoLecturaArchivo = $"Chunk fuera de orden. Esperado={_fileSeqEsperado} llegó={ch.seq.Value}";
+            estadoLecturaArchivo = $"Chunk fuera de orden. Esperado={_fileSeqEsperado} llegó={ch.seq.Value}. Ignorado.";
+            return;
         }
 
         if (!string.IsNullOrWhiteSpace(ch.b64) && _fileAcc is not null)
         {
             try
             {
-                var bytes = Convert.FromBase64String(ch.b64);
+                var bytes = Convert.FromBase64String(ch.b64.Trim());
                 _fileAcc.Write(bytes, 0, bytes.Length);
                 _fileSeqEsperado++;
                 estadoLecturaArchivo = $"Recibiendo... {_fileAcc.Length} bytes";
@@ -712,12 +852,18 @@ while True:
             }
             finally
             {
-                leyendoArchivo = false;
-                _fileReqId = null;
-                _fileAcc?.Dispose();
-                _fileAcc = null;
+                ResetFileRx();
             }
         }
+    }
+
+    private void ResetFileRx()
+    {
+        leyendoArchivo = false;
+        _fileReqId = null;
+        _fileAcc?.Dispose();
+        _fileAcc = null;
+        _fileSeqEsperado = 0;
     }
 
     private void CopiarCodigoEspAlEditor()
@@ -725,7 +871,63 @@ while True:
         if (!string.IsNullOrWhiteSpace(codigoLeidoDelEsp))
         {
             userCode = codigoLeidoDelEsp;
+            ValidarCodigo();
         }
+    }
+
+    // ================== Scripts server (/wwwroot/mpy) ==================
+    private void RefrescarListaScripts()
+    {
+        scripts.Clear();
+        try
+        {
+            Directory.CreateDirectory(MpyDir);
+            var dir = new DirectoryInfo(MpyDir);
+            var files = dir.GetFiles("*.py").OrderByDescending(f => f.LastWriteTimeUtc).ToList();
+
+            foreach (var f in files)
+            {
+                scripts.Add(new ScriptItem
+                    {
+                        Name = f.Name,
+                        Size = f.Length,
+                        Utc = f.LastWriteTimeUtc.ToString("yyyy-MM-dd HH:mm:ss 'UTC'")
+                    });
+            }
+        }
+        catch { }
+    }
+
+    private async Task BorrarScriptAsync(string name)
+    {
+        try
+        {
+            var p = Path.Combine(MpyDir, name);
+            if (File.Exists(p)) File.Delete(p);
+            RefrescarListaScripts();
+        }
+        catch { }
+        await Task.CompletedTask;
+    }
+
+    private async Task LimpiarAntiguosAsync()
+    {
+        try
+        {
+            Directory.CreateDirectory(MpyDir);
+            var dir = new DirectoryInfo(MpyDir);
+            var files = dir.GetFiles("*.py").OrderByDescending(f => f.LastWriteTimeUtc).ToList();
+
+            foreach (var f in files.Skip(KeepLast))
+            {
+                try { f.Delete(); } catch { }
+            }
+
+            RefrescarListaScripts();
+        }
+        catch { }
+
+        await Task.CompletedTask;
     }
 
     // ================== DISPOSE ==================
