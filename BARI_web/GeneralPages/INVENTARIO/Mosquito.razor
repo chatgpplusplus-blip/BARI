@@ -1,19 +1,18 @@
 ﻿@page "/Mosquito"
 @using MQTTnet
+@using MQTTnet.Protocol
 @using System.Security.Cryptography
 @using System.Text
 @using System.Text.Json
 @using System.IO
-
 @inject IWebHostEnvironment Env
-@inject IConfiguration Configuration
 
 @implements IAsyncDisposable
 
 <div class="container">
     <div class="card mt-4">
         <div class="card-header bg-primary text-white">
-            <h3>Panel ESP32 (MQTT + MicroPython Update por HTTP)</h3>
+            <h3>Panel ESP32 (MQTT + MicroPython Update DIRECTO por MQTT)</h3>
         </div>
 
         <div class="card-body">
@@ -31,7 +30,7 @@
                 <div class="col-md-4">
                     <label class="form-label">BaseTopic</label>
                     <input class="form-control" @bind="baseTopic" />
-                    <small class="text-muted">Debe coincidir con BASE_TOPIC en tu boot.py</small>
+                    <small class="text-muted">Debe coincidir con BASE_TOPIC del boot.py</small>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Estado MQTT</label>
@@ -71,51 +70,50 @@
                     </div>
 
                     <div class="mt-3">
-                        <label class="form-label">DeviceKey (opcional / recomendado)</label>
-                        <input class="form-control" @bind="deviceKey" placeholder="Token compartido (si lo validas en boot.py)" />
+                        <label class="form-label">DeviceKey (recomendado)</label>
+                        <input class="form-control" @bind="deviceKey" placeholder="Debe coincidir con /device.json en el ESP32" />
                         <small class="text-muted">
-                            Si aplicas validación en el ESP32, sin este token rechazará updates por MQTT.
+                            Si el ESP tiene key no vacía, sin este token rechazará updates directos.
                         </small>
+                    </div>
+
+                    <div class="mt-3">
+                        <label class="form-label">WiFi SSID (opcional: actualizar wifi.json)</label>
+                        <input class="form-control" @bind="wifiSsid" placeholder="Ej: MI_RED" />
+                    </div>
+                    <div class="mt-2">
+                        <label class="form-label">WiFi password (opcional)</label>
+                        <input type="password" class="form-control" @bind="wifiPass" placeholder="********" />
                     </div>
                 </div>
             </div>
 
             <hr class="my-4" />
 
-            <h4>Publicar y enviar <code>main.py</code> (MicroPython) por HTTP</h4>
+            <h4>Enviar <code>main.py</code> DIRECTO por MQTT (sin HTTP / sin TLS)</h4>
 
             <div class="alert alert-info">
-                <p class="mb-1">
-                    La web <strong>publica</strong> tu código como un archivo HTTP:
-                </p>
-                <code>@PublicBaseUrl/mpy/&lt;archivo&gt;.py</code>
-                <p class="mb-0">
-                    Luego envía una orden por MQTT al topic:
-                    <code>@TopicMpyHttp</code>
-                    para que el ESP32 descargue el script y lo guarde en el path indicado.
-                </p>
+                <div>
+                    Envía el código en <strong>chunks base64</strong> al topic:
+                    <code>@TopicMpyDirect</code>
+                </div>
+                <div class="mt-1">
+                    El ESP32 lo escribe como <code>@remotePath</code>, valida SHA256 y reinicia.
+                </div>
             </div>
 
             <div class="row g-3 mb-3">
-                <div class="col-md-4">
-                    <label class="form-label">WiFi SSID (opcional: actualizar credenciales)</label>
-                    <input class="form-control" @bind="wifiSsid" placeholder="Ej: MI_RED" />
-                    <small class="text-muted">
-                        Si lo dejas vacío, el ESP32 mantiene su WiFi actual (según tu boot.py core).
-                    </small>
-                </div>
-
-                <div class="col-md-4">
-                    <label class="form-label">WiFi password (opcional)</label>
-                    <input type="password" class="form-control" @bind="wifiPass" placeholder="********" />
-                </div>
-
-                <div class="col-md-4">
+                <div class="col-md-6">
                     <label class="form-label">Nombre destino en el ESP32</label>
                     <input class="form-control" @bind="remotePath" />
                     <small class="text-muted">
-                        Por defecto: <code>/main.py</code>. Bloqueado: <code>/boot.py</code>, <code>/wifi.json</code>, <code>/lib/*</code>
+                        Por defecto: <code>/main.py</code>. Bloqueado en ESP: <code>/boot.py</code>, <code>/wifi.json</code>, <code>/device.json</code>, <code>/lib/*</code>
                     </small>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Tamaño de chunk (bytes)</label>
+                    <input type="number" class="form-control" @bind="directChunkBytes" />
+                    <small class="text-muted">1024 recomendado (equilibrio entre velocidad y confiabilidad)</small>
                 </div>
             </div>
 
@@ -144,7 +142,7 @@
                 </div>
 
                 <small class="text-muted">
-                    Recomendación: deja WiFi/MQTT en <code>boot.py</code> core fijo; aquí solo lógica del usuario.
+                    Recomendación: WiFi/MQTT en <code>boot.py</code>; aquí solo lógica del usuario.
                 </small>
             </div>
 
@@ -154,9 +152,9 @@
                 </button>
 
                 <button class="btn btn-warning"
-                        @onclick="PublicarYActualizarAsync"
+                        @onclick="EnviarDirectoAsync"
                         disabled="@(!_mqttConectado || publicando || !PuedePublicar)">
-                    @(publicando ? "Publicando y enviando..." : "Publicar por HTTP y actualizar ESP32")
+                    @(publicando ? "Enviando..." : "Enviar DIRECTO por MQTT")
                 </button>
 
                 <button class="btn btn-outline-primary"
@@ -180,16 +178,17 @@
             </div>
 
             <div class="mb-2">
-                <strong>Estado publicación/update:</strong>
+                <strong>Estado envío directo:</strong>
                 <span class="ms-2">@publicacionEstado</span>
             </div>
 
             @if (!string.IsNullOrWhiteSpace(publicacionInfo))
             {
                 <div class="alert alert-light border mt-2">
-                    <div><strong>URL:</strong> <code>@ultimaUrlPublicada</code></div>
+                    <div><strong>Path:</strong> <code>@ultimaRemotePath</code></div>
                     <div><strong>Size:</strong> @ultimaSize bytes</div>
                     <div><strong>SHA256:</strong> <code>@ultimaSha256</code></div>
+                    <div><strong>Chunks:</strong> @ultimaChunks</div>
                     <div class="mt-2">
                         <small class="text-muted">@publicacionInfo</small>
                     </div>
@@ -211,11 +210,11 @@
                     {
                         if (string.Equals(ultimaSha256, espRunSha, StringComparison.OrdinalIgnoreCase))
                         {
-                            <span class="badge bg-success">Coincide con lo último publicado ✅</span>
+                            <span class="badge bg-success">Coincide con lo último enviado ✅</span>
                         }
                         else
                         {
-                            <span class="badge bg-warning text-dark">NO coincide con lo último publicado ⚠️</span>
+                            <span class="badge bg-warning text-dark">NO coincide con lo último enviado ⚠️</span>
                         }
                     }
                 </div>
@@ -247,37 +246,6 @@
                 </div>
             }
 
-            <hr class="my-4" />
-
-            <h4>Scripts publicados en el servidor</h4>
-            <div class="d-flex gap-2 flex-wrap mb-2">
-                <button class="btn btn-outline-secondary" @onclick="RefrescarListaScripts">Refrescar lista</button>
-                <button class="btn btn-outline-danger" @onclick="LimpiarAntiguosAsync">Borrar antiguos (mantener @KeepLast)</button>
-            </div>
-
-            @if (scripts.Count == 0)
-            {
-                <div class="text-muted">(sin scripts en /wwwroot/mpy)</div>
-            }
-            else
-            {
-                <div class="list-group">
-                    @foreach (var s in scripts)
-                    {
-                        <div class="list-group-item d-flex justify-content-between align-items-center">
-                            <div>
-                                <div><code>@s.Name</code></div>
-                                <small class="text-muted">@s.Size bytes · @s.Utc</small>
-                            </div>
-                            <div class="d-flex gap-2">
-                                <a class="btn btn-sm btn-outline-primary" href="@($"{PublicBaseUrl}/mpy/{s.Name}")" target="_blank">Abrir</a>
-                                <button class="btn btn-sm btn-outline-danger" @onclick="() => BorrarScriptAsync(s.Name)">Borrar</button>
-                            </div>
-                        </div>
-                    }
-                </div>
-            }
-
         </div>
     </div>
 </div>
@@ -288,25 +256,23 @@
     private int mqttPort = 1883;
     private string baseTopic = "bari/esp32/bari1";
 
-    private string PublicBaseUrl =>
-        (Configuration["PublicBaseUrl"] ?? "https://bari-f57y.onrender.com").TrimEnd('/');
-
-    // Topics (calculados, porque baseTopic es editable)
+    // Topics
     private string TopicCmd => $"{baseTopic}/comandos";
     private string TopicLog => $"{baseTopic}/log";
     private string TopicStatus => $"{baseTopic}/status";
-    private string TopicMpyHttp => $"{baseTopic}/mpy/http";
     private string TopicMpyInfoGet => $"{baseTopic}/mpy/info/get";
     private string TopicMpyInfo => $"{baseTopic}/mpy/info";
     private string TopicMpyFileGet => $"{baseTopic}/mpy/file/get";
     private string TopicMpyFileChunk => $"{baseTopic}/mpy/file/chunk";
 
-    // ================== MQTT (API COMPATIBLE CON TU PROYECTO) ==================
+    // DIRECT
+    private string TopicMpyDirect => $"{baseTopic}/mpy/direct";
+    private string TopicMpyDirectAck => $"{baseTopic}/mpy/direct/ack";
+
     private MQTTnet.MqttClientFactory? _factory;
-    private object? _mqttClientObj; // guardamos el cliente real aquí
+    private object? _mqttClientObj;
 
     private bool _mqttConectado => _mqttClientObj is not null && IsClientConnected(_mqttClientObj);
-
     private static bool IsClientConnected(object client)
     {
         try { dynamic c = client; return c.IsConnected == true; }
@@ -321,10 +287,8 @@
     private string ultimoStatus = "(esperando...)";
     private string ultimoRx = "(nunca)";
 
-    // Historial
     private const int MaxHist = 60;
     private readonly List<string> hist = new();
-
     private void PushHist(string line)
     {
         var s = $"{DateTime.UtcNow:HH:mm:ss}Z {line}";
@@ -339,6 +303,10 @@
 
     // Seguridad opcional
     private string deviceKey = "";
+
+    // WiFi opcional (si quieres actualizar wifi.json desde la web)
+    private string wifiSsid = "";
+    private string wifiPass = "";
 
     // Info ESP
     private string? espRunPath;
@@ -369,37 +337,29 @@ while True:
 ";
     private string userCode = DefaultUserCode;
 
-    private string wifiSsid = "";
-    private string wifiPass = "";
     private string remotePath = "/main.py";
+    private int directChunkBytes = 1024;
 
-    // Publicación
+    // Envío directo estado
     private bool publicando = false;
     private string publicacionEstado = "";
     private string publicacionLog = "";
     private string publicacionInfo = "";
 
-    private string ultimaUrlPublicada = "";
+    private string ultimaRemotePath = "";
     private long ultimaSize = 0;
     private string ultimaSha256 = "";
+    private int ultimaChunks = 0;
 
     // lastcode.py
     private static readonly string UserCodeFileName = "lastcode.py";
     private string UserCodeDir => Path.Combine(Env.ContentRootPath, "UserCode");
     private string UserCodePath => Path.Combine(UserCodeDir, UserCodeFileName);
 
-    // HTTP scripts
-    private string MpyDir => Path.Combine(Env.WebRootPath, "mpy");
-
-    // Lista scripts publicados
-    private sealed class ScriptItem
-    {
-        public string Name { get; set; } = "";
-        public long Size { get; set; }
-        public string Utc { get; set; } = "";
-    }
-    private readonly List<ScriptItem> scripts = new();
-    private const int KeepLast = 25;
+    // ================== DIRECT ACK tracking (opcional, simple) ==================
+    private readonly object _ackLock = new();
+    private string? _directIdInFlight;
+    private readonly Dictionary<int, TaskCompletionSource<bool>> _ackWaiters = new();
 
     // ================== INIT ==================
     protected override async Task OnInitializedAsync()
@@ -407,7 +367,6 @@ while True:
         ValidarCodigo();
 
         _factory = new MQTTnet.MqttClientFactory();
-
         var mqttClient = _factory.CreateMqttClient();
         _mqttClientObj = mqttClient;
 
@@ -436,6 +395,7 @@ while True:
             else if (topic == TopicStatus) { ultimoStatus = text; PushHist("STATUS: " + text); }
             else if (topic == TopicMpyInfo) { ProcesarInfoEsp(text); PushHist("INFO: " + text); }
             else if (topic == TopicMpyFileChunk) { ProcesarChunkArchivo(text); }
+            else if (topic == TopicMpyDirectAck) { ProcesarAckDirecto(text); }
 
             await InvokeAsync(StateHasChanged);
         };
@@ -458,8 +418,6 @@ while True:
             }
         }
         catch { }
-
-        RefrescarListaScripts();
     }
 
     private async Task ReconectarAsync()
@@ -493,6 +451,7 @@ while True:
                 .WithTopicFilter(TopicStatus)
                 .WithTopicFilter(TopicMpyInfo)
                 .WithTopicFilter(TopicMpyFileChunk)
+                .WithTopicFilter(TopicMpyDirectAck)
                 .Build();
 
             await mqttClient.SubscribeAsync(subs, CancellationToken.None);
@@ -536,6 +495,11 @@ while True:
             return;
         }
 
+        if (directChunkBytes < 256 || directChunkBytes > 4096)
+        {
+            validacionWarn = "ChunkBytes raro: usa 1024 recomendado (256..4096).";
+        }
+
         var lower = code.ToLowerInvariant();
         if (lower.Contains("#include") || lower.Contains("void setup") || lower.Contains("void loop") || lower.Contains(".ino"))
         {
@@ -544,9 +508,9 @@ while True:
         }
 
         var rp = NormalizarRemotePath().ToLowerInvariant();
-        if (rp == "/boot.py" || rp == "/wifi.json" || rp.StartsWith("/lib") || rp.StartsWith("/lib/"))
+        if (rp == "/boot.py" || rp == "/wifi.json" || rp == "/device.json" || rp.StartsWith("/lib") || rp.StartsWith("/lib/"))
         {
-            validacionError = "RemotePath bloqueado: no se permite escribir boot.py / wifi.json / lib/*.";
+            validacionError = "RemotePath bloqueado: no se permite escribir boot.py / wifi.json / device.json / lib/*.";
             return;
         }
 
@@ -565,6 +529,7 @@ while True:
         var msg = new MqttApplicationMessageBuilder()
             .WithTopic(TopicCmd)
             .WithPayload(comandoEnviar ?? "")
+            .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
             .Build();
 
         await mqttClient.PublishAsync(msg, CancellationToken.None);
@@ -596,20 +561,92 @@ while True:
         StateHasChanged();
     }
 
-    // ================== UPDATE ==================
-    private sealed class MpyUpdateMessage
+    // ================== DIRECT UPDATE ==================
+    private sealed class MpyDirectStart
     {
-        public string type { get; set; } = "mpy_http_update";
-        public string url { get; set; } = "";
+        public string type { get; set; } = "start";
+        public string id { get; set; } = "";
         public string path { get; set; } = "/main.py";
         public long size { get; set; }
         public string sha256 { get; set; } = "";
+        public int chunks { get; set; }
         public string? ssid { get; set; }
         public string? pass { get; set; }
-        public string? key { get; set; } // token opcional
+        public string? key { get; set; }
     }
 
-    private async Task PublicarYActualizarAsync()
+    private sealed class MpyDirectChunk
+    {
+        public string type { get; set; } = "chunk";
+        public string id { get; set; } = "";
+        public int seq { get; set; }
+        public string b64 { get; set; } = "";
+        public string? key { get; set; }
+    }
+
+    private sealed class MpyDirectEnd
+    {
+        public string type { get; set; } = "end";
+        public string id { get; set; } = "";
+        public string? key { get; set; }
+    }
+
+    private sealed class MpyDirectAck
+    {
+        public string? type { get; set; }
+        public string? id { get; set; }
+        public int? seq { get; set; }
+        public bool? ok { get; set; }
+        public string? err { get; set; }
+    }
+
+    private void ProcesarAckDirecto(string payload)
+    {
+        MpyDirectAck? ack = null;
+        try { ack = JsonSerializer.Deserialize<MpyDirectAck>(payload); }
+        catch { return; }
+
+        if (ack?.id is null || ack.seq is null) return;
+
+        lock (_ackLock)
+        {
+            if (_directIdInFlight is null) return;
+            if (!string.Equals(_directIdInFlight, ack.id, StringComparison.OrdinalIgnoreCase)) return;
+
+            if (_ackWaiters.TryGetValue(ack.seq.Value, out var tcs))
+            {
+                if (ack.ok == true) tcs.TrySetResult(true);
+                else tcs.TrySetException(new Exception(ack.err ?? "ack fail"));
+            }
+        }
+    }
+
+    private async Task<bool> WaitAckAsync(string id, int seq, TimeSpan timeout)
+    {
+        TaskCompletionSource<bool> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        lock (_ackLock)
+        {
+            _directIdInFlight = id;
+            _ackWaiters[seq] = tcs;
+        }
+
+        try
+        {
+            using var cts = new CancellationTokenSource(timeout);
+            await using var _ = cts.Token.Register(() => tcs.TrySetCanceled());
+            return await tcs.Task;
+        }
+        finally
+        {
+            lock (_ackLock)
+            {
+                _ackWaiters.Remove(seq);
+            }
+        }
+    }
+
+    private async Task EnviarDirectoAsync()
     {
         if (!_mqttConectado || publicando) return;
 
@@ -617,79 +654,162 @@ while True:
         if (!PuedePublicar) return;
 
         publicando = true;
-        publicacionEstado = "Guardando código...";
+        publicacionEstado = "Preparando envío directo...";
         publicacionLog = "";
         publicacionInfo = "";
-        ultimaUrlPublicada = "";
+        ultimaRemotePath = "";
         ultimaSha256 = "";
         ultimaSize = 0;
+        ultimaChunks = 0;
         StateHasChanged();
 
         try
         {
             await GuardarCodigoAsync();
 
-            Directory.CreateDirectory(MpyDir);
-
-            var storedName = $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}.py";
-            var fullDest = Path.Combine(MpyDir, storedName);
-
-            var codeText = userCode ?? "";
-            await WriteUtf8NoBomAsync(fullDest, codeText);
-
-            var fileInfo = new FileInfo(fullDest);
-            ultimaSize = fileInfo.Length;
-
-            using var sha = SHA256.Create();
-            await using (var fs = File.OpenRead(fullDest))
-            {
-                var hash = await sha.ComputeHashAsync(fs);
-                ultimaSha256 = Convert.ToHexString(hash).ToLowerInvariant();
-            }
-
-            ultimaUrlPublicada = $"{PublicBaseUrl}/mpy/{storedName}";
             var path = NormalizarRemotePath();
+            var codeText = userCode ?? "";
+            var codeBytes = Encoding.UTF8.GetBytes(codeText);
 
-            var msgObj = new MpyUpdateMessage
-                {
-                    url = ultimaUrlPublicada,
-                    path = path,
-                    size = ultimaSize,
-                    sha256 = ultimaSha256,
-                    key = string.IsNullOrWhiteSpace(deviceKey) ? null : deviceKey.Trim()
-                };
+            if (codeBytes.Length > 262_144)
+                throw new Exception("Código demasiado grande para el límite del ESP (MAX_FILE_BYTES).");
 
-            if (!string.IsNullOrWhiteSpace(wifiSsid))
-            {
-                msgObj.ssid = wifiSsid.Trim();
-                msgObj.pass = wifiPass ?? "";
-            }
+            // SHA256
+            using var sha = SHA256.Create();
+            var hash = sha.ComputeHash(codeBytes);
+            var shaHex = Convert.ToHexString(hash).ToLowerInvariant();
+
+            var chunkSize = Math.Clamp(directChunkBytes, 256, 4096);
+            var chunks = (int)Math.Ceiling(codeBytes.Length / (double)chunkSize);
+            var id = Guid.NewGuid().ToString("N");
+
+            ultimaRemotePath = path;
+            ultimaSize = codeBytes.Length;
+            ultimaSha256 = shaHex;
+            ultimaChunks = chunks;
 
             var jsonOpts = new JsonSerializerOptions
                 {
                     DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
                 };
-            var json = JsonSerializer.Serialize(msgObj, jsonOpts);
-
-            publicacionEstado = "Enviando orden de update por MQTT...";
-            StateHasChanged();
 
             dynamic mqttClient = _mqttClientObj!;
-            var mqttMsg = new MqttApplicationMessageBuilder()
-                .WithTopic(TopicMpyHttp)
-                .WithPayload(json)
-                .Build();
 
-            await mqttClient.PublishAsync(mqttMsg, CancellationToken.None);
+            // START
+            var start = new MpyDirectStart
+                {
+                    id = id,
+                    path = path,
+                    size = codeBytes.Length,
+                    sha256 = shaHex,
+                    chunks = chunks,
+                    key = string.IsNullOrWhiteSpace(deviceKey) ? null : deviceKey.Trim()
+                };
 
-            publicacionEstado = "Enviado ✅ (ESP32 debe descargar, escribir y reiniciar)";
-            publicacionInfo = $"ESP32: descarga {msgObj.url} → verifica SHA256 → escribe {msgObj.path} → reinicia.";
+            if (!string.IsNullOrWhiteSpace(wifiSsid))
+            {
+                start.ssid = wifiSsid.Trim();
+                start.pass = wifiPass ?? "";
+            }
 
-            RefrescarListaScripts();
+            var startJson = JsonSerializer.Serialize(start, jsonOpts);
+
+            publicacionEstado = $"Enviando START (chunks={chunks})...";
+            StateHasChanged();
+
+            await mqttClient.PublishAsync(
+                new MqttApplicationMessageBuilder()
+                    .WithTopic(TopicMpyDirect)
+                    .WithPayload(startJson)
+                    .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
+                    .Build(),
+                CancellationToken.None
+            );
+
+            // Opcional: esperar ack start (seq=-1) (si no llega, seguimos igual)
+            try { await WaitAckAsync(id, -1, TimeSpan.FromSeconds(3)); } catch { }
+
+            // CHUNKS
+            for (int i = 0; i < chunks; i++)
+            {
+                var offset = i * chunkSize;
+                var len = Math.Min(chunkSize, codeBytes.Length - offset);
+                var slice = new byte[len];
+                Buffer.BlockCopy(codeBytes, offset, slice, 0, len);
+
+                var b64 = Convert.ToBase64String(slice);
+
+                var ch = new MpyDirectChunk
+                    {
+                        id = id,
+                        seq = i,
+                        b64 = b64,
+                        key = string.IsNullOrWhiteSpace(deviceKey) ? null : deviceKey.Trim()
+                    };
+
+                var chJson = JsonSerializer.Serialize(ch, jsonOpts);
+
+                publicacionEstado = $"Enviando chunk {i + 1}/{chunks}...";
+                StateHasChanged();
+
+                await mqttClient.PublishAsync(
+                    new MqttApplicationMessageBuilder()
+                        .WithTopic(TopicMpyDirect)
+                        .WithPayload(chJson)
+                        .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
+                        .Build(),
+                    CancellationToken.None
+                );
+
+                // Esperar ACK del chunk (seq=i) con timeout; reintenta 1 vez si falla
+                try
+                {
+                    await WaitAckAsync(id, i, TimeSpan.FromSeconds(6));
+                }
+                catch
+                {
+                    // retry 1 vez
+                    await mqttClient.PublishAsync(
+                        new MqttApplicationMessageBuilder()
+                            .WithTopic(TopicMpyDirect)
+                            .WithPayload(chJson)
+                            .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
+                            .Build(),
+                        CancellationToken.None
+                    );
+                    await WaitAckAsync(id, i, TimeSpan.FromSeconds(8));
+                }
+            }
+
+            // END
+            var end = new MpyDirectEnd
+                {
+                    id = id,
+                    key = string.IsNullOrWhiteSpace(deviceKey) ? null : deviceKey.Trim()
+                };
+            var endJson = JsonSerializer.Serialize(end, jsonOpts);
+
+            publicacionEstado = "Enviando END (ESP debe escribir y reiniciar)...";
+            StateHasChanged();
+
+            await mqttClient.PublishAsync(
+                new MqttApplicationMessageBuilder()
+                    .WithTopic(TopicMpyDirect)
+                    .WithPayload(endJson)
+                    .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
+                    .Build(),
+                CancellationToken.None
+            );
+
+            // opcional: esperar ack end (seq=-2) unos segundos
+            try { await WaitAckAsync(id, -2, TimeSpan.FromSeconds(6)); } catch { }
+
+            publicacionEstado = "Enviado ✅ (espera status DIRECT UPDATE OK y reboot)";
+            publicacionInfo = $"ESP32: recibe chunks → valida SHA → escribe {path} → reinicia.";
         }
         catch (Exception ex)
         {
-            publicacionEstado = "Error publicando / enviando update";
+            publicacionEstado = "Error enviando DIRECT update";
             publicacionLog = ex.ToString();
         }
         finally
@@ -731,6 +851,7 @@ while True:
         var mqttMsg = new MqttApplicationMessageBuilder()
             .WithTopic(TopicMpyInfoGet)
             .WithPayload(json)
+            .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
             .Build();
 
         await mqttClient.PublishAsync(mqttMsg, CancellationToken.None);
@@ -802,6 +923,7 @@ while True:
         var mqttMsg = new MqttApplicationMessageBuilder()
             .WithTopic(TopicMpyFileGet)
             .WithPayload(json)
+            .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
             .Build();
 
         await mqttClient.PublishAsync(mqttMsg, CancellationToken.None);
@@ -824,7 +946,6 @@ while True:
             return;
         }
 
-        // Si llega fuera de orden, ignoramos para no corromper.
         if (ch.seq.HasValue && ch.seq.Value != _fileSeqEsperado)
         {
             estadoLecturaArchivo = $"Chunk fuera de orden. Esperado={_fileSeqEsperado} llegó={ch.seq.Value}. Ignorado.";
@@ -877,61 +998,6 @@ while True:
             userCode = codigoLeidoDelEsp;
             ValidarCodigo();
         }
-    }
-
-    // ================== Scripts server (/wwwroot/mpy) ==================
-    private void RefrescarListaScripts()
-    {
-        scripts.Clear();
-        try
-        {
-            Directory.CreateDirectory(MpyDir);
-            var dir = new DirectoryInfo(MpyDir);
-            var files = dir.GetFiles("*.py").OrderByDescending(f => f.LastWriteTimeUtc).ToList();
-
-            foreach (var f in files)
-            {
-                scripts.Add(new ScriptItem
-                    {
-                        Name = f.Name,
-                        Size = f.Length,
-                        Utc = f.LastWriteTimeUtc.ToString("yyyy-MM-dd HH:mm:ss 'UTC'")
-                    });
-            }
-        }
-        catch { }
-    }
-
-    private async Task BorrarScriptAsync(string name)
-    {
-        try
-        {
-            var p = Path.Combine(MpyDir, name);
-            if (File.Exists(p)) File.Delete(p);
-            RefrescarListaScripts();
-        }
-        catch { }
-        await Task.CompletedTask;
-    }
-
-    private async Task LimpiarAntiguosAsync()
-    {
-        try
-        {
-            Directory.CreateDirectory(MpyDir);
-            var dir = new DirectoryInfo(MpyDir);
-            var files = dir.GetFiles("*.py").OrderByDescending(f => f.LastWriteTimeUtc).ToList();
-
-            foreach (var f in files.Skip(KeepLast))
-            {
-                try { f.Delete(); } catch { }
-            }
-
-            RefrescarListaScripts();
-        }
-        catch { }
-
-        await Task.CompletedTask;
     }
 
     // ================== DISPOSE ==================
