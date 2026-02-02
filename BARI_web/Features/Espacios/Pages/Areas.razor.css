@@ -377,10 +377,10 @@
         width: 100%;
     }
 
-        .planta-select,
-        .toolbar-actions .btn {
-            width: 100%;
-        }
+    .planta-select,
+    .toolbar-actions .btn {
+        width: 100%;
+    }
 
     .canvas-card {
         padding: 0.75rem;
