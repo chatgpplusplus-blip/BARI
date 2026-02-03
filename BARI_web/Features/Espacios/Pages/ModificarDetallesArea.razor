@@ -456,16 +456,17 @@
                             </div>
 
                             <div class="col-span-2">
-                                <label class="block text-xs text-gray-600 mb-1">Imagen URL</label>
-                                <input class="border p-1 w-full" @bind="_nuevoIns_ImagenUrl" @bind:event="oninput" />
+                                <label class="block text-xs text-gray-600 mb-1">Imagen (URL o archivo_local)</label>
+                                <input class="border p-1 w-full" value="@(ins.imagen_url ?? "")"
+                                       @oninput="(e)=>{ ins.imagen_url = e.Value?.ToString(); StateHasChanged(); }" />
 
-                                @if (!string.IsNullOrWhiteSpace(_nuevoIns_ImagenUrl))
+                                @if (!string.IsNullOrWhiteSpace(ins.imagen_url))
                                 {
                                     <div class="mt-2 flex items-center gap-2">
-                                        <img src="@ResolveUrl(_nuevoIns_ImagenUrl)"
+                                        <img src="@ResolveUrl(ins.imagen_url!)"
                                              style="width:120px;height:80px;object-fit:contain;border:1px solid #e5e7eb;border-radius:8px;background:#fff"
                                              onerror="this.style.display='none';" />
-                                        <div class="text-xs text-gray-500"><code>@_nuevoIns_ImagenUrl</code></div>
+                                        <div class="text-xs text-gray-500"><code>@ins.imagen_url</code></div>
                                     </div>
                                 }
                             </div>
@@ -550,6 +551,131 @@
                     @if (!string.IsNullOrWhiteSpace(_blockMsg))
                     {
                         <div class="text-xs text-gray-500 mt-2">@_blockMsg</div>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(blockSel.meson_id) && _mesones.TryGetValue(blockSel.meson_id, out var mesonBlock))
+                    {
+                        <hr class="my-3" />
+                        <h4 class="font-semibold mb-2">Mesón (SQL)</h4>
+                        <div class="grid grid-cols-2 gap-2 text-sm">
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Nombre</label>
+                                <input class="border p-1 w-full" value="@mesonBlock.nombre_meson"
+                                       @oninput="(e)=>{ mesonBlock.nombre_meson = e.Value?.ToString() ?? string.Empty; _mesonesLookup[mesonBlock.meson_id] = mesonBlock.nombre_meson; StateHasChanged(); }" />
+                            </div>
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Niveles totales</label>
+                                <input class="border p-1 w-full" value="@(mesonBlock.niveles_totales?.ToString() ?? "")"
+                                       @oninput="(e)=>{ mesonBlock.niveles_totales = int.TryParse(e.Value?.ToString(), out var n)? n : (int?)null; StateHasChanged(); }" />
+                            </div>
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Imagen (URL o archivo_local)</label>
+                                <input class="border p-1 w-full" value="@(mesonBlock.imagen_url ?? "")"
+                                       @oninput="(e)=>{ mesonBlock.imagen_url = e.Value?.ToString(); StateHasChanged(); }" />
+
+                                @if (!string.IsNullOrWhiteSpace(mesonBlock.imagen_url))
+                                {
+                                    <div class="mt-2 flex items-center gap-2">
+                                        <img src="@ResolveUrl(mesonBlock.imagen_url!)"
+                                             style="width:120px;height:80px;object-fit:contain;border:1px solid #e5e7eb;border-radius:8px;background:#fff"
+                                             onerror="this.style.display='none';" />
+                                        <div class="text-xs text-gray-500"><code>@mesonBlock.imagen_url</code></div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(blockSel.instalacion_id) && _instalaciones.TryGetValue(blockSel.instalacion_id, out var insBlock))
+                    {
+                        <hr class="my-3" />
+                        <h4 class="font-semibold mb-2">Instalación (SQL)</h4>
+
+                        <div class="grid grid-cols-2 gap-2 text-sm">
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Nombre</label>
+                                <input class="border p-1 w-full" value="@insBlock.nombre"
+                                       @oninput="(e)=>{ insBlock.nombre = e.Value?.ToString() ?? string.Empty; StateHasChanged(); }" />
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Subcategoría</label>
+                                <select class="border p-1 w-full" value="@(insBlock.subcategoria_id ?? "")"
+                                        @onchange="(e)=>{ insBlock.subcategoria_id = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? null : e.Value?.ToString(); StateHasChanged(); }">
+                                    <option value="">— Sin subcategoría —</option>
+                                    @foreach (var kv in _subcatsInstLookup.OrderBy(k => k.Value))
+                                    {
+                                        <option value="@kv.Key">@kv.Value</option>
+                                    }
+                                </select>
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Estado</label>
+                                <select class="border p-1 w-full" value="@(insBlock.estado_id ?? "")"
+                                        @onchange="(e)=>{ insBlock.estado_id = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? null : e.Value?.ToString(); StateHasChanged(); }">
+                                    <option value="">— Sin estado —</option>
+                                    @foreach (var kv in _estadosLookup.OrderBy(k => k.Value))
+                                    {
+                                        <option value="@kv.Key">@kv.Value</option>
+                                    }
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Fecha instalación</label>
+                                <input type="date" class="border p-1 w-full"
+                                       value="@(DateToInput(insBlock.fecha_instalacion))"
+                                       @onchange="(e)=>{ insBlock.fecha_instalacion = ParseDate(e.Value?.ToString()); StateHasChanged(); }" />
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Última revisión</label>
+                                <input type="date" class="border p-1 w-full"
+                                       value="@(DateToInput(insBlock.fecha_ultima_revision))"
+                                       @onchange="(e)=>{ insBlock.fecha_ultima_revision = ParseDate(e.Value?.ToString()); StateHasChanged(); }" />
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Próxima revisión</label>
+                                <input type="date" class="border p-1 w-full"
+                                       value="@(DateToInput(insBlock.fecha_proxima_revision))"
+                                       @onchange="(e)=>{ insBlock.fecha_proxima_revision = ParseDate(e.Value?.ToString()); StateHasChanged(); }" />
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Proveedor servicio</label>
+                                <input class="border p-1 w-full" value="@(insBlock.proveedor_servicio ?? "")"
+                                       @oninput="(e)=>{ insBlock.proveedor_servicio = e.Value?.ToString(); StateHasChanged(); }" />
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Observaciones</label>
+                                <textarea class="border p-1 w-full" rows="2"
+                                          @oninput="(e)=>{ insBlock.observaciones = e.Value?.ToString(); StateHasChanged(); }">@insBlock.observaciones</textarea>
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Descripción</label>
+                                <textarea class="border p-1 w-full" rows="3"
+                                          @oninput="(e)=>{ insBlock.descripcion = e.Value?.ToString(); StateHasChanged(); }">@insBlock.descripcion</textarea>
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Imagen (URL o archivo_local)</label>
+                                <input class="border p-1 w-full" value="@(insBlock.imagen_url ?? "")"
+                                       @oninput="(e)=>{ insBlock.imagen_url = e.Value?.ToString(); StateHasChanged(); }" />
+
+                                @if (!string.IsNullOrWhiteSpace(insBlock.imagen_url))
+                                {
+                                    <div class="mt-2 flex items-center gap-2">
+                                        <img src="@ResolveUrl(insBlock.imagen_url!)"
+                                             style="width:120px;height:80px;object-fit:contain;border:1px solid #e5e7eb;border-radius:8px;background:#fff"
+                                             onerror="this.style.display='none';" />
+                                        <div class="text-xs text-gray-500"><code>@insBlock.imagen_url</code></div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
                     }
                 }
                 else if (_showBlockCreator)
@@ -685,8 +811,39 @@
 
                         <!-- ✅ NUEVO -->
                         <div class="col-span-2">
-                            <label class="block text-xs text-gray-600 mb-1">Imagen (URL o archivo_local)</label>
-                            <input class="border p-1 w-full" @bind="_nuevoMesonImagenUrl" @bind:event="oninput" />
+                            <label class="block text-xs text-gray-600 mb-1">Imagen</label>
+                            <div class="flex items-center gap-3">
+                                <label class="flex items-center gap-2 text-xs text-gray-700">
+                                    <input type="radio" name="imgModoMesonDetalles"
+                                           value="url"
+                                           checked="@(_nuevoMesonImagenModo == "url")"
+                                           @onchange="OnNuevoMesonImagenModoChanged" />
+                                    Colocar un URL
+                                </label>
+                                <label class="flex items-center gap-2 text-xs text-gray-700">
+                                    <input type="radio" name="imgModoMesonDetalles"
+                                           value="archivo"
+                                           checked="@(_nuevoMesonImagenModo == "archivo")"
+                                           @onchange="OnNuevoMesonImagenModoChanged" />
+                                    Subir imagen
+                                </label>
+                            </div>
+
+                            @if (_nuevoMesonImagenModo == "url")
+                            {
+                                <input class="border p-1 w-full mt-2" @bind="_nuevoMesonImagenUrl" @bind:event="oninput" />
+                            }
+                            else
+                            {
+                                <label class="upload-drop mt-2">
+                                    <InputFile OnChange="OnNuevoMesonImagenArchivoSeleccionado" accept="image/png,image/jpeg,image/jpg,image/webp" />
+                                    <span>Arrastra una imagen o haz clic para buscar</span>
+                                </label>
+                                @if (!string.IsNullOrWhiteSpace(_nuevoMesonImagenNombre))
+                                {
+                                    <div class="text-xs text-gray-500 mt-1">Archivo: @_nuevoMesonImagenNombre</div>
+                                }
+                            }
 
                             @if (!string.IsNullOrWhiteSpace(_nuevoMesonImagenUrl))
                             {
@@ -745,7 +902,7 @@
                 </details>
 
                 <!-- INSTALACIONES -->
-                <details class="panel-box" open>
+                <details class="panel-box">
                     <summary class="panel-header">
                         <div class="panel-title">Crear instalación</div>
                     </summary>
@@ -809,8 +966,39 @@
                         </div>
 
                         <div class="col-span-2">
-                            <label class="block text-xs text-gray-600 mb-1">Imagen URL</label>
-                            <input class="border p-1 w-full" @bind="_nuevoIns_ImagenUrl" @bind:event="oninput" />
+                            <label class="block text-xs text-gray-600 mb-1">Imagen</label>
+                            <div class="flex items-center gap-3">
+                                <label class="flex items-center gap-2 text-xs text-gray-700">
+                                    <input type="radio" name="imgModoInstDetalles"
+                                           value="url"
+                                           checked="@(_nuevoIns_ImagenModo == "url")"
+                                           @onchange="OnNuevoInsImagenModoChanged" />
+                                    Colocar un URL
+                                </label>
+                                <label class="flex items-center gap-2 text-xs text-gray-700">
+                                    <input type="radio" name="imgModoInstDetalles"
+                                           value="archivo"
+                                           checked="@(_nuevoIns_ImagenModo == "archivo")"
+                                           @onchange="OnNuevoInsImagenModoChanged" />
+                                    Subir imagen
+                                </label>
+                            </div>
+
+                            @if (_nuevoIns_ImagenModo == "url")
+                            {
+                                <input class="border p-1 w-full mt-2" @bind="_nuevoIns_ImagenUrl" @bind:event="oninput" />
+                            }
+                            else
+                            {
+                                <label class="upload-drop mt-2">
+                                    <InputFile OnChange="OnNuevoInsImagenArchivoSeleccionado" accept="image/png,image/jpeg,image/jpg,image/webp" />
+                                    <span>Arrastra una imagen o haz clic para buscar</span>
+                                </label>
+                                @if (!string.IsNullOrWhiteSpace(_nuevoIns_ImagenNombre))
+                                {
+                                    <div class="text-xs text-gray-500 mt-1">Archivo: @_nuevoIns_ImagenNombre</div>
+                                }
+                            }
 
                             @if (!string.IsNullOrWhiteSpace(_nuevoIns_ImagenUrl))
                             {
@@ -941,6 +1129,26 @@
         box-shadow: 0 1px 2px rgba(0,0,0,.04);
         margin-bottom: 10px;
     }
+
+    .upload-drop {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        padding: .6rem;
+        border: 1px solid #e5e7eb;
+        border-radius: .5rem;
+        color: #6b7280;
+        cursor: pointer;
+        background: #fff;
+    }
+
+        .upload-drop input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
 
     .panel-header {
         display: flex;

@@ -1,11 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.AspNetCore.Hosting;
 using BARI_web.General_Services.DataBaseConnection;
 
 namespace BARI_web.Features.Espacios.Pages
@@ -15,6 +18,7 @@ namespace BARI_web.Features.Espacios.Pages
         [Parameter] public string AreaSlug { get; set; } = "";
         [Inject] private PgCrud Pg { get; set; } = default!;
         [Inject] public NavigationManager Nav { get; set; } = default!;
+        [Inject] public IWebHostEnvironment HostEnvironment { get; set; } = default!;
 
         // =========================
         // Modelos base
@@ -273,6 +277,8 @@ namespace BARI_web.Features.Espacios.Pages
         private string? _nuevoMesonMsg;
 
         private string _nuevoMesonImagenUrl = string.Empty;
+        private string _nuevoMesonImagenModo = "url";
+        private string? _nuevoMesonImagenNombre;
         private decimal? _newBlockAltura = null;
         public string? imagen_url { get; set; }
 
@@ -289,6 +295,8 @@ namespace BARI_web.Features.Espacios.Pages
         private string? _nuevoIns_Observaciones = "";
         private string? _nuevoIns_Descripcion = "";
         private string? _nuevoIns_ImagenUrl = "";
+        private string _nuevoIns_ImagenModo = "url";
+        private string? _nuevoIns_ImagenNombre;
         private string? _nuevoIns_Msg;
         // Esta propiedad actúa como puente entre el Input y el String
         private DateTime? FechaInstalacionWrapper
@@ -966,6 +974,8 @@ namespace BARI_web.Features.Espacios.Pages
 
             _nuevoMesonNombre = "";
             _nuevoMesonImagenUrl = "";
+            _nuevoMesonImagenModo = "url";
+            _nuevoMesonImagenNombre = null;
             _nuevoMesonNiveles = null;
             _nuevoMesonMsg = "Mesón registrado (recuerda guardar).";
             StateHasChanged();
@@ -1012,6 +1022,8 @@ namespace BARI_web.Features.Espacios.Pages
             _nuevoIns_Observaciones = "";
             _nuevoIns_Descripcion = "";
             _nuevoIns_ImagenUrl = "";
+            _nuevoIns_ImagenModo = "url";
+            _nuevoIns_ImagenNombre = null;
             _nuevoIns_Msg = "Instalación registrada (recuerda guardar).";
             StateHasChanged();
         }
@@ -2497,6 +2509,70 @@ namespace BARI_web.Features.Espacios.Pages
                 if (!usados.Contains(cand)) return cand;
             }
             return $"{baseName}_{Guid.NewGuid():N}".Substring(0, 14);
+        }
+
+        private void OnNuevoMesonImagenModoChanged(ChangeEventArgs args)
+        {
+            var v = args.Value?.ToString();
+            if (!string.IsNullOrWhiteSpace(v))
+                _nuevoMesonImagenModo = v;
+
+            if (_nuevoMesonImagenModo == "url")
+                _nuevoMesonImagenNombre = null;
+            else
+                _nuevoMesonImagenUrl = "";
+        }
+
+        private async Task OnNuevoMesonImagenArchivoSeleccionado(InputFileChangeEventArgs args)
+        {
+            if (args.FileCount == 0) return;
+
+            var file = args.File;
+            var ext = Path.GetExtension(file.Name);
+            var fileName = $"mes_{Guid.NewGuid():N}{ext}";
+            var relative = Path.Combine("uploads", "mesones", fileName).Replace("\\", "/");
+            var absolute = Path.Combine(HostEnvironment.WebRootPath, relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(absolute)!);
+
+            await using var stream = file.OpenReadStream(8 * 1024 * 1024);
+            await using var fs = File.Create(absolute);
+            await stream.CopyToAsync(fs);
+
+            _nuevoMesonImagenUrl = $"/{relative}";
+            _nuevoMesonImagenNombre = file.Name;
+            _nuevoMesonMsg = $"Imagen cargada: {file.Name}";
+        }
+
+        private void OnNuevoInsImagenModoChanged(ChangeEventArgs args)
+        {
+            var v = args.Value?.ToString();
+            if (!string.IsNullOrWhiteSpace(v))
+                _nuevoIns_ImagenModo = v;
+
+            if (_nuevoIns_ImagenModo == "url")
+                _nuevoIns_ImagenNombre = null;
+            else
+                _nuevoIns_ImagenUrl = "";
+        }
+
+        private async Task OnNuevoInsImagenArchivoSeleccionado(InputFileChangeEventArgs args)
+        {
+            if (args.FileCount == 0) return;
+
+            var file = args.File;
+            var ext = Path.GetExtension(file.Name);
+            var fileName = $"ins_{Guid.NewGuid():N}{ext}";
+            var relative = Path.Combine("uploads", "instalaciones", fileName).Replace("\\", "/");
+            var absolute = Path.Combine(HostEnvironment.WebRootPath, relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(absolute)!);
+
+            await using var stream = file.OpenReadStream(8 * 1024 * 1024);
+            await using var fs = File.Create(absolute);
+            await stream.CopyToAsync(fs);
+
+            _nuevoIns_ImagenUrl = $"/{relative}";
+            _nuevoIns_ImagenNombre = file.Name;
+            _nuevoIns_Msg = $"Imagen cargada: {file.Name}";
         }
 
         // =========================
