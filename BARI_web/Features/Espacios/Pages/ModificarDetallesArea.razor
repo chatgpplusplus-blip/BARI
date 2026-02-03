@@ -888,7 +888,7 @@
     }
 
     .canvas-host {
-        overflow: auto;
+        overflow-x: auto;
     }
 
     .prop-panel {
@@ -951,5 +951,27 @@
 
     .panel-title {
         font-weight: 600;
+    }
+
+    @media (max-width: 900px) {
+        .editor-layout {
+            grid-template-columns: 1fr;
+        }
+
+        .prop-panel {
+            position: static;
+            top: auto;
+            max-height: none;
+            overflow: visible;
+        }
+
+        .canvas-host {
+            overflow: visible;
+        }
+
+        .canvas-box {
+            max-width: 100%;
+            min-height: 62vh;
+        }
     }
 </style>
