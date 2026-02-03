@@ -1,4 +1,5 @@
 ﻿@page "/inventario-materiales/item/{MaterialId}"
+@using BARI_web.Features.Services
 @using Npgsql
 @using System.Globalization
 @using System.IO
@@ -8,6 +9,7 @@
 @inject LaboratorioState LaboratorioState
 @inject NavigationManager Nav
 @inject IWebHostEnvironment HostEnvironment
+@inject BARI_web.Features.Services.CascadeDeleteService CascadeDeleteService
 @implements IDisposable
 
 <PageTitle>Detalle de Material</PageTitle>
@@ -173,7 +175,14 @@
                         }
                         else
                         {
-                            <button class="btn danger" type="button" @onclick="DeleteAsync" disabled="@isSaving">Confirmar eliminar</button>
+                            @if (showCascadeWarning)
+                            {
+                                <button class="btn danger" type="button" @onclick="ConfirmCascadeDelete" disabled="@isSaving">Eliminar en cascada</button>
+                            }
+                            else
+                            {
+                                <button class="btn danger" type="button" @onclick="DeleteAsync" disabled="@isSaving">Confirmar eliminar</button>
+                            }
                             <button class="btn" type="button" @onclick="CancelDelete" disabled="@isSaving">Cancelar</button>
                         }
 
@@ -182,6 +191,25 @@
                             <span class="text-sm muted">@msg</span>
                         }
                     </div>
+                    @if (showCascadeWarning)
+                    {
+                        <div class="cascade-warning">
+                            <strong>ADVERTENCIA:</strong> ESTE MATERIAL ESTÁ ASOCIADO A LAS SIGUIENTES TABLAS.
+                            <div class="text-sm">¿Desea proseguir?</div>
+                            <ul>
+                                @foreach (var dep in cascadeDependencies)
+                                {
+                                    <li>
+                                        <strong>@dep.TableName</strong> (@dep.ColumnName) · @dep.Count registro(s)
+                                        @if (!string.IsNullOrWhiteSpace(FormatDependencyPreview(dep)))
+                                        {
+                                            <div class="muted text-xs">@FormatDependencyPreview(dep)</div>
+                                        }
+                                    </li>
+                                }
+                            </ul>
+                        </div>
+                    }
                 </div>
             </div>
         }
@@ -492,7 +520,14 @@
                     }
                     else
                     {
-                        <button class="btn danger" type="button" @onclick="DeleteAsync" disabled="@isSaving">Confirmar eliminar</button>
+                        @if (showCascadeWarning)
+                        {
+                            <button class="btn danger" type="button" @onclick="ConfirmCascadeDelete" disabled="@isSaving">Eliminar en cascada</button>
+                        }
+                        else
+                        {
+                            <button class="btn danger" type="button" @onclick="DeleteAsync" disabled="@isSaving">Confirmar eliminar</button>
+                        }
                         <button class="btn" type="button" @onclick="CancelDelete" disabled="@isSaving">Cancelar eliminar</button>
                     }
 
@@ -501,6 +536,25 @@
                         <span class="text-sm muted">@msg</span>
                     }
                 </div>
+                @if (showCascadeWarning)
+                {
+                    <div class="cascade-warning" style="margin-top:.6rem;">
+                        <strong>ADVERTENCIA:</strong> ESTE MATERIAL ESTÁ ASOCIADO A LAS SIGUIENTES TABLAS.
+                        <div class="text-sm">¿Desea proseguir?</div>
+                        <ul>
+                            @foreach (var dep in cascadeDependencies)
+                            {
+                                <li>
+                                    <strong>@dep.TableName</strong> (@dep.ColumnName) · @dep.Count registro(s)
+                                    @if (!string.IsNullOrWhiteSpace(FormatDependencyPreview(dep)))
+                                    {
+                                        <div class="muted text-xs">@FormatDependencyPreview(dep)</div>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                }
             </div>
         }
     }
@@ -515,6 +569,9 @@
 
     private bool isEditing = false;
     private bool confirmDelete = false;
+    private bool showCascadeWarning = false;
+    private bool cascadeConfirmed = false;
+    private IReadOnlyList<CascadeDependency> cascadeDependencies = Array.Empty<CascadeDependency>();
 
     private string? loadError;
     private string? msg;
@@ -592,6 +649,9 @@
         msg = null;
         confirmDelete = false;
         _experienciaToAddId = null;
+        showCascadeWarning = false;
+        cascadeConfirmed = false;
+        cascadeDependencies = Array.Empty<CascadeDependency>();
 
         isLoading = true;
         found = false;
@@ -647,6 +707,9 @@
     {
         msg = null;
         confirmDelete = false;
+        showCascadeWarning = false;
+        cascadeConfirmed = false;
+        cascadeDependencies = Array.Empty<CascadeDependency>();
         _showSubcatsDropdown = false;
         isEditing = true;
     }
@@ -655,6 +718,9 @@
     {
         msg = null;
         confirmDelete = false;
+        showCascadeWarning = false;
+        cascadeConfirmed = false;
+        cascadeDependencies = Array.Empty<CascadeDependency>();
         isEditing = false;
         await ReloadAllAsync();
     }
@@ -662,13 +728,25 @@
     private void AskDelete()
     {
         confirmDelete = true;
-        msg = "Esto eliminará el material y sus relaciones. Presiona Confirmar eliminar para continuar.";
+        msg = "Esto eliminará el material. Si tiene relaciones, podrás confirmar el borrado en cascada.";
+        showCascadeWarning = false;
+        cascadeConfirmed = false;
+        cascadeDependencies = Array.Empty<CascadeDependency>();
     }
 
     private void CancelDelete()
     {
         confirmDelete = false;
         msg = null;
+        showCascadeWarning = false;
+        cascadeConfirmed = false;
+        cascadeDependencies = Array.Empty<CascadeDependency>();
+    }
+
+    private async Task ConfirmCascadeDelete()
+    {
+        cascadeConfirmed = true;
+        await DeleteAsync();
     }
 
     private void GoBack()
@@ -1419,22 +1497,16 @@
         isSaving = true;
         try
         {
-            await using var conn = await DataSource.OpenConnectionAsync();
-            await using var tx = await conn.BeginTransactionAsync();
+            if (!await EnsureCascadeApprovalAsync())
+            {
+                isSaving = false;
+                return;
+            }
 
-            await ExecAsync(conn, tx, "DELETE FROM experiencia_materiales WHERE material_id = @id", ("id", edit.MaterialId));
-            await ExecAsync(conn, tx, "DELETE FROM material_subcategorias WHERE material_id = @id", ("id", edit.MaterialId));
-
-            // documentos ligados al material (si aplica)
-            await ExecAsync(conn, tx, "DELETE FROM documentos WHERE material_id = @id AND laboratorio_id = @lab",
-                ("id", edit.MaterialId),
-                ("lab", LaboratorioState.LaboratorioId));
-
-            await ExecAsync(conn, tx, "DELETE FROM materiales WHERE material_id = @id AND laboratorio_id = @lab",
-                ("id", edit.MaterialId),
-                ("lab", LaboratorioState.LaboratorioId));
-
-            await tx.CommitAsync();
+            await CascadeDeleteService.DeleteWithCascadeAsync(
+                "materiales",
+                edit.MaterialId,
+                LaboratorioState.LaboratorioId);
 
             Nav.NavigateTo("/inventario-materiales");
         }
@@ -1447,6 +1519,41 @@
             isSaving = false;
             StateHasChanged();
         }
+    }
+
+    private async Task<bool> EnsureCascadeApprovalAsync()
+    {
+        if (cascadeConfirmed)
+        {
+            showCascadeWarning = false;
+            return true;
+        }
+
+        cascadeDependencies = await CascadeDeleteService.GetDependenciesAsync(
+            "materiales",
+            edit.MaterialId,
+            LaboratorioState.LaboratorioId);
+
+        showCascadeWarning = cascadeDependencies.Count > 0;
+        if (showCascadeWarning)
+        {
+            msg = null;
+            return false;
+        }
+
+        return true;
+    }
+
+    private static string FormatDependencyPreview(CascadeDependency dep)
+    {
+        if (dep.Items.Count == 0)
+            return string.Empty;
+
+        var preview = string.Join(" · ", dep.Items);
+        if (dep.Count > dep.Items.Count)
+            preview += $" · y {dep.Count - dep.Items.Count} más";
+
+        return preview;
     }
 
     private static object ParseIntOrNull(string? value) =>

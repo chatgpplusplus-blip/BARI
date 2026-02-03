@@ -1,11 +1,13 @@
 ﻿@page "/asignaturas/item/{AsignaturaId}"
 
+@using BARI_web.Features.Services
 @using Npgsql
 @using System.Globalization
 @using Microsoft.AspNetCore.Components
 @inject NpgsqlDataSource DataSource
 @inject LaboratorioState LaboratorioState
 @inject NavigationManager Nav
+@inject BARI_web.Features.Services.CascadeDeleteService CascadeDeleteService
 @implements IDisposable
 
 <PageTitle>Detalle de Asignatura</PageTitle>
@@ -232,7 +234,14 @@
                             }
                             else
                             {
-                                <button class="btn danger" type="button" @onclick="DeleteAsync" disabled="@isSaving">Confirmar eliminar</button>
+                                @if (showCascadeWarning)
+                                {
+                                    <button class="btn danger" type="button" @onclick="ConfirmCascadeDelete" disabled="@isSaving">Eliminar en cascada</button>
+                                }
+                                else
+                                {
+                                    <button class="btn danger" type="button" @onclick="DeleteAsync" disabled="@isSaving">Confirmar eliminar</button>
+                                }
                                 <button class="btn" type="button" @onclick="CancelDelete" disabled="@isSaving">Cancelar</button>
                             }
                         }
@@ -242,6 +251,25 @@
                             <span class="text-sm muted">@msg</span>
                         }
                     </div>
+                    @if (showCascadeWarning)
+                    {
+                        <div class="cascade-warning">
+                            <strong>ADVERTENCIA:</strong> ESTA ASIGNATURA ESTÁ ASOCIADA A LAS SIGUIENTES TABLAS.
+                            <div class="text-sm">¿Desea proseguir?</div>
+                            <ul>
+                                @foreach (var dep in cascadeDependencies)
+                                {
+                                    <li>
+                                        <strong>@dep.TableName</strong> (@dep.ColumnName) · @dep.Count registro(s)
+                                        @if (!string.IsNullOrWhiteSpace(FormatDependencyPreview(dep)))
+                                        {
+                                            <div class="muted text-xs">@FormatDependencyPreview(dep)</div>
+                                        }
+                                    </li>
+                                }
+                            </ul>
+                        </div>
+                    }
                 </div>
             </div>
         }
@@ -306,6 +334,9 @@
 
     private bool isEditing = false;
     private bool confirmDelete = false;
+    private bool showCascadeWarning = false;
+    private bool cascadeConfirmed = false;
+    private IReadOnlyList<CascadeDependency> cascadeDependencies = Array.Empty<CascadeDependency>();
 
     private bool isGlobal = false;
 
@@ -342,6 +373,9 @@
         loadError = null;
         msg = null;
         confirmDelete = false;
+        showCascadeWarning = false;
+        cascadeConfirmed = false;
+        cascadeDependencies = Array.Empty<CascadeDependency>();
 
         isLoading = true;
         found = false;
@@ -376,6 +410,9 @@
     {
         msg = null;
         confirmDelete = false;
+        showCascadeWarning = false;
+        cascadeConfirmed = false;
+        cascadeDependencies = Array.Empty<CascadeDependency>();
         if (isGlobal)
         {
             msg = "Esta asignatura es GLOBAL (solo lectura).";
@@ -388,6 +425,9 @@
     {
         msg = null;
         confirmDelete = false;
+        showCascadeWarning = false;
+        cascadeConfirmed = false;
+        cascadeDependencies = Array.Empty<CascadeDependency>();
         isEditing = false;
         await ReloadAllAsync();
     }
@@ -395,13 +435,25 @@
     private void AskDelete()
     {
         confirmDelete = true;
-        msg = "Esto eliminará la asignatura (solo si NO tiene labs/experiencias). Presiona Confirmar eliminar para continuar.";
+        msg = "Esto eliminará la asignatura. Si tiene relaciones, podrás confirmar el borrado en cascada.";
+        showCascadeWarning = false;
+        cascadeConfirmed = false;
+        cascadeDependencies = Array.Empty<CascadeDependency>();
     }
 
     private void CancelDelete()
     {
         confirmDelete = false;
         msg = null;
+        showCascadeWarning = false;
+        cascadeConfirmed = false;
+        cascadeDependencies = Array.Empty<CascadeDependency>();
+    }
+
+    private async Task ConfirmCascadeDelete()
+    {
+        cascadeConfirmed = true;
+        await DeleteAsync();
     }
 
     private void GoBack()
@@ -613,33 +665,19 @@
         if (!found) return;
         if (isGlobal) { msg = "Asignatura GLOBAL (no se puede eliminar)."; return; }
 
-        if (_labs.Count > 0 || _exps.Count > 0)
-        {
-            msg = "No se puede eliminar: primero elimina los laboratorios realizados y/o experiencias asociadas a esta asignatura.";
-            confirmDelete = false;
-            return;
-        }
-
         isSaving = true;
         try
         {
-            await using var conn = await DataSource.OpenConnectionAsync();
-            await using var tx = await conn.BeginTransactionAsync();
+            if (!await EnsureCascadeApprovalAsync())
+            {
+                isSaving = false;
+                return;
+            }
 
-            // Solo borrar docs del contexto del laboratorio actual (no tocar globales)
-            await ExecAsync(conn, tx,
-                "DELETE FROM documentos WHERE alcance='ASIGNATURA' AND asignatura_id=@asig AND laboratorio_contexto_id=@lab",
-                ("asig", edit.AsignaturaId),
-                ("lab", LaboratorioState.LaboratorioId)
-            );
-
-            await ExecAsync(conn, tx,
-                "DELETE FROM asignaturas WHERE asignatura_id=@id AND laboratorio_id=@lab",
-                ("id", edit.AsignaturaId),
-                ("lab", LaboratorioState.LaboratorioId)
-            );
-
-            await tx.CommitAsync();
+            await CascadeDeleteService.DeleteWithCascadeAsync(
+                "asignaturas",
+                edit.AsignaturaId,
+                LaboratorioState.LaboratorioId);
 
             Nav.NavigateTo("/contenidos");
         }
@@ -651,6 +689,41 @@
         {
             isSaving = false;
         }
+    }
+
+    private async Task<bool> EnsureCascadeApprovalAsync()
+    {
+        if (cascadeConfirmed)
+        {
+            showCascadeWarning = false;
+            return true;
+        }
+
+        cascadeDependencies = await CascadeDeleteService.GetDependenciesAsync(
+            "asignaturas",
+            edit.AsignaturaId,
+            LaboratorioState.LaboratorioId);
+
+        showCascadeWarning = cascadeDependencies.Count > 0;
+        if (showCascadeWarning)
+        {
+            msg = null;
+            return false;
+        }
+
+        return true;
+    }
+
+    private static string FormatDependencyPreview(CascadeDependency dep)
+    {
+        if (dep.Items.Count == 0)
+            return string.Empty;
+
+        var preview = string.Join(" · ", dep.Items);
+        if (dep.Count > dep.Items.Count)
+            preview += $" · y {dep.Count - dep.Items.Count} más";
+
+        return preview;
     }
 
     private static object DbOrNull(string? s) => string.IsNullOrWhiteSpace(s) ? (object)DBNull.Value : s!.Trim();

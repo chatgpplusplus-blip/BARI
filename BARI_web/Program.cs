@@ -85,6 +85,7 @@ builder.Services.AddHttpClient<DeepSeekChatClient>((sp, http) =>
 
 // Catálogo de esquema (introspección de TODA la BD, cacheado)
 builder.Services.AddSingleton<SchemaCatalog>();
+builder.Services.AddScoped<CascadeDeleteService>();
 
 // Firewall SQL (solo SELECT/WITH, fuerza LIMIT y bloquea DDL/DML)
 builder.Services.AddSingleton<SafeSqlValidator>(sp => new SafeSqlValidator
