@@ -1,5 +1,6 @@
 ﻿@page "/experiencias/item/{ExperienciaId}"
 
+@using BARI_web.Features.Services
 @using Npgsql
 @using System.Globalization
 @using Microsoft.AspNetCore.Components
@@ -7,6 +8,7 @@
 @inject NpgsqlDataSource DataSource
 @inject LaboratorioState LaboratorioState
 @inject NavigationManager Nav
+@inject BARI_web.Features.Services.CascadeDeleteService CascadeDeleteService
 @implements IDisposable
 
 <PageTitle>Detalle de Experiencia</PageTitle>
@@ -211,7 +213,14 @@
                         }
                         else
                         {
-                            <button class="btn danger" type="button" @onclick="DeleteAsync" disabled="@isSaving">Confirmar eliminar</button>
+                            @if (showCascadeWarning)
+                            {
+                                <button class="btn danger" type="button" @onclick="ConfirmCascadeDelete" disabled="@isSaving">Eliminar en cascada</button>
+                            }
+                            else
+                            {
+                                <button class="btn danger" type="button" @onclick="DeleteAsync" disabled="@isSaving">Confirmar eliminar</button>
+                            }
                             <button class="btn" type="button" @onclick="CancelDelete" disabled="@isSaving">Cancelar</button>
                         }
                     }
@@ -221,6 +230,25 @@
                         <span class="text-sm muted">@msg</span>
                     }
                 </div>
+                @if (showCascadeWarning)
+                {
+                    <div class="cascade-warning">
+                        <strong>ADVERTENCIA:</strong> ESTA EXPERIENCIA ESTÁ ASOCIADA A LAS SIGUIENTES TABLAS.
+                        <div class="text-sm">¿Desea proseguir?</div>
+                        <ul>
+                            @foreach (var dep in cascadeDependencies)
+                            {
+                                <li>
+                                    <strong>@dep.TableName</strong> (@dep.ColumnName) · @dep.Count registro(s)
+                                    @if (!string.IsNullOrWhiteSpace(FormatDependencyPreview(dep)))
+                                    {
+                                        <div class="muted text-xs">Elementos: @FormatDependencyPreview(dep)</div>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                }
             </div>
         }
         else
@@ -401,6 +429,9 @@
 
     private bool isEditing = false;
     private bool confirmDelete = false;
+    private bool showCascadeWarning = false;
+    private bool cascadeConfirmed = false;
+    private IReadOnlyList<CascadeDependency> cascadeDependencies = Array.Empty<CascadeDependency>();
 
     private bool isGlobal = false;
 
@@ -462,6 +493,9 @@
         loadError = null;
         msg = null;
         confirmDelete = false;
+        showCascadeWarning = false;
+        cascadeConfirmed = false;
+        cascadeDependencies = Array.Empty<CascadeDependency>();
 
         isLoading = true;
         found = false;
@@ -504,6 +538,9 @@
     {
         msg = null;
         confirmDelete = false;
+        showCascadeWarning = false;
+        cascadeConfirmed = false;
+        cascadeDependencies = Array.Empty<CascadeDependency>();
         if (isGlobal)
         {
             msg = "Experiencia GLOBAL (solo lectura).";
@@ -516,6 +553,9 @@
     {
         msg = null;
         confirmDelete = false;
+        showCascadeWarning = false;
+        cascadeConfirmed = false;
+        cascadeDependencies = Array.Empty<CascadeDependency>();
         isEditing = false;
         await ReloadAllAsync();
     }
@@ -523,13 +563,25 @@
     private void AskDelete()
     {
         confirmDelete = true;
-        msg = "Esto eliminará la experiencia, sus relaciones y docs del contexto del laboratorio actual.";
+        msg = "Esto eliminará la experiencia. Si tiene relaciones, podrás confirmar el borrado en cascada.";
+        showCascadeWarning = false;
+        cascadeConfirmed = false;
+        cascadeDependencies = Array.Empty<CascadeDependency>();
     }
 
     private void CancelDelete()
     {
         confirmDelete = false;
         msg = null;
+        showCascadeWarning = false;
+        cascadeConfirmed = false;
+        cascadeDependencies = Array.Empty<CascadeDependency>();
+    }
+
+    private async Task ConfirmCascadeDelete()
+    {
+        cascadeConfirmed = true;
+        await DeleteAsync();
     }
 
     private void GoBack()
@@ -905,26 +957,17 @@
         isSaving = true;
         try
         {
-            await using var conn = await DataSource.OpenConnectionAsync();
-            await using var tx = await conn.BeginTransactionAsync();
+            if (!await EnsureCascadeApprovalAsync())
+            {
+                isSaving = false;
+                return;
+            }
 
-            await ExecAsync(conn, tx,
-                "DELETE FROM documentos WHERE alcance='EXPERIENCIA' AND experiencia_id=@exp AND laboratorio_contexto_id=@lab",
-                ("exp", edit.ExperienciaId),
-                ("lab", LaboratorioState.LaboratorioId)
-            );
+            await CascadeDeleteService.DeleteWithCascadeAsync(
+                "experiencias_clases",
+                edit.ExperienciaId,
+                LaboratorioState.LaboratorioId);
 
-            await ExecAsync(conn, tx, "DELETE FROM experiencia_equipos WHERE experiencia_id=@exp", ("exp", edit.ExperienciaId));
-            await ExecAsync(conn, tx, "DELETE FROM experiencia_materiales WHERE experiencia_id=@exp", ("exp", edit.ExperienciaId));
-            await ExecAsync(conn, tx, "DELETE FROM experiencia_sustancias WHERE experiencia_id=@exp", ("exp", edit.ExperienciaId));
-
-            await ExecAsync(conn, tx,
-                "DELETE FROM experiencias_clases WHERE experiencia_id=@id AND laboratorio_id=@lab",
-                ("id", edit.ExperienciaId),
-                ("lab", LaboratorioState.LaboratorioId)
-            );
-
-            await tx.CommitAsync();
             Nav.NavigateTo("/contenidos");
         }
         catch (Exception ex)
@@ -935,6 +978,37 @@
         {
             isSaving = false;
         }
+    }
+
+    private async Task<bool> EnsureCascadeApprovalAsync()
+    {
+        if (cascadeConfirmed)
+        {
+            showCascadeWarning = false;
+            return true;
+        }
+
+        cascadeDependencies = await CascadeDeleteService.GetDependenciesAsync(
+            "experiencias_clases",
+            edit.ExperienciaId,
+            LaboratorioState.LaboratorioId);
+
+        showCascadeWarning = cascadeDependencies.Count > 0;
+        if (showCascadeWarning)
+        {
+            msg = null;
+            return false;
+        }
+
+        return true;
+    }
+
+    private static string FormatDependencyPreview(CascadeDependency dep)
+    {
+        if (dep.Items.Count == 0)
+            return string.Empty;
+
+        return string.Join(", ", dep.Items);
     }
 
     private static async Task InsertRelAsync(NpgsqlConnection conn, NpgsqlTransaction tx, string table, string col, HashSet<string> ids, string expId)

@@ -1,11 +1,13 @@
 ﻿@page "/laboratorios-realizados/item/{LaboratorioRealizadoId}"
 
+@using BARI_web.Features.Services
 @using Npgsql
 @using System.Globalization
 @using Microsoft.AspNetCore.Components
 @inject NpgsqlDataSource DataSource
 @inject LaboratorioState LaboratorioState
 @inject NavigationManager Nav
+@inject BARI_web.Features.Services.CascadeDeleteService CascadeDeleteService
 @implements IDisposable
 
 <PageTitle>Detalle de Laboratorio Realizado</PageTitle>
@@ -128,7 +130,14 @@
                     }
                     else
                     {
-                        <button class="btn danger" type="button" @onclick="DeleteAsync" disabled="@isSaving">Confirmar eliminar</button>
+                        @if (showCascadeWarning)
+                        {
+                            <button class="btn danger" type="button" @onclick="ConfirmCascadeDelete" disabled="@isSaving">Eliminar en cascada</button>
+                        }
+                        else
+                        {
+                            <button class="btn danger" type="button" @onclick="DeleteAsync" disabled="@isSaving">Confirmar eliminar</button>
+                        }
                         <button class="btn" type="button" @onclick="CancelDelete" disabled="@isSaving">Cancelar</button>
                     }
 
@@ -137,6 +146,25 @@
                         <span class="text-sm muted">@msg</span>
                     }
                 </div>
+                @if (showCascadeWarning)
+                {
+                    <div class="cascade-warning">
+                        <strong>ADVERTENCIA:</strong> ESTE LABORATORIO REALIZADO ESTÁ ASOCIADO A LAS SIGUIENTES TABLAS.
+                        <div class="text-sm">¿Desea proseguir?</div>
+                        <ul>
+                            @foreach (var dep in cascadeDependencies)
+                            {
+                                <li>
+                                    <strong>@dep.TableName</strong> (@dep.ColumnName) · @dep.Count registro(s)
+                                    @if (!string.IsNullOrWhiteSpace(FormatDependencyPreview(dep)))
+                                    {
+                                        <div class="muted text-xs">Elementos: @FormatDependencyPreview(dep)</div>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                }
             </div>
         }
         else
@@ -194,6 +222,9 @@
 
     private bool isEditing = false;
     private bool confirmDelete = false;
+    private bool showCascadeWarning = false;
+    private bool cascadeConfirmed = false;
+    private IReadOnlyList<CascadeDependency> cascadeDependencies = Array.Empty<CascadeDependency>();
 
     private string? loadError;
     private string? msg;
@@ -232,6 +263,9 @@
         loadError = null;
         msg = null;
         confirmDelete = false;
+        showCascadeWarning = false;
+        cascadeConfirmed = false;
+        cascadeDependencies = Array.Empty<CascadeDependency>();
 
         isLoading = true;
         found = false;
@@ -263,6 +297,9 @@
     {
         msg = null;
         confirmDelete = false;
+        showCascadeWarning = false;
+        cascadeConfirmed = false;
+        cascadeDependencies = Array.Empty<CascadeDependency>();
         isEditing = true;
     }
 
@@ -270,6 +307,9 @@
     {
         msg = null;
         confirmDelete = false;
+        showCascadeWarning = false;
+        cascadeConfirmed = false;
+        cascadeDependencies = Array.Empty<CascadeDependency>();
         isEditing = false;
         await ReloadAllAsync();
     }
@@ -277,13 +317,25 @@
     private void AskDelete()
     {
         confirmDelete = true;
-        msg = "Esto eliminará el laboratorio realizado (solo si NO tiene experiencias asociadas).";
+        msg = "Esto eliminará el laboratorio realizado. Si tiene relaciones, podrás confirmar el borrado en cascada.";
+        showCascadeWarning = false;
+        cascadeConfirmed = false;
+        cascadeDependencies = Array.Empty<CascadeDependency>();
     }
 
     private void CancelDelete()
     {
         confirmDelete = false;
         msg = null;
+        showCascadeWarning = false;
+        cascadeConfirmed = false;
+        cascadeDependencies = Array.Empty<CascadeDependency>();
+    }
+
+    private async Task ConfirmCascadeDelete()
+    {
+        cascadeConfirmed = true;
+        await DeleteAsync();
     }
 
     private void GoBack()
@@ -436,22 +488,19 @@
         msg = null;
         if (!found) return;
 
-        if (_exps.Count > 0)
-        {
-            msg = "No se puede eliminar: hay experiencias asociadas. Elimínalas o reasígnalas primero.";
-            confirmDelete = false;
-            return;
-        }
-
         isSaving = true;
         try
         {
-            await using var conn = await DataSource.OpenConnectionAsync();
-            await ExecAsync(conn, null,
-                "DELETE FROM laboratorio_realizado WHERE laboratorio_realizado_id=@id AND laboratorio_id=@lab",
-                ("id", edit.LaboratorioRealizadoId),
-                ("lab", LaboratorioState.LaboratorioId)
-            );
+            if (!await EnsureCascadeApprovalAsync())
+            {
+                isSaving = false;
+                return;
+            }
+
+            await CascadeDeleteService.DeleteWithCascadeAsync(
+                "laboratorio_realizado",
+                edit.LaboratorioRealizadoId,
+                LaboratorioState.LaboratorioId);
 
             Nav.NavigateTo("/contenidos");
         }
@@ -463,6 +512,37 @@
         {
             isSaving = false;
         }
+    }
+
+    private async Task<bool> EnsureCascadeApprovalAsync()
+    {
+        if (cascadeConfirmed)
+        {
+            showCascadeWarning = false;
+            return true;
+        }
+
+        cascadeDependencies = await CascadeDeleteService.GetDependenciesAsync(
+            "laboratorio_realizado",
+            edit.LaboratorioRealizadoId,
+            LaboratorioState.LaboratorioId);
+
+        showCascadeWarning = cascadeDependencies.Count > 0;
+        if (showCascadeWarning)
+        {
+            msg = null;
+            return false;
+        }
+
+        return true;
+    }
+
+    private static string FormatDependencyPreview(CascadeDependency dep)
+    {
+        if (dep.Items.Count == 0)
+            return string.Empty;
+
+        return string.Join(", ", dep.Items);
     }
 
     private static object DbOrNull(string? s) => string.IsNullOrWhiteSpace(s) ? (object)DBNull.Value : s!.Trim();

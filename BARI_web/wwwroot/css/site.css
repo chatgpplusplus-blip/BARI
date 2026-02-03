@@ -73,6 +73,23 @@
     background: #fff;
 }
 
+.cascade-warning {
+    margin-top: 0.6rem;
+    padding: 0.75rem;
+    border: 1px solid #d64545;
+    border-radius: 0.5rem;
+    background: #fff1f1;
+    color: #7a1e1e;
+}
+
+    .cascade-warning ul {
+        margin: 0.5rem 0 0 1.1rem;
+    }
+
+    .cascade-warning strong {
+        color: #a32020;
+    }
+
 /* ==========================================================
    BARI - ESTÉTICA DE BOTONES SOLO PARA TUS NavLink (bari-navbtn)
    (NO TOCA posicionamiento del menú ni overlay)
