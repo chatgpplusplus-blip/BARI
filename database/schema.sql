@@ -1,3 +1,4 @@
+mira te mostrare mi SQL
 BEGIN;
 
 -- =========================================================
@@ -173,6 +174,8 @@ CREATE TABLE IF NOT EXISTS modelos_equipo (
   descripcion text,
   imagen_url text
 );
+
+
 
 CREATE TABLE IF NOT EXISTS equipos (
   equipo_id varchar PRIMARY KEY,
@@ -875,3 +878,4 @@ ALTER TABLE canvas_lab
   DROP COLUMN alto_m,
   ADD COLUMN largo_m;
 COMMIT;
+
