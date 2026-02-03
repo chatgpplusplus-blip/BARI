@@ -7,6 +7,21 @@ public sealed record CascadeDependency(string TableName, string ColumnName, long
 
 public sealed class CascadeDeleteService
 {
+    private const int PreviewLimit = 12;
+    private static readonly string[] PreferredNameColumns =
+    {
+        "nombre",
+        "name",
+        "titulo",
+        "title",
+        "descripcion",
+        "descripcion_detalle",
+        "detalle",
+        "codigo",
+        "codigo_clase",
+        "sigla"
+    };
+
     private readonly NpgsqlDataSource _ds;
     private readonly SchemaCatalog _schemaCatalog;
     private readonly ILogger<CascadeDeleteService> _log;
@@ -44,7 +59,7 @@ public sealed class CascadeDeleteService
             if (count == 0)
                 continue;
 
-            var items = await GetReferencePreviewAsync(conn, fromTable, fk, id, laboratorioId, labColumn, ct);
+            var items = await GetReferencePreviewAsync(conn, fromTable, fk, id, laboratorioId, labColumn, count, ct);
             dependencies.Add(new CascadeDependency(fromTable.Name, fk.FromColumn, count, items));
         }
 
@@ -169,20 +184,19 @@ public sealed class CascadeDeleteService
         string id,
         int? laboratorioId,
         string labColumn,
+        long count,
         CancellationToken ct)
     {
-        var pkColumns = fromTable.PrimaryKey.Count > 0
-            ? fromTable.PrimaryKey
-            : new List<string> { fk.FromColumn };
-
-        var selectCols = string.Join(", ", pkColumns.Select(QuoteIdent));
+        var previewColumns = GetPreviewColumns(fromTable, fk);
+        var selectCols = string.Join(", ", previewColumns.Select(QuoteIdent));
         var where = $"{QuoteIdent(fk.FromColumn)} = @id";
         if (ShouldApplyLabFilter(fromTable, laboratorioId, labColumn))
             where += $" AND {QuoteIdent(labColumn)} = @lab";
 
-        var sql = $"SELECT {selectCols} FROM {QuoteIdent(fromTable.Schema)}.{QuoteIdent(fromTable.Name)} WHERE {where};";
+        var sql = $"SELECT {selectCols} FROM {QuoteIdent(fromTable.Schema)}.{QuoteIdent(fromTable.Name)} WHERE {where} LIMIT @limit;";
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("id", id);
+        cmd.Parameters.AddWithValue("limit", PreviewLimit);
         if (ShouldApplyLabFilter(fromTable, laboratorioId, labColumn))
             cmd.Parameters.AddWithValue("lab", laboratorioId!.Value);
 
@@ -191,17 +205,72 @@ public sealed class CascadeDeleteService
         while (await reader.ReadAsync(ct))
         {
             var parts = new List<string>();
-            for (var i = 0; i < pkColumns.Count; i++)
+            for (var i = 0; i < previewColumns.Count; i++)
             {
-                var col = pkColumns[i];
+                var col = previewColumns[i];
                 var val = reader.IsDBNull(i) ? "—" : Convert.ToString(reader.GetValue(i), CultureInfo.InvariantCulture);
-                parts.Add($"{col}={val}");
+                if (previewColumns.Count == 1)
+                {
+                    parts.Add(val ?? "—");
+                }
+                else
+                {
+                    parts.Add($"{col}={val}");
+                }
             }
 
             items.Add(string.Join(", ", parts));
         }
 
+        if (count > items.Count)
+            items.Add($"…y {count - items.Count} más");
+
         return items;
+    }
+
+    private static IReadOnlyList<string> GetPreviewColumns(DbTable table, DbForeignKey fk)
+    {
+        var textColumns = table.Columns
+            .Where(c => IsTextColumn(c.DataType))
+            .Select(c => c.Name)
+            .Where(c => !IsIdColumn(c))
+            .Where(c => !c.Equals(fk.FromColumn, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        foreach (var preferred in PreferredNameColumns)
+        {
+            var exact = textColumns.FirstOrDefault(c => c.Equals(preferred, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(exact))
+                return new List<string> { exact };
+        }
+
+        var containsPreferred = textColumns
+            .Where(c => PreferredNameColumns.Any(p => c.Contains(p, StringComparison.OrdinalIgnoreCase)))
+            .Take(2)
+            .ToList();
+
+        if (containsPreferred.Count > 0)
+            return containsPreferred;
+
+        if (textColumns.Count > 0)
+            return textColumns.Take(2).ToList();
+
+        if (table.PrimaryKey.Count > 0)
+            return table.PrimaryKey;
+
+        return new List<string> { fk.FromColumn };
+    }
+
+    private static bool IsTextColumn(string dataType)
+    {
+        return dataType.Contains("char", StringComparison.OrdinalIgnoreCase)
+               || dataType.Contains("text", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsIdColumn(string name)
+    {
+        return name.Equals("id", StringComparison.OrdinalIgnoreCase)
+               || name.EndsWith("_id", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string QuoteIdent(string ident) => NpgsqlCommandBuilder.QuoteIdentifier(ident);
