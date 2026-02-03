@@ -7,7 +7,6 @@ public sealed record CascadeDependency(string TableName, string ColumnName, long
 
 public sealed class CascadeDeleteService
 {
-    private const int PreviewLimit = 8;
     private readonly NpgsqlDataSource _ds;
     private readonly SchemaCatalog _schemaCatalog;
     private readonly ILogger<CascadeDeleteService> _log;
@@ -181,7 +180,7 @@ public sealed class CascadeDeleteService
         if (ShouldApplyLabFilter(fromTable, laboratorioId, labColumn))
             where += $" AND {QuoteIdent(labColumn)} = @lab";
 
-        var sql = $"SELECT {selectCols} FROM {QuoteIdent(fromTable.Schema)}.{QuoteIdent(fromTable.Name)} WHERE {where} LIMIT {PreviewLimit};";
+        var sql = $"SELECT {selectCols} FROM {QuoteIdent(fromTable.Schema)}.{QuoteIdent(fromTable.Name)} WHERE {where};";
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("id", id);
         if (ShouldApplyLabFilter(fromTable, laboratorioId, labColumn))
@@ -205,9 +204,5 @@ public sealed class CascadeDeleteService
         return items;
     }
 
-    private static string QuoteIdent(string ident)
-    {
-        // Creamos una instancia para poder acceder al método no estático
-        return new NpgsqlCommandBuilder().QuoteIdentifier(ident);
-    }
+    private static string QuoteIdent(string ident) => NpgsqlCommandBuilder.QuoteIdentifier(ident);
 }

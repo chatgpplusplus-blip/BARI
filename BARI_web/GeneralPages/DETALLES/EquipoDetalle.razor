@@ -179,7 +179,7 @@
                                         <strong>@dep.TableName</strong> (@dep.ColumnName) · @dep.Count registro(s)
                                         @if (!string.IsNullOrWhiteSpace(FormatDependencyPreview(dep)))
                                         {
-                                            <div class="muted text-xs">@FormatDependencyPreview(dep)</div>
+                                            <div class="muted text-xs">Elementos: @FormatDependencyPreview(dep)</div>
                                         }
                                     </li>
                                 }
@@ -432,7 +432,7 @@
                                     <strong>@dep.TableName</strong> (@dep.ColumnName) · @dep.Count registro(s)
                                     @if (!string.IsNullOrWhiteSpace(FormatDependencyPreview(dep)))
                                     {
-                                        <div class="muted text-xs">@FormatDependencyPreview(dep)</div>
+                                        <div class="muted text-xs">Elementos: @FormatDependencyPreview(dep)</div>
                                     }
                                 </li>
                             }
@@ -1157,11 +1157,7 @@
         if (dep.Items.Count == 0)
             return string.Empty;
 
-        var preview = string.Join(" · ", dep.Items);
-        if (dep.Count > dep.Items.Count)
-            preview += $" · y {dep.Count - dep.Items.Count} más";
-
-        return preview;
+        return string.Join(", ", dep.Items);
     }
 
     // ===== helpers =====
