@@ -3,7 +3,10 @@ using Npgsql;
 
 namespace BARI_web.Features.Services;
 
-public sealed record CascadeDependency(string TableName, string ColumnName, long Count, IReadOnlyList<string> Items);
+public sealed record CascadeDependency(string TableName, string ColumnName, long Count, bool HasMore, IReadOnlyList<string> Items)
+{
+    public string CountLabel => HasMore ? $"{Count}+" : Count.ToString(CultureInfo.InvariantCulture);
+}
 
 public sealed class CascadeDeleteService
 {
@@ -55,12 +58,11 @@ public sealed class CascadeDeleteService
             if (!db.Tables.TryGetValue(fk.FromTable, out var fromTable))
                 continue;
 
-            var count = await GetReferenceCountAsync(conn, fromTable, fk, id, laboratorioId, labColumn, ct);
-            if (count == 0)
+            var preview = await GetReferencePreviewAsync(conn, fromTable, fk, id, laboratorioId, labColumn, ct);
+            if (preview.Items.Count == 0)
                 continue;
 
-            var items = await GetReferencePreviewAsync(conn, fromTable, fk, id, laboratorioId, labColumn, count, ct);
-            dependencies.Add(new CascadeDependency(fromTable.Name, fk.FromColumn, count, items));
+            dependencies.Add(new CascadeDependency(fromTable.Name, fk.FromColumn, preview.Count, preview.HasMore, preview.Items));
         }
 
         return dependencies;
@@ -154,37 +156,13 @@ public sealed class CascadeDeleteService
         return table.Columns.Any(c => c.Name.Equals(labColumn, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static async Task<long> GetReferenceCountAsync(
+    private static async Task<(IReadOnlyList<string> Items, long Count, bool HasMore)> GetReferencePreviewAsync(
         NpgsqlConnection conn,
         DbTable fromTable,
         DbForeignKey fk,
         string id,
         int? laboratorioId,
         string labColumn,
-        CancellationToken ct)
-    {
-        var where = $"{QuoteIdent(fk.FromColumn)} = @id";
-        if (ShouldApplyLabFilter(fromTable, laboratorioId, labColumn))
-            where += $" AND {QuoteIdent(labColumn)} = @lab";
-
-        var sql = $"SELECT COUNT(*) FROM {QuoteIdent(fromTable.Schema)}.{QuoteIdent(fromTable.Name)} WHERE {where};";
-        await using var cmd = new NpgsqlCommand(sql, conn);
-        cmd.Parameters.AddWithValue("id", id);
-        if (ShouldApplyLabFilter(fromTable, laboratorioId, labColumn))
-            cmd.Parameters.AddWithValue("lab", laboratorioId!.Value);
-
-        var result = await cmd.ExecuteScalarAsync(ct);
-        return Convert.ToInt64(result, CultureInfo.InvariantCulture);
-    }
-
-    private static async Task<IReadOnlyList<string>> GetReferencePreviewAsync(
-        NpgsqlConnection conn,
-        DbTable fromTable,
-        DbForeignKey fk,
-        string id,
-        int? laboratorioId,
-        string labColumn,
-        long count,
         CancellationToken ct)
     {
         var previewColumns = GetPreviewColumns(fromTable, fk);
@@ -196,7 +174,7 @@ public sealed class CascadeDeleteService
         var sql = $"SELECT {selectCols} FROM {QuoteIdent(fromTable.Schema)}.{QuoteIdent(fromTable.Name)} WHERE {where} LIMIT @limit;";
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("id", id);
-        cmd.Parameters.AddWithValue("limit", PreviewLimit);
+        cmd.Parameters.AddWithValue("limit", PreviewLimit + 1);
         if (ShouldApplyLabFilter(fromTable, laboratorioId, labColumn))
             cmd.Parameters.AddWithValue("lab", laboratorioId!.Value);
 
@@ -222,10 +200,59 @@ public sealed class CascadeDeleteService
             items.Add(string.Join(", ", parts));
         }
 
-        if (count > items.Count)
-            items.Add($"…y {count - items.Count} más");
+        var hasMore = items.Count > PreviewLimit;
+        if (hasMore)
+            items.RemoveAt(items.Count - 1);
 
-        return items;
+        if (hasMore)
+            items.Add("…y más");
+
+        return (items, items.Count, hasMore);
+    }
+
+    private static IReadOnlyList<string> GetPreviewColumns(DbTable table, DbForeignKey fk)
+    {
+        var textColumns = table.Columns
+            .Where(c => IsTextColumn(c.DataType))
+            .Select(c => c.Name)
+            .Where(c => !IsIdColumn(c))
+            .Where(c => !c.Equals(fk.FromColumn, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        foreach (var preferred in PreferredNameColumns)
+        {
+            var exact = textColumns.FirstOrDefault(c => c.Equals(preferred, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(exact))
+                return new List<string> { exact };
+        }
+
+        var containsPreferred = textColumns
+            .Where(c => PreferredNameColumns.Any(p => c.Contains(p, StringComparison.OrdinalIgnoreCase)))
+            .Take(2)
+            .ToList();
+
+        if (containsPreferred.Count > 0)
+            return containsPreferred;
+
+        if (textColumns.Count > 0)
+            return textColumns.Take(2).ToList();
+
+        if (table.PrimaryKey.Count > 0)
+            return table.PrimaryKey;
+
+        return new List<string> { fk.FromColumn };
+    }
+
+    private static bool IsTextColumn(string dataType)
+    {
+        return dataType.Contains("char", StringComparison.OrdinalIgnoreCase)
+               || dataType.Contains("text", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsIdColumn(string name)
+    {
+        return name.Equals("id", StringComparison.OrdinalIgnoreCase)
+               || name.EndsWith("_id", StringComparison.OrdinalIgnoreCase);
     }
 
     private static IReadOnlyList<string> GetPreviewColumns(DbTable table, DbForeignKey fk)
