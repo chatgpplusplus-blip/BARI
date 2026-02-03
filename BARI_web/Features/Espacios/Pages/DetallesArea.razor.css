@@ -113,7 +113,7 @@
 
 /* ===== Mapa ===== */
 .map-frame {
-    width: 55%; /* Deja que el ancho se calcule solo */
+    width: 75%; /* Deja que el ancho se calcule solo */
     max-width: 100%; /* Pero que no se salga de la pantalla */
 
     height: auto;
@@ -178,6 +178,8 @@ svg .softshadow {
 
 /* ===== Responsive ===== */
 @media (max-width:768px) {
+
+
     .toolbar {
         flex-direction: column;
         align-items: stretch;
@@ -198,6 +200,8 @@ svg .softshadow {
 
     /* ✅ Mapa usable en móvil (como lo tenías) */
     .map-frame {
+        width: 100%;
+        max-width: 100%;
         height: min(60vh,520px);
     }
 
