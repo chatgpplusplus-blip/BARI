@@ -211,8 +211,8 @@ namespace BARI_web.Features.Espacios.Pages
 
         private string AspectRatioString()
         {
-            var vw = VW <= 0 ? 1 : VW;
-            var vh = VH <= 0 ? 1 : VH;
+            var vw = Wm <= 0m ? 1m : Wm;
+            var vh = Hm <= 0m ? 1m : Hm;
             var ar = (double)vw / (double)vh;
             return $"{ar:0.###} / 1";
         }

@@ -195,8 +195,8 @@ namespace BARI_web.Features.Espacios.Pages
         // ===== Aspect ratio para CSS (formato compatible) =====
         private string AspectRatioString()
         {
-            var vw = VW <= 0m ? 1m : VW;
-            var vh = VH <= 0m ? 1m : VH;
+            var vw = Wm <= 0m ? 1m : Wm;
+            var vh = Hm <= 0m ? 1m : Hm;
             var ar = (double)vw / (double)vh;
             return $"{ar:0.###} / 1";
         }
@@ -1783,4 +1783,3 @@ LEFT JOIN instalaciones ins
         }
     }
 }
-
