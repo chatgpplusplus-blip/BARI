@@ -260,7 +260,7 @@
                                 @foreach (var dep in cascadeDependencies)
                                 {
                                     <li>
-                                        <strong>@dep.TableName</strong> (@dep.ColumnName) · @dep.Count registro(s)
+                                        <strong>@dep.TableName</strong> (@dep.ColumnName) · @dep.CountLabel registro(s)
                                         @if (!string.IsNullOrWhiteSpace(FormatDependencyPreview(dep)))
                                         {
                                             <div class="muted text-xs">Elementos: @FormatDependencyPreview(dep)</div>
