@@ -255,5 +255,50 @@ public sealed class CascadeDeleteService
                || name.EndsWith("_id", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static IReadOnlyList<string> GetPreviewColumns(DbTable table, DbForeignKey fk)
+    {
+        var textColumns = table.Columns
+            .Where(c => IsTextColumn(c.DataType))
+            .Select(c => c.Name)
+            .Where(c => !IsIdColumn(c))
+            .Where(c => !c.Equals(fk.FromColumn, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        foreach (var preferred in PreferredNameColumns)
+        {
+            var exact = textColumns.FirstOrDefault(c => c.Equals(preferred, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(exact))
+                return new List<string> { exact };
+        }
+
+        var containsPreferred = textColumns
+            .Where(c => PreferredNameColumns.Any(p => c.Contains(p, StringComparison.OrdinalIgnoreCase)))
+            .Take(2)
+            .ToList();
+
+        if (containsPreferred.Count > 0)
+            return containsPreferred;
+
+        if (textColumns.Count > 0)
+            return textColumns.Take(2).ToList();
+
+        if (table.PrimaryKey.Count > 0)
+            return table.PrimaryKey;
+
+        return new List<string> { fk.FromColumn };
+    }
+
+    private static bool IsTextColumn(string dataType)
+    {
+        return dataType.Contains("char", StringComparison.OrdinalIgnoreCase)
+               || dataType.Contains("text", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsIdColumn(string name)
+    {
+        return name.Equals("id", StringComparison.OrdinalIgnoreCase)
+               || name.EndsWith("_id", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string QuoteIdent(string ident) => NpgsqlCommandBuilder.QuoteIdentifier(ident);
 }
