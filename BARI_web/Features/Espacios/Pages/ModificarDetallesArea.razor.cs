@@ -1151,6 +1151,8 @@ namespace BARI_web.Features.Espacios.Pages
             _newBlockAssignMeson = false;
             _newBlockInstalacionId = null;
             _newBlockMesonId = null;
+            _newBlockOffsetX = 0m;
+            _newBlockOffsetY = 0m;
         }
 
         private void AgregarBloque()
