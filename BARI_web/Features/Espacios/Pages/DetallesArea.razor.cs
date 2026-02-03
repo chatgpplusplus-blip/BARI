@@ -192,6 +192,7 @@ namespace BARI_web.Features.Espacios.Pages
         private decimal VX, VY, VW, VH;
         private string ViewBox() => $"{S(VX)} {S(VY)} {S(VW)} {S(VH)}";
 
+        // ===== Aspect ratio para CSS (formato compatible) =====
         private string AspectRatioString()
         {
             var vw = VW <= 0m ? 1m : VW;
@@ -199,6 +200,7 @@ namespace BARI_web.Features.Espacios.Pages
             var ar = (double)vw / (double)vh;
             return $"{ar:0.###} / 1";
         }
+
 
         // grilla cache
         private decimal GridStartX, GridEndX, GridStartY, GridEndY;
@@ -1744,6 +1746,28 @@ LEFT JOIN instalaciones ins
 
             return mesonId;
         }
+
+        // ===== IDs ÚNICOS PARA SVG (evita colisiones de clipPath en Blazor) =====
+        private readonly string _svgUid = "svg_" + Guid.NewGuid().ToString("N");
+
+        private string ClipTargetId => $"{_svgUid}_clip_target";
+
+        private string ClipInId(string polyInId)
+        {
+            if (string.IsNullOrWhiteSpace(polyInId)) return $"{_svgUid}_clip_in_x";
+            var safe = new string(polyInId.Select(ch => char.IsLetterOrDigit(ch) ? ch : '_').ToArray());
+            return $"{_svgUid}_clip_in_{safe}";
+        }
+
+        private static string SafeSvgId(string s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return "x";
+            var chars = s.Select(ch => char.IsLetterOrDigit(ch) ? ch : '_').ToArray();
+            return new string(chars);
+        }
+
+        
+
 
         private string MesonNameForDisplay(string mesonId)
         {

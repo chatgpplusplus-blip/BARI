@@ -16,11 +16,11 @@
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    padding: 0.9rem 1rem;
-    background: #ffffff;
+    padding: .9rem 1rem;
+    background: #fff;
     border: 1px solid #e5e7eb;
-    border-radius: 0.75rem;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    border-radius: .75rem;
+    box-shadow: 0 1px 2px rgba(0,0,0,.05);
 }
 
 .toolbar-left {
@@ -39,29 +39,29 @@
 
 .toolbar-actions {
     display: flex;
-    gap: 0.6rem;
+    gap: .6rem;
     align-items: center;
     flex-wrap: wrap;
 }
 
 /* ===== Botones ===== */
 .btn {
-    padding: 0.5rem 0.9rem;
-    border-radius: 0.6rem;
+    padding: .5rem .9rem;
+    border-radius: .6rem;
     border: 1px solid #e5e7eb;
     background: #fff;
     color: #0f172a;
-    font-size: 0.9rem;
+    font-size: .9rem;
     font-weight: 600;
     cursor: pointer;
     user-select: none;
-    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    transition: background .15s ease, border-color .15s ease, box-shadow .15s ease, transform .05s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06);
 }
 
     .btn:hover {
         border-color: #2563eb;
-        box-shadow: 0 6px 14px rgba(37,99,235,0.12);
+        box-shadow: 0 6px 14px rgba(37,99,235,.12);
     }
 
     .btn:active {
@@ -69,7 +69,7 @@
     }
 
     .btn:disabled {
-        opacity: 0.55;
+        opacity: .55;
         cursor: not-allowed;
         box-shadow: none;
     }
@@ -78,7 +78,7 @@
         background: #2563eb;
         border-color: #2563eb;
         color: #fff;
-        box-shadow: 0 8px 18px rgba(37,99,235,0.20);
+        box-shadow: 0 8px 18px rgba(37,99,235,.20);
     }
 
         .btn.primary:hover {
@@ -98,172 +98,77 @@
 /* ===== Cards ===== */
 .card {
     border: 1px solid #e5e7eb;
-    border-radius: 0.75rem;
-    padding: 0.9rem 1rem;
+    border-radius: .75rem;
+    padding: .9rem 1rem;
     background: #fff;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    box-shadow: 0 1px 2px rgba(0,0,0,.04);
 }
 
     .card h3 {
-        margin: 0 0 0.6rem 0;
+        margin: 0 0 .6rem 0;
         font-size: 1.05rem;
-        font-weight: 700;
-        color: #0f172a;
-    }
-
-    .card h4 {
-        margin: 0.75rem 0 0.35rem;
-        font-size: 0.95rem;
         font-weight: 700;
         color: #0f172a;
     }
 
 /* ===== Mapa ===== */
 .map-frame {
-    width: 100%;
+    width: 55%; /* Deja que el ancho se calcule solo */
+    max-width: 100%; /* Pero que no se salga de la pantalla */
+
+    height: auto;
+    max-height: 75vh; /* Tu límite de altura */
+
+    aspect-ratio: var(--map-ar); /* Esto mantendrá la forma perfecta */
+    margin: 0 auto; /* Centrado */
+
     border: 1px solid #e5e7eb;
-    border-radius: 0.75rem;
-    overflow: hidden;
+    border-radius: .75rem;
+    overflow: visible; /* <--- IMPORTANTE: Permite ver bordes que se salen un poco */
     background: #fafafa;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    box-shadow: 0 1px 2px rgba(0,0,0,.04);
 }
 
 .map-svg {
     width: 100%;
-    height: auto;
+    height: 100%; /* ✅ PC como antes */
     display: block;
 }
 
-    /* Tipografía SVG (una sola vez) */
+    /* Tipografía SVG */
     .map-svg text {
-        font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+        font-family: system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
     }
 
-/* ===== Campos ===== */
-.field {
-    padding: 0.5rem 0.65rem;
-    border-radius: 0.6rem;
-    border: 1px solid #cbd5e1;
-    background: #ffffff;
-    color: #0f172a;
-    font-size: 0.9rem;
-    font-weight: 600;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.06);
-    min-height: 2.2rem;
-}
-
-    .field:focus {
-        outline: none;
-        border-color: #2563eb;
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
-    }
-
-    .field::placeholder {
-        color: #94a3b8;
-        font-weight: 600;
-    }
-
-select.field {
-    appearance: auto;
-}
-
-/* ===== Grids ===== */
-.info-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 0.9rem;
-}
-
-    .info-grid strong {
-        display: block;
-        font-size: 0.8rem;
-        letter-spacing: 0.02em;
-        text-transform: uppercase;
-        color: #64748b;
-        margin-bottom: 0.2rem;
-    }
-
-.assign-row {
-    display: flex;
-    gap: 0.6rem;
-    align-items: center;
-    margin: 0.6rem 0;
-    flex-wrap: wrap;
-}
-
-.muted {
-    color: #6b7280;
-}
-
-/* ===== Listas ===== */
-.list-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    padding: 0.55rem 0.25rem;
-    border-bottom: 1px dashed #eef2f7;
-}
-
-    .list-row:last-child {
-        border-bottom: none;
-    }
-
-.row-main {
-    min-width: 0;
-}
-
-.row-title {
-    font-weight: 700;
-    color: #0f172a;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.row-sub {
-    font-size: 0.85rem;
-    color: #6b7280;
-    margin-top: 0.15rem;
-}
-
-.row-cta {
-    font-weight: 800;
-    color: #2563eb;
-    padding: 0 0.25rem;
-}
-
-.row-click {
-    cursor: pointer;
-    border-radius: 0.5rem;
-    transition: background 0.12s ease, box-shadow 0.12s ease;
-}
-
-    .row-click:hover {
-        background: #f8fafc;
-        box-shadow: inset 0 0 0 1px #e5e7eb;
-    }
-
-/* ===== SVG hover/click ===== */
+/* Sombra SOLO en desktop: en móvil la apagamos (evita dientes) */
 svg .softshadow {
     filter: drop-shadow(0 1px 1px rgba(0,0,0,.10));
 }
 
-/* iOS/Safari: evita artefactos al mezclar clip-path + filter */
-@supports (-webkit-touch-callout: none) {
+/* iOS/Safari: evita artefactos */
+@supports (-webkit-touch-callout:none) {
     svg .softshadow {
         filter: none !important;
         -webkit-filter: none !important;
     }
 }
 
+/* Móvil/touch (Android incluido): evita artefactos clip-path + filter */
+@media (hover:none) and (pointer:coarse) {
+    svg .softshadow {
+        filter: none !important;
+        -webkit-filter: none !important;
+    }
+}
+
+/* Hover */
 .map-block.is-clickable .block-rect {
     cursor: pointer;
-    transition: opacity 0.12s ease, stroke 0.12s ease;
+    transition: opacity .12s ease, stroke .12s ease;
 }
 
 .map-block.is-clickable:hover .block-rect {
-    opacity: 0.55;
+    opacity: .55;
     stroke: #0f172a;
 }
 
@@ -272,7 +177,7 @@ svg .softshadow {
 }
 
 /* ===== Responsive ===== */
-@media (max-width: 768px) {
+@media (max-width:768px) {
     .toolbar {
         flex-direction: column;
         align-items: stretch;
@@ -291,23 +196,23 @@ svg .softshadow {
             width: 100%;
         }
 
-    /* Mapa usable en móvil */
+    /* ✅ Mapa usable en móvil (como lo tenías) */
     .map-frame {
-        height: min(60vh, 520px);
-        aspect-ratio: auto !important; /* anula tu inline */
-        overflow: hidden;
+        height: min(60vh,520px);
     }
 
     .map-svg {
         width: 100%;
         height: 100%;
-        display: block;
     }
 
-    /* Texto más legible sobre fondos */
     .block-text, .area-label {
-        paint-order: stroke;
-        stroke: rgba(255,255,255,0.85);
-        stroke-width: 1px;
+        /* Quitamos el stroke porque rompe la geometría en móvil */
+        stroke: none;
+        stroke-width: 0;
+        vector-effect: none;
+        /* Usamos sombra para el contraste (halo blanco) */
+        text-shadow: 0px 0px 2px rgba(255,255,255,0.9), 0px 0px 4px rgba(255,255,255,0.9);
+        font-weight: 600; /* Un poco más gordita la letra ayuda */
     }
 }

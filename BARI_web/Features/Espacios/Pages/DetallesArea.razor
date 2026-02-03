@@ -25,12 +25,12 @@
     }
     else
     {
-        <div class="map-frame" style="--map-ar:@(((double)VW / (double)VH).ToString("0.###", CultureInfo.InvariantCulture));">
-            <svg class="map-svg"
+<div class="map-frame" style="--map-ar:@AspectRatioString();">
+    <svg class="map-svg"
          width="100%"
          viewBox="@ViewBox()"
          preserveAspectRatio="xMidYMid meet"
-         style="background:#fafafa">
+                 style="background:#fafafa; overflow: visible;">
 
         <!-- fondo -->
         <rect x="@S(VX)" y="@S(VY)" width="@S(VW)" height="@S(VH)"
@@ -53,37 +53,55 @@
 
         @if (_area is not null)
         {
-            <!-- clip del área + clips de inners -->
-            <defs>
-                <clipPath id="clip_target" clipPathUnits="userSpaceOnUse">
+                    <defs>
+                        <clipPath id="@ClipTargetId" clipPathUnits="userSpaceOnUse">
+                            @foreach (var p in _area.Polys)
+                            {
+                                if (p.puntos.Count >= 3)
+                                {
+                                    <polygon points="@PointsString(p)" />
+                                }
+                                else
+                                {
+                                    <rect x="@S(p.x_m)" y="@S(p.y_m)"
+                                          width="@S(p.ancho_m)" height="@S(p.largo_m)" />
+                                }
+                            }
+                        </clipPath>
+
+                        @foreach (var inn in _inners)
+                        {
+                            if (!string.IsNullOrWhiteSpace(inn.poly_in_id))
+                            {
+                                <clipPath id="@ClipInId(inn.poly_in_id)" clipPathUnits="userSpaceOnUse">
+                                    <rect x="@S(inn.abs_x)" y="@S(inn.abs_y)"
+                                          width="@S(inn.ancho_m)" height="@S(inn.largo_m)" />
+                                </clipPath>
+                            }
+                        }
+                    </defs>
+
+            <!-- RELLENO ÁREA SIN FILTER: sombra "fake" segura -->
+            <g clip-path="@($"url(#{ClipTargetId})")">
+
+                <!-- sombra fake -->
+                <g opacity="0.10" transform="translate(0.06,0.06)">
                     @foreach (var p in _area.Polys)
                     {
                         if (p.puntos.Count >= 3)
                         {
-                            <polygon points="@PointsString(p)" />
+                            <polygon points="@PointsString(p)" fill="#000" />
                         }
                         else
                         {
                             <rect x="@S(p.x_m)" y="@S(p.y_m)"
-                                  width="@S(p.ancho_m)" height="@S(p.largo_m)" />
+                                  width="@S(p.ancho_m)" height="@S(p.largo_m)"
+                                  fill="#000" />
                         }
                     }
-                </clipPath>
+                </g>
 
-                @foreach (var inn in _inners)
-                {
-                    if (!string.IsNullOrWhiteSpace(inn.poly_in_id))
-                    {
-                        <clipPath id="@($"clip_in_{inn.poly_in_id}")" clipPathUnits="userSpaceOnUse">
-                            <rect x="@S(inn.abs_x)" y="@S(inn.abs_y)"
-                                  width="@S(inn.ancho_m)" height="@S(inn.largo_m)" />
-                        </clipPath>
-                    }
-                }
-            </defs>
-
-            <!-- relleno área -->
-            <g class="softshadow" clip-path="url(#clip_target)">
+                <!-- relleno real -->
                 @foreach (var p in _area.Polys)
                 {
                     if (p.puntos.Count >= 3)
@@ -108,15 +126,8 @@
                       vector-effect="non-scaling-stroke" />
             }
 
-            <!-- =========================
-                 DIBUJO INTERIOR (orden)
-                 1) inners
-                 2) blocks
-                 3) puertas/ventanas
-                 ========================= -->
-
             <!-- INNERS -->
-            <g clip-path="url(#clip_target)">
+            <g clip-path="@($"url(#{ClipTargetId})")">
                 @foreach (var it in _inners
                     .OrderBy(i => i.area_poly_id)
                     .ThenBy(i => i.abs_y)
@@ -130,14 +141,14 @@
 
                         <rect x="@S(it.abs_x)" y="@S(it.abs_y)"
                               width="@S(it.ancho_m)" height="@S(it.largo_m)"
-                              fill="@it.fill" opacity="@S(it.opacidad)"
+                              fill="@it.fill" fill-opacity="@S(it.opacidad)"
                               stroke="#111827" stroke-width="@S(0.06m)"
                               vector-effect="non-scaling-stroke"
                               style="pointer-events:all" />
 
                         @if (!string.IsNullOrWhiteSpace(it.label) && !string.IsNullOrWhiteSpace(it.poly_in_id))
                         {
-                            <g clip-path="@($"url(#clip_in_{it.poly_in_id})")">
+                            <g clip-path="@($"url(#{ClipInId(it.poly_in_id)})")">
                                 @{
                                     var label = it.label.ToUpperInvariant();
                                     var rotate = ShouldRotate(it.ancho_m, it.largo_m);
@@ -157,11 +168,11 @@
                                         if (!rotate)
                                         {
                                             <svg:text class="area-label"
-                                                  text-anchor="middle"
-                                                  x="@S(cx)" y="@S(cy + firstBaseline)"
-                                                  font-size="@S(tl.FontSize)"
-                                                  fill="#111"
-                                                  style="pointer-events:none; user-select:none;">
+                                                      text-anchor="middle"
+                                                      x="@S(cx)" y="@S(cy + firstBaseline)"
+                                                      font-size="@S(tl.FontSize)"
+                                                      fill="#111"
+                                                      style="pointer-events:none; user-select:none;">
                                                 <tspan x="@S(cx)" y="@S(cy + firstBaseline)">@tl.Lines[0]</tspan>
                                                 @for (var i = 1; i < tl.Lines.Count; i++)
                                                 {
@@ -193,8 +204,8 @@
                 }
             </g>
 
-            <!-- BLOCKS (como editor: centro área + offset, fallback pos) -->
-            <g clip-path="url(#clip_target)">
+            <!-- BLOCKS -->
+            <g clip-path="@($"url(#{ClipTargetId})")">
                 @foreach (var b in _blocks.OrderBy(b => b.z_order))
                 {
                     var areaCenterX = (_area.MinX + _area.MaxX) / 2m;
@@ -219,11 +230,12 @@
                         <rect class="block-rect" x="@S(bx)" y="@S(by)"
                               width="@S(b.ancho)" height="@S(b.largo)"
                               fill="@(string.IsNullOrWhiteSpace(b.color_hex) ? "#2563eb" : b.color_hex)"
-                              opacity="0.35"
+                              fill-opacity="0.35"
                               stroke="#111827"
                               stroke-width="@S(0.06m)"
                               vector-effect="non-scaling-stroke"
-                              style="pointer-events:all" />
+                              style="pointer-events:all"
+                                      stroke-linejoin="round" />
 
                         @if (!string.IsNullOrWhiteSpace(blockLabel))
                         {
@@ -245,10 +257,10 @@
                                     if (!rotate)
                                     {
                                         <svg:text class="block-text"
-                                              text-anchor="middle"
-                                              font-size="@S(tl.FontSize)"
-                                              fill="#111"
-                                              style="pointer-events:none; user-select:none;">
+                                                  text-anchor="middle"
+                                                  font-size="@S(tl.FontSize)"
+                                                  fill="#111"
+                                                  style="pointer-events:none; user-select:none;">
                                             <tspan x="@S(cx)" y="@S(cy + firstBaseline)">@tl.Lines[0]</tspan>
                                             @for (var i = 1; i < tl.Lines.Count; i++)
                                             {
@@ -279,7 +291,7 @@
                 }
             </g>
 
-            <!-- puertas (más gruesas + no-scaling) -->
+            <!-- puertas -->
             @foreach (var d in _doors)
             {
                 <line x1="@S(d.x_m)" y1="@S(d.y_m)"
@@ -290,7 +302,7 @@
                       vector-effect="non-scaling-stroke" />
             }
 
-            <!-- ventanas (más gruesas + no-scaling) -->
+            <!-- ventanas -->
             @foreach (var w in _windows)
             {
                 <line x1="@S(w.x_m)" y1="@S(w.y_m)"
