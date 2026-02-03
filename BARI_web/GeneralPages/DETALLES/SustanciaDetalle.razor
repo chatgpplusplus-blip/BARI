@@ -238,12 +238,96 @@
 
                         @if (!confirmDelete)
                         {
-                            <button class="btn danger" type="button" @onclick="AskDelete">Eliminar</button>
+                            <button class="btn danger" type="button" @onclick="AskDeleteAsync" disabled="@isSaving">Eliminar</button>
                         }
                         else
                         {
-                            <button class="btn danger" type="button" @onclick="DeleteAsync" disabled="@isSaving">Confirmar eliminar</button>
-                            <button class="btn" type="button" @onclick="CancelDelete" disabled="@isSaving">Cancelar</button>
+                            <div class="delete-panel">
+                                @if (_deletePreviewLoading)
+                                {
+                                    <div class="text-sm muted">Revisando dependencias…</div>
+                                }
+                                else if (!string.IsNullOrWhiteSpace(_deletePreviewError))
+                                {
+                                    <div class="error-note">No se pudo revisar dependencias: @_deletePreviewError</div>
+                                }
+                                else
+                                {
+                                    <div class="delete-title">
+                                        Antes de eliminar, esta sustancia aparece en:
+                                    </div>
+
+                                    @if (_deleteRefs.Count == 0)
+                                    {
+                                        <div class="text-sm muted">No se detectaron FKs hacia <code>sustancias</code>.</div>
+                                    }
+                                    else
+                                    {
+                                        <ul class="dep-list">
+                                            @foreach (var r in _deleteRefs.OrderByDescending(x => x.Count))
+                                            {
+                                                <li class="dep-item">
+                                                    <div class="dep-main">
+                                                        <div class="dep-name">
+                                                            <code>@($"{r.Schema}.{r.Table}")</code>
+                                                            <span class="muted text-xs"> · FK: <code>@r.Column</code></span>
+                                                        </div>
+
+                                                        <div class="dep-meta text-sm">
+                                                            <b>@r.Count</b> fila(s)
+                                                            <span class="muted text-xs"> · @r.Constraint</span>
+                                                        </div>
+
+                                                        @if (r.Table == "documentos" && !r.Cascade && r.Count > 0)
+                                                        {
+                                                            <div class="text-xs muted">
+                                                                Si no marcas “Eliminar”, se <b>desvincularán</b> (sustancia_id = NULL) para permitir el borrado.
+                                                            </div>
+                                                        }
+
+                                                        @if (r.Table == "contenedores" && !r.Cascade && r.Count > 0)
+                                                        {
+                                                            <div class="text-xs muted">
+                                                                <b>Bloquea</b> el borrado: <code>contenedores.sustancia_id</code> es NOT NULL.
+                                                                Debes eliminar contenedores o cancelar.
+                                                            </div>
+                                                        }
+                                                    </div>
+
+                                                    <div class="dep-action">
+                                                        @if (r.Count == 0)
+                                                        {
+                                                            <span class="muted text-xs">—</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <label class="dep-toggle">
+                                                                <input type="checkbox" @bind="r.Cascade" />
+                                                                <span>
+                                                                    @(r.Table == "documentos"
+                                                                        ? "Eliminar documentos"
+                                                                        : r.Table == "contenedores"
+                                                                            ? "Eliminar contenedores"
+                                                                            : "Eliminar referencias (cascada)")
+                                                                </span>
+                                                            </label>
+                                                        }
+                                                    </div>
+                                                </li>
+                                            }
+                                        </ul>
+                                    }
+
+                                    <div class="delete-actions">
+                                        <button class="btn danger" type="button" @onclick="DeleteAsync" disabled="@isSaving">
+                                            Confirmar eliminar
+                                        </button>
+                                        <button class="btn" type="button" @onclick="CancelDelete" disabled="@isSaving">
+                                            Cancelar
+                                        </button>
+                                    </div>
+                                }
+                            </div>
                         }
 
                         @if (!string.IsNullOrWhiteSpace(msg))
@@ -615,12 +699,96 @@
 
                     @if (!confirmDelete)
                     {
-                        <button class="btn danger" type="button" @onclick="AskDelete" disabled="@isSaving">Eliminar</button>
+                        <button class="btn danger" type="button" @onclick="AskDeleteAsync" disabled="@isSaving">Eliminar</button>
                     }
                     else
                     {
-                        <button class="btn danger" type="button" @onclick="DeleteAsync" disabled="@isSaving">Confirmar eliminar</button>
-                        <button class="btn" type="button" @onclick="CancelDelete" disabled="@isSaving">Cancelar eliminar</button>
+                        <div class="delete-panel">
+                            @if (_deletePreviewLoading)
+                            {
+                                <div class="text-sm muted">Revisando dependencias…</div>
+                            }
+                            else if (!string.IsNullOrWhiteSpace(_deletePreviewError))
+                            {
+                                <div class="error-note">No se pudo revisar dependencias: @_deletePreviewError</div>
+                            }
+                            else
+                            {
+                                <div class="delete-title">
+                                    Antes de eliminar, esta sustancia aparece en:
+                                </div>
+
+                                @if (_deleteRefs.Count == 0)
+                                {
+                                    <div class="text-sm muted">No se detectaron FKs hacia <code>sustancias</code>.</div>
+                                }
+                                else
+                                {
+                                    <ul class="dep-list">
+                                        @foreach (var r in _deleteRefs.OrderByDescending(x => x.Count))
+                                        {
+                                            <li class="dep-item">
+                                                <div class="dep-main">
+                                                    <div class="dep-name">
+                                                        <code>@($"{r.Schema}.{r.Table}")</code>
+                                                        <span class="muted text-xs"> · FK: <code>@r.Column</code></span>
+                                                    </div>
+
+                                                    <div class="dep-meta text-sm">
+                                                        <b>@r.Count</b> fila(s)
+                                                        <span class="muted text-xs"> · @r.Constraint</span>
+                                                    </div>
+
+                                                    @if (r.Table == "documentos" && !r.Cascade && r.Count > 0)
+                                                    {
+                                                        <div class="text-xs muted">
+                                                            Si no marcas “Eliminar”, se <b>desvincularán</b> (sustancia_id = NULL) para permitir el borrado.
+                                                        </div>
+                                                    }
+
+                                                    @if (r.Table == "contenedores" && !r.Cascade && r.Count > 0)
+                                                    {
+                                                        <div class="text-xs muted">
+                                                            <b>Bloquea</b> el borrado: <code>contenedores.sustancia_id</code> es NOT NULL.
+                                                            Debes eliminar contenedores o cancelar.
+                                                        </div>
+                                                    }
+                                                </div>
+
+                                                <div class="dep-action">
+                                                    @if (r.Count == 0)
+                                                    {
+                                                        <span class="muted text-xs">—</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <label class="dep-toggle">
+                                                            <input type="checkbox" @bind="r.Cascade" />
+                                                            <span>
+                                                                @(r.Table == "documentos"
+                                                                    ? "Eliminar documentos"
+                                                                    : r.Table == "contenedores"
+                                                                        ? "Eliminar contenedores"
+                                                                        : "Eliminar referencias (cascada)")
+                                                            </span>
+                                                        </label>
+                                                    }
+                                                </div>
+                                            </li>
+                                        }
+                                    </ul>
+                                }
+
+                                <div class="delete-actions">
+                                    <button class="btn danger" type="button" @onclick="DeleteAsync" disabled="@isSaving">
+                                        Confirmar eliminar
+                                    </button>
+                                    <button class="btn" type="button" @onclick="CancelDelete" disabled="@isSaving">
+                                        Cancelar
+                                    </button>
+                                </div>
+                            }
+                        </div>
                     }
 
                     @if (!string.IsNullOrWhiteSpace(msg))
@@ -644,6 +812,11 @@
 
     private bool isEditing = false;
     private bool confirmDelete = false;
+    private bool _deletePreviewLoading = false;
+    private string? _deletePreviewError;
+
+    // Lista dinámica de FKs que apuntan a sustancias(sustancia_id)
+    private readonly List<DeleteRef> _deleteRefs = new();
 
     private string? loadError;
     private string? msg;
@@ -822,16 +995,113 @@
         await ReloadAllAsync();
     }
 
-    private void AskDelete()
+    private async Task AskDeleteAsync()
     {
+        msg = null;
+        loadError = null;
+
+        if (!found || string.IsNullOrWhiteSpace(edit?.SustanciaId))
+        {
+            confirmDelete = false;
+            msg = "No hay sustancia cargada.";
+            return;
+        }
+
         confirmDelete = true;
-        msg = "Esto eliminará la sustancia. Asegúrate de no tener contenedores ni documentos asociados.";
+        _deletePreviewError = null;
+        _deletePreviewLoading = true;
+        _deleteRefs.Clear();
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            var refs = await LoadDeleteRefsAsync(conn, edit.SustanciaId);
+
+            // Defaults:
+            // - Tablas puente: cascade ON por defecto
+            // - documentos: OFF (si OFF -> desvincular)
+            // - contenedores: OFF (si OFF y hay filas -> bloquea)
+            foreach (var r in refs)
+            {
+                var isDocs = r.Table.Equals("documentos", StringComparison.OrdinalIgnoreCase);
+                var isCont = r.Table.Equals("contenedores", StringComparison.OrdinalIgnoreCase);
+
+                r.Cascade = !(isDocs || isCont); // por defecto: true salvo docs/contenedores
+            }
+
+            _deleteRefs.AddRange(refs);
+        }
+        catch (Exception ex)
+        {
+            _deletePreviewError = ex.Message;
+        }
+        finally
+        {
+            _deletePreviewLoading = false;
+            StateHasChanged();
+        }
     }
 
     private void CancelDelete()
     {
         confirmDelete = false;
         msg = null;
+    }
+
+    private static async Task<List<DeleteRef>> LoadDeleteRefsAsync(NpgsqlConnection conn, string sustanciaId)
+    {
+        // FKs que referencian a public.sustancias
+        const string fkSql = @"
+        SELECT
+            ns.nspname AS schema_name,
+            rel.relname AS table_name,
+            att.attname AS column_name,
+            con.conname AS constraint_name
+        FROM pg_constraint con
+        JOIN pg_class rel ON rel.oid = con.conrelid
+        JOIN pg_namespace ns ON ns.oid = rel.relnamespace
+        JOIN unnest(con.conkey) WITH ORDINALITY AS ck(attnum, ord) ON true
+        JOIN pg_attribute att ON att.attrelid = con.conrelid AND att.attnum = ck.attnum
+        WHERE con.contype = 'f'
+          AND con.confrelid = 'public.sustancias'::regclass
+        ORDER BY ns.nspname, rel.relname, att.attname;
+    ";
+
+        var refs = new List<DeleteRef>();
+
+        await using (var cmd = new NpgsqlCommand(fkSql, conn))
+        await using (var r = await cmd.ExecuteReaderAsync())
+        {
+            while (await r.ReadAsync())
+            {
+                refs.Add(new DeleteRef
+                {
+                    Schema = r.GetString(0),
+                    Table = r.GetString(1),
+                    Column = r.GetString(2),
+                    Constraint = r.GetString(3),
+                    Count = 0
+                });
+            }
+        }
+
+        // Contar filas para el id en cada tabla/columna
+        foreach (var rr in refs)
+        {
+            // Identificadores seguros (vienen del catálogo del DB)
+            var qSchema = NpgsqlCommandBuilder.QuoteIdentifier(rr.Schema);
+            var qTable = NpgsqlCommandBuilder.QuoteIdentifier(rr.Table);
+            var qCol = NpgsqlCommandBuilder.QuoteIdentifier(rr.Column);
+
+            var countSql = $"SELECT COUNT(*) FROM {qSchema}.{qTable} WHERE {qCol} = @id;";
+
+            await using var ccmd = new NpgsqlCommand(countSql, conn);
+            ccmd.Parameters.AddWithValue("id", sustanciaId);
+            var val = await ccmd.ExecuteScalarAsync();
+            rr.Count = Convert.ToInt64(val);
+        }
+
+        return refs;
     }
 
     private async Task LoadLookupsAsync(NpgsqlConnection conn)
@@ -1383,7 +1653,10 @@
     private async Task DeleteAsync()
     {
         msg = null;
-        if (!found) return;
+        loadError = null;
+
+        if (!found || string.IsNullOrWhiteSpace(edit?.SustanciaId))
+            return;
 
         isSaving = true;
 
@@ -1392,71 +1665,147 @@
             await using var conn = await DataSource.OpenConnectionAsync();
             await using var tx = await conn.BeginTransactionAsync();
 
-            var contCount = await ScalarCountAsync(conn, tx,
-                "SELECT COUNT(*) FROM contenedores WHERE sustancia_id=@id AND laboratorio_id=@lab",
-                ("id", edit.SustanciaId), ("lab", LaboratorioState.LaboratorioId));
+            // Re-cargar dependencias dentro de la transacción (por si cambió algo)
+            var liveRefs = await LoadDeleteRefsAsync(conn, edit.SustanciaId);
 
-            if (contCount > 0)
+            // Aplicar la selección del UI (r.Cascade)
+            // (match por schema/table/column/constraint)
+            foreach (var lr in liveRefs)
             {
-                msg = $"No se puede eliminar: hay {contCount} contenedor(es). Elimina contenedores primero.";
-                confirmDelete = false;
+                var ui = _deleteRefs.FirstOrDefault(x =>
+                    x.Schema == lr.Schema &&
+                    x.Table == lr.Table &&
+                    x.Column == lr.Column &&
+                    x.Constraint == lr.Constraint);
+
+                lr.Cascade = ui?.Cascade ?? false;
+            }
+
+            // Validar bloqueos
+            // - contenedores: si hay filas y no está en cascade => no se puede
+            // - otras tablas (except documentos): si hay filas y no cascade => no se puede
+            // - documentos: si no cascade => se desvincula (OK)
+            var blockers = liveRefs
+                .Where(r => r.Count > 0)
+                .Where(r =>
+                    !r.Table.Equals("documentos", StringComparison.OrdinalIgnoreCase) &&
+                    !r.Cascade)
+                .ToList();
+
+            var contBlock = liveRefs.FirstOrDefault(r =>
+                r.Table.Equals("contenedores", StringComparison.OrdinalIgnoreCase) &&
+                r.Count > 0 &&
+                !r.Cascade);
+
+            if (contBlock != null)
+            {
+                msg = $"No se puede eliminar: hay {contBlock.Count} contenedor(es). Marca “Eliminar contenedores” o cancela.";
+                confirmDelete = true;
                 await tx.RollbackAsync();
                 return;
             }
 
-            var docCount = await ScalarCountAsync(conn, tx,
-                "SELECT COUNT(*) FROM documentos WHERE sustancia_id=@id AND laboratorio_id=@lab",
-                ("id", edit.SustanciaId), ("lab", LaboratorioState.LaboratorioId));
-
-            if (docCount > 0)
+            if (blockers.Count > 0)
             {
-                msg = $"No se puede eliminar: hay {docCount} documento(s) asociados. Desvincúlalos o elimínalos primero.";
-                confirmDelete = false;
+                msg = "No se puede eliminar: existen referencias en " +
+                      string.Join(", ", blockers.Select(b => $"{b.Schema}.{b.Table}({b.Column})")) +
+                      ". Marca “cascada” para esas tablas o cancela.";
+                confirmDelete = true;
                 await tx.RollbackAsync();
                 return;
             }
 
-            var expCount = await ScalarCountAsync(conn, tx, @"
-                SELECT COUNT(*)
-                FROM experiencia_sustancias es
-                INNER JOIN experiencias_clases ec ON ec.experiencia_id = es.experiencia_id
-                WHERE es.sustancia_id=@id
-                  AND ec.laboratorio_id=@lab",
-                ("id", edit.SustanciaId), ("lab", LaboratorioState.LaboratorioId));
+            // Orden importante si vas a borrar contenedores:
+            // documentos puede referenciar contenedores por cont_id.
+            var willDeleteContenedores = liveRefs.Any(r =>
+                r.Table.Equals("contenedores", StringComparison.OrdinalIgnoreCase) &&
+                r.Cascade &&
+                r.Count > 0);
 
-            if (expCount > 0)
+            var docRef = liveRefs.FirstOrDefault(r =>
+                r.Table.Equals("documentos", StringComparison.OrdinalIgnoreCase) &&
+                r.Column.Equals("sustancia_id", StringComparison.OrdinalIgnoreCase));
+
+            // 1) DOCUMENTOS:
+            // - Si cascade ON => borrar docs ligados a sustancia
+            // - Si cascade OFF => desvincular sustancia_id (y si vas a borrar contenedores, también cont_id)
+            if (docRef != null && docRef.Count > 0)
             {
-                msg = $"No se puede eliminar: la sustancia está usada en {expCount} experiencia(s).";
-                confirmDelete = false;
-                await tx.RollbackAsync();
-                return;
+                if (docRef.Cascade)
+                {
+                    await using (var cmd = new NpgsqlCommand(
+                        "DELETE FROM documentos WHERE sustancia_id = @id;", conn, tx))
+                    {
+                        cmd.Parameters.AddWithValue("id", edit.SustanciaId);
+                        await cmd.ExecuteNonQueryAsync();
+                    }
+                }
+                else
+                {
+                    await using (var cmd = new NpgsqlCommand(
+                        "UPDATE documentos SET sustancia_id = NULL WHERE sustancia_id = @id;", conn, tx))
+                    {
+                        cmd.Parameters.AddWithValue("id", edit.SustanciaId);
+                        await cmd.ExecuteNonQueryAsync();
+                    }
+                }
             }
 
-            // Limpieza tablas puente
-            await ExecAsync(conn, tx, "DELETE FROM sustancias_h WHERE sustancia_id=@id", ("id", edit.SustanciaId));
-            await ExecAsync(conn, tx, "DELETE FROM sustancias_p WHERE sustancia_id=@id", ("id", edit.SustanciaId));
-            await ExecAsync(conn, tx, "DELETE FROM sustancias_pictogramas WHERE sustancia_id=@id", ("id", edit.SustanciaId));
-            await ExecAsync(conn, tx, "DELETE FROM experiencia_sustancias WHERE sustancia_id=@id", ("id", edit.SustanciaId));
-            await ExecAsync(conn, tx, "DELETE FROM sustancia_subcategorias WHERE sustancia_id=@id", ("id", edit.SustanciaId));
+            // Si vas a borrar contenedores, evita bloqueo por documentos(cont_id)
+            if (willDeleteContenedores)
+            {
+                // si NO borraste docs, al menos suelta cont_id
+                await using (var cmd = new NpgsqlCommand(@"
+                UPDATE documentos
+                SET cont_id = NULL
+                WHERE cont_id IN (SELECT cont_id FROM contenedores WHERE sustancia_id = @id);", conn, tx))
+                {
+                    cmd.Parameters.AddWithValue("id", edit.SustanciaId);
+                    await cmd.ExecuteNonQueryAsync();
+                }
+            }
 
-            // Borrar sustancia
-            var rows = await ExecAsync(conn, tx, @"
-                DELETE FROM sustancias
-                WHERE sustancia_id=@id AND laboratorio_id=@lab AND categoria_id=@cat",
-                ("id", edit.SustanciaId),
-                ("lab", LaboratorioState.LaboratorioId),
-                ("cat", CategoriaReactivoId));
+            // 2) Borrar en cascada las tablas seleccionadas (except documentos, ya tratado)
+            foreach (var r in liveRefs.Where(x => x.Count > 0 && x.Cascade))
+            {
+                if (r.Table.Equals("documentos", StringComparison.OrdinalIgnoreCase))
+                    continue; // ya manejado arriba
+
+                // DELETE FROM schema.table WHERE column=@id
+                var qSchema = NpgsqlCommandBuilder.QuoteIdentifier(r.Schema);
+                var qTable = NpgsqlCommandBuilder.QuoteIdentifier(r.Table);
+                var qCol = NpgsqlCommandBuilder.QuoteIdentifier(r.Column);
+
+                var sql = $"DELETE FROM {qSchema}.{qTable} WHERE {qCol} = @id;";
+                await using var cmd = new NpgsqlCommand(sql, conn, tx);
+                cmd.Parameters.AddWithValue("id", edit.SustanciaId);
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            // 3) Finalmente: borrar la sustancia
+            await using (var cmd = new NpgsqlCommand(@"
+            DELETE FROM sustancias
+            WHERE sustancia_id = @id AND laboratorio_id = @lab;", conn, tx))
+            {
+                cmd.Parameters.AddWithValue("id", edit.SustanciaId);
+                cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+
+                var rows = await cmd.ExecuteNonQueryAsync();
+                if (rows == 0)
+                {
+                    msg = "No se pudo eliminar (no existe en el laboratorio actual).";
+                    confirmDelete = false;
+                    await tx.RollbackAsync();
+                    return;
+                }
+            }
 
             await tx.CommitAsync();
-
-            if (rows == 0)
-            {
-                msg = "No se pudo eliminar (no existe en el laboratorio actual).";
-                confirmDelete = false;
-                return;
-            }
-
             Nav.NavigateTo("/inventario-sustancias");
+        }
+        catch (PostgresException pex)
+        {
+            loadError = $"{pex.SqlState}: {pex.MessageText}";
         }
         catch (Exception ex)
         {
@@ -1514,6 +1863,22 @@
 
     private sealed record SelectOption(string Id, string Label);
     private sealed record ExperienciaLink(string ExperienciaId, string Nombre);
+
+    private sealed class DeleteRef
+    {
+        public string Schema { get; init; } = "public";
+        public string Table { get; init; } = "";
+        public string Column { get; init; } = "";
+        public string Constraint { get; init; } = "";
+        public long Count { get; set; }
+
+        // Si true => se borran filas en esa tabla (cascada manual)
+        // Si false:
+        //   - documentos => se desvincula (UPDATE ... SET sustancia_id=NULL)
+        //   - contenedores => bloquea si Count>0 (NOT NULL)
+        //   - otras => bloquea si Count>0
+        public bool Cascade { get; set; }
+    }
 
     private sealed class ReactivoEdit
     {
@@ -2114,5 +2479,77 @@
     th {
         background: #f3f4f6;
         font-weight: 900;
+    }
+
+    /* Evita desbordes de textos largos (IDs, URLs, code) */
+    code {
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+
+    .header-row {
+        flex-wrap: wrap;
+    }
+
+    .header-row > div {
+        min-width: 0;
+    }
+
+    .table-wrap {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Panel de confirmación de delete */
+    .delete-panel {
+        margin-top: .75rem;
+        padding: .75rem;
+        border: 1px solid #fecaca;
+        background: #fff1f2;
+        border-radius: 12px;
+        max-width: 100%;
+    }
+
+    .delete-title {
+        font-weight: 900;
+    }
+
+    .dep-list {
+        list-style: none;
+        padding: 0;
+        margin: .6rem 0 0;
+        display: grid;
+        gap: .5rem;
+    }
+
+    .dep-item {
+        border: 1px solid #e5e7eb;
+        background: #fff;
+        border-radius: 10px;
+        padding: .6rem;
+        display: grid;
+        gap: .45rem;
+    }
+
+    @@media (min-width: 760px) {
+        .dep-item {
+            grid-template-columns: 1fr auto;
+            align-items: center;
+        }
+    }
+
+    .dep-toggle {
+        display: flex;
+        gap: .5rem;
+        align-items: center;
+        font-weight: 900;
+    }
+
+    .delete-actions {
+        margin-top: .75rem;
+        display: flex;
+        gap: .5rem;
+        flex-wrap: wrap;
     }
 </style>
