@@ -204,5 +204,9 @@ public sealed class CascadeDeleteService
         return items;
     }
 
-    private static string QuoteIdent(string ident) => NpgsqlCommandBuilder.QuoteIdentifier(ident);
+    private static string QuoteIdent(string ident)
+    {
+        // Creamos una instancia para poder acceder al método no estático
+        return new NpgsqlCommandBuilder().QuoteIdentifier(ident);
+    }
 }
