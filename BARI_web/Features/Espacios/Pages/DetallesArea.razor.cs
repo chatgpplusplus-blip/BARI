@@ -272,8 +272,13 @@ namespace BARI_web.Features.Espacios.Pages
                 BuildAreaOutline(a);
                 _area = a;
 
-                // ViewBox ajustado al área
-                FitViewBoxToAreaWithAspect(a, pad: 0.25m);
+                await LoadInnerItemsForArea(a);
+                await LoadMesonesForArea(targetAreaId);
+                await LoadBlocksForArea(a);
+                await LoadDoorsAndWindowsForArea(a);
+
+                // ✅ ahora sí ajusta viewbox a TODO lo dibujado (sin “aire”)
+                FitViewBoxToScene(a, pad: 0.25m);
 
                 // grilla
                 GridStartX = (decimal)Math.Floor((double)VX);
@@ -281,11 +286,7 @@ namespace BARI_web.Features.Espacios.Pages
                 GridStartY = (decimal)Math.Floor((double)VY);
                 GridEndY = (decimal)Math.Ceiling((double)(VY + VH));
 
-                // interiores / puertas / ventanas / mesones
-                await LoadInnerItemsForArea(a);
-                await LoadMesonesForArea(targetAreaId); // ✅ primero
-                await LoadBlocksForArea(a);             // ✅ después
-                await LoadDoorsAndWindowsForArea(a);
+
 
                 if (_areaInfo is not null)
                 {
@@ -305,7 +306,70 @@ namespace BARI_web.Features.Espacios.Pages
         // ====== NAVEGACIÓN (CLICK EN SVG + LISTAS) ======
 
         // Úsalo desde el .razor para fila completa de mesón
-        
+
+        private void FitViewBoxToScene(AreaDraw a, decimal pad)
+        {
+            // arranca con el bbox del área
+            decimal minX = a.MinX, minY = a.MinY, maxX = a.MaxX, maxY = a.MaxY;
+
+            // inners
+            foreach (var it in _inners)
+            {
+                minX = Math.Min(minX, it.abs_x);
+                minY = Math.Min(minY, it.abs_y);
+                maxX = Math.Max(maxX, it.abs_x + it.ancho_m);
+                maxY = Math.Max(maxY, it.abs_y + it.largo_m);
+            }
+
+            // blocks (mismo cálculo que usas en el razor)
+            var areaCenterX = (a.MinX + a.MaxX) / 2m;
+            var areaCenterY = (a.MinY + a.MaxY) / 2m;
+
+            foreach (var b in _blocks)
+            {
+                var bx = (b.offset_x != 0m || b.offset_y != 0m) ? (areaCenterX + b.offset_x) : b.pos_x;
+                var by = (b.offset_x != 0m || b.offset_y != 0m) ? (areaCenterY + b.offset_y) : b.pos_y;
+
+                minX = Math.Min(minX, bx);
+                minY = Math.Min(minY, by);
+                maxX = Math.Max(maxX, bx + b.ancho);
+                maxY = Math.Max(maxY, by + b.largo);
+            }
+
+            // puertas
+            foreach (var d in _doors)
+            {
+                var ex = DoorEndX(d);
+                var ey = DoorEndY(d);
+                minX = Math.Min(minX, Math.Min(d.x_m, ex));
+                minY = Math.Min(minY, Math.Min(d.y_m, ey));
+                maxX = Math.Max(maxX, Math.Max(d.x_m, ex));
+                maxY = Math.Max(maxY, Math.Max(d.y_m, ey));
+            }
+
+            // ventanas
+            foreach (var w in _windows)
+            {
+                var ex = WinEndX(w);
+                var ey = WinEndY(w);
+                minX = Math.Min(minX, Math.Min(w.x_m, ex));
+                minY = Math.Min(minY, Math.Min(w.y_m, ey));
+                maxX = Math.Max(maxX, Math.Max(w.x_m, ex));
+                maxY = Math.Max(maxY, Math.Max(w.y_m, ey));
+            }
+
+            // padding + clamp al canvas
+            minX = Math.Max(0m, minX - pad);
+            minY = Math.Max(0m, minY - pad);
+            maxX = Math.Min(Wm, maxX + pad);
+            maxY = Math.Min(Hm, maxY + pad);
+
+            VX = minX;
+            VY = minY;
+            VW = Math.Max(0.001m, maxX - minX);
+            VH = Math.Max(0.001m, maxY - minY);
+        }
+
 
         // Úsalo desde el .razor para fila completa de instalación
         private void GoToInstalacion(InstalacionItem item) => GoToInstalacionById(item.instalacion_id);

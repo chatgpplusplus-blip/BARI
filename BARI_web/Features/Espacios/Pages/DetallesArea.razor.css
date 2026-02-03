@@ -179,7 +179,7 @@ svg .softshadow {
 }
 
 /* ===== Responsive ===== */
-@media (max-width:868px) {
+@media (max-width:768px) {
 
 
     .toolbar {
@@ -206,6 +206,7 @@ svg .softshadow {
         max-width: 100%;
         height: auto;
         min-height: 60vh;
+
     }
 
     .map-svg {
