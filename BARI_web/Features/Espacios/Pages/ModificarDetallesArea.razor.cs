@@ -777,6 +777,12 @@ namespace BARI_web.Features.Espacios.Pages
 
             if (_canvas is null) return;
 
+            var mesonesAreaIds = MesonesDelAreaActual()
+                .Select(m => m.meson_id)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var instalacionesAreaIds = _instalaciones.Keys
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
             Pg.UseSheet("bloques_int");
             foreach (var r in await Pg.ReadAllAsync())
             {
@@ -823,7 +829,7 @@ namespace BARI_web.Features.Espacios.Pages
                 UpdateBlockAbs(b);
 
                 // clamp real al contorno del área si existe
-                if (_area is not null)
+                if (_area is not null && IsBlockInCurrentArea(b, mesonesAreaIds, instalacionesAreaIds))
                 {
                     var (nx, ny) = ClampRectInAreaUnion(_area, b.abs_x, b.abs_y, b.ancho, b.largo);
                     b.abs_x = nx;
@@ -1145,6 +1151,8 @@ namespace BARI_web.Features.Espacios.Pages
             _newBlockAssignMeson = false;
             _newBlockInstalacionId = null;
             _newBlockMesonId = null;
+            _newBlockOffsetX = 0m;
+            _newBlockOffsetY = 0m;
         }
 
         private void AgregarBloque()
@@ -1237,6 +1245,15 @@ namespace BARI_web.Features.Espacios.Pages
             it.abs_y = AreaCenterY + it.offset_y;
             it.pos_x = it.abs_x;
             it.pos_y = it.abs_y;
+        }
+
+        private static bool IsBlockInCurrentArea(
+            BlockItem block,
+            IReadOnlySet<string> mesonesAreaIds,
+            IReadOnlySet<string> instalacionesAreaIds)
+        {
+            return (!string.IsNullOrWhiteSpace(block.meson_id) && mesonesAreaIds.Contains(block.meson_id))
+                || (!string.IsNullOrWhiteSpace(block.instalacion_id) && instalacionesAreaIds.Contains(block.instalacion_id));
         }
 
         // =========================
@@ -1869,8 +1886,14 @@ namespace BARI_web.Features.Espacios.Pages
                 }
 
                 // 4) BLOQUES
+                var mesonesAreaIds = MesonesDelAreaActual()
+                    .Select(m => m.meson_id)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var instalacionesAreaIds = _instalaciones.Keys
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
                 Pg.UseSheet("bloques_int");
-                foreach (var b in _blocks)
+                foreach (var b in _blocks.Where(b => IsBlockInCurrentArea(b, mesonesAreaIds, instalacionesAreaIds)))
                 {
                     // XOR fuerte al guardar
                     if (!string.IsNullOrWhiteSpace(b.meson_id))
