@@ -1021,10 +1021,10 @@ namespace BARI_web.Features.Espacios.Pages
 
         private void FitViewBoxToAreaWithAspect(AreaDraw a, decimal pad)
         {
-            var minX = Math.Max(0m, a.MinX - pad);
-            var minY = Math.Max(0m, a.MinY - pad);
-            var maxX = Math.Min(Wm, a.MaxX + pad);
-            var maxY = Math.Min(Hm, a.MaxY + pad);
+            var minX = a.MinX - pad;
+            var minY = a.MinY - pad;
+            var maxX = a.MaxX + pad;
+            var maxY = a.MaxY + pad;
 
             var bboxW = Math.Max(0.001m, maxX - minX);
             var bboxH = Math.Max(0.001m, maxY - minY);
@@ -1040,21 +1040,6 @@ namespace BARI_web.Features.Espacios.Pages
 
             var vx = cx - vw / 2m;
             var vy = cy - vh / 2m;
-
-            if (vx < 0m) vx = 0m;
-            if (vy < 0m) vy = 0m;
-            if (vx + vw > Wm) vx = Math.Max(0m, Wm - vw);
-            if (vy + vh > Hm) vy = Math.Max(0m, Hm - vh);
-
-            if (vw > Wm || vh > Hm)
-            {
-                var scale = Math.Min(Wm / vw, Hm / vh);
-                vw *= scale; vh *= scale;
-                vx = Math.Max(0m, cx - vw / 2m);
-                vy = Math.Max(0m, cy - vh / 2m);
-                if (vx + vw > Wm) vx = Wm - vw;
-                if (vy + vh > Hm) vy = Hm - vh;
-            }
 
             VX = vx; VY = vy; VW = vw; VH = vh;
         }
