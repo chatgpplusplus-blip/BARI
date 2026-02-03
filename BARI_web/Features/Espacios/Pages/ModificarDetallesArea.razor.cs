@@ -1151,8 +1151,10 @@ namespace BARI_web.Features.Espacios.Pages
             _newBlockAssignMeson = false;
             _newBlockInstalacionId = null;
             _newBlockMesonId = null;
-            _newBlockOffsetX = 0m;
-            _newBlockOffsetY = 0m;
+            var ancho = Clamp(EPS_MINW, 10m, _newBlockAncho);
+            var largo = Clamp(EPS_MINW, 10m, _newBlockLargo);
+            _newBlockOffsetX = -ancho / 2m;
+            _newBlockOffsetY = -largo / 2m;
         }
 
         private void AgregarBloque()
