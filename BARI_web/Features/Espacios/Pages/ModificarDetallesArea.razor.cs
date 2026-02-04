@@ -198,6 +198,8 @@ namespace BARI_web.Features.Espacios.Pages
         private (double x, double y)? _panStart;
         private bool _panMoved = false;
         private ElementReference _svgRef;
+        private const double MinZoom = 0.3;
+        private const double MaxZoom = 20.0;
 
         private decimal Wm => _canvas?.ancho_m ?? 20m;
         private decimal Hm => _canvas?.largo_m ?? 10m;
@@ -1688,7 +1690,7 @@ namespace BARI_web.Features.Espacios.Pages
         private void OnWheel(WheelEventArgs e)
         {
             var f = Math.Sign(e.DeltaY) < 0 ? 1.1 : (1 / 1.1);
-            _zoom = Math.Clamp(_zoom * f, 0.3, 6.0);
+            _zoom = Math.Clamp(_zoom * f, MinZoom, MaxZoom);
             ClampPanToBounds();
             UpdateViewMetrics();
             StateHasChanged();
@@ -1696,7 +1698,7 @@ namespace BARI_web.Features.Espacios.Pages
 
         private void ZoomOut()
         {
-            _zoom = Math.Clamp(_zoom / 1.1, 0.3, 6.0);
+            _zoom = Math.Clamp(_zoom / 1.1, MinZoom, MaxZoom);
             ClampPanToBounds();
             UpdateViewMetrics();
             StateHasChanged();
@@ -1704,7 +1706,7 @@ namespace BARI_web.Features.Espacios.Pages
 
         private void ZoomIn()
         {
-            _zoom = Math.Clamp(_zoom * 1.1, 0.3, 6.0);
+            _zoom = Math.Clamp(_zoom * 1.1, MinZoom, MaxZoom);
             ClampPanToBounds();
             UpdateViewMetrics();
             StateHasChanged();
@@ -2640,7 +2642,7 @@ namespace BARI_web.Features.Espacios.Pages
             var zoom = Math.Min(zoomX, zoomY);
             if (zoom <= 0m) zoom = 1m;
 
-            _zoom = (double)zoom;
+            _zoom = Math.Clamp((double)zoom, MinZoom, MaxZoom);
 
             var vw = (decimal)((double)Wm / _zoom);
             var vh = (decimal)((double)Hm / _zoom);
