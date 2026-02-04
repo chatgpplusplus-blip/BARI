@@ -198,6 +198,8 @@ namespace BARI_web.Features.Espacios.Pages
         private (double x, double y)? _panStart;
         private bool _panMoved = false;
         private ElementReference _svgRef;
+        private const double MinZoom = 0.3;
+        private const double MaxZoom = 20.0;
 
         private decimal Wm => _canvas?.ancho_m ?? 20m;
         private decimal Hm => _canvas?.largo_m ?? 10m;
@@ -211,8 +213,8 @@ namespace BARI_web.Features.Espacios.Pages
 
         private string AspectRatioString()
         {
-            var vw = Wm <= 0m ? 1m : Wm;
-            var vh = Hm <= 0m ? 1m : Hm;
+            var vw = VW > 0m ? VW : (Wm <= 0m ? 1m : Wm);
+            var vh = VH > 0m ? VH : (Hm <= 0m ? 1m : Hm);
             var ar = (double)vw / (double)vh;
             return $"{ar:0.###} / 1";
         }
@@ -1688,7 +1690,7 @@ namespace BARI_web.Features.Espacios.Pages
         private void OnWheel(WheelEventArgs e)
         {
             var f = Math.Sign(e.DeltaY) < 0 ? 1.1 : (1 / 1.1);
-            _zoom = Math.Clamp(_zoom * f, 0.3, 6.0);
+            _zoom = Math.Clamp(_zoom * f, MinZoom, MaxZoom);
             ClampPanToBounds();
             UpdateViewMetrics();
             StateHasChanged();
@@ -1696,7 +1698,7 @@ namespace BARI_web.Features.Espacios.Pages
 
         private void ZoomOut()
         {
-            _zoom = Math.Clamp(_zoom / 1.1, 0.3, 6.0);
+            _zoom = Math.Clamp(_zoom / 1.1, MinZoom, MaxZoom);
             ClampPanToBounds();
             UpdateViewMetrics();
             StateHasChanged();
@@ -1704,7 +1706,7 @@ namespace BARI_web.Features.Espacios.Pages
 
         private void ZoomIn()
         {
-            _zoom = Math.Clamp(_zoom * 1.1, 0.3, 6.0);
+            _zoom = Math.Clamp(_zoom * 1.1, MinZoom, MaxZoom);
             ClampPanToBounds();
             UpdateViewMetrics();
             StateHasChanged();
@@ -2484,7 +2486,27 @@ namespace BARI_web.Features.Espacios.Pages
                 foreach (var r in await Pg.ReadAllAsync())
                 {
                     if (!string.Equals(Get(r, "area_id"), areaId, StringComparison.OrdinalIgnoreCase)) continue;
-                    return NullIfEmpty(Get(r, "canvas_id"));
+                    var canvasId = NullIfEmpty(Get(r, "canvas_id"));
+                    if (!string.IsNullOrWhiteSpace(canvasId))
+                        return canvasId;
+                    break;
+                }
+            }
+            catch { }
+            return await ResolveCanvasFromPolys(areaId);
+        }
+
+        private async Task<string?> ResolveCanvasFromPolys(string areaId)
+        {
+            try
+            {
+                Pg.UseSheet("poligonos");
+                foreach (var r in await Pg.ReadAllAsync())
+                {
+                    if (!string.Equals(Get(r, "area_id"), areaId, StringComparison.OrdinalIgnoreCase)) continue;
+                    var canvasId = NullIfEmpty(Get(r, "canvas_id"));
+                    if (!string.IsNullOrWhiteSpace(canvasId))
+                        return canvasId;
                 }
             }
             catch { }
@@ -2620,7 +2642,7 @@ namespace BARI_web.Features.Espacios.Pages
             var zoom = Math.Min(zoomX, zoomY);
             if (zoom <= 0m) zoom = 1m;
 
-            _zoom = (double)zoom;
+            _zoom = Math.Clamp((double)zoom, MinZoom, MaxZoom);
 
             var vw = (decimal)((double)Wm / _zoom);
             var vh = (decimal)((double)Hm / _zoom);
