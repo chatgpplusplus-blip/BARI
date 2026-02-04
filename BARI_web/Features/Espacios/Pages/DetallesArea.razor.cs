@@ -277,20 +277,15 @@ namespace BARI_web.Features.Espacios.Pages
                 BuildAreaOutline(a);
                 _area = a;
 
-                // ViewBox ajustado al área
-                FitViewBoxToAreaWithAspect(a, pad: 0.25m);
-
-                // grilla
-                GridStartX = (decimal)Math.Floor((double)VX);
-                GridEndX = (decimal)Math.Ceiling((double)(VX + VW));
-                GridStartY = (decimal)Math.Floor((double)VY);
-                GridEndY = (decimal)Math.Ceiling((double)(VY + VH));
-
                 // interiores / puertas / ventanas / mesones
                 await LoadInnerItemsForArea(a);
                 await LoadMesonesForArea(targetAreaId); // ✅ primero
                 await LoadBlocksForArea(a);             // ✅ después
                 await LoadDoorsAndWindowsForArea(a);
+
+                // ViewBox ajustado al área + puertas/ventanas
+                FitViewBoxToAreaWithExtras(a, pad: 0.25m);
+                UpdateGridFromViewBox();
 
                 if (_areaInfo is not null)
                 {
@@ -1056,6 +1051,50 @@ namespace BARI_web.Features.Espacios.Pages
             VY = minY;
             VW = bboxW;
             VH = bboxH;
+        }
+
+        private void FitViewBoxToAreaWithExtras(AreaDraw a, decimal pad)
+        {
+            var minX = a.MinX - pad;
+            var minY = a.MinY - pad;
+            var maxX = a.MaxX + pad;
+            var maxY = a.MaxY + pad;
+
+            foreach (var d in _doors)
+            {
+                var endX = DoorEndX(d);
+                var endY = DoorEndY(d);
+                minX = Math.Min(minX, Math.Min(d.x_m, endX) - pad);
+                minY = Math.Min(minY, Math.Min(d.y_m, endY) - pad);
+                maxX = Math.Max(maxX, Math.Max(d.x_m, endX) + pad);
+                maxY = Math.Max(maxY, Math.Max(d.y_m, endY) + pad);
+            }
+
+            foreach (var w in _windows)
+            {
+                var endX = WinEndX(w);
+                var endY = WinEndY(w);
+                minX = Math.Min(minX, Math.Min(w.x_m, endX) - pad);
+                minY = Math.Min(minY, Math.Min(w.y_m, endY) - pad);
+                maxX = Math.Max(maxX, Math.Max(w.x_m, endX) + pad);
+                maxY = Math.Max(maxY, Math.Max(w.y_m, endY) + pad);
+            }
+
+            var bboxW = Math.Max(0.001m, maxX - minX);
+            var bboxH = Math.Max(0.001m, maxY - minY);
+
+            VX = minX;
+            VY = minY;
+            VW = bboxW;
+            VH = bboxH;
+        }
+
+        private void UpdateGridFromViewBox()
+        {
+            GridStartX = (decimal)Math.Floor((double)VX);
+            GridEndX = (decimal)Math.Ceiling((double)(VX + VW));
+            GridStartY = (decimal)Math.Floor((double)VY);
+            GridEndY = (decimal)Math.Ceiling((double)(VY + VH));
         }
 
         private void SetDefaultViewBox()
