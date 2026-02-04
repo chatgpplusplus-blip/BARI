@@ -2484,7 +2484,27 @@ namespace BARI_web.Features.Espacios.Pages
                 foreach (var r in await Pg.ReadAllAsync())
                 {
                     if (!string.Equals(Get(r, "area_id"), areaId, StringComparison.OrdinalIgnoreCase)) continue;
-                    return NullIfEmpty(Get(r, "canvas_id"));
+                    var canvasId = NullIfEmpty(Get(r, "canvas_id"));
+                    if (!string.IsNullOrWhiteSpace(canvasId))
+                        return canvasId;
+                    break;
+                }
+            }
+            catch { }
+            return await ResolveCanvasFromPolys(areaId);
+        }
+
+        private async Task<string?> ResolveCanvasFromPolys(string areaId)
+        {
+            try
+            {
+                Pg.UseSheet("poligonos");
+                foreach (var r in await Pg.ReadAllAsync())
+                {
+                    if (!string.Equals(Get(r, "area_id"), areaId, StringComparison.OrdinalIgnoreCase)) continue;
+                    var canvasId = NullIfEmpty(Get(r, "canvas_id"));
+                    if (!string.IsNullOrWhiteSpace(canvasId))
+                        return canvasId;
                 }
             }
             catch { }
