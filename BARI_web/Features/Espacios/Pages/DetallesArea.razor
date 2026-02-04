@@ -294,22 +294,18 @@
             <!-- puertas -->
             @foreach (var d in _doors)
             {
-                <line x1="@S(d.x_m)" y1="@S(d.y_m)"
+                <line class="door-line"
+                      x1="@S(d.x_m)" y1="@S(d.y_m)"
                       x2="@S(DoorEndX(d))" y2="@S(DoorEndY(d))"
-                      stroke="#13A076"
-                      stroke-width="@S(0.22m)"
-                      stroke-linecap="round"
                       vector-effect="non-scaling-stroke" />
             }
 
             <!-- ventanas -->
             @foreach (var w in _windows)
             {
-                <line x1="@S(w.x_m)" y1="@S(w.y_m)"
+                <line class="win-line"
+                      x1="@S(w.x_m)" y1="@S(w.y_m)"
                       x2="@S(WinEndX(w))" y2="@S(WinEndY(w))"
-                      stroke="#66CCFF"
-                      stroke-width="@S(0.16m)"
-                      stroke-linecap="round"
                       vector-effect="non-scaling-stroke" />
             }
         }
