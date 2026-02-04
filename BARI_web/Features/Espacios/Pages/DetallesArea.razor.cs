@@ -195,8 +195,8 @@ namespace BARI_web.Features.Espacios.Pages
         // ===== Aspect ratio para CSS (formato compatible) =====
         private string AspectRatioString()
         {
-            var vw = Wm <= 0m ? 1m : Wm;
-            var vh = Hm <= 0m ? 1m : Hm;
+            var vw = VW > 0m ? VW : (Wm <= 0m ? 1m : Wm);
+            var vh = VH > 0m ? VH : (Hm <= 0m ? 1m : Hm);
             var ar = (double)vw / (double)vh;
             return $"{ar:0.###} / 1";
         }
@@ -1028,20 +1028,11 @@ namespace BARI_web.Features.Espacios.Pages
 
             var bboxW = Math.Max(0.001m, maxX - minX);
             var bboxH = Math.Max(0.001m, maxY - minY);
-            var cx = (minX + maxX) / 2m;
-            var cy = (minY + maxY) / 2m;
 
-            var canvasRatio = Wm / Hm;
-            var areaRatio = bboxW / bboxH;
-
-            decimal vw, vh;
-            if (areaRatio > canvasRatio) { vw = bboxW; vh = vw / canvasRatio; }
-            else { vh = bboxH; vw = vh * canvasRatio; }
-
-            var vx = cx - vw / 2m;
-            var vy = cy - vh / 2m;
-
-            VX = vx; VY = vy; VW = vw; VH = vh;
+            VX = minX;
+            VY = minY;
+            VW = bboxW;
+            VH = bboxH;
         }
 
         private void SetDefaultViewBox()
