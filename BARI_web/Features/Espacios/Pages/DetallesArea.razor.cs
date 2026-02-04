@@ -251,7 +251,12 @@ namespace BARI_web.Features.Espacios.Pages
                 var targetAreaId = await ResolveAreaIdFromSlug(AreaSlug);
 
                 _areaInfo = await LoadAreaInfoAsync(targetAreaId);
-                await LoadCanvasAsync(_areaInfo?.canvas_id);
+                var canvasId = _areaInfo?.canvas_id;
+                if (string.IsNullOrWhiteSpace(canvasId))
+                {
+                    canvasId = await ResolveCanvasFromPolys(targetAreaId);
+                }
+                await LoadCanvasAsync(canvasId);
 
                 if (_canvas is null)
                 {
@@ -386,6 +391,24 @@ namespace BARI_web.Features.Espacios.Pages
                 c["canvas_id"], c["nombre"],
                 Dec(c["ancho_m"]), Dec(c["largo_m"]), Dec(c["margen_m"])
             );
+        }
+
+        private async Task<string?> ResolveCanvasFromPolys(string areaId)
+        {
+            if (string.IsNullOrWhiteSpace(areaId)) return null;
+            try
+            {
+                Pg.UseSheet("poligonos");
+                foreach (var r in await Pg.ReadAllAsync())
+                {
+                    if (!string.Equals(Get(r, "area_id"), areaId, StringComparison.OrdinalIgnoreCase)) continue;
+                    var canvasId = NullIfEmpty(Get(r, "canvas_id"));
+                    if (!string.IsNullOrWhiteSpace(canvasId))
+                        return canvasId;
+                }
+            }
+            catch { }
+            return null;
         }
 
         private async Task<AreaInfo?> LoadAreaInfoAsync(string areaId)
