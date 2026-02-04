@@ -2605,35 +2605,28 @@ namespace BARI_web.Features.Espacios.Pages
         // =========================
         private void FitViewBoxToAreaWithAspect(AreaDraw a, decimal pad)
         {
-            var minX = Math.Max(0m, a.MinX - pad);
-            var minY = Math.Max(0m, a.MinY - pad);
-            var maxX = Math.Min(Wm, a.MaxX + pad);
-            var maxY = Math.Min(Hm, a.MaxY + pad);
+            var minX = a.MinX - pad;
+            var minY = a.MinY - pad;
+            var maxX = a.MaxX + pad;
+            var maxY = a.MaxY + pad;
 
             var bboxW = Math.Max(0.001m, maxX - minX);
             var bboxH = Math.Max(0.001m, maxY - minY);
-
             var cx = (minX + maxX) / 2m;
             var cy = (minY + maxY) / 2m;
 
-            var canvasRatio = Wm / Hm;
-            var areaRatio = bboxW / bboxH;
+            var zoomX = Wm / bboxW;
+            var zoomY = Hm / bboxH;
+            var zoom = Math.Min(zoomX, zoomY);
+            if (zoom <= 0m) zoom = 1m;
 
-            decimal vw, vh;
-            if (areaRatio > canvasRatio) { vw = bboxW; vh = vw / canvasRatio; }
-            else { vh = bboxH; vw = vh * canvasRatio; }
+            _zoom = (double)zoom;
 
-            var vx = cx - vw / 2m;
-            var vy = cy - vh / 2m;
+            var vw = (decimal)((double)Wm / _zoom);
+            var vh = (decimal)((double)Hm / _zoom);
 
-            if (vx < 0m) vx = 0m;
-            if (vy < 0m) vy = 0m;
-            if (vx + vw > Wm) vx = Math.Max(0m, Wm - vw);
-            if (vy + vh > Hm) vy = Math.Max(0m, Hm - vh);
-
-            _panX = vx;
-            _panY = vy;
-            _zoom = (double)((vw <= 0m) ? 1m : (Wm / vw));
+            _panX = cx - (vw / 2m);
+            _panY = cy - (vh / 2m);
         }
     }
 }

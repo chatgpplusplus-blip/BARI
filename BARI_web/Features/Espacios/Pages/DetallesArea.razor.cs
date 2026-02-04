@@ -195,8 +195,8 @@ namespace BARI_web.Features.Espacios.Pages
         // ===== Aspect ratio para CSS (formato compatible) =====
         private string AspectRatioString()
         {
-            var vw = Wm <= 0m ? 1m : Wm;
-            var vh = Hm <= 0m ? 1m : Hm;
+            var vw = VW > 0m ? VW : (Wm <= 0m ? 1m : Wm);
+            var vh = VH > 0m ? VH : (Hm <= 0m ? 1m : Hm);
             var ar = (double)vw / (double)vh;
             return $"{ar:0.###} / 1";
         }
@@ -1021,42 +1021,18 @@ namespace BARI_web.Features.Espacios.Pages
 
         private void FitViewBoxToAreaWithAspect(AreaDraw a, decimal pad)
         {
-            var minX = Math.Max(0m, a.MinX - pad);
-            var minY = Math.Max(0m, a.MinY - pad);
-            var maxX = Math.Min(Wm, a.MaxX + pad);
-            var maxY = Math.Min(Hm, a.MaxY + pad);
+            var minX = a.MinX - pad;
+            var minY = a.MinY - pad;
+            var maxX = a.MaxX + pad;
+            var maxY = a.MaxY + pad;
 
             var bboxW = Math.Max(0.001m, maxX - minX);
             var bboxH = Math.Max(0.001m, maxY - minY);
-            var cx = (minX + maxX) / 2m;
-            var cy = (minY + maxY) / 2m;
 
-            var canvasRatio = Wm / Hm;
-            var areaRatio = bboxW / bboxH;
-
-            decimal vw, vh;
-            if (areaRatio > canvasRatio) { vw = bboxW; vh = vw / canvasRatio; }
-            else { vh = bboxH; vw = vh * canvasRatio; }
-
-            var vx = cx - vw / 2m;
-            var vy = cy - vh / 2m;
-
-            if (vx < 0m) vx = 0m;
-            if (vy < 0m) vy = 0m;
-            if (vx + vw > Wm) vx = Math.Max(0m, Wm - vw);
-            if (vy + vh > Hm) vy = Math.Max(0m, Hm - vh);
-
-            if (vw > Wm || vh > Hm)
-            {
-                var scale = Math.Min(Wm / vw, Hm / vh);
-                vw *= scale; vh *= scale;
-                vx = Math.Max(0m, cx - vw / 2m);
-                vy = Math.Max(0m, cy - vh / 2m);
-                if (vx + vw > Wm) vx = Wm - vw;
-                if (vy + vh > Hm) vy = Hm - vh;
-            }
-
-            VX = vx; VY = vy; VW = vw; VH = vh;
+            VX = minX;
+            VY = minY;
+            VW = bboxW;
+            VH = bboxH;
         }
 
         private void SetDefaultViewBox()
