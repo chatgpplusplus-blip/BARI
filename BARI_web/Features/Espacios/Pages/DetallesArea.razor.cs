@@ -258,7 +258,10 @@ namespace BARI_web.Features.Espacios.Pages
             public List<CajaMaterialItem> materiales { get; } = new();
         }
 
-        private sealed record CajaMaterialItem(string material_id, string nombre, decimal cantidad);
+        private sealed record CajaMaterialItem(string material_id, string nombre, decimal Cantidad)
+        {
+            public decimal cantidad => Cantidad;
+        }
 
         private sealed record SelectOption(string id, string label);
 
