@@ -231,14 +231,14 @@
             </div>
 
             <div class="selector-split full-span">
-                <select class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoMaterialMesonId) ? "is-filled" : "")"
-                        value="@_nuevoMaterialMesonId"
+                <select class="border p-1 form-control @(_nuevoMaterialMesonIds.Count > 0 ? "is-filled" : "")"
+                        multiple
+                        size="6"
                         @onchange="OnMesonChanged"
                         disabled="@string.IsNullOrWhiteSpace(_nuevoMaterialAreaId)">
-                    <option value="">Mesón</option>
                     @foreach (var meson in _mesonOptions)
                     {
-                        <option value="@meson.Id">@meson.Label</option>
+                        <option value="@meson.Id" selected="@_nuevoMaterialMesonIds.Contains(meson.Id, StringComparer.OrdinalIgnoreCase)">@meson.Label</option>
                     }
                 </select>
 
@@ -275,7 +275,7 @@
                                     <g class="meson-visual"
                                        style="cursor:pointer"
                                        @onclick:stopPropagation="true"
-                                       @onclick="@(() => SelectMeson(meson.MesonId))">
+                                       @onclick="@(() => SelectMesonAsync(meson.MesonId))">
 
                                         <rect class="meson-rect"
                                               x="@FormatSvg(meson.X)"
@@ -311,11 +311,11 @@
                         <ul class="meson-list">
                             @foreach (var meson in _mesonSummaries)
                             {
-                                var isSel = string.Equals(meson.MesonId, _nuevoMaterialMesonId, StringComparison.OrdinalIgnoreCase);
+                                var isSel = _nuevoMaterialMesonIds.Contains(meson.MesonId, StringComparer.OrdinalIgnoreCase);
 
                                 <li class="@(isSel ? "meson-item selected" : "meson-item")">
                                     <button type="button" class="btn link"
-                                            @onclick="@(() => SelectMeson(meson.MesonId))">
+                                            @onclick="@(() => SelectMesonAsync(meson.MesonId))">
                                         @meson.Nombre
                                     </button>
                                     <div class="text-xs text-gray-500">
@@ -326,11 +326,48 @@
                         </ul>
                     }
 
-                    @if (!string.IsNullOrWhiteSpace(_nuevoMaterialMesonId))
+                    @if (_nuevoMaterialMesonIds.Count > 0)
                     {
                         <div class="text-xs text-gray-500">
-                            Seleccionado: @SelectedAreaLabel · @SelectedMesonLabel
+                            Seleccionados: @SelectedAreaLabel · @SelectedMesonLabel
                         </div>
+                    }
+                </div>
+            </div>
+
+            <div class="selector-split full-span">
+                <select class="border p-1 form-control @(_nuevoMaterialCajaIds.Count > 0 ? "is-filled" : "")"
+                        multiple
+                        size="6"
+                        @onchange="OnCajaChanged"
+                        disabled="@(_nuevoMaterialMesonIds.Count == 0)">
+                    @foreach (var caja in _cajaOptions)
+                    {
+                        <option value="@caja.Id" selected="@_nuevoMaterialCajaIds.Contains(caja.Id, StringComparer.OrdinalIgnoreCase)">@caja.Label</option>
+                    }
+                </select>
+
+                <div class="visual-picker">
+                    <div class="text-xs text-gray-500">Cajas disponibles para los mesones seleccionados</div>
+
+                    @if (_cajaOptions.Count == 0)
+                    {
+                        <div class="text-xs text-gray-500">Sin cajas disponibles.</div>
+                    }
+                    else
+                    {
+                        <ul class="meson-list">
+                            @foreach (var caja in _cajaOptions)
+                            {
+                                var isSelCaja = _nuevoMaterialCajaIds.Contains(caja.Id, StringComparer.OrdinalIgnoreCase);
+                                <li class="@(isSelCaja ? "meson-item selected" : "meson-item")">
+                                    <button type="button" class="btn link"
+                                            @onclick="@(() => ToggleCajaAsync(caja.Id))">
+                                        @caja.Label
+                                    </button>
+                                </li>
+                            }
+                        </ul>
                     }
                 </div>
             </div>
@@ -603,7 +640,7 @@
     private readonly HashSet<string> _nuevoMaterialSubcategoriaIds
         = new(StringComparer.OrdinalIgnoreCase);
     private string? _nuevoMaterialAreaId;
-    private string? _nuevoMaterialMesonId;
+    private readonly List<string> _nuevoMaterialMesonIds = new();
     private string? _nuevoMaterialNivel;
     private string? _nuevoMaterialDescripcion;
     private string? _nuevoMaterialImagenUrl;
@@ -618,6 +655,9 @@
     private readonly List<SelectOption> _subcategoriaOptions = new();
     private readonly List<SelectOption> _areaOptions = new();
     private readonly List<SelectOption> _mesonOptions = new();
+    private readonly List<SelectOption> _cajaOptions = new();
+
+    private readonly List<string> _nuevoMaterialCajaIds = new();
 
     private readonly List<MesonSummary> _mesonSummaries = new();
     private readonly List<MesonVisual> _mesonVisuals = new();
@@ -714,10 +754,12 @@
         _ = InvokeAsync(async () =>
         {
             _nuevoMaterialAreaId = null;
-            _nuevoMaterialMesonId = null;
+            _nuevoMaterialMesonIds.Clear();
             _mesonOptions.Clear();
             _mesonSummaries.Clear();
             _mesonVisuals.Clear();
+            _cajaOptions.Clear();
+            _nuevoMaterialCajaIds.Clear();
 
             _canvasViews.Clear();
             _plantasLookup.Clear();
@@ -745,7 +787,9 @@
             return;
 
         _nuevoMaterialAreaId = newArea;
-        _nuevoMaterialMesonId = null;
+        _nuevoMaterialMesonIds.Clear();
+        _cajaOptions.Clear();
+        _nuevoMaterialCajaIds.Clear();
         await LoadMesonesAsync();
         await InvokeAsync(StateHasChanged);
     }
@@ -759,7 +803,9 @@
             return;
 
         _nuevoMaterialAreaId = areaId;
-        _nuevoMaterialMesonId = null;
+        _nuevoMaterialMesonIds.Clear();
+        _cajaOptions.Clear();
+        _nuevoMaterialCajaIds.Clear();
         await LoadMesonesAsync();
         await InvokeAsync(StateHasChanged);
     }
@@ -767,31 +813,134 @@
     private void ClearAreaSelection()
     {
         _nuevoMaterialAreaId = null;
-        _nuevoMaterialMesonId = null;
+        _nuevoMaterialMesonIds.Clear();
         _mesonOptions.Clear();
         _mesonSummaries.Clear();
         _mesonVisuals.Clear();
+        _cajaOptions.Clear();
+        _nuevoMaterialCajaIds.Clear();
         StateHasChanged();
     }
 
     private void ClearMesonSelection()
     {
-        _nuevoMaterialMesonId = null;
+        _nuevoMaterialMesonIds.Clear();
+        _cajaOptions.Clear();
+        _nuevoMaterialCajaIds.Clear();
         StateHasChanged();
     }
 
-    private void SelectMeson(string mesonId)
+    private async Task SelectMesonAsync(string mesonId)
     {
-        if (string.Equals(_nuevoMaterialMesonId, mesonId, StringComparison.OrdinalIgnoreCase))
-            _nuevoMaterialMesonId = null;
+        if (_nuevoMaterialMesonIds.Contains(mesonId, StringComparer.OrdinalIgnoreCase))
+            _nuevoMaterialMesonIds.RemoveAll(id => string.Equals(id, mesonId, StringComparison.OrdinalIgnoreCase));
         else
-            _nuevoMaterialMesonId = mesonId;
+            _nuevoMaterialMesonIds.Add(mesonId);
+
+        await LoadCajasAsync();
+        StateHasChanged();
     }
 
-    private void OnMesonChanged(ChangeEventArgs args)
+    private async Task OnMesonChanged(ChangeEventArgs args)
     {
-        var v = args.Value?.ToString();
-        _nuevoMaterialMesonId = string.IsNullOrWhiteSpace(v) ? null : v;
+        _nuevoMaterialMesonIds.Clear();
+
+        if (args.Value is string[] values)
+        {
+            foreach (var v in values.Where(v => !string.IsNullOrWhiteSpace(v)))
+                _nuevoMaterialMesonIds.Add(v);
+        }
+        else if (args.Value is IEnumerable<string> listValues)
+        {
+            foreach (var v in listValues.Where(v => !string.IsNullOrWhiteSpace(v)))
+                _nuevoMaterialMesonIds.Add(v);
+        }
+        else
+        {
+            var v = args.Value?.ToString();
+            if (!string.IsNullOrWhiteSpace(v))
+                _nuevoMaterialMesonIds.Add(v);
+        }
+
+        await LoadCajasAsync();
+    }
+
+    private async Task OnCajaChanged(ChangeEventArgs args)
+    {
+        _nuevoMaterialCajaIds.Clear();
+
+        if (args.Value is string[] values)
+        {
+            foreach (var v in values.Where(v => !string.IsNullOrWhiteSpace(v)))
+                _nuevoMaterialCajaIds.Add(v);
+        }
+        else if (args.Value is IEnumerable<string> listValues)
+        {
+            foreach (var v in listValues.Where(v => !string.IsNullOrWhiteSpace(v)))
+                _nuevoMaterialCajaIds.Add(v);
+        }
+        else
+        {
+            var v = args.Value?.ToString();
+            if (!string.IsNullOrWhiteSpace(v))
+                _nuevoMaterialCajaIds.Add(v);
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task ToggleCajaAsync(string cajaId)
+    {
+        if (_nuevoMaterialCajaIds.Contains(cajaId, StringComparer.OrdinalIgnoreCase))
+            _nuevoMaterialCajaIds.RemoveAll(id => string.Equals(id, cajaId, StringComparison.OrdinalIgnoreCase));
+        else
+            _nuevoMaterialCajaIds.Add(cajaId);
+
+        StateHasChanged();
+        await Task.CompletedTask;
+    }
+
+    private async Task LoadCajasAsync()
+    {
+        _cajaOptions.Clear();
+
+        if (_nuevoMaterialMesonIds.Count == 0)
+        {
+            _nuevoMaterialCajaIds.Clear();
+            return;
+        }
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+        const string sql = @"
+            SELECT c.caja_id,
+                   c.meson_id,
+                   COALESCE(m.nombre_meson, c.meson_id) AS meson_nombre,
+                   c.nivel,
+                   c.dimensiones
+            FROM cajas c
+            LEFT JOIN mesones m ON m.meson_id = c.meson_id
+            WHERE c.meson_id = ANY(@mesones)
+            ORDER BY meson_nombre, c.nivel, c.caja_id";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("mesones", _nuevoMaterialMesonIds.ToArray());
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+        {
+            var cajaId = r.GetString(0);
+            var mesonId = r.IsDBNull(1) ? "" : r.GetString(1);
+            var mesonNombre = r.IsDBNull(2) ? "" : r.GetString(2);
+            var nivel = r.IsDBNull(3) ? 0 : r.GetInt32(3);
+            var dimensiones = r.IsDBNull(4) ? "" : r.GetString(4);
+
+            var label = $"{cajaId} · {mesonNombre} · nivel {nivel}";
+            if (!string.IsNullOrWhiteSpace(dimensiones))
+                label = $"{label} · {dimensiones}";
+
+            _cajaOptions.Add(new SelectOption(cajaId, label));
+        }
+
+        _nuevoMaterialCajaIds.RemoveAll(id => !_cajaOptions.Any(opt => string.Equals(opt.Id, id, StringComparison.OrdinalIgnoreCase)));
     }
 
     private string SelectedAreaLabel =>
@@ -800,9 +949,11 @@
         ?? "Área";
 
     private string SelectedMesonLabel =>
-        _mesonOptions.FirstOrDefault(m => string.Equals(m.Id, _nuevoMaterialMesonId, StringComparison.OrdinalIgnoreCase))?.Label
-        ?? _nuevoMaterialMesonId
-        ?? "Mesón";
+        _nuevoMaterialMesonIds.Count == 0
+            ? "Mesón"
+            : string.Join(", ", _mesonOptions
+                .Where(m => _nuevoMaterialMesonIds.Contains(m.Id, StringComparer.OrdinalIgnoreCase))
+                .Select(m => m.Label));
 
     private AreaItem? SelectedAreaForMap =>
         _canvasViews.SelectMany(v => v.Areas)
@@ -870,9 +1021,21 @@ private void OnImagenModoChanged(ChangeEventArgs args)
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(_nuevoMaterialMesonId))
+        if (_nuevoMaterialMesonIds.Count == 0)
         {
-            _nuevoMaterialMsg = "Selecciona un mesón asociado al área.";
+            _nuevoMaterialMsg = "Selecciona al menos un mesón asociado al área.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_nuevoMaterialNivel))
+        {
+            _nuevoMaterialMsg = "Ingresa un nivel para el material.";
+            return;
+        }
+        if (!int.TryParse(_nuevoMaterialNivel, NumberStyles.Any, CultureInfo.InvariantCulture, out var nivelValue) &&
+            !int.TryParse(_nuevoMaterialNivel, NumberStyles.Any, CultureInfo.CurrentCulture, out nivelValue))
+        {
+            _nuevoMaterialMsg = "El nivel debe ser un número entero.";
             return;
         }
 
@@ -955,12 +1118,12 @@ private void OnImagenModoChanged(ChangeEventArgs args)
         const string sqlInsert = @"
             INSERT INTO materiales
             (material_id, nombre, tipo, categoria_id, marca_id, estado_id,
-             area_id, meson_id, nivel, posicion,
+             area_id, posicion,
              laboratorio_id, descripcion, imagen_url, observaciones,
              capacidad_num, unidad_id, cantidad, altura_cm)
             VALUES
             (@id, @nombre, @tipo, @categoria, @marca, @estado,
-             @area, @meson, @nivel, @posicion,
+             @area, @posicion,
              @lab, @descripcion, @imagen, @obs,
              @capacidad, @unidad, @cantidad, @altura_cm)
         ";
@@ -977,8 +1140,6 @@ private void OnImagenModoChanged(ChangeEventArgs args)
             cmd.Parameters.AddWithValue("estado", string.IsNullOrWhiteSpace(_nuevoMaterialEstadoId) ? (object)DBNull.Value : _nuevoMaterialEstadoId!);
 
             cmd.Parameters.AddWithValue("area", _nuevoMaterialAreaId!);
-            cmd.Parameters.AddWithValue("meson", _nuevoMaterialMesonId!);
-            cmd.Parameters.AddWithValue("nivel", ParseIntOrNull(_nuevoMaterialNivel));
             cmd.Parameters.AddWithValue("posicion", string.IsNullOrWhiteSpace(_nuevoMaterialPosicion) ? (object)DBNull.Value : _nuevoMaterialPosicion!);
 
             cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
@@ -992,6 +1153,36 @@ private void OnImagenModoChanged(ChangeEventArgs args)
             cmd.Parameters.AddWithValue("altura_cm", alturaCm is null ? (object)DBNull.Value : alturaCm.Value);
 
             await cmd.ExecuteNonQueryAsync();
+        }
+
+        const string sqlMesonLink = @"
+            INSERT INTO materiales_mesones_niveles (material_id, meson_id, nivel)
+            SELECT @id, x, @nivel
+            FROM unnest(@mesones::varchar[]) AS x
+            ON CONFLICT DO NOTHING;
+        ";
+
+        await using (var cmdMeson = new NpgsqlCommand(sqlMesonLink, conn, tx))
+        {
+            cmdMeson.Parameters.AddWithValue("id", materialId);
+            cmdMeson.Parameters.AddWithValue("mesones", _nuevoMaterialMesonIds.ToArray());
+            cmdMeson.Parameters.AddWithValue("nivel", nivelValue);
+            await cmdMeson.ExecuteNonQueryAsync();
+        }
+
+        if (_nuevoMaterialCajaIds.Count > 0)
+        {
+            const string sqlCajasLink = @"
+                INSERT INTO cajas_materiales (caja_id, material_id)
+                SELECT x, @id
+                FROM unnest(@cajas::varchar[]) AS x
+                ON CONFLICT DO NOTHING;
+            ";
+
+            await using var cmdCajas = new NpgsqlCommand(sqlCajasLink, conn, tx);
+            cmdCajas.Parameters.AddWithValue("id", materialId);
+            cmdCajas.Parameters.AddWithValue("cajas", _nuevoMaterialCajaIds.ToArray());
+            await cmdCajas.ExecuteNonQueryAsync();
         }
 
         // ✅ NUEVO MODELO: subcategorías en tabla puente (M:N)
@@ -1023,25 +1214,24 @@ private void OnImagenModoChanged(ChangeEventArgs args)
         _nuevoMaterialMarcaId = null;
         _nuevoMaterialSubcategoriaIds.Clear();
         _nuevoMaterialAreaId = null;
-        _nuevoMaterialMesonId = null;
+        _nuevoMaterialMesonIds.Clear();
         _nuevoMaterialNivel = null;
         _nuevoMaterialDescripcion = null;
         _nuevoMaterialImagenUrl = null;
         _nuevoMaterialImagenModo = "url";
         _nuevoMaterialImagenArchivo = null;
         _nuevoMaterialObservaciones = null;
+        _nuevoMaterialCajaIds.Clear();
 
         _mesonOptions.Clear();
         _mesonSummaries.Clear();
         _mesonVisuals.Clear();
+        _cajaOptions.Clear();
 
         _nuevoMaterialMsg = "Material registrado.";
         await LoadMaterialesAsync();
         StateHasChanged();
     }
-    private static object ParseIntOrNull(string? value) =>
-    int.TryParse(value, out var i) ? i : DBNull.Value;
-
 /* ===========================
    ✅ Helpers UI: "relleno = azul" SOLO si es válido
    (igual filosofía que Documentaciones, pero con números validados)
@@ -1642,6 +1832,13 @@ private static string FilledInt(string? value, bool allowZero = false)
             // y dejamos categoría/subcategoría por LEFT JOIN (si faltan, mostramos "Sin ...")
             var sql = _verTodos
     ? @"
+                WITH meson_map AS (
+                    SELECT mmn.material_id,
+                           string_agg(DISTINCT COALESCE(ms.nombre_meson, mmn.meson_id), ', ' ORDER BY COALESCE(ms.nombre_meson, mmn.meson_id)) AS mesones
+                    FROM materiales_mesones_niveles mmn
+                    LEFT JOIN mesones ms ON ms.meson_id = mmn.meson_id
+                    GROUP BY mmn.material_id
+                )
                 SELECT m.material_id,
                        m.nombre,
                        COALESCE(c.nombre, 'Sin categoría') AS categoria,
@@ -1656,7 +1853,7 @@ private static string FilledInt(string? value, bool allowZero = false)
                        m.capacidad_num,
                        u.simbolo AS unidad_simbolo,
                        COALESCE(a.nombre_areas, '') AS area,
-                       COALESCE(ms.nombre_meson, '') AS meson,
+                       COALESCE(mm.mesones, '') AS meson,
                        COALESCE(m.posicion, '') AS posicion
                 FROM materiales m
                 LEFT JOIN categorias c ON c.categoria_id = m.categoria_id
@@ -1665,16 +1862,23 @@ private static string FilledInt(string? value, bool allowZero = false)
                 LEFT JOIN estados_activo ea ON ea.estado_id = m.estado_id
                 LEFT JOIN marcas ma ON ma.marca_id = m.marca_id
                 LEFT JOIN areas a ON a.area_id = m.area_id
-                LEFT JOIN mesones ms ON ms.meson_id = m.meson_id
+                LEFT JOIN meson_map mm ON mm.material_id = m.material_id
                 LEFT JOIN unidades u ON u.unidad_id = m.unidad_id
                 WHERE m.laboratorio_id = @laboratorio
                   AND m.tipo = ANY(@tipos)
                 GROUP BY m.material_id, m.nombre, c.nombre, m.tipo,
                          ea.nombre, ma.nombre, ma.imagen_url, m.imagen_url,
                                                   m.cantidad, m.altura_cm, m.capacidad_num, u.simbolo,
-                         a.nombre_areas, ms.nombre_meson, m.posicion
+                         a.nombre_areas, mm.mesones, m.posicion
                 ORDER BY categoria, subcategoria, m.nombre, m.material_id"
     : @"
+                WITH meson_map AS (
+                    SELECT mmn.material_id,
+                           string_agg(DISTINCT COALESCE(ms.nombre_meson, mmn.meson_id), ', ' ORDER BY COALESCE(ms.nombre_meson, mmn.meson_id)) AS mesones
+                    FROM materiales_mesones_niveles mmn
+                    LEFT JOIN mesones ms ON ms.meson_id = mmn.meson_id
+                    GROUP BY mmn.material_id
+                )
                 SELECT m.material_id,
                        m.nombre,
                        COALESCE(c.nombre, 'Sin categoría') AS categoria,
@@ -1689,7 +1893,7 @@ private static string FilledInt(string? value, bool allowZero = false)
                        m.capacidad_num,
                        u.simbolo AS unidad_simbolo,
                        COALESCE(a.nombre_areas, '') AS area,
-                       COALESCE(ms.nombre_meson, '') AS meson,
+                       COALESCE(mm.mesones, '') AS meson,
                        COALESCE(m.posicion, '') AS posicion
                 FROM materiales m
                 -- join para filtrar (el material debe tener la subcategoría solicitada)
@@ -1705,13 +1909,13 @@ private static string FilledInt(string? value, bool allowZero = false)
                 LEFT JOIN estados_activo ea ON ea.estado_id = m.estado_id
                 LEFT JOIN marcas ma ON ma.marca_id = m.marca_id
                 LEFT JOIN areas a ON a.area_id = m.area_id
-                LEFT JOIN mesones ms ON ms.meson_id = m.meson_id
+                LEFT JOIN meson_map mm ON mm.material_id = m.material_id
                 LEFT JOIN unidades u ON u.unidad_id = m.unidad_id
                 WHERE m.laboratorio_id = @laboratorio
                 GROUP BY m.material_id, m.nombre, c.nombre, m.tipo,
                          ea.nombre, ma.nombre, ma.imagen_url, m.imagen_url,
                          m.cantidad, m.altura_cm, m.capacidad_num, u.simbolo,
-a.nombre_areas, ms.nombre_meson, m.posicion
+a.nombre_areas, mm.mesones, m.posicion
                 ORDER BY m.nombre, m.material_id";
 
 
@@ -1994,8 +2198,7 @@ a.nombre_areas, ms.nombre_meson, m.posicion
 
     private string MesonFill(MesonVisual m)
     {
-        if (!string.IsNullOrWhiteSpace(_nuevoMaterialMesonId)
-            && string.Equals(_nuevoMaterialMesonId, m.MesonId, StringComparison.OrdinalIgnoreCase))
+        if (_nuevoMaterialMesonIds.Contains(m.MesonId, StringComparer.OrdinalIgnoreCase))
             return "#facc15";
 
         return m.Fill;
@@ -2003,8 +2206,7 @@ a.nombre_areas, ms.nombre_meson, m.posicion
 
     private decimal MesonOpacity(MesonVisual m)
     {
-        if (!string.IsNullOrWhiteSpace(_nuevoMaterialMesonId)
-            && string.Equals(_nuevoMaterialMesonId, m.MesonId, StringComparison.OrdinalIgnoreCase))
+        if (_nuevoMaterialMesonIds.Contains(m.MesonId, StringComparer.OrdinalIgnoreCase))
             return 0.75m;
 
         return m.Opacity;
@@ -2012,16 +2214,14 @@ a.nombre_areas, ms.nombre_meson, m.posicion
 
     private string MesonStroke(MesonVisual m)
     {
-        if (!string.IsNullOrWhiteSpace(_nuevoMaterialMesonId)
-            && string.Equals(_nuevoMaterialMesonId, m.MesonId, StringComparison.OrdinalIgnoreCase))
+        if (_nuevoMaterialMesonIds.Contains(m.MesonId, StringComparer.OrdinalIgnoreCase))
             return "#b45309";
         return "#1f2937";
     }
 
     private decimal MesonStrokeWidth(MesonVisual m)
     {
-        if (!string.IsNullOrWhiteSpace(_nuevoMaterialMesonId)
-            && string.Equals(_nuevoMaterialMesonId, m.MesonId, StringComparison.OrdinalIgnoreCase))
+        if (_nuevoMaterialMesonIds.Contains(m.MesonId, StringComparer.OrdinalIgnoreCase))
             return 0.05m;
         return 0.03m;
     }

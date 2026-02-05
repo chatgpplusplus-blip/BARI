@@ -148,6 +148,75 @@
                     }
                 </div>
             </div>
+
+            <div class="page-card" style="margin-top:1.2rem;">
+                <h3 style="margin:0 0 .5rem 0">Cajas (@_cajas.Count)</h3>
+
+                <div class="assign-row">
+                    <select class="field" @bind="_selectedCajaId">
+                        <option value="">Asociar caja disponible</option>
+                        @foreach (var opt in _cajasDisponibles)
+                        {
+                            <option value="@opt.Id">@opt.Label</option>
+                        }
+                    </select>
+                    <button class="btn"
+                            @onclick="AsociarCajaAsync"
+                            disabled="@string.IsNullOrWhiteSpace(_selectedCajaId)">
+                        Asociar
+                    </button>
+                    @if (!string.IsNullOrWhiteSpace(_cajaMsg))
+                    {
+                        <span class="text-sm muted">@_cajaMsg</span>
+                    }
+                </div>
+
+                <div class="assign-row">
+                    <input class="field" placeholder="Nivel (int)" @bind="_nuevoCajaNivel" />
+                    <input class="field" placeholder="Dimensiones (opcional)" @bind="_nuevoCajaDimensiones" />
+                    <input class="field" placeholder="ID caja (opcional)" @bind="_nuevoCajaId" />
+                    <button class="btn" @onclick="CrearCajaAsync">Crear caja</button>
+                </div>
+
+                @if (_cajas.Count == 0)
+                {
+                    <p class="muted">Sin cajas asociadas.</p>
+                }
+                else
+                {
+                    <ul style="list-style:none; padding-left:0; margin:.5rem 0 0">
+                        @foreach (var caja in _cajas)
+                        {
+                            <li style="padding:.5rem 0; border-bottom:1px dashed #eee">
+                                <details>
+                                    <summary style="cursor:pointer;">
+                                        <strong>@caja.CajaId</strong>
+                                        <span class="muted">· nivel @caja.Nivel</span>
+                                        @if (!string.IsNullOrWhiteSpace(caja.Dimensiones))
+                                        {
+                                            <span class="muted">· @caja.Dimensiones</span>
+                                        }
+                                    </summary>
+
+                                    @if (caja.Materiales.Count == 0)
+                                    {
+                                        <div class="muted" style="margin-top:.35rem;"><em>Sin materiales.</em></div>
+                                    }
+                                    else
+                                    {
+                                        <ul class="simple-list" style="margin-top:.35rem;">
+                                            @foreach (var mat in caja.Materiales)
+                                            {
+                                                <li>@mat.Nombre</li>
+                                            }
+                                        </ul>
+                                    }
+                                </details>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
         }
         else
         {
@@ -340,6 +409,14 @@
     // Lookups
     private readonly List<SelectOption> _areaOptions = new();
     private readonly List<SelectOption> _canvasOptions = new();
+    private readonly List<SelectOption> _cajasDisponibles = new();
+
+    private readonly List<CajaItem> _cajas = new();
+    private string? _selectedCajaId;
+    private string? _nuevoCajaId;
+    private string? _nuevoCajaNivel;
+    private string? _nuevoCajaDimensiones;
+    private string? _cajaMsg;
 
     protected override void OnInitialized()
     {
@@ -375,12 +452,16 @@
 
         _areaOptions.Clear();
         _canvasOptions.Clear();
+        _cajasDisponibles.Clear();
+        _cajas.Clear();
         edit = new MesonEdit();
 
         try
         {
             await LoadLookupsAsync();
             await LoadMesonAsync();
+            await LoadCajasAsync();
+            await LoadCajasDisponiblesAsync();
 
             _imagenModo = "url";
             _imagenArchivoNombre = null;
@@ -544,7 +625,7 @@
 
         found = true;
 
-        edit = new MesonEdit
+            edit = new MesonEdit
             {
                 MesonId = r.GetString(0),
                 AreaId = r.IsDBNull(1) ? null : r.GetString(1),
@@ -560,6 +641,149 @@
                 BloqueLargo = r.IsDBNull(9) ? null : r.GetDecimal(9).ToString(CultureInfo.InvariantCulture),
                 BloqueAltura = r.IsDBNull(10) ? null : r.GetDecimal(10).ToString(CultureInfo.InvariantCulture),
             };
+    }
+
+    private async Task LoadCajasAsync()
+    {
+        _cajas.Clear();
+        _cajaMsg = null;
+
+        if (!found)
+            return;
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+        const string sql = @"
+            SELECT c.caja_id,
+                   c.nivel,
+                   c.dimensiones
+            FROM cajas c
+            WHERE c.meson_id = @meson
+            ORDER BY c.nivel, c.caja_id";
+
+        var cajaLookup = new Dictionary<string, CajaItem>(StringComparer.OrdinalIgnoreCase);
+        await using (var cmd = new NpgsqlCommand(sql, conn))
+        {
+            cmd.Parameters.AddWithValue("meson", edit.MesonId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var caja = new CajaItem(
+                    reader.GetString(0),
+                    reader.GetInt32(1),
+                    reader.IsDBNull(2) ? null : reader.GetString(2)
+                );
+                cajaLookup[caja.CajaId] = caja;
+                _cajas.Add(caja);
+            }
+        }
+
+        if (_cajas.Count == 0)
+            return;
+
+        const string sqlMateriales = @"
+            SELECT cm.caja_id,
+                   m.material_id,
+                   m.nombre
+            FROM cajas_materiales cm
+            INNER JOIN materiales m ON m.material_id = cm.material_id
+            WHERE cm.caja_id = ANY(@cajas)
+            ORDER BY m.nombre";
+
+        await using (var cmdMat = new NpgsqlCommand(sqlMateriales, conn))
+        {
+            cmdMat.Parameters.AddWithValue("cajas", _cajas.Select(c => c.CajaId).ToArray());
+            await using var reader = await cmdMat.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var cajaId = reader.GetString(0);
+                if (cajaLookup.TryGetValue(cajaId, out var caja))
+                {
+                    caja.Materiales.Add(new CajaMaterialItem(reader.GetString(1), reader.GetString(2)));
+                }
+            }
+        }
+    }
+
+    private async Task LoadCajasDisponiblesAsync()
+    {
+        _cajasDisponibles.Clear();
+        _selectedCajaId = null;
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+        const string sql = @"
+            SELECT c.caja_id,
+                   c.nivel,
+                   c.dimensiones
+            FROM cajas c
+            WHERE c.meson_id IS NULL OR c.meson_id = ''
+            ORDER BY c.caja_id";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+        {
+            var cajaId = r.GetString(0);
+            var nivel = r.GetInt32(1);
+            var dimensiones = r.IsDBNull(2) ? null : r.GetString(2);
+            var label = $"{cajaId} · nivel {nivel}";
+            if (!string.IsNullOrWhiteSpace(dimensiones))
+                label = $"{label} · {dimensiones}";
+            _cajasDisponibles.Add(new SelectOption(cajaId, label));
+        }
+    }
+
+    private async Task AsociarCajaAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_selectedCajaId))
+            return;
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+        const string sql = @"
+            UPDATE cajas
+            SET meson_id = @meson
+            WHERE caja_id = @caja
+              AND (meson_id IS NULL OR meson_id = '')";
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("meson", edit.MesonId);
+        cmd.Parameters.AddWithValue("caja", _selectedCajaId);
+        var updated = await cmd.ExecuteNonQueryAsync();
+
+        _cajaMsg = updated > 0 ? "Caja asociada." : "No se pudo asociar la caja.";
+
+        await LoadCajasAsync();
+        await LoadCajasDisponiblesAsync();
+    }
+
+    private async Task CrearCajaAsync()
+    {
+        if (!int.TryParse(_nuevoCajaNivel, NumberStyles.Any, CultureInfo.InvariantCulture, out var nivelValue) &&
+            !int.TryParse(_nuevoCajaNivel, NumberStyles.Any, CultureInfo.CurrentCulture, out nivelValue))
+        {
+            _cajaMsg = "El nivel debe ser un número entero.";
+            return;
+        }
+
+        var cajaId = string.IsNullOrWhiteSpace(_nuevoCajaId)
+            ? $"caja_{Guid.NewGuid():N}".Substring(0, 12)
+            : _nuevoCajaId.Trim();
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+        const string sql = @"
+            INSERT INTO cajas (caja_id, meson_id, nivel, dimensiones)
+            VALUES (@id, @meson, @nivel, @dim)";
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("id", cajaId);
+        cmd.Parameters.AddWithValue("meson", edit.MesonId);
+        cmd.Parameters.AddWithValue("nivel", nivelValue);
+        cmd.Parameters.AddWithValue("dim", string.IsNullOrWhiteSpace(_nuevoCajaDimensiones) ? (object)DBNull.Value : _nuevoCajaDimensiones);
+        await cmd.ExecuteNonQueryAsync();
+
+        _nuevoCajaId = null;
+        _nuevoCajaNivel = null;
+        _nuevoCajaDimensiones = null;
+        _cajaMsg = "Caja creada.";
+
+        await LoadCajasAsync();
     }
 
     private void OnImagenModoChanged(ChangeEventArgs args)
@@ -971,6 +1195,23 @@
     public void Dispose()
     {
         LaboratorioState.OnChange -= HandleLaboratorioChanged;
+    }
+
+    private sealed record CajaMaterialItem(string Id, string Nombre);
+
+    private sealed class CajaItem
+    {
+        public CajaItem(string cajaId, int nivel, string? dimensiones)
+        {
+            CajaId = cajaId;
+            Nivel = nivel;
+            Dimensiones = dimensiones;
+        }
+
+        public string CajaId { get; }
+        public int Nivel { get; }
+        public string? Dimensiones { get; }
+        public List<CajaMaterialItem> Materiales { get; } = new();
     }
 
     private sealed record SelectOption(string Id, string Label);
