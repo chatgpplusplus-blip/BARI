@@ -231,17 +231,7 @@
             </div>
 
             <div class="selector-split full-span">
-                <select class="border p-1 form-control @(_nuevoMaterialMesonIds.Count > 0 ? "is-filled" : "")"
-                        multiple
-                        size="6"
-                        @onchange="OnMesonChanged"
-                        disabled="@string.IsNullOrWhiteSpace(_nuevoMaterialAreaId)">
-                    @foreach (var meson in _mesonOptions)
-                    {
-                        <option value="@meson.Id" selected="@_nuevoMaterialMesonIds.Contains(meson.Id, StringComparer.OrdinalIgnoreCase)">@meson.Label</option>
-                    }
-                </select>
-
+                
                 <div class="visual-picker">
                     <div class="text-xs text-gray-500">Mesones del área seleccionada</div>
 
@@ -544,8 +534,8 @@
                         <th>Categoría</th>
                         <th>Subcategoría</th>
                         <th>Tipo</th>
-                        <th>Estado</th>
-                        <th>Marca</th>
+                        <th> Estado </th>
+                        <th> Marca </th>
                         <th>Cantidad</th>
                         <th>Altura (cm)</th>
                         <th>Área</th>
