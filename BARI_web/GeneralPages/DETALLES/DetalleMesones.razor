@@ -207,7 +207,7 @@
                                         <ul class="simple-list" style="margin-top:.35rem;">
                                             @foreach (var mat in caja.Materiales)
                                             {
-                                                <li>@mat.Nombre</li>
+                                                <li>@mat.Nombre <span class="muted">(stock caja: @mat.Cantidad.ToString(CultureInfo.InvariantCulture))</span></li>
                                             }
                                         </ul>
                                     }
@@ -683,7 +683,8 @@
         const string sqlMateriales = @"
             SELECT cm.caja_id,
                    m.material_id,
-                   m.nombre
+                   m.nombre,
+                   COALESCE(cm.cantidad, 1) AS cantidad
             FROM cajas_materiales cm
             INNER JOIN materiales m ON m.material_id = cm.material_id
             WHERE cm.caja_id = ANY(@cajas)
@@ -698,7 +699,7 @@
                 var cajaId = reader.GetString(0);
                 if (cajaLookup.TryGetValue(cajaId, out var caja))
                 {
-                    caja.Materiales.Add(new CajaMaterialItem(reader.GetString(1), reader.GetString(2)));
+                    caja.Materiales.Add(new CajaMaterialItem(reader.GetString(1), reader.GetString(2), reader.GetDecimal(3)));
                 }
             }
         }
@@ -1197,7 +1198,7 @@
         LaboratorioState.OnChange -= HandleLaboratorioChanged;
     }
 
-    private sealed record CajaMaterialItem(string Id, string Nombre);
+    private sealed record CajaMaterialItem(string Id, string Nombre, decimal Cantidad);
 
     private sealed class CajaItem
     {

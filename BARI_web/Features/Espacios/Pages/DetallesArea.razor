@@ -439,7 +439,7 @@
                                         <ul class="simple-list" style="margin-top:.35rem;">
                                             @foreach (var mat in caja.materiales)
                                             {
-                                                <li>@mat.nombre</li>
+                                                <li>@mat.nombre <span class="muted">(stock caja: @mat.cantidad.ToString(System.Globalization.CultureInfo.InvariantCulture))</span></li>
                                             }
                                         </ul>
                                     }
