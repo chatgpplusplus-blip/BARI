@@ -452,7 +452,7 @@
                             @foreach (var caja in _cajaOptions)
                             {
                                 var cantidadCaja = GetCajaCantidad(caja.Id);
-                                <div class="check-item caja-cantidad-item @(cantidadCaja.HasValue ? "selected" : "")">
+                                <div class="check-item caja-cantidad-item @((cantidadCaja.HasValue && cantidadCaja.Value > 0) ? "caja-con-material" : "")">
                                     <span>@caja.Label</span>
                                     <input class="border p-1 meson-link-level"
                                            type="number"
@@ -921,11 +921,8 @@
             !decimal.TryParse(raw, NumberStyles.Any, CultureInfo.CurrentCulture, out cantidad))
             return;
 
-        if (cantidad <= 0)
-        {
-            _cajaCantidades.Remove(cajaId);
+        if (cantidad < 0)
             return;
-        }
 
         _cajaCantidades[cajaId] = cantidad;
     }
@@ -1637,17 +1634,15 @@
             return;
         }
 
+        var cajasConStock = _cajaCantidades
+            .Where(kv => kv.Value > 0)
+            .ToList();
+
         if (edit.UsaCajas)
         {
-            if (_cajaCantidades.Count == 0)
+            if (cajasConStock.Count == 0)
             {
-                msg = "Si manejas por cajas, ingresa cantidad para al menos una caja.";
-                return;
-            }
-
-            if (_cajaCantidades.Values.Any(v => v <= 0))
-            {
-                msg = "Las cantidades por caja deben ser mayores a 0.";
+                msg = "Si manejas por cajas, ingresa cantidad mayor a 0 para al menos una caja.";
                 return;
             }
 
@@ -1748,7 +1743,7 @@
                     ON CONFLICT (caja_id, material_id)
                     DO UPDATE SET cantidad = EXCLUDED.cantidad;";
 
-                foreach (var kv in _cajaCantidades)
+                foreach (var kv in cajasConStock)
                 {
                     await ExecAsync(conn, tx, insCaja,
                         ("caja", kv.Key),
@@ -2032,6 +2027,22 @@
 
     .meson-link-level {
         width: 88px;
+    }
+
+    .caja-cantidad-item {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: .55rem;
+        padding: .5rem .6rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: .6rem;
+    }
+
+    .caja-cantidad-item.caja-con-material {
+        background: #ecfdf3;
+        border-color: #86efac;
     }
     .btn.primary {
             background: #2563eb;
