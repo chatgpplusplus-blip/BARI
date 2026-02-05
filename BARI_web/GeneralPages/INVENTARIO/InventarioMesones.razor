@@ -322,22 +322,137 @@
         }
     </div>
 
-    <div class="visual-picker" style="margin-top:.75rem;">
-        <div class="visual-toolbar">
-            <label class="text-xs muted">Filtrar por mapa de áreas</label>
+    <div class="guide-visualizers" style="margin-top:.75rem;">
+        <div class="guide-panel visual-picker guide-panel-map">
+            <div class="visual-toolbar">
+                <label class="text-xs muted">Mapa de áreas (filtro)</label>
 
-            <select class="border p-1 text-xs @(Filled(_currentPlantaId))" @bind="_currentPlantaId">
-                <option value="">Todas</option>
-                @foreach (var planta in _plantasLookup)
+                <select class="border p-1 text-xs @(Filled(_currentPlantaId))" @bind="_currentPlantaId">
+                    <option value="">Todas</option>
+                    @foreach (var planta in _plantasLookup)
+                    {
+                        <option value="@planta.Key">@planta.Value</option>
+                    }
+                </select>
+            </div>
+
+            @if (_canvasViews.Count == 0)
+            {
+                <div class="text-xs muted">Sin mapas disponibles.</div>
+            }
+            else
+            {
+                @foreach (var view in _canvasViews)
                 {
-                    <option value="@planta.Key">@planta.Value</option>
+                    var areasPorPlanta = view.Areas.Where(a => IsAreaInCurrentPlanta(a.PlantaId)).ToList();
+                    if (areasPorPlanta.Count == 0)
+                        continue;
+
+                    <div class="canvas-card canvas-card-lg">
+                        <div class="text-xs muted">@view.Canvas.Nombre</div>
+
+                        <svg width="100%" height="100%"
+                             viewBox="0 0 @view.Canvas.Ancho @view.Canvas.largo"
+                             preserveAspectRatio="xMidYMid meet">
+
+                            <rect x="0" y="0"
+                                  width="@FormatSvg(view.Canvas.Ancho)"
+                                  height="@FormatSvg(view.Canvas.largo)"
+                                  fill="transparent"
+                                  style="pointer-events:all"
+                                  @onclick="ClearAreaFilterSelection"
+                                  @onmouseover="@(() => HoverAreaFilter(null))" />
+
+                            @foreach (var area in areasPorPlanta)
+                            {
+                                foreach (var poly in area.Poligonos.OrderBy(p => p.ZOrder))
+                                {
+                                    <polygon points="@PointsString(poly)"
+                                             fill="@AreaFilterFill(area)"
+                                             stroke="#111827" stroke-width="0.03"
+                                             style="cursor:pointer"
+                                             @onclick:stopPropagation="true"
+                                             @onmouseover="@(() => HoverAreaFilter(area.AreaId))"
+                                             @onmouseout="@(() => HoverAreaFilter(null))"
+                                             @onclick="@(() => SelectAreaFilterFromVisualAsync(area.AreaId))" />
+                                }
+
+                                @if (!string.IsNullOrWhiteSpace(area.Nombre))
+                                {
+                                    var labelWidth = AreaLabelWidth(area);
+                                    var labelHeight = AreaLabelHeight(area);
+                                    var fontSize = AreaLabelFontSize(area);
+
+                                    <svg:rect x="@FormatSvg(area.CenterX - labelWidth / 2m)"
+                                              y="@FormatSvg(area.CenterY - labelHeight / 2m)"
+                                              width="@FormatSvg(labelWidth)"
+                                              height="@FormatSvg(labelHeight)"
+                                              fill="#ffffff" opacity="0.8" rx="0.15" ry="0.15"
+                                              @onclick:stopPropagation="true" />
+                                    <svg:text class="area-label"
+                                              x="@FormatSvg(area.CenterX)" y="@FormatSvg(area.CenterY)"
+                                              text-anchor="middle" dominant-baseline="middle"
+                                              font-size="@FormatSvg(fontSize)"
+                                              @onclick:stopPropagation="true">
+                                        @area.Nombre
+                                    </svg:text>
+                                }
+                            }
+                        </svg>
+                    </div>
                 }
-            </select>
+            }
         </div>
 
-        @if (_canvasViews.Count == 0)
+        <div class="guide-panel visual-picker guide-panel-detail">
+            <div class="visual-toolbar">
+                <label class="text-xs muted">Detalle del área seleccionada</label>
+            </div>
+
+            @if (SelectedAreaForFilter is null)
+            {
+                <div class="empty">Selecciona un área en el mapa para previsualizarla.</div>
+            }
+            else
+            {
+                <div class="canvas-card canvas-card-lg">
+                    <div class="text-xs muted">@SelectedAreaFilterLabel</div>
+                    <svg width="100%" height="100%"
+                         viewBox="@SelectedAreaFilterViewBox"
+                         preserveAspectRatio="xMidYMid meet">
+                        @foreach (var poly in SelectedAreaForFilter.Poligonos.OrderBy(p => p.ZOrder))
+                        {
+                            <polygon points="@PointsString(poly)"
+                                     fill="#93c5fd"
+                                     stroke="#1e3a8a" stroke-width="0.04" />
+                        }
+
+                        <svg:text class="area-label"
+                                  x="@FormatSvg(SelectedAreaForFilter.CenterX)"
+                                  y="@FormatSvg(SelectedAreaForFilter.CenterY)"
+                                  text-anchor="middle"
+                                  dominant-baseline="middle"
+                                  font-size="@FormatSvg(AreaLabelFontSize(SelectedAreaForFilter))">
+                            @SelectedAreaForFilter.Nombre
+                        </svg:text>
+                    </svg>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="text-xs muted" style="margin-top:.5rem;">
+        @if (_verTodos)
         {
-            <div class="text-xs muted">Sin mapas disponibles.</div>
+            <span>Mostrando todos los mesones.</span>
+        }
+        else if (!string.IsNullOrWhiteSpace(AreaId))
+        {
+            <span>Filtro actual: @SelectedAreaFilterLabel</span>
+        }
+        else
+        {
+            <span>Haz clic en un área para filtrar.</span>
         }
         else
         {
@@ -1077,6 +1192,32 @@
         _areaOptions.FirstOrDefault(a => string.Equals(a.Id, AreaId, StringComparison.OrdinalIgnoreCase))?.Label
         ?? AreaId
         ?? "Área";
+
+    private AreaItem? SelectedAreaForFilter =>
+        string.IsNullOrWhiteSpace(AreaId)
+            ? null
+            : _canvasViews.SelectMany(v => v.Areas)
+                .FirstOrDefault(a => string.Equals(a.AreaId, AreaId, StringComparison.OrdinalIgnoreCase));
+
+    private string SelectedAreaFilterViewBox
+    {
+        get
+        {
+            var area = SelectedAreaForFilter;
+            if (area is null)
+                return "0 0 10 10";
+
+            var padX = Math.Max(0.2m, area.Width * 0.12m);
+            var padY = Math.Max(0.2m, area.Height * 0.12m);
+
+            var minX = area.MinX - padX;
+            var minY = area.MinY - padY;
+            var width = Math.Max(1m, area.Width + padX * 2m);
+            var height = Math.Max(1m, area.Height + padY * 2m);
+
+            return $"{FormatSvg(minX)} {FormatSvg(minY)} {FormatSvg(width)} {FormatSvg(height)}";
+        }
+    }
 
     private string? AutoCanvasHint
     {
@@ -1966,6 +2107,26 @@
         min-width: 320px;
     }
 
+    .guide-visualizers {
+        display: flex;
+        align-items: stretch;
+        gap: 1rem;
+        justify-content: center;
+    }
+
+    .guide-panel {
+        flex: 1 1 0;
+        min-width: 0;
+    }
+
+    .guide-panel-map {
+        max-width: 1100px;
+    }
+
+    .guide-panel-detail {
+        max-width: 650px;
+    }
+
     .visual-toolbar {
         display: flex;
         justify-content: space-between;
@@ -1982,12 +2143,31 @@
         margin-top: .5rem;
     }
 
+    .canvas-card-lg {
+        min-height: 420px;
+    }
+
         .canvas-card svg {
             width: 100%;
-            height: 200px;
+            height: 420px;
             background: white;
             border-radius: .5rem;
         }
+
+    @media (max-width: 900px) {
+        .guide-visualizers {
+            overflow-x: auto;
+            justify-content: flex-start;
+            padding-bottom: .25rem;
+            scroll-snap-type: x mandatory;
+        }
+
+        .guide-panel {
+            min-width: 92%;
+            flex: 0 0 92%;
+            scroll-snap-align: start;
+        }
+    }
 
     .area-label {
         fill: #111827;
