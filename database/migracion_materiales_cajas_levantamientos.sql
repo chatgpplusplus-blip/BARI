@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS cajas (
 CREATE TABLE IF NOT EXISTS cajas_materiales (
   caja_id varchar NOT NULL REFERENCES cajas(caja_id) ON DELETE CASCADE,
   material_id varchar NOT NULL REFERENCES materiales(material_id) ON DELETE CASCADE,
+  cantidad numeric NOT NULL DEFAULT 1,
   PRIMARY KEY (caja_id, material_id)
 );
 

@@ -1150,15 +1150,17 @@ private void OnImagenModoChanged(ChangeEventArgs args)
         if (_nuevoMaterialCajaIds.Count > 0)
         {
             const string sqlCajasLink = @"
-                INSERT INTO cajas_materiales (caja_id, material_id)
-                SELECT x, @id
+                INSERT INTO cajas_materiales (caja_id, material_id, cantidad)
+                SELECT x, @id, @cantidad_caja
                 FROM unnest(@cajas::varchar[]) AS x
-                ON CONFLICT DO NOTHING;
+                ON CONFLICT (caja_id, material_id)
+                DO UPDATE SET cantidad = EXCLUDED.cantidad;
             ";
 
             await using var cmdCajas = new NpgsqlCommand(sqlCajasLink, conn, tx);
             cmdCajas.Parameters.AddWithValue("id", materialId);
             cmdCajas.Parameters.AddWithValue("cajas", _nuevoMaterialCajaIds.ToArray());
+            cmdCajas.Parameters.AddWithValue("cantidad_caja", cantidad is null ? 1m : cantidad.Value);
             await cmdCajas.ExecuteNonQueryAsync();
         }
 

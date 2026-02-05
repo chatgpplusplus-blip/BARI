@@ -139,3 +139,74 @@ svg {
         min-height: 62vh;
     }
 }
+
+
+.mesones-list {
+    display: flex;
+    flex-direction: column;
+    gap: .6rem;
+}
+
+.meson-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    border: 1px solid #dbeafe;
+    border-radius: 10px;
+    padding: .6rem;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.meson-card-main {
+    display: flex;
+    align-items: center;
+    gap: .65rem;
+    min-width: 0;
+}
+
+.meson-card-thumb {
+    width: 56px;
+    height: 40px;
+    object-fit: contain;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: #fff;
+    flex-shrink: 0;
+}
+
+.meson-card-title {
+    font-weight: 700;
+    color: #111827;
+}
+
+.meson-card-meta {
+    font-size: .78rem;
+    color: #6b7280;
+}
+
+.meson-card-actions {
+    display: flex;
+    gap: .5rem;
+    flex-wrap: wrap;
+}
+
+.meson-btn {
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: .35rem .65rem;
+    font-size: .85rem;
+    font-weight: 600;
+    background: #fff;
+}
+
+.meson-btn-primary {
+    border-color: #2563eb;
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+
+.meson-btn-secondary {
+    border-color: #9ca3af;
+    color: #111827;
+}

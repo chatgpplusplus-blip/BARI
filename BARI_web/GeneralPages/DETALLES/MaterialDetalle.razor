@@ -130,7 +130,7 @@
 
                         <div class="dl-row">
                             <div class="dt">Ubicación</div>
-                            <div class="dd">@BuildUbicacion(SelectedAreaLabel, SelectedMesonLabel, edit.Nivel, edit.Posicion)</div>
+                            <div class="dd">@UbicacionesMaterialLabel</div>
                         </div>
 
                         <div class="dl-row">
@@ -385,23 +385,40 @@
                     </select>
                 </div>
 
-                <div class="field">
-                    <label>Mesón</label>
-                    <select class="border p-1"
-                            value="@edit.MesonId"
-                            @onchange="OnMesonChanged"
-                            disabled="@string.IsNullOrWhiteSpace(edit.AreaId)">
-                        <option value="">(selecciona)</option>
-                        @foreach (var m in _mesonOptions.OrderBy(x => x.Label))
-                        {
-                            <option value="@m.Id">@m.Label</option>
-                        }
-                    </select>
-                </div>
-
-                <div class="field">
-                    <label>Nivel</label>
-                    <input class="border p-1" type="number" step="1" placeholder="Nivel" @bind="edit.Nivel" />
+                <div class="field full-span">
+                    <label>Mesones y niveles</label>
+                    @if (string.IsNullOrWhiteSpace(edit.AreaId))
+                    {
+                        <div class="text-xs muted">Selecciona un área para asignar mesones.</div>
+                    }
+                    else if (_mesonOptions.Count == 0)
+                    {
+                        <div class="text-xs muted">No hay mesones registrados en esta área.</div>
+                    }
+                    else
+                    {
+                        <div class="meson-links-editor">
+                            @foreach (var m in _mesonOptions.OrderBy(x => x.Label))
+                            {
+                                var selected = edit.MesonNiveles.Any(x => string.Equals(x.MesonId, m.Id, StringComparison.OrdinalIgnoreCase));
+                                <div class="meson-link-row">
+                                    <label class="meson-link-check">
+                                        <input type="checkbox"
+                                               checked="@selected"
+                                               @onchange="(e) => OnMesonToggle(m.Id, e)" />
+                                        <span>@m.Label</span>
+                                    </label>
+                                    <input class="border p-1 meson-link-level"
+                                           type="number"
+                                           step="1"
+                                           min="1"
+                                           value="@GetMesonNivel(m.Id)"
+                                           @oninput="(e) => OnMesonNivelChanged(m.Id, e)"
+                                           disabled="@(!selected)" />
+                                </div>
+                            }
+                        </div>
+                    }
                 </div>
 
                 <div class="field">
@@ -686,6 +703,7 @@
                 if (!string.IsNullOrWhiteSpace(edit.AreaId))
                     await LoadMesonesAsync(edit.AreaId);
 
+                await LoadMaterialMesonesAsync(edit.MaterialId);
                 await LoadExperienciasLigadasAsync(edit.MaterialId);
                 await LoadExperienciasOptionsAsync();
             }
@@ -795,10 +813,29 @@
         ?? edit.AreaId
         ?? "";
 
-    private string SelectedMesonLabel =>
-        _mesonOptions.FirstOrDefault(m => string.Equals(m.Id, edit.MesonId, StringComparison.OrdinalIgnoreCase))?.Label
-        ?? edit.MesonId
-        ?? "";
+    private string UbicacionesMaterialLabel
+    {
+        get
+        {
+            var area = SelectedAreaLabel;
+            var ubicaciones = edit.MesonNiveles
+                .Select(x =>
+                {
+                    var meson = _mesonOptions.FirstOrDefault(m => string.Equals(m.Id, x.MesonId, StringComparison.OrdinalIgnoreCase))?.Label ?? x.MesonId;
+                    return $"{meson} (nivel {x.Nivel})";
+                })
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (!string.IsNullOrWhiteSpace(edit.Posicion))
+                ubicaciones.Add(edit.Posicion!);
+
+            if (!string.IsNullOrWhiteSpace(area))
+                ubicaciones.Insert(0, area);
+
+            return ubicaciones.Count == 0 ? "Sin ubicación" : string.Join(" · ", ubicaciones);
+        }
+    }
 
     private static string FindLabel(List<SelectOption> list, string? id)
         => string.IsNullOrWhiteSpace(id) ? "" : (list.FirstOrDefault(x => string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase))?.Label ?? id);
@@ -822,16 +859,6 @@
             "CONSUMIBLE" => "Consumible",
             _ => string.IsNullOrWhiteSpace(t) ? "—" : t!
         };
-    }
-
-    private static string BuildUbicacion(string area, string meson, string? nivel, string? posicion)
-    {
-        var parts = new List<string>();
-        if (!string.IsNullOrWhiteSpace(area)) parts.Add(area);
-        if (!string.IsNullOrWhiteSpace(meson)) parts.Add(meson);
-        if (!string.IsNullOrWhiteSpace(nivel)) parts.Add($"Nivel {nivel}");
-        if (!string.IsNullOrWhiteSpace(posicion)) parts.Add(posicion);
-        return parts.Count == 0 ? "Sin ubicación" : string.Join(" · ", parts);
     }
 
     private static string ResolveUrl(string? url)
@@ -989,6 +1016,32 @@
             _mesonOptions.Add(new SelectOption(reader.GetString(0), reader.GetString(1)));
     }
 
+    private async Task LoadMaterialMesonesAsync(string materialId)
+    {
+        edit.MesonNiveles.Clear();
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+        const string sql = @"
+            SELECT mmn.meson_id,
+                   mmn.nivel
+            FROM materiales_mesones_niveles mmn
+            INNER JOIN mesones ms ON ms.meson_id = mmn.meson_id
+            INNER JOIN areas a ON a.area_id = ms.area_id
+            WHERE mmn.material_id = @mat
+              AND a.laboratorio_id = @lab
+            ORDER BY mmn.nivel, mmn.meson_id";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("mat", materialId);
+        cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            edit.MesonNiveles.Add(new MesonNivelLink(reader.GetString(0), reader.GetInt32(1)));
+        }
+    }
+
     // ========= Carga material =========
     private async Task LoadMaterialAsync()
     {
@@ -1010,8 +1063,6 @@
                    m.cantidad,
                    m.altura_cm,
                    m.area_id,
-                   m.meson_id,
-                   m.nivel,
                    m.posicion,
                    m.descripcion,
                    m.imagen_url,
@@ -1026,7 +1077,7 @@
               AND m.laboratorio_id = @lab
             GROUP BY m.material_id, m.categoria_id, m.tipo, m.nombre,
                      m.capacidad_num, m.unidad_id, m.marca_id, m.estado_id,
-                     m.cantidad, m.altura_cm, m.area_id, m.meson_id, m.nivel, m.posicion,
+                     m.cantidad, m.altura_cm, m.area_id, m.posicion,
                      m.descripcion, m.imagen_url, m.observaciones
             LIMIT 1;
         ";
@@ -1046,7 +1097,7 @@
 
         var categoriaIdDb = reader.IsDBNull(1) ? null : reader.GetString(1);
         var tipoDb = reader.IsDBNull(2) ? null : reader.GetString(2);
-        var subcats = reader.IsDBNull(17) ? Array.Empty<string>() : (string[])reader.GetValue(17);
+        var subcats = reader.IsDBNull(15) ? Array.Empty<string>() : (string[])reader.GetValue(15);
 
         edit = new MaterialEdit
             {
@@ -1065,14 +1116,11 @@
                 AlturaCm = reader.IsDBNull(9) ? null : reader.GetDecimal(9).ToString(CultureInfo.InvariantCulture),
 
                 AreaId = reader.IsDBNull(10) ? null : reader.GetString(10),
-                MesonId = reader.IsDBNull(11) ? null : reader.GetString(11),
+                Posicion = reader.IsDBNull(11) ? null : reader.GetString(11),
 
-                Nivel = reader.IsDBNull(12) ? null : reader.GetInt32(12).ToString(CultureInfo.InvariantCulture),
-                Posicion = reader.IsDBNull(13) ? null : reader.GetString(13),
-
-                Descripcion = reader.IsDBNull(14) ? null : reader.GetString(14),
-                ImagenUrl = reader.IsDBNull(15) ? null : reader.GetString(15),
-                Observaciones = reader.IsDBNull(16) ? null : reader.GetString(16),
+                Descripcion = reader.IsDBNull(12) ? null : reader.GetString(12),
+                ImagenUrl = reader.IsDBNull(13) ? null : reader.GetString(13),
+                Observaciones = reader.IsDBNull(14) ? null : reader.GetString(14),
             };
 
         edit.Tipo = (edit.Tipo ?? "").Trim().ToUpperInvariant();
@@ -1166,7 +1214,7 @@
     {
         var newArea = args.Value?.ToString();
         edit.AreaId = string.IsNullOrWhiteSpace(newArea) ? null : newArea;
-        edit.MesonId = null;
+        edit.MesonNiveles.Clear();
 
         _mesonOptions.Clear();
         if (!string.IsNullOrWhiteSpace(edit.AreaId))
@@ -1176,10 +1224,42 @@
         await InvokeAsync(StateHasChanged);
     }
 
-    private void OnMesonChanged(ChangeEventArgs args)
+    private void OnMesonToggle(string mesonId, ChangeEventArgs args)
     {
-        var v = args.Value?.ToString();
-        edit.MesonId = string.IsNullOrWhiteSpace(v) ? null : v;
+        var isChecked = args.Value is bool b ? b : string.Equals(args.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+        var current = edit.MesonNiveles.FirstOrDefault(x => string.Equals(x.MesonId, mesonId, StringComparison.OrdinalIgnoreCase));
+
+        if (isChecked)
+        {
+            if (current is null)
+                edit.MesonNiveles.Add(new MesonNivelLink(mesonId, 1));
+        }
+        else if (current is not null)
+        {
+            edit.MesonNiveles.Remove(current);
+        }
+
+        msg = null;
+    }
+
+    private int GetMesonNivel(string mesonId)
+        => edit.MesonNiveles.FirstOrDefault(x => string.Equals(x.MesonId, mesonId, StringComparison.OrdinalIgnoreCase))?.Nivel ?? 1;
+
+    private void OnMesonNivelChanged(string mesonId, ChangeEventArgs args)
+    {
+        var link = edit.MesonNiveles.FirstOrDefault(x => string.Equals(x.MesonId, mesonId, StringComparison.OrdinalIgnoreCase));
+        if (link is null)
+            return;
+
+        var value = args.Value?.ToString();
+        if (!int.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var nivel) &&
+            !int.TryParse(value, NumberStyles.Any, CultureInfo.CurrentCulture, out nivel))
+        {
+            nivel = 1;
+        }
+
+        link.Nivel = Math.Max(1, nivel);
+        msg = null;
     }
 
     private void OnCategoriaChanged(ChangeEventArgs args)
@@ -1256,9 +1336,9 @@
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(edit.MesonId))
+        if (edit.MesonNiveles.Count == 0)
         {
-            msg = "Selecciona un mesón.";
+            msg = "Selecciona al menos un mesón y su nivel.";
             return;
         }
 
@@ -1400,8 +1480,6 @@
                     marca_id=@marca,
                     estado_id=@estado,
                     area_id=@area,
-                    meson_id=@meson,
-                    nivel=@nivel,
                     posicion=@posicion,
                     descripcion=@descripcion,
                     imagen_url=@imagen,
@@ -1425,8 +1503,6 @@
                 ("estado", (object?)edit.EstadoId ?? DBNull.Value),
 
                 ("area", (object?)edit.AreaId ?? DBNull.Value),
-                ("meson", (object?)edit.MesonId ?? DBNull.Value),
-                ("nivel", ParseIntOrNull(edit.Nivel)),
                 ("posicion", (object?)edit.Posicion ?? DBNull.Value),
 
                 ("descripcion", (object?)edit.Descripcion ?? DBNull.Value),
@@ -1438,6 +1514,24 @@
                 ("cantidad", cantidad is null ? (object)DBNull.Value : cantidad.Value),
                 ("altura_cm", alturaCm is null ? (object)DBNull.Value : alturaCm.Value)
             );
+
+            await ExecAsync(conn, tx, "DELETE FROM materiales_mesones_niveles WHERE material_id=@id", ("id", edit.MaterialId));
+
+            if (edit.MesonNiveles.Count > 0)
+            {
+                const string insMesonNivel = @"
+                    INSERT INTO materiales_mesones_niveles (material_id, meson_id, nivel)
+                    VALUES (@mat, @meson, @nivel)
+                    ON CONFLICT DO NOTHING;";
+
+                foreach (var link in edit.MesonNiveles)
+                {
+                    await ExecAsync(conn, tx, insMesonNivel,
+                        ("mat", edit.MaterialId),
+                        ("meson", link.MesonId),
+                        ("nivel", link.Nivel));
+                }
+            }
 
             // material_subcategorias: reescritura completa
             await ExecAsync(conn, tx, "DELETE FROM material_subcategorias WHERE material_id=@id", ("id", edit.MaterialId));
@@ -1552,9 +1646,6 @@
         return string.Join(", ", dep.Items);
     }
 
-    private static object ParseIntOrNull(string? value) =>
-        int.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var i) ? i : DBNull.Value;
-
     private static bool TryParseDecimal(string? value, out decimal d)
     {
         d = 0m;
@@ -1579,6 +1670,18 @@
     private sealed record SelectOption(string Id, string Label);
     private sealed record ExperienciaLink(string ExperienciaId, string Nombre);
 
+    private sealed class MesonNivelLink
+    {
+        public MesonNivelLink(string mesonId, int nivel)
+        {
+            MesonId = mesonId;
+            Nivel = nivel;
+        }
+
+        public string MesonId { get; }
+        public int Nivel { get; set; }
+    }
+
     private sealed class MaterialEdit
     {
         public string MaterialId { get; set; } = "";
@@ -1602,9 +1705,8 @@
         public string? AlturaCm { get; set; }
 
         public string? AreaId { get; set; }
-        public string? MesonId { get; set; }
+        public List<MesonNivelLink> MesonNiveles { get; } = new();
 
-        public string? Nivel { get; set; }
         public string? Posicion { get; set; }
 
         public string? Descripcion { get; set; }
@@ -1672,7 +1774,41 @@
         cursor: pointer;
     }
 
-        .btn.primary {
+    
+    .meson-links-editor {
+        display: flex;
+        flex-direction: column;
+        gap: .45rem;
+        border: 1px solid #e2e8f0;
+        border-radius: .6rem;
+        padding: .6rem;
+        max-height: 260px;
+        overflow: auto;
+        background: #f8fafc;
+    }
+
+    .meson-link-row {
+        display: flex;
+        justify-content: space-between;
+        gap: .6rem;
+        align-items: center;
+        border: 1px solid #e2e8f0;
+        border-radius: .5rem;
+        padding: .4rem .5rem;
+        background: #fff;
+    }
+
+    .meson-link-check {
+        display: flex;
+        align-items: center;
+        gap: .45rem;
+        font-size: .9rem;
+    }
+
+    .meson-link-level {
+        width: 88px;
+    }
+    .btn.primary {
             background: #2563eb;
             color: #fff;
             border: none;

@@ -258,7 +258,7 @@ namespace BARI_web.Features.Espacios.Pages
             public List<CajaMaterialItem> materiales { get; } = new();
         }
 
-        private sealed record CajaMaterialItem(string material_id, string nombre);
+        private sealed record CajaMaterialItem(string material_id, string nombre, decimal cantidad);
 
         private sealed record SelectOption(string id, string label);
 
@@ -1784,7 +1784,8 @@ LEFT JOIN instalaciones ins
             const string sqlMateriales = @"
                 SELECT cm.caja_id,
                        m.material_id,
-                       m.nombre
+                       m.nombre,
+                       COALESCE(cm.cantidad, 1) AS cantidad
                 FROM cajas_materiales cm
                 INNER JOIN materiales m ON m.material_id = cm.material_id
                 WHERE cm.caja_id = ANY(@cajas)
@@ -1799,7 +1800,7 @@ LEFT JOIN instalaciones ins
                     var cajaId = reader.GetString(0);
                     if (cajaLookup.TryGetValue(cajaId, out var caja))
                     {
-                        caja.materiales.Add(new CajaMaterialItem(reader.GetString(1), reader.GetString(2)));
+                        caja.materiales.Add(new CajaMaterialItem(reader.GetString(1), reader.GetString(2), reader.GetDecimal(3)));
                     }
                 }
             }
