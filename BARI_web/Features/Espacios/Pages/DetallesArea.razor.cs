@@ -139,6 +139,9 @@ namespace BARI_web.Features.Espacios.Pages
         private readonly List<SustanciaItem> _sustancias = new();
         private readonly List<CajaItem> _cajas = new();
 
+        // Estado de cajas en DetallesArea.razor
+        private readonly List<CajaItem> _cajas = new();
+
         private readonly List<SelectOption> _equiposDisponibles = new();
         private readonly List<SelectOption> _instalacionesDisponibles = new();
         private readonly List<SelectOption> _contenedoresDisponibles = new();
@@ -176,6 +179,7 @@ namespace BARI_web.Features.Espacios.Pages
         private string? _nuevoDocumentoNotas;
         private string? _nuevoDocumentoMsg;
 
+        // Formulario rápido de cajas (vista de detalle de área)
         private string? _nuevoCajaId;
         private string? _nuevoCajaMesonId;
         private string? _nuevoCajaNivel;
