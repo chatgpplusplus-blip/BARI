@@ -137,6 +137,7 @@ namespace BARI_web.Features.Espacios.Pages
         private readonly List<EquipoItem> _equipos = new();
         private readonly List<InstalacionItem> _instalaciones = new();
         private readonly List<SustanciaItem> _sustancias = new();
+        private readonly List<CajaItem> _cajas = new();
 
         // Estado de cajas en DetallesArea.razor
         private readonly List<CajaItem> _cajas = new();
