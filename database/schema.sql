@@ -1,154 +1,73 @@
--- Reset completo del esquema
-DROP SCHEMA public CASCADE;
-CREATE SCHEMA public;
+BEGIN;
 
-GRANT ALL ON SCHEMA public TO postgres;
-GRANT ALL ON SCHEMA public TO public;
-
--- ==============================
--- CATÁLOGOS BÁSICOS
--- ==============================
-CREATE TABLE categorias (
-  categoria_id varchar PRIMARY KEY,
-  nombre text NOT NULL UNIQUE
-);
-
-CREATE TABLE subcategorias (
-  subcategoria_id varchar PRIMARY KEY,
-  categoria_id varchar NOT NULL REFERENCES categorias(categoria_id),
-  nombre text NOT NULL,
-  UNIQUE (categoria_id, nombre)
-);
-
-CREATE TABLE marcas (
-  marca_id varchar PRIMARY KEY,
-  nombre text NOT NULL UNIQUE
-);
-
-CREATE TABLE unidades (
-  unidad_id varchar PRIMARY KEY,
-  nombre text NOT NULL,
-  simbolo text NOT NULL,
-  UNIQUE (nombre, simbolo)
-);
-
-CREATE TABLE condiciones (
-  condicion_id varchar PRIMARY KEY,
-  nombre text NOT NULL UNIQUE
-);
-
-CREATE TABLE estados_activo (
-  estado_id varchar PRIMARY KEY,
-  nombre text NOT NULL
-);
-
-CREATE TABLE usos (
-  uso_id varchar PRIMARY KEY,
-  nombre text NOT NULL,
-  nota_seguridad text
-);
-
--- ==============================
--- LABORATORIOS
--- ==============================
-CREATE TABLE laboratorios (
-  laboratorio_id integer PRIMARY KEY,
-  nombre text NOT NULL UNIQUE,
-  tiene_ghs boolean NOT NULL DEFAULT false
-);
-
--- ==============================
--- ASIGNATURAS Y EXPERIENCIAS
--- ==============================
-CREATE TABLE asignaturas (
-  asignatura_id varchar PRIMARY KEY,
-  nombre text NOT NULL,
-  codigo_clase text NOT NULL UNIQUE,
-  descripcion text,
-  descripcion_detalle text,
-  laboratorio_id integer REFERENCES laboratorios(laboratorio_id)
-);
-
-CREATE TABLE experiencias_clases (
-  experiencia_id varchar PRIMARY KEY,
-  asignatura_id varchar NOT NULL REFERENCES asignaturas(asignatura_id),
-  nombre text NOT NULL,
-  materiales_usados text,
-  equipos_usados text,
-  procedimientos text,
-  tiempo_estimado_min integer,
-  observaciones text,
-  precauciones text,
-  orden integer,
-  descripcion_detalle text,
-  laboratorio_id integer REFERENCES laboratorios(laboratorio_id),
-  laboratorio_realizado_id varchar
-);
-
-INSERT INTO asignaturas (asignatura_id, nombre, codigo_clase, descripcion)
-VALUES ('quimica-general', 'Química General', 'QUI-101', 'Asignatura base de laboratorio de química.');
-
--- ==============================
+-- =========================================================
 -- SEGURIDAD QUÍMICA
--- ==============================
-CREATE TABLE h_codes (
+-- =========================================================
+CREATE TABLE IF NOT EXISTS h_codes (
   h_id varchar PRIMARY KEY,
   descripcion text NOT NULL UNIQUE,
   grupo text,
   nota text
 );
 
-CREATE TABLE p_codes (
+CREATE TABLE IF NOT EXISTS p_codes (
   p_id varchar PRIMARY KEY,
   descripcion text NOT NULL UNIQUE,
   grupo text,
   nota text
 );
 
-CREATE TABLE ghs_pictogramas (
+CREATE TABLE IF NOT EXISTS ghs_pictogramas (
   ghs_id varchar PRIMARY KEY,
   descripcion text NOT NULL,
   icon_url text,
   detalle text
 );
 
-CREATE TABLE cas_catalogo (
-  cas_id varchar PRIMARY KEY,
-  nombre text NOT NULL,
-  categoria text,
-  notas text
+-- =========================================================
+-- LABORATORIOS Y ESPACIO FÍSICO
+-- =========================================================
+CREATE TABLE IF NOT EXISTS laboratorios (
+  laboratorio_id integer PRIMARY KEY,
+  nombre text NOT NULL UNIQUE,
+  tiene_ghs boolean NOT NULL DEFAULT false
 );
 
--- ==============================
--- ESPACIO FÍSICO
--- ==============================
-CREATE TABLE plantas (
+CREATE TABLE IF NOT EXISTS plantas (
   planta_id text PRIMARY KEY,
   nombre text NOT NULL
 );
 
-CREATE TABLE canvas_lab (
+CREATE TABLE IF NOT EXISTS unidades (
+  unidad_id varchar PRIMARY KEY,
+  nombre text NOT NULL,
+  simbolo text NOT NULL,
+  UNIQUE (nombre, simbolo)
+);
+
+CREATE TABLE IF NOT EXISTS canvas_lab (
   canvas_id varchar PRIMARY KEY,
   nombre text NOT NULL,
   ancho_m numeric NOT NULL,
-  alto_m numeric NOT NULL,
+  largo_m numeric NOT NULL, -- Renombrado de alto_m
   margen_m numeric NOT NULL,
-  laboratorio_id integer REFERENCES laboratorios(laboratorio_id),
-  anotaciones text
+  anotaciones text,
+  laboratorio_id integer REFERENCES laboratorios(laboratorio_id)
 );
 
-CREATE TABLE areas (
+CREATE TABLE IF NOT EXISTS areas (
   area_id varchar PRIMARY KEY,
   nombre_areas text NOT NULL UNIQUE,
   altura_m numeric,
   area_total_m2 numeric,
   anotaciones_del_area text,
-  laboratorio_id integer NOT NULL DEFAULT 1 REFERENCES laboratorios(laboratorio_id),
+  descripcion text,
+  laboratorio_id integer NOT NULL REFERENCES laboratorios(laboratorio_id),
   planta_id text REFERENCES plantas(planta_id),
   canvas_id varchar REFERENCES canvas_lab(canvas_id)
 );
 
-CREATE TABLE poligonos (
+CREATE TABLE IF NOT EXISTS poligonos (
   poly_id varchar PRIMARY KEY,
   canvas_id varchar NOT NULL REFERENCES canvas_lab(canvas_id),
   area_id varchar REFERENCES areas(area_id),
@@ -157,7 +76,7 @@ CREATE TABLE poligonos (
   z_order integer NOT NULL DEFAULT 0
 );
 
-CREATE TABLE poligonos_puntos (
+CREATE TABLE IF NOT EXISTS poligonos_puntos (
   punto_id bigserial PRIMARY KEY,
   poly_id varchar NOT NULL REFERENCES poligonos(poly_id) ON DELETE CASCADE,
   orden integer NOT NULL,
@@ -166,7 +85,7 @@ CREATE TABLE poligonos_puntos (
   UNIQUE (poly_id, orden)
 );
 
-CREATE TABLE puertas (
+CREATE TABLE IF NOT EXISTS puertas (
   puerta_id varchar PRIMARY KEY,
   canvas_id varchar NOT NULL REFERENCES canvas_lab(canvas_id),
   area_a varchar REFERENCES areas(area_id),
@@ -180,7 +99,7 @@ CREATE TABLE puertas (
   nota text
 );
 
-CREATE TABLE ventanas (
+CREATE TABLE IF NOT EXISTS ventanas (
   ventana_id varchar PRIMARY KEY,
   canvas_id varchar NOT NULL REFERENCES canvas_lab(canvas_id),
   area_a varchar REFERENCES areas(area_id),
@@ -194,55 +113,96 @@ CREATE TABLE ventanas (
   nota text
 );
 
-CREATE TABLE mesones (
+CREATE TABLE IF NOT EXISTS mesones (
   meson_id varchar PRIMARY KEY,
   area_id varchar NOT NULL REFERENCES areas(area_id),
   nombre_meson text NOT NULL,
   niveles_totales integer,
-  ancho_cm numeric,
-  profundidad_cm numeric,
-  largo_cm numeric,
-  laboratorio_id integer NOT NULL DEFAULT 1 REFERENCES laboratorios(laboratorio_id),
+  laboratorio_id integer NOT NULL REFERENCES laboratorios(laboratorio_id),
+  imagen_url text, -- Agregado
   UNIQUE (area_id, nombre_meson)
 );
 
--- ==============================
--- INSTALACIONES Y EQUIPOS
--- ==============================
-CREATE TABLE instalaciones_tipo (
-  tipo_id varchar PRIMARY KEY,
-  nombre text NOT NULL,
-  notas text
+-- =========================================================
+-- CATÁLOGOS BÁSICOS
+-- =========================================================
+CREATE TABLE IF NOT EXISTS marcas (
+  marca_id varchar PRIMARY KEY,
+  nombre text NOT NULL UNIQUE,
+  imagen_url text
 );
 
-CREATE TABLE instalaciones (
-  instalacion_id varchar PRIMARY KEY,
-  tipo_id varchar REFERENCES instalaciones_tipo(tipo_id),
-  nombre text NOT NULL,
-  estado_id varchar REFERENCES estados_activo(estado_id),
-  area_id varchar REFERENCES areas(area_id),
-  meson_id varchar REFERENCES mesones(meson_id),
-  nivel integer,
-  posicion text,
-  canvas_id varchar REFERENCES canvas_lab(canvas_id),
-  poly_id varchar REFERENCES poligonos(poly_id),
-  laboratorio_id integer NOT NULL DEFAULT 1 REFERENCES laboratorios(laboratorio_id),
-  requiere_mantenimiento boolean NOT NULL,
-  notas text
+CREATE TABLE IF NOT EXISTS estados_activo (
+  estado_id varchar PRIMARY KEY,
+  nombre text NOT NULL
 );
 
-CREATE TABLE modelos_equipo (
+CREATE TABLE IF NOT EXISTS condiciones (
+  condicion_id varchar PRIMARY KEY,
+  nombre text NOT NULL UNIQUE
+);
+
+-- =========================================================
+-- CATEGORÍAS Y SUBCATEGORÍAS
+-- =========================================================
+CREATE TABLE IF NOT EXISTS categorias (
+  categoria_id varchar PRIMARY KEY,
+  nombre text NOT NULL UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS subcategorias (
+  subcategoria_id varchar PRIMARY KEY,
+  categoria_id varchar NOT NULL REFERENCES categorias(categoria_id),
+  nombre text NOT NULL,
+  UNIQUE (categoria_id, nombre),
+  UNIQUE (subcategoria_id, categoria_id)
+);
+
+-- =========================================================
+-- EQUIPOS
+-- =========================================================
+CREATE TABLE IF NOT EXISTS documentos (
+  -- Se crea primero para poder ser referenciada en modelos_equipo,
+  -- PERO modelos_equipo referencia documentos, y documentos referencia modelos_equipo.
+  -- PostgreSQL permite esto si se crea la tabla sin la FK circular primero y se añade despues,
+  -- O si simplemente creamos la tabla documentos al final y usamos ALTER.
+  -- Para mantener "un solo script limpio", pondremos documentos al final y modelos_equipo aquí.
+  -- *Nota: Si modelos_equipo tiene FK a documentos, documentos debe existir antes.*
+  -- *Solución en script limpio: Crear documentos (simplificada) -> Crear modelos -> Alter documentos.*
+  -- Sin embargo, para no complicar el script consolidado, asumiremos que manual_url
+  -- es solo texto o que la tabla documentos se crea antes sin las FKs circulares.
+  -- *Estrategia aplicada abajo:* Definimos documentos después, pero modelos_equipo la referencia.
+  -- Esto fallaría en orden secuencial estricto.
+  -- CORRECCIÓN: Dejaré modelos_equipo con manual_url como TEXT temporalmente o asumo 
+  -- que el usuario ejecutará esto en bloque.
+  -- Para que funcione 100% en copy-paste, crearé una tabla 'dummy' o quitaré la referencia directa
+  -- en CREATE y la pondré al final. 
+  -- *Decisión:* Dejar la referencia. Si falla, mover 'documentos' antes.
+  -- Como 'documentos' tiene FKs a TODO, es mejor crearla al final.
+  -- La FK de modelos_equipo(manual_url) -> documentos(documento_id) requiere documentos creada.
+  documento_id varchar PRIMARY KEY
+  -- (Definición completa más abajo, esto es solo un placeholder mental si reordenáramos).
+);
+-- *Nota: PostgreSQL no permite forward reference en CREATE TABLE.
+--  Voy a poner la tabla documentos AL FINAL, y añadiré la FK de modelos_equipo
+--  vía ALTER al final del script para garantizar integridad sin errores.*
+
+CREATE TABLE IF NOT EXISTS modelos_equipo (
   modelo_id varchar PRIMARY KEY,
   marca_id varchar REFERENCES marcas(marca_id),
-  subcategoria_id varchar REFERENCES subcategorias(subcategoria_id),
+  categoria_id varchar REFERENCES categorias(categoria_id),
   nombre_modelo text NOT NULL,
   es_calibrable boolean NOT NULL,
-  manual_url text,
-  notas text
+  manual_url varchar, -- Se añadirá FK al final
+  notas text,
+  descripcion text,
+  imagen_url text,
+  altura_cm numeric -- Agregado
 );
 
-CREATE TABLE equipos (
+CREATE TABLE IF NOT EXISTS equipos (
   equipo_id varchar PRIMARY KEY,
+  nombre text NOT NULL,
   modelo_id varchar REFERENCES modelos_equipo(modelo_id),
   serie text,
   estado_id varchar REFERENCES estados_activo(estado_id),
@@ -251,26 +211,16 @@ CREATE TABLE equipos (
   nivel integer,
   posicion text,
   canvas_id varchar REFERENCES canvas_lab(canvas_id),
-  poly_id varchar REFERENCES poligonos(poly_id),
+  categoria_id varchar REFERENCES categorias(categoria_id),
   fecha_compra date,
   garantia_hasta date,
-  laboratorio_id integer NOT NULL DEFAULT 1 REFERENCES laboratorios(laboratorio_id),
   requiere_calibracion boolean NOT NULL,
-  observaciones text
+  laboratorio_id integer NOT NULL REFERENCES laboratorios(laboratorio_id),
+  observaciones text,
+  imagen_url text
 );
 
-CREATE TABLE mant_eventos (
-  mant_id varchar PRIMARY KEY,
-  equipo_id varchar NOT NULL REFERENCES equipos(equipo_id),
-  tipo text NOT NULL,
-  fecha date NOT NULL,
-  descripcion text,
-  proveedor text,
-  costo numeric,
-  adjunto_url text
-);
-
-CREATE TABLE calibraciones (
+CREATE TABLE IF NOT EXISTS calibraciones (
   cal_id varchar PRIMARY KEY,
   equipo_id varchar NOT NULL REFERENCES equipos(equipo_id),
   fecha date NOT NULL,
@@ -282,76 +232,48 @@ CREATE TABLE calibraciones (
   notas text
 );
 
--- ==============================
--- INSTRUMENTOS EN STOCK
--- ==============================
-CREATE TABLE instrumentos_modelo (
-  modelo_id varchar PRIMARY KEY,
-  nombre_generico text NOT NULL,
-  capacidad_num numeric,
-  unidad_id varchar REFERENCES unidades(unidad_id),
-  material text,
-  subcategoria_id varchar REFERENCES subcategorias(subcategoria_id),
-  notas text
-);
-
-CREATE TABLE instrumentos_stock (
-  stock_id varchar PRIMARY KEY,
-  modelo_id varchar NOT NULL REFERENCES instrumentos_modelo(modelo_id),
-  marca_id varchar REFERENCES marcas(marca_id),
-  estado_id varchar REFERENCES estados_activo(estado_id),
-  cantidad integer NOT NULL,
-  area_id varchar REFERENCES areas(area_id),
-  meson_id varchar REFERENCES mesones(meson_id),
-  nivel integer,
-  posicion text,
-  canvas_id varchar REFERENCES canvas_lab(canvas_id),
-  poly_id varchar REFERENCES poligonos(poly_id),
-  laboratorio_id integer NOT NULL DEFAULT 1 REFERENCES laboratorios(laboratorio_id),
-  observaciones text
-);
-
--- ==============================
+-- =========================================================
 -- SUSTANCIAS
--- ==============================
-CREATE TABLE sustancias (
+-- =========================================================
+CREATE TABLE IF NOT EXISTS sustancias (
   sustancia_id varchar PRIMARY KEY,
   nombre_comercial text,
   nombre_quimico text,
   cas varchar,
   forma_fisica text,
-  sustancia_controlada boolean,
-  metodo_cuantificacion_preferido text,
-  subcategoria_id varchar REFERENCES subcategorias(subcategoria_id),
-  laboratorio_id integer NOT NULL DEFAULT 1 REFERENCES laboratorios(laboratorio_id),
-  observaciones text
+  sustancia_controlada boolean DEFAULT false,
+  categoria_id varchar REFERENCES categorias(categoria_id),
+  laboratorio_id integer NOT NULL REFERENCES laboratorios(laboratorio_id),
+  observaciones text,
+  descripcion text,
+  imagen_url text,
+  CONSTRAINT sustancias_nombre_minimo CHECK (
+    nombre_comercial IS NOT NULL OR nombre_quimico IS NOT NULL
+  )
 );
 
-CREATE TABLE sustancias_h (
+CREATE TABLE IF NOT EXISTS sustancias_h (
   sustancia_id varchar NOT NULL REFERENCES sustancias(sustancia_id),
   h_id varchar NOT NULL REFERENCES h_codes(h_id),
   PRIMARY KEY (sustancia_id, h_id)
 );
 
-CREATE TABLE sustancias_p (
+CREATE TABLE IF NOT EXISTS sustancias_p (
   sustancia_id varchar NOT NULL REFERENCES sustancias(sustancia_id),
   p_id varchar NOT NULL REFERENCES p_codes(p_id),
   PRIMARY KEY (sustancia_id, p_id)
 );
 
-CREATE TABLE sustancias_pictogramas (
+CREATE TABLE IF NOT EXISTS sustancias_pictogramas (
   sustancia_id varchar NOT NULL REFERENCES sustancias(sustancia_id),
   ghs_id varchar NOT NULL REFERENCES ghs_pictogramas(ghs_id),
   PRIMARY KEY (sustancia_id, ghs_id)
 );
 
-CREATE TABLE sustancias_usos (
-  sustancia_id varchar NOT NULL REFERENCES sustancias(sustancia_id),
-  uso_id varchar NOT NULL REFERENCES usos(uso_id),
-  PRIMARY KEY (sustancia_id, uso_id)
-);
-
-CREATE TABLE contenedores (
+-- =========================================================
+-- CONTENEDORES
+-- =========================================================
+CREATE TABLE IF NOT EXISTS contenedores (
   cont_id varchar PRIMARY KEY,
   sustancia_id varchar NOT NULL REFERENCES sustancias(sustancia_id),
   marca_id varchar REFERENCES marcas(marca_id),
@@ -373,62 +295,80 @@ CREATE TABLE contenedores (
   meson_id varchar REFERENCES mesones(meson_id),
   nivel integer,
   posicion text,
-  laboratorio_id integer NOT NULL DEFAULT 1 REFERENCES laboratorios(laboratorio_id),
-  qr text
+  laboratorio_id integer NOT NULL REFERENCES laboratorios(laboratorio_id),
+  qr text,
+  imagen_url text,
+  altura_cm numeric -- Agregado
 );
 
--- ==============================
+-- =========================================================
 -- MATERIALES
--- ==============================
-CREATE TABLE materiales_vidrio (
+-- =========================================================
+CREATE TABLE IF NOT EXISTS materiales (
   material_id varchar PRIMARY KEY,
   nombre text NOT NULL,
-  subcategoria_id varchar REFERENCES subcategorias(subcategoria_id),
+  tipo text NOT NULL CHECK (tipo IN ('VIDRIO','PLASTICO','MONTAJE','CONSUMIBLE')),
+  categoria_id varchar REFERENCES categorias(categoria_id),
+  marca_id varchar REFERENCES marcas(marca_id),
+  estado_id varchar REFERENCES estados_activo(estado_id),
+  area_id varchar REFERENCES areas(area_id),
+  meson_id varchar REFERENCES mesones(meson_id),
+  nivel integer,
+  posicion text,
+  laboratorio_id integer NOT NULL REFERENCES laboratorios(laboratorio_id),
+  observaciones text,
+  descripcion text,
+  imagen_url text,
   capacidad_num numeric,
   unidad_id varchar REFERENCES unidades(unidad_id),
-  marca_id varchar REFERENCES marcas(marca_id),
-  estado_id varchar REFERENCES estados_activo(estado_id),
-  area_id varchar REFERENCES areas(area_id),
-  meson_id varchar REFERENCES mesones(meson_id),
-  nivel integer,
-  posicion text,
-  laboratorio_id integer NOT NULL DEFAULT 1 REFERENCES laboratorios(laboratorio_id),
-  observaciones text
+  cantidad numeric,
+  altura_cm numeric, -- Agregado
+  CONSTRAINT materiales_vidrio_requiere_capacidad CHECK (
+    tipo <> 'VIDRIO' OR (capacidad_num IS NOT NULL AND unidad_id IS NOT NULL)
+  ),
+  CONSTRAINT materiales_consumible_requiere_cantidad CHECK (
+    tipo <> 'CONSUMIBLE' OR (cantidad IS NOT NULL)
+  )
 );
 
-CREATE TABLE materiales_montaje (
-  material_id varchar PRIMARY KEY,
+-- =========================================================
+-- TABLAS INTERMEDIAS
+-- =========================================================
+CREATE TABLE IF NOT EXISTS material_subcategorias (
+  material_id varchar NOT NULL REFERENCES materiales(material_id) ON DELETE CASCADE,
+  subcategoria_id varchar NOT NULL REFERENCES subcategorias(subcategoria_id) ON DELETE RESTRICT,
+  PRIMARY KEY (material_id, subcategoria_id)
+);
+
+CREATE TABLE IF NOT EXISTS modelo_equipo_subcategorias (
+  modelo_id varchar NOT NULL REFERENCES modelos_equipo(modelo_id) ON DELETE CASCADE,
+  subcategoria_id varchar NOT NULL REFERENCES subcategorias(subcategoria_id) ON DELETE RESTRICT,
+  PRIMARY KEY (modelo_id, subcategoria_id)
+);
+
+CREATE TABLE IF NOT EXISTS sustancia_subcategorias (
+  sustancia_id varchar NOT NULL REFERENCES sustancias(sustancia_id) ON DELETE CASCADE,
+  subcategoria_id varchar NOT NULL REFERENCES subcategorias(subcategoria_id) ON DELETE RESTRICT,
+  PRIMARY KEY (sustancia_id, subcategoria_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_material_subcats_subcat  ON material_subcategorias(subcategoria_id);
+CREATE INDEX IF NOT EXISTS idx_modelo_equipo_subcats_subcat ON modelo_equipo_subcategorias (subcategoria_id);
+CREATE INDEX IF NOT EXISTS idx_sustancia_subcats_subcat ON sustancia_subcategorias(subcategoria_id);
+
+-- =========================================================
+-- ASIGNATURAS Y EXPERIENCIAS
+-- =========================================================
+CREATE TABLE IF NOT EXISTS asignaturas (
+  asignatura_id varchar PRIMARY KEY,
   nombre text NOT NULL,
-  subcategoria_id varchar REFERENCES subcategorias(subcategoria_id),
-  marca_id varchar REFERENCES marcas(marca_id),
-  estado_id varchar REFERENCES estados_activo(estado_id),
-  area_id varchar REFERENCES areas(area_id),
-  meson_id varchar REFERENCES mesones(meson_id),
-  nivel integer,
-  posicion text,
-  laboratorio_id integer NOT NULL DEFAULT 1 REFERENCES laboratorios(laboratorio_id),
-  observaciones text
+  codigo_clase text NOT NULL UNIQUE,
+  descripcion text,
+  laboratorio_id integer REFERENCES laboratorios(laboratorio_id),
+  descripcion_detalle text
 );
 
-CREATE TABLE materiales_consumible (
-  material_id varchar PRIMARY KEY,
-  nombre text NOT NULL,
-  subcategoria_id varchar REFERENCES subcategorias(subcategoria_id),
-  marca_id varchar REFERENCES marcas(marca_id),
-  estado_id varchar REFERENCES estados_activo(estado_id),
-  cantidad integer,
-  area_id varchar REFERENCES areas(area_id),
-  meson_id varchar REFERENCES mesones(meson_id),
-  nivel integer,
-  posicion text,
-  laboratorio_id integer NOT NULL DEFAULT 1 REFERENCES laboratorios(laboratorio_id),
-  observaciones text
-);
-
--- ==============================
--- EXPERIENCIAS: RELACIONES
--- ==============================
-CREATE TABLE laboratorio_realizado (
+CREATE TABLE IF NOT EXISTS laboratorio_realizado (
   laboratorio_realizado_id varchar PRIMARY KEY,
   laboratorio_id integer NOT NULL REFERENCES laboratorios(laboratorio_id),
   asignatura_id varchar REFERENCES asignaturas(asignatura_id),
@@ -436,61 +376,201 @@ CREATE TABLE laboratorio_realizado (
   descripcion text
 );
 
-ALTER TABLE experiencias_clases
-ADD CONSTRAINT experiencias_clases_laboratorio_realizado_id_fkey
-FOREIGN KEY (laboratorio_realizado_id)
-REFERENCES laboratorio_realizado(laboratorio_realizado_id);
-
-CREATE TABLE experiencia_equipos (
-  experiencia_id varchar NOT NULL REFERENCES experiencias_clases(experiencia_id),
-  equipo_id varchar NOT NULL REFERENCES equipos(equipo_id),
-  PRIMARY KEY (experiencia_id, equipo_id)
+CREATE TABLE IF NOT EXISTS experiencias_clases (
+  experiencia_id varchar PRIMARY KEY,
+  asignatura_id varchar NOT NULL REFERENCES asignaturas(asignatura_id),
+  nombre text NOT NULL,
+  materiales_usados text,
+  equipos_usados text,
+  procedimientos text,
+  tiempo_estimado_min integer,
+  observaciones text,
+  precauciones text,
+  orden integer,
+  laboratorio_id integer REFERENCES laboratorios(laboratorio_id),
+  descripcion_detalle text,
+  laboratorio_realizado_id varchar REFERENCES laboratorio_realizado(laboratorio_realizado_id)
 );
 
-CREATE TABLE experiencia_materiales_vidrio (
+CREATE TABLE IF NOT EXISTS experiencia_equipos (
   experiencia_id varchar NOT NULL REFERENCES experiencias_clases(experiencia_id),
-  material_id varchar NOT NULL REFERENCES materiales_vidrio(material_id),
+  modelo_equipo_id varchar NOT NULL REFERENCES modelos_equipo(modelo_id),
+  PRIMARY KEY (experiencia_id, modelo_equipo_id)
+);
+
+CREATE TABLE IF NOT EXISTS experiencia_materiales (
+  experiencia_id varchar NOT NULL REFERENCES experiencias_clases(experiencia_id),
+  material_id varchar NOT NULL REFERENCES materiales(material_id),
   PRIMARY KEY (experiencia_id, material_id)
 );
 
-CREATE TABLE experiencia_materiales_montaje (
-  experiencia_id varchar NOT NULL REFERENCES experiencias_clases(experiencia_id),
-  material_id varchar NOT NULL REFERENCES materiales_montaje(material_id),
-  PRIMARY KEY (experiencia_id, material_id)
-);
-
-CREATE TABLE experiencia_materiales_consumible (
-  experiencia_id varchar NOT NULL REFERENCES experiencias_clases(experiencia_id),
-  material_id varchar NOT NULL REFERENCES materiales_consumible(material_id),
-  PRIMARY KEY (experiencia_id, material_id)
-);
-
-CREATE TABLE experiencia_sustancias (
+CREATE TABLE IF NOT EXISTS experiencia_sustancias (
   experiencia_id varchar NOT NULL REFERENCES experiencias_clases(experiencia_id),
   sustancia_id varchar NOT NULL REFERENCES sustancias(sustancia_id),
   PRIMARY KEY (experiencia_id, sustancia_id)
 );
 
--- ==============================
--- DOCUMENTACIÓN
--- ==============================
-CREATE TABLE documentos (
+-- =========================================================
+-- INSTALACIONES (Infraestructura Fija)
+-- =========================================================
+CREATE TABLE IF NOT EXISTS instalaciones (
+  instalacion_id varchar PRIMARY KEY,
+  nombre text NOT NULL,
+  subcategoria_id varchar REFERENCES subcategorias(subcategoria_id),
+  laboratorio_id integer NOT NULL REFERENCES laboratorios(laboratorio_id),
+  area_id varchar REFERENCES areas(area_id),
+  canvas_id varchar REFERENCES canvas_lab(canvas_id),
+  -- Eliminados pos_x, pos_y, altura_cm (según secuencia final)
+  estado_id varchar REFERENCES estados_activo(estado_id),
+  fecha_instalacion date,
+  fecha_ultima_revision date,
+  fecha_proxima_revision date,
+  proveedor_servicio text,
+  observaciones text,
+  descripcion text,
+  imagen_url text
+);
+
+-- =========================================================
+-- DOCUMENTOS
+-- =========================================================
+DROP TABLE IF EXISTS documentos CASCADE; -- Por seguridad si el dummy de arriba existiera
+
+CREATE TABLE IF NOT EXISTS documentos (
   documento_id varchar PRIMARY KEY,
   titulo text NOT NULL,
-  categoria_id varchar REFERENCES categorias(categoria_id),
-  subcategoria_id varchar REFERENCES subcategorias(subcategoria_id),
+  categoria_id varchar NOT NULL REFERENCES categorias(categoria_id),
+  subcategoria_id varchar NOT NULL,
+  CONSTRAINT fk_documentos_subcat_cat
+    FOREIGN KEY (subcategoria_id, categoria_id)
+    REFERENCES subcategorias(subcategoria_id, categoria_id),
+
+  descripcion_detalle text,
   url text,
   archivo_local text,
   notas text,
-  descripcion_detalle text,
-  laboratorio_id integer REFERENCES laboratorios(laboratorio_id)
+  imagen_url text,
+  marca_id varchar REFERENCES marcas(marca_id),
+  procedencia text NOT NULL DEFAULT 'INTERNO LABORATORIO'
+    CHECK (procedencia IN ('INTERNO LABORATORIO','INSTITUCION INTERNACIONAL','UPSA')),
+  laboratorio_contexto_id integer REFERENCES laboratorios(laboratorio_id),
+  alcance text NOT NULL DEFAULT 'GENERAL'
+    CHECK (alcance IN (
+      'GENERAL','MARCA','LABORATORIO','CLASE','ASIGNATURA','EXPERIENCIA',
+      'EQUIPO','MATERIAL','SUSTANCIA','CONTENEDOR'
+    )),
+
+  laboratorio_id integer REFERENCES laboratorios(laboratorio_id),
+  laboratorio_realizado_id varchar REFERENCES laboratorio_realizado(laboratorio_realizado_id),
+  asignatura_id varchar REFERENCES asignaturas(asignatura_id),
+  experiencia_id varchar REFERENCES experiencias_clases(experiencia_id),
+  modelo_equipo_id varchar REFERENCES modelos_equipo(modelo_id),
+  material_id varchar REFERENCES materiales(material_id),
+  sustancia_id varchar REFERENCES sustancias(sustancia_id),
+  cont_id varchar REFERENCES contenedores(cont_id),
+
+  CONSTRAINT documentos_tiene_archivo_o_url CHECK (
+    url IS NOT NULL OR archivo_local IS NOT NULL
+  ),
+
+  CONSTRAINT documentos_alcance_xor CHECK (
+    (alcance='GENERAL'
+      AND laboratorio_id IS NULL AND laboratorio_realizado_id IS NULL
+      AND asignatura_id IS NULL AND experiencia_id IS NULL AND  modelo_equipo_id  IS NULL
+      AND material_id IS NULL AND sustancia_id IS NULL AND cont_id IS NULL
+    ) OR
+    (alcance='MARCA'
+      AND marca_id IS NOT NULL
+      AND laboratorio_id IS NULL AND laboratorio_realizado_id IS NULL
+      AND asignatura_id IS NULL AND experiencia_id IS NULL AND  modelo_equipo_id  IS NULL
+      AND material_id IS NULL AND sustancia_id IS NULL AND cont_id IS NULL
+    ) OR
+    (alcance='LABORATORIO'
+      AND laboratorio_id IS NOT NULL
+      AND laboratorio_realizado_id IS NULL AND asignatura_id IS NULL AND experiencia_id IS NULL
+      AND  modelo_equipo_id  IS NULL AND material_id IS NULL AND sustancia_id IS NULL AND cont_id IS NULL
+    ) OR
+    (alcance='CLASE'
+      AND laboratorio_id IS NULL AND laboratorio_realizado_id IS NOT NULL
+      AND asignatura_id IS NULL AND experiencia_id IS NULL AND  modelo_equipo_id  IS NULL
+      AND material_id IS NULL AND sustancia_id IS NULL AND cont_id IS NULL
+    ) OR
+    (alcance='ASIGNATURA'
+      AND laboratorio_id IS NULL AND laboratorio_realizado_id IS NULL
+      AND asignatura_id IS NOT NULL AND experiencia_id IS NULL AND  modelo_equipo_id  IS NULL
+      AND material_id IS NULL AND sustancia_id IS NULL AND cont_id IS NULL
+    ) OR
+    (alcance='EXPERIENCIA'
+      AND laboratorio_id IS NULL AND laboratorio_realizado_id IS NULL
+      AND asignatura_id IS NULL AND experiencia_id IS NOT NULL AND  modelo_equipo_id  IS NULL
+      AND material_id IS NULL AND sustancia_id IS NULL AND cont_id IS NULL
+    ) OR
+    (alcance='EQUIPO'
+      AND laboratorio_id IS NULL AND laboratorio_realizado_id IS NULL
+      AND asignatura_id IS NULL AND experiencia_id IS NULL AND  modelo_equipo_id  IS NOT NULL
+      AND material_id IS NULL AND sustancia_id IS NULL AND cont_id IS NULL
+    ) OR
+    (alcance='MATERIAL'
+      AND laboratorio_id IS NULL AND laboratorio_realizado_id IS NULL
+      AND asignatura_id IS NULL AND experiencia_id IS NULL AND  modelo_equipo_id  IS NULL
+      AND material_id IS NOT NULL AND sustancia_id IS NULL AND cont_id IS NULL
+    ) OR
+    (alcance='SUSTANCIA'
+      AND laboratorio_id IS NULL AND laboratorio_realizado_id IS NULL
+      AND asignatura_id IS NULL AND experiencia_id IS NULL AND  modelo_equipo_id  IS NULL
+      AND material_id IS NULL AND sustancia_id IS NOT NULL AND cont_id IS NULL
+    ) OR
+    (alcance='CONTENEDOR'
+      AND laboratorio_id IS NULL AND laboratorio_realizado_id IS NULL
+      AND asignatura_id IS NULL AND experiencia_id IS NULL AND  modelo_equipo_id  IS NULL
+      AND material_id IS NULL AND sustancia_id IS NULL AND cont_id IS NOT NULL
+    )
+  ),
+
+  CONSTRAINT documentos_procedencia_marca_check CHECK (
+    (procedencia = 'UPSA' AND marca_id = 'upsa') OR
+    (procedencia = 'INSTITUCION INTERNACIONAL' AND marca_id IS NOT NULL AND marca_id <> 'upsa') OR
+    (procedencia = 'INTERNO LABORATORIO' AND marca_id IS NULL)
+  ),
+
+  CONSTRAINT documentos_solo_marca_requiere_alcance_marca CHECK (
+    NOT (
+      marca_id IS NOT NULL
+      AND laboratorio_id IS NULL AND laboratorio_realizado_id IS NULL
+      AND asignatura_id IS NULL AND experiencia_id IS NULL AND  modelo_equipo_id  IS NULL
+      AND material_id IS NULL AND sustancia_id IS NULL AND cont_id IS NULL
+      AND alcance <> 'MARCA'
+    )
+  )
 );
 
--- ==============================
--- META
--- ==============================
-CREATE TABLE bari_meta (
-  key text PRIMARY KEY,
-  val text NOT NULL,
-  at timestamp
+-- Cierre de la relación circular entre modelos_equipo y documentos
+ALTER TABLE modelos_equipo 
+  ADD CONSTRAINT fk_modelos_manual 
+  FOREIGN KEY (manual_url) REFERENCES documentos(documento_id);
+
+-- =========================================================
+-- BLOQUES (interiores)
+-- =========================================================
+CREATE TABLE IF NOT EXISTS bloques_int (
+  bloque_id varchar PRIMARY KEY,
+  canvas_id varchar NOT NULL REFERENCES canvas_lab(canvas_id),
+  instalacion_id varchar UNIQUE REFERENCES instalaciones(instalacion_id),
+  meson_id varchar UNIQUE REFERENCES mesones(meson_id),
+  etiqueta text,
+  color_hex text,
+  z_order integer NOT NULL DEFAULT 0,
+  pos_x numeric NOT NULL,
+  pos_y numeric NOT NULL,
+  ancho numeric NOT NULL,
+  largo numeric NOT NULL, -- Renombrado de alto
+  altura numeric,         -- Agregado
+  offset_x numeric NOT NULL DEFAULT 0,
+  offset_y numeric NOT NULL DEFAULT 0,
+
+  CONSTRAINT check_solamente_un_origen CHECK (
+    num_nonnulls(instalacion_id, meson_id) = 1
+  )
 );
+
+COMMIT;
