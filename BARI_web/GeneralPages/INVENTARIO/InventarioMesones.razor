@@ -426,7 +426,7 @@
                                                     }
                                                     @if (caja.Materiales.Count > 0)
                                                     {
-                                                        <div class="text-xs muted">Materiales: @string.Join(", ", caja.Materiales)</div>
+                                                        <div class="text-xs muted">Materiales: @string.Join(", ", caja.Materiales.Select(m => $"{m.Nombre} (stock caja: {m.Cantidad.ToString(CultureInfo.InvariantCulture)})"))</div>
                                                     }
                                                 </li>
                                             }
@@ -832,7 +832,8 @@
 
         const string sqlMateriales = @"
             SELECT cm.caja_id,
-                   m.nombre
+                   m.nombre,
+                   COALESCE(cm.cantidad, 1) AS cantidad
             FROM cajas_materiales cm
             INNER JOIN materiales m ON m.material_id = cm.material_id
             WHERE cm.caja_id = ANY(@cajas)
@@ -846,9 +847,10 @@
             {
                 var cajaId = r.GetString(0);
                 var nombre = r.GetString(1);
+                var cantidad = r.GetDecimal(2);
                 if (cajaMap.TryGetValue(cajaId, out var caja))
                 {
-                    caja.Materiales.Add(nombre);
+                    caja.Materiales.Add(new CajaMaterialResumen(nombre, cantidad));
                 }
             }
         }
@@ -1485,8 +1487,10 @@
         public string CajaId { get; }
         public int Nivel { get; }
         public string? Dimensiones { get; }
-        public List<string> Materiales { get; } = new();
+        public List<CajaMaterialResumen> Materiales { get; } = new();
     }
+
+    private sealed record CajaMaterialResumen(string Nombre, decimal Cantidad);
 
     private sealed record CanvasItem(string CanvasId, string Nombre, decimal Ancho, decimal largo, decimal Margen);
     private sealed record CanvasView(CanvasItem Canvas, List<AreaItem> Areas);

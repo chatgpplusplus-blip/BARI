@@ -892,29 +892,29 @@
                         <div class="text-xs text-gray-500 mb-2">@_nuevoCajaMsg</div>
                     }
 
-                    <div class="space-y-2">
+                    <div class="mesones-list">
                         @foreach (var mesRow in MesonesDelAreaActual().OrderBy(x => x.nombre_meson))
                         {
-                            <div class="flex items-center justify-between border rounded p-2">
-                                <div class="text-sm flex items-center gap-3">
+                            <div class="meson-card">
+                                <div class="meson-card-main">
                                     @if (!string.IsNullOrWhiteSpace(mesRow.imagen_url))
                                     {
                                         <img src="@ResolveUrl(mesRow.imagen_url!)"
-                                             style="width:52px;height:38px;object-fit:contain;border:1px solid #e5e7eb;border-radius:6px;background:#fff"
+                                             class="meson-card-thumb"
                                              onerror="this.style.display='none';" />
                                     }
 
                                     <div>
-                                        <div class="font-medium">@mesRow.nombre_meson</div>
-                                        <div class="text-xs text-gray-500">niveles: @(mesRow.niveles_totales?.ToString() ?? "—")</div>
+                                        <div class="meson-card-title">@mesRow.nombre_meson</div>
+                                        <div class="meson-card-meta">niveles: @(mesRow.niveles_totales?.ToString() ?? "—")</div>
                                     </div>
                                 </div>
 
-                                <div class="flex gap-2">
-                                    <button class="px-2 py-1 border rounded text-sm" @onclick="(()=>SeleccionarPorMeson(mesRow.meson_id))">
+                                <div class="meson-card-actions">
+                                    <button class="meson-btn meson-btn-secondary" @onclick="(()=>SeleccionarPorMeson(mesRow.meson_id))">
                                         Seleccionar
                                     </button>
-                                    <button class="px-2 py-1 border rounded text-sm" @onclick="(()=>CrearCajaParaMesonAsync(mesRow.meson_id))">
+                                    <button class="meson-btn meson-btn-primary" @onclick="(()=>CrearCajaParaMesonAsync(mesRow.meson_id))">
                                         + Caja
                                     </button>
                                 </div>
