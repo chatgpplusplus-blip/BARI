@@ -454,6 +454,21 @@
         {
             <span>Haz clic en un área para filtrar.</span>
         }
+
+        <div class="text-xs muted">
+            @if (_verTodos)
+            {
+                <span>Mostrando todos los mesones.</span>
+            }
+            else if (!string.IsNullOrWhiteSpace(AreaId))
+            {
+                <span>Filtro actual: @SelectedAreaFilterLabel</span>
+            }
+            else
+            {
+                <span>Haz clic en un área para filtrar.</span>
+            }
+        </div>
     </div>
 </section>
 
