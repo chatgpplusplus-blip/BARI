@@ -385,6 +385,73 @@
 
             <details open style="margin-top:.75rem">
                 <summary style="cursor:pointer; font-weight:700">
+                    Cajas (@_cajas.Count)
+                </summary>
+
+                <div class="assign-row" style="margin-top:.5rem">
+                    <select class="field" @bind="_nuevoCajaMesonId">
+                        <option value="">Selecciona mesón</option>
+                        @foreach (var m in _mesones)
+                        {
+                            <option value="@m.meson_id">@MesonNameForDisplay(m)</option>
+                        }
+                    </select>
+                    <input class="field" placeholder="Nivel (int)" @bind="_nuevoCajaNivel" />
+                    <input class="field" placeholder="Dimensiones (opcional)" @bind="_nuevoCajaDimensiones" />
+                    <input class="field" placeholder="ID caja (opcional)" @bind="_nuevoCajaId" />
+                    <button class="btn"
+                            @onclick="CrearCajaAsync"
+                            disabled="@string.IsNullOrWhiteSpace(_nuevoCajaMesonId)">
+                        Crear caja
+                    </button>
+                    @if (!string.IsNullOrWhiteSpace(_nuevoCajaMsg))
+                    {
+                        <span class="muted">@_nuevoCajaMsg</span>
+                    }
+                </div>
+
+                @if (_cajas.Count == 0)
+                {
+                    <p class="muted"><em>Sin cajas registradas.</em></p>
+                }
+                else
+                {
+                    <ul style="list-style:none; padding-left:0; margin:.5rem 0 0">
+                        @foreach (var caja in _cajas)
+                        {
+                            <li style="padding:.5rem 0; border-bottom:1px dashed #eee">
+                                <details>
+                                    <summary style="cursor:pointer;">
+                                        <strong>@caja.caja_id</strong>
+                                        <span class="muted">· @caja.meson_nombre · nivel @caja.nivel</span>
+                                        @if (!string.IsNullOrWhiteSpace(caja.dimensiones))
+                                        {
+                                            <span class="muted">· @caja.dimensiones</span>
+                                        }
+                                    </summary>
+
+                                    @if (caja.materiales.Count == 0)
+                                    {
+                                        <div class="muted" style="margin-top:.35rem;"><em>Sin materiales.</em></div>
+                                    }
+                                    else
+                                    {
+                                        <ul class="simple-list" style="margin-top:.35rem;">
+                                            @foreach (var mat in caja.materiales)
+                                            {
+                                                <li>@mat.nombre</li>
+                                            }
+                                        </ul>
+                                    }
+                                </details>
+                            </li>
+                        }
+                    </ul>
+                }
+            </details>
+
+            <details open style="margin-top:.75rem">
+                <summary style="cursor:pointer; font-weight:700">
                     Instalaciones (@_instalaciones.Count)
                 </summary>
 

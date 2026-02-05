@@ -138,6 +138,9 @@ namespace BARI_web.Features.Espacios.Pages
         private readonly List<InstalacionItem> _instalaciones = new();
         private readonly List<SustanciaItem> _sustancias = new();
 
+        // Estado de cajas en DetallesArea.razor
+        private readonly List<CajaItem> _cajas = new();
+
         private readonly List<SelectOption> _equiposDisponibles = new();
         private readonly List<SelectOption> _instalacionesDisponibles = new();
         private readonly List<SelectOption> _contenedoresDisponibles = new();
@@ -174,6 +177,13 @@ namespace BARI_web.Features.Espacios.Pages
         private string? _nuevoDocumentoArchivoLocal;
         private string? _nuevoDocumentoNotas;
         private string? _nuevoDocumentoMsg;
+
+        // Formulario rápido de cajas (vista de detalle de área)
+        private string? _nuevoCajaId;
+        private string? _nuevoCajaMesonId;
+        private string? _nuevoCajaNivel;
+        private string? _nuevoCajaDimensiones;
+        private string? _nuevoCajaMsg;
 
         // etiqueta override tomada del rectángulo interior del mesón
         private readonly Dictionary<string, string> _mesonLabelFromInner = new(StringComparer.OrdinalIgnoreCase);
@@ -238,6 +248,18 @@ namespace BARI_web.Features.Espacios.Pages
             string proveedor
         );
 
+        private sealed class CajaItem
+        {
+            public string caja_id { get; init; } = "";
+            public string meson_id { get; init; } = "";
+            public string meson_nombre { get; init; } = "";
+            public int nivel { get; init; }
+            public string? dimensiones { get; init; }
+            public List<CajaMaterialItem> materiales { get; } = new();
+        }
+
+        private sealed record CajaMaterialItem(string material_id, string nombre);
+
         private sealed record SelectOption(string id, string label);
 
         // ===== Ciclo de vida =====
@@ -280,6 +302,7 @@ namespace BARI_web.Features.Espacios.Pages
                 // interiores / puertas / ventanas / mesones
                 await LoadInnerItemsForArea(a);
                 await LoadMesonesForArea(targetAreaId); // ✅ primero
+                await LoadCajasForArea(targetAreaId);
                 await LoadBlocksForArea(a);             // ✅ después
                 await LoadDoorsAndWindowsForArea(a);
 
@@ -1716,6 +1739,109 @@ LEFT JOIN instalaciones ins
             }
 
             _mesones.AddRange(list.OrderBy(m => m.nombre_meson, StringComparer.OrdinalIgnoreCase));
+        }
+
+        private async Task LoadCajasForArea(string areaId)
+        {
+            _cajas.Clear();
+
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+                SELECT c.caja_id,
+                       c.meson_id,
+                       COALESCE(m.nombre_meson, c.meson_id) AS meson_nombre,
+                       c.nivel,
+                       c.dimensiones
+                FROM cajas c
+                INNER JOIN mesones m ON m.meson_id = c.meson_id
+                WHERE m.area_id = @area
+                ORDER BY meson_nombre, c.nivel, c.caja_id";
+
+            var cajaLookup = new Dictionary<string, CajaItem>(StringComparer.OrdinalIgnoreCase);
+            await using (var cmd = new NpgsqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("area", areaId);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    var cajaId = reader.GetString(0);
+                    var caja = new CajaItem
+                    {
+                        caja_id = cajaId,
+                        meson_id = reader.GetString(1),
+                        meson_nombre = reader.GetString(2),
+                        nivel = reader.GetInt32(3),
+                        dimensiones = reader.IsDBNull(4) ? null : reader.GetString(4)
+                    };
+                    cajaLookup[cajaId] = caja;
+                    _cajas.Add(caja);
+                }
+            }
+
+            if (_cajas.Count == 0)
+                return;
+
+            const string sqlMateriales = @"
+                SELECT cm.caja_id,
+                       m.material_id,
+                       m.nombre
+                FROM cajas_materiales cm
+                INNER JOIN materiales m ON m.material_id = cm.material_id
+                WHERE cm.caja_id = ANY(@cajas)
+                ORDER BY m.nombre";
+
+            await using (var cmdMat = new NpgsqlCommand(sqlMateriales, conn))
+            {
+                cmdMat.Parameters.AddWithValue("cajas", _cajas.Select(c => c.caja_id).ToArray());
+                await using var reader = await cmdMat.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    var cajaId = reader.GetString(0);
+                    if (cajaLookup.TryGetValue(cajaId, out var caja))
+                    {
+                        caja.materiales.Add(new CajaMaterialItem(reader.GetString(1), reader.GetString(2)));
+                    }
+                }
+            }
+        }
+
+        private async Task CrearCajaAsync()
+        {
+            if (string.IsNullOrWhiteSpace(_nuevoCajaMesonId))
+            {
+                _nuevoCajaMsg = "Selecciona un mesón para la caja.";
+                return;
+            }
+
+            if (!int.TryParse(_nuevoCajaNivel, NumberStyles.Any, CultureInfo.InvariantCulture, out var nivelValue) &&
+                !int.TryParse(_nuevoCajaNivel, NumberStyles.Any, CultureInfo.CurrentCulture, out nivelValue))
+            {
+                _nuevoCajaMsg = "El nivel debe ser un número entero.";
+                return;
+            }
+
+            var cajaId = string.IsNullOrWhiteSpace(_nuevoCajaId)
+                ? $"caja_{Guid.NewGuid():N}".Substring(0, 12)
+                : _nuevoCajaId.Trim();
+
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+                INSERT INTO cajas (caja_id, meson_id, nivel, dimensiones)
+                VALUES (@id, @meson, @nivel, @dim)";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("id", cajaId);
+            cmd.Parameters.AddWithValue("meson", _nuevoCajaMesonId);
+            cmd.Parameters.AddWithValue("nivel", nivelValue);
+            cmd.Parameters.AddWithValue("dim", string.IsNullOrWhiteSpace(_nuevoCajaDimensiones) ? (object)DBNull.Value : _nuevoCajaDimensiones);
+            await cmd.ExecuteNonQueryAsync();
+
+            _nuevoCajaId = null;
+            _nuevoCajaNivel = null;
+            _nuevoCajaDimensiones = null;
+            _nuevoCajaMsg = "Caja creada.";
+
+            if (_areaInfo is not null)
+                await LoadCajasForArea(_areaInfo.area_id);
         }
 
         private void GoToMesonById(string mesonId)
