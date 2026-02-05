@@ -427,6 +427,27 @@
                                      stroke="#1e3a8a" stroke-width="0.04" />
                         }
 
+                        @foreach (var meson in SelectedAreaMesonPreviewBlocks)
+                        {
+                            <g>
+                                <rect x="@FormatSvg(meson.PosX)"
+                                      y="@FormatSvg(meson.PosY)"
+                                      width="@FormatSvg(meson.Ancho)"
+                                      height="@FormatSvg(meson.Largo)"
+                                      fill="#bfdbfe"
+                                      stroke="#1d4ed8"
+                                      stroke-width="0.03" />
+                                <svg:text class="area-label"
+                                          x="@FormatSvg(meson.PosX + meson.Ancho / 2m)"
+                                          y="@FormatSvg(meson.PosY + meson.Largo / 2m)"
+                                          text-anchor="middle"
+                                          dominant-baseline="middle"
+                                          font-size="@FormatSvg(MesonLabelFontSize(meson))">
+                                    @meson.Nombre
+                                </svg:text>
+                            </g>
+                        }
+
                         <svg:text class="area-label"
                                   x="@FormatSvg(SelectedAreaForFilter.CenterX)"
                                   y="@FormatSvg(SelectedAreaForFilter.CenterY)"
@@ -606,6 +627,7 @@
 
     // Visualizador
     private readonly List<CanvasView> _canvasViews = new();
+    private readonly List<MesonPreviewBlock> _mesonPreviewBlocks = new();
     private readonly Dictionary<string, string> _plantasLookup = new(StringComparer.OrdinalIgnoreCase);
     private string? _currentPlantaId;
 
@@ -716,6 +738,7 @@
     private async Task LoadCanvasAreasAsync()
     {
         _canvasViews.Clear();
+        _mesonPreviewBlocks.Clear();
         _plantasLookup.Clear();
 
         var previousPlantaId = _currentPlantaId;
@@ -847,6 +870,40 @@
                 continue;
 
             _canvasViews.Add(new CanvasView(canvas, viewAreas));
+        }
+
+        const string blocksSql = @"
+            SELECT m.area_id,
+                   b.meson_id,
+                   COALESCE(NULLIF(m.nombre_meson, ''), b.meson_id) AS nombre_meson,
+                   b.pos_x,
+                   b.pos_y,
+                   b.ancho,
+                   b.largo,
+                   b.z_order
+            FROM bloques_int b
+            INNER JOIN mesones m ON m.meson_id = b.meson_id
+            WHERE m.laboratorio_id = @lab
+              AND COALESCE(m.area_id, '') <> ''
+            ORDER BY m.area_id, b.z_order, nombre_meson";
+
+        await using (var cmd = new NpgsqlCommand(blocksSql, conn))
+        {
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                _mesonPreviewBlocks.Add(new MesonPreviewBlock(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    (reader.GetString(2) ?? "").Trim(),
+                    reader.GetDecimal(3),
+                    reader.GetDecimal(4),
+                    reader.GetDecimal(5),
+                    reader.GetDecimal(6),
+                    reader.GetInt32(7)
+                ));
+            }
         }
 
         EnsurePlantaSelection(areas);
@@ -1150,6 +1207,22 @@
             var height = Math.Max(1m, area.Height + padY * 2m);
 
             return $"{FormatSvg(minX)} {FormatSvg(minY)} {FormatSvg(width)} {FormatSvg(height)}";
+        }
+    }
+
+    private IReadOnlyList<MesonPreviewBlock> SelectedAreaMesonPreviewBlocks
+    {
+        get
+        {
+            var area = SelectedAreaForFilter;
+            if (area is null)
+                return Array.Empty<MesonPreviewBlock>();
+
+            return _mesonPreviewBlocks
+                .Where(b => string.Equals(b.AreaId, area.AreaId, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(b => b.ZOrder)
+                .ThenBy(b => b.Nombre)
+                .ToList();
         }
     }
 
@@ -1666,6 +1739,12 @@
         return ClampDecimal(baseSize, 0.18m, 0.55m);
     }
 
+    private static decimal MesonLabelFontSize(MesonPreviewBlock meson)
+    {
+        var baseSize = Math.Min(meson.Ancho, meson.Largo) * 0.32m;
+        return ClampDecimal(baseSize, 0.12m, 0.38m);
+    }
+
     private static decimal ClampDecimal(decimal value, decimal min, decimal max)
     {
         if (value < min) return min;
@@ -1768,6 +1847,17 @@
     }
 
     private sealed record PointItem(decimal X, decimal Y);
+
+    private sealed record MesonPreviewBlock(
+        string AreaId,
+        string MesonId,
+        string Nombre,
+        decimal PosX,
+        decimal PosY,
+        decimal Ancho,
+        decimal Largo,
+        int ZOrder
+    );
 }
 
 <style>
