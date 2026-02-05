@@ -346,6 +346,7 @@
                         <th>Mesón</th>
                         <th>Área</th>
                         <th>Niveles</th>
+                        <th>Cajas</th>
                         <th>Imagen</th>
                     </tr>
                 </thead>
@@ -361,6 +362,35 @@
                             </td>
                             <td>@(string.IsNullOrWhiteSpace(it.Area) ? "—" : it.Area)</td>
                             <td>@(it.Niveles is null ? "—" : it.Niveles.Value.ToString(CultureInfo.InvariantCulture))</td>
+                            <td>
+                                @if (it.Cajas.Count == 0)
+                                {
+                                    <span class="text-xs muted">—</span>
+                                }
+                                else
+                                {
+                                    <details>
+                                        <summary style="cursor:pointer;">@it.Cajas.Count caja(s)</summary>
+                                        <ul class="simple-list" style="margin-top:.35rem;">
+                                            @foreach (var caja in it.Cajas)
+                                            {
+                                                <li>
+                                                    <strong>@caja.CajaId</strong>
+                                                    <span class="muted">· nivel @caja.Nivel</span>
+                                                    @if (!string.IsNullOrWhiteSpace(caja.Dimensiones))
+                                                    {
+                                                        <span class="muted">· @caja.Dimensiones</span>
+                                                    }
+                                                    @if (caja.Materiales.Count > 0)
+                                                    {
+                                                        <div class="text-xs muted">Materiales: @string.Join(", ", caja.Materiales)</div>
+                                                    }
+                                                </li>
+                                            }
+                                        </ul>
+                                    </details>
+                                }
+                            </td>
                             <td>
                                 @if (!string.IsNullOrWhiteSpace(it.ImagenUrl))
                                 {
@@ -694,13 +724,84 @@
                     (r.GetString(1) ?? "").Trim(),
                     (r.GetString(2) ?? "").Trim(),
                     r.IsDBNull(3) ? (int?)null : r.GetInt32(3),
-                    (r.GetString(4) ?? "").Trim()
+                    (r.GetString(4) ?? "").Trim(),
+                    new List<CajaResumen>()
                 ));
             }
+
+            await LoadCajasForMesonesAsync(conn);
         }
         catch (Exception ex)
         {
             loadError = ex.Message;
+        }
+    }
+
+    private async Task LoadCajasForMesonesAsync(NpgsqlConnection conn)
+    {
+        if (mesones.Count == 0)
+            return;
+
+        var mesonIds = mesones.Select(m => m.Id).ToArray();
+        if (mesonIds.Length == 0)
+            return;
+
+        const string sql = @"
+            SELECT c.caja_id,
+                   c.meson_id,
+                   c.nivel,
+                   c.dimensiones
+            FROM cajas c
+            WHERE c.meson_id = ANY(@mesones)
+            ORDER BY c.meson_id, c.nivel, c.caja_id";
+
+        var cajaMap = new Dictionary<string, CajaResumen>(StringComparer.OrdinalIgnoreCase);
+        var byMeson = mesones.ToDictionary(m => m.Id, m => m, StringComparer.OrdinalIgnoreCase);
+
+        await using (var cmd = new NpgsqlCommand(sql, conn))
+        {
+            cmd.Parameters.AddWithValue("mesones", mesonIds);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                var cajaId = r.GetString(0);
+                var mesonId = r.GetString(1);
+                var nivel = r.GetInt32(2);
+                var dimensiones = r.IsDBNull(3) ? null : r.GetString(3);
+
+                var caja = new CajaResumen(cajaId, nivel, dimensiones);
+                cajaMap[cajaId] = caja;
+                if (byMeson.TryGetValue(mesonId, out var meson))
+                {
+                    meson.Cajas.Add(caja);
+                }
+            }
+        }
+
+        if (cajaMap.Count == 0)
+            return;
+
+        const string sqlMateriales = @"
+            SELECT cm.caja_id,
+                   m.nombre
+            FROM cajas_materiales cm
+            INNER JOIN materiales m ON m.material_id = cm.material_id
+            WHERE cm.caja_id = ANY(@cajas)
+            ORDER BY m.nombre";
+
+        await using (var cmdMat = new NpgsqlCommand(sqlMateriales, conn))
+        {
+            cmdMat.Parameters.AddWithValue("cajas", cajaMap.Keys.ToArray());
+            await using var r = await cmdMat.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                var cajaId = r.GetString(0);
+                var nombre = r.GetString(1);
+                if (cajaMap.TryGetValue(cajaId, out var caja))
+                {
+                    caja.Materiales.Add(nombre);
+                }
+            }
         }
     }
 
@@ -1268,8 +1369,24 @@
         string Nombre,
         string Area,
         int? Niveles,
-        string ImagenUrl
+        string ImagenUrl,
+        List<CajaResumen> Cajas
     );
+
+    private sealed class CajaResumen
+    {
+        public CajaResumen(string cajaId, int nivel, string? dimensiones)
+        {
+            CajaId = cajaId;
+            Nivel = nivel;
+            Dimensiones = dimensiones;
+        }
+
+        public string CajaId { get; }
+        public int Nivel { get; }
+        public string? Dimensiones { get; }
+        public List<string> Materiales { get; } = new();
+    }
 
     private sealed record CanvasItem(string CanvasId, string Nombre, decimal Ancho, decimal largo, decimal Margen);
     private sealed record CanvasView(CanvasItem Canvas, List<AreaItem> Areas);
