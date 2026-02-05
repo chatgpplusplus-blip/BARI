@@ -314,22 +314,108 @@
                        @onchange="OnVerTodosToggle" />
                 <span>Ver todos los mesones</span>
             </label>
-
-            <select class="category-select @((!_verTodos && !string.IsNullOrWhiteSpace(AreaId)) ? "is-filled" : "")"
-                    @onchange="OnAreaFilterChanged"
-                    value="@(_verTodos ? "" : AreaId)">
-                <option value="">Todas las áreas</option>
-                @foreach (var a in _areaOptions)
-                {
-                    <option value="@a.Id">@a.Label</option>
-                }
-            </select>
         </div>
 
         @if (!_verTodos && !string.IsNullOrWhiteSpace(AreaId))
         {
             <NavLink class="btn-link" href="/inventario-mesones" Match="NavLinkMatch.All">Ver todas las áreas</NavLink>
         }
+    </div>
+
+    <div class="visual-picker" style="margin-top:.75rem;">
+        <div class="visual-toolbar">
+            <label class="text-xs muted">Filtrar por mapa de áreas</label>
+
+            <select class="border p-1 text-xs @(Filled(_currentPlantaId))" @bind="_currentPlantaId">
+                <option value="">Todas</option>
+                @foreach (var planta in _plantasLookup)
+                {
+                    <option value="@planta.Key">@planta.Value</option>
+                }
+            </select>
+        </div>
+
+        @if (_canvasViews.Count == 0)
+        {
+            <div class="text-xs muted">Sin mapas disponibles.</div>
+        }
+        else
+        {
+            @foreach (var view in _canvasViews)
+            {
+                var areasPorPlanta = view.Areas.Where(a => IsAreaInCurrentPlanta(a.PlantaId)).ToList();
+                if (areasPorPlanta.Count == 0)
+                    continue;
+
+                <div class="canvas-card">
+                    <div class="text-xs muted">@view.Canvas.Nombre</div>
+
+                    <svg width="100%" height="100%"
+                         viewBox="0 0 @view.Canvas.Ancho @view.Canvas.largo"
+                         preserveAspectRatio="xMinYMin meet">
+
+                        <rect x="0" y="0"
+                              width="@FormatSvg(view.Canvas.Ancho)"
+                              height="@FormatSvg(view.Canvas.largo)"
+                              fill="transparent"
+                              style="pointer-events:all"
+                              @onclick="ClearAreaFilterSelection"
+                              @onmouseover="@(() => HoverAreaFilter(null))" />
+
+                        @foreach (var area in areasPorPlanta)
+                        {
+                            foreach (var poly in area.Poligonos.OrderBy(p => p.ZOrder))
+                            {
+                                <polygon points="@PointsString(poly)"
+                                         fill="@AreaFilterFill(area)"
+                                         stroke="#111827" stroke-width="0.03"
+                                         style="cursor:pointer"
+                                         @onclick:stopPropagation="true"
+                                         @onmouseover="@(() => HoverAreaFilter(area.AreaId))"
+                                         @onmouseout="@(() => HoverAreaFilter(null))"
+                                         @onclick="@(() => SelectAreaFilterFromVisualAsync(area.AreaId))" />
+                            }
+
+                            @if (!string.IsNullOrWhiteSpace(area.Nombre))
+                            {
+                                var labelWidth = AreaLabelWidth(area);
+                                var labelHeight = AreaLabelHeight(area);
+                                var fontSize = AreaLabelFontSize(area);
+
+                                <svg:rect x="@FormatSvg(area.CenterX - labelWidth / 2m)"
+                                          y="@FormatSvg(area.CenterY - labelHeight / 2m)"
+                                          width="@FormatSvg(labelWidth)"
+                                          height="@FormatSvg(labelHeight)"
+                                          fill="#ffffff" opacity="0.8" rx="0.15" ry="0.15"
+                                          @onclick:stopPropagation="true" />
+                                <svg:text class="area-label"
+                                          x="@FormatSvg(area.CenterX)" y="@FormatSvg(area.CenterY)"
+                                          text-anchor="middle" dominant-baseline="middle"
+                                          font-size="@FormatSvg(fontSize)"
+                                          @onclick:stopPropagation="true">
+                                    @area.Nombre
+                                </svg:text>
+                            }
+                        }
+                    </svg>
+                </div>
+            }
+        }
+
+        <div class="text-xs muted">
+            @if (_verTodos)
+            {
+                <span>Mostrando todos los mesones.</span>
+            }
+            else if (!string.IsNullOrWhiteSpace(AreaId))
+            {
+                <span>Filtro actual: @SelectedAreaFilterLabel</span>
+            }
+            else
+            {
+                <span>Haz clic en un área para filtrar.</span>
+            }
+        </div>
     </div>
 </section>
 
@@ -457,6 +543,7 @@
 
     private bool isSaving;
     private bool _verTodos;
+    private string? _hoverAreaFilterId;
 
     private string? loadError;
     private string? msg;
@@ -778,6 +865,8 @@
                 ));
             }
 
+            await r.CloseAsync();
+
             await LoadCajasForMesonesAsync(conn);
         }
         catch (Exception ex)
@@ -902,6 +991,30 @@
         Nav.NavigateTo($"/inventario-mesones/{value}");
     }
 
+    private async Task SelectAreaFilterFromVisualAsync(string? areaId)
+    {
+        if (string.IsNullOrWhiteSpace(areaId))
+            return;
+
+        if (string.Equals(areaId, AreaId, StringComparison.OrdinalIgnoreCase) && !_verTodos)
+            return;
+
+        await InvokeAsync(() => Nav.NavigateTo($"/inventario-mesones/{areaId}"));
+    }
+
+    private void ClearAreaFilterSelection()
+    {
+        if (_verTodos || string.IsNullOrWhiteSpace(AreaId))
+            return;
+
+        Nav.NavigateTo("/inventario-mesones");
+    }
+
+    private void HoverAreaFilter(string? areaId)
+    {
+        _hoverAreaFilterId = areaId;
+    }
+
     private void OnVerTodosToggle(ChangeEventArgs args)
     {
         var isChecked =
@@ -958,6 +1071,11 @@
     private string SelectedAreaLabel =>
         _areaOptions.FirstOrDefault(a => string.Equals(a.Id, _nuevoAreaId, StringComparison.OrdinalIgnoreCase))?.Label
         ?? _nuevoAreaId
+        ?? "Área";
+
+    private string SelectedAreaFilterLabel =>
+        _areaOptions.FirstOrDefault(a => string.Equals(a.Id, AreaId, StringComparison.OrdinalIgnoreCase))?.Label
+        ?? AreaId
         ?? "Área";
 
     private string? AutoCanvasHint
@@ -1408,6 +1526,23 @@
         {
             return "#93c5fd";
         }
+        return area.Poligonos.FirstOrDefault()?.ColorHex ?? "#cbd5f5";
+    }
+
+    private string AreaFilterFill(AreaItem area)
+    {
+        if (!_verTodos && !string.IsNullOrWhiteSpace(AreaId)
+            && string.Equals(AreaId, area.AreaId, StringComparison.OrdinalIgnoreCase))
+        {
+            return "#93c5fd";
+        }
+
+        if (!string.IsNullOrWhiteSpace(_hoverAreaFilterId)
+            && string.Equals(_hoverAreaFilterId, area.AreaId, StringComparison.OrdinalIgnoreCase))
+        {
+            return "#bfdbfe";
+        }
+
         return area.Poligonos.FirstOrDefault()?.ColorHex ?? "#cbd5f5";
     }
 
