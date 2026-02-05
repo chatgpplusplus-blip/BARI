@@ -875,6 +875,23 @@
                     </summary>
 
                     <div class="text-xs text-gray-500 mb-2 mt-2">Mesones creados (clic para seleccionar en canvas)</div>
+
+                    <div class="grid grid-cols-3 gap-2 text-sm mb-3">
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Nivel nueva caja</label>
+                            <input class="border p-1 w-full" value="@_nuevoCajaNivel"
+                                   @oninput="(e)=> _nuevoCajaNivel = e.Value?.ToString()" />
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Dimensiones (opcional)</label>
+                            <input class="border p-1 w-full" @bind="_nuevoCajaDimensiones" @bind:event="oninput" />
+                        </div>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(_nuevoCajaMsg))
+                    {
+                        <div class="text-xs text-gray-500 mb-2">@_nuevoCajaMsg</div>
+                    }
+
                     <div class="space-y-2">
                         @foreach (var mesRow in MesonesDelAreaActual().OrderBy(x => x.nombre_meson))
                         {
@@ -893,9 +910,14 @@
                                     </div>
                                 </div>
 
-                                <button class="px-2 py-1 border rounded text-sm" @onclick="(()=>SeleccionarPorMeson(mesRow.meson_id))">
-                                    Seleccionar
-                                </button>
+                                <div class="flex gap-2">
+                                    <button class="px-2 py-1 border rounded text-sm" @onclick="(()=>SeleccionarPorMeson(mesRow.meson_id))">
+                                        Seleccionar
+                                    </button>
+                                    <button class="px-2 py-1 border rounded text-sm" @onclick="(()=>CrearCajaParaMesonAsync(mesRow.meson_id))">
+                                        + Caja
+                                    </button>
+                                </div>
                             </div>
                         }
                     </div>
