@@ -254,6 +254,49 @@
     </details>
 </section>
 
+
+<section class="page-card" style="margin-top:1rem;">
+    <details>
+        <summary style="cursor:pointer; font-weight:800;">Crear caja en mesón</summary>
+
+        <div class="form-grid" style="margin-top:.75rem;">
+            <div class="field">
+                <label>Mesón</label>
+                <select class="border p-1 @(Filled(_nuevoCajaMesonId))" @bind="_nuevoCajaMesonId">
+                    <option value="">(selecciona)</option>
+                    @foreach (var m in mesones.OrderBy(x => x.Nombre))
+                    {
+                        <option value="@m.Id">@m.Nombre (@m.Id)</option>
+                    }
+                </select>
+            </div>
+
+            <div class="field">
+                <label>Nivel</label>
+                <input class="border p-1 @(Filled(_nuevoCajaNivel))" type="number" step="1" min="0" @bind="_nuevoCajaNivel" />
+            </div>
+
+            <div class="field">
+                <label>ID caja (opcional)</label>
+                <input class="border p-1 @(Filled(_nuevoCajaId))" @bind="_nuevoCajaId" placeholder="caja_xxx" />
+            </div>
+
+            <div class="field full-span">
+                <label>Dimensiones (opcional)</label>
+                <input class="border p-1 @(Filled(_nuevoCajaDimensiones))" @bind="_nuevoCajaDimensiones" placeholder="Ej: 30x20x15 cm" />
+            </div>
+
+            <div class="form-actions full-span">
+                <button class="btn" type="button" @onclick="CrearCajaAsync" disabled="@isSaving">Crear caja</button>
+                @if (!string.IsNullOrWhiteSpace(_nuevoCajaMsg))
+                {
+                    <span class="text-sm muted">@_nuevoCajaMsg</span>
+                }
+            </div>
+        </div>
+    </details>
+</section>
+
 <!-- =========================================================
      2) GUÍA / FILTROS
 ========================================================= -->
@@ -447,6 +490,12 @@
     private string _nuevoImagenModo = "url";
     private string? _nuevoImagenUrl;
     private string? _nuevoImagenNombre;
+
+    private string? _nuevoCajaMesonId;
+    private string? _nuevoCajaNivel;
+    private string? _nuevoCajaId;
+    private string? _nuevoCajaDimensiones;
+    private string? _nuevoCajaMsg;
 
     private bool NuevoImagenFilled =>
         _nuevoImagenModo == "url"
@@ -957,6 +1006,57 @@
         _nuevoImagenUrl = $"/{relative}";
         _nuevoImagenNombre = file.Name;
         msg = $"Imagen cargada: {file.Name}";
+    }
+
+    private async Task CrearCajaAsync()
+    {
+        _nuevoCajaMsg = null;
+
+        if (string.IsNullOrWhiteSpace(_nuevoCajaMesonId))
+        {
+            _nuevoCajaMsg = "Selecciona un mesón.";
+            return;
+        }
+
+        if (!int.TryParse((_nuevoCajaNivel ?? string.Empty).Trim(), out var nivel) || nivel < 0)
+        {
+            _nuevoCajaMsg = "Nivel inválido.";
+            return;
+        }
+
+        var cajaId = string.IsNullOrWhiteSpace(_nuevoCajaId)
+            ? $"caja_{Guid.NewGuid():N}".Substring(0, 12)
+            : _nuevoCajaId.Trim();
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+                INSERT INTO cajas (caja_id, meson_id, nivel, dimensiones)
+                VALUES (@id, @meson, @nivel, @dim)
+                ON CONFLICT (caja_id) DO NOTHING;";
+
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("id", cajaId);
+            cmd.Parameters.AddWithValue("meson", _nuevoCajaMesonId!);
+            cmd.Parameters.AddWithValue("nivel", nivel);
+            cmd.Parameters.AddWithValue("dim", DbOrNull(_nuevoCajaDimensiones));
+
+            var affected = await cmd.ExecuteNonQueryAsync();
+            _nuevoCajaMsg = affected > 0 ? "Caja creada." : "Ese ID de caja ya existe.";
+
+            if (affected > 0)
+            {
+                _nuevoCajaId = null;
+                _nuevoCajaNivel = null;
+                _nuevoCajaDimensiones = null;
+                await LoadMesonesAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _nuevoCajaMsg = $"Error al crear caja: {ex.Message}";
+        }
     }
 
     private async Task CrearMesonAsync()

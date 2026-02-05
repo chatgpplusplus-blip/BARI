@@ -273,6 +273,17 @@
                        @bind="_nuevoBloqueAlturaM" />
             </div>
 
+            <div class="field">
+                <label>Levantamiento desde suelo (cm) (opcional)</label>
+                <input class="border p-1 form-control @Filled(_nuevoLevantamientoCm)"
+                       type="number"
+                       step="any"
+                       min="0"
+                       placeholder="Ej: 120"
+                       @bind="_nuevoLevantamientoCm" />
+                <div class="text-xs muted">Si está vacío o en 0, se asume a ras del suelo.</div>
+            </div>
+
             <div class="field full-span">
                 <label>Descripción</label>
                 <textarea class="border p-1 form-control @Filled(_nuevoDescripcion)"
@@ -469,6 +480,7 @@
                         <th>Estado</th>
                         <th>Próxima revisión</th>
                         <th>Proveedor</th>
+                        <th>Levantamiento</th>
                         <th>Imagen</th>
                     </tr>
                 </thead>
@@ -494,6 +506,7 @@
                             <td>@(string.IsNullOrWhiteSpace(it.Estado) ? "—" : it.Estado)</td>
                             <td>@(string.IsNullOrWhiteSpace(it.ProximaRevision) ? "—" : it.ProximaRevision)</td>
                             <td>@(string.IsNullOrWhiteSpace(it.Proveedor) ? "—" : it.Proveedor)</td>
+                            <td>@(string.IsNullOrWhiteSpace(it.LevantamientoCm) ? "0 cm" : $"{it.LevantamientoCm} cm")</td>
 
                             <td>
                                 @if (!string.IsNullOrWhiteSpace(it.ImagenUrl))
@@ -573,6 +586,7 @@
     private string? _nuevoBloqueAnchoM;
     private string? _nuevoBloqueLargoM;
     private string? _nuevoBloqueAlturaM;
+    private string? _nuevoLevantamientoCm;
 
     private DateTime? _nuevoFechaInstalacion;
     private DateTime? _nuevoFechaUltimaRevision;
@@ -949,6 +963,7 @@
                            COALESCE(ea.nombre,'') AS estado,
                            i.fecha_proxima_revision,
                            COALESCE(i.proveedor_servicio,'') AS proveedor,
+                           li.altura_desde_suelo_cm,
                            COALESCE(i.descripcion,'') AS descripcion,
                            COALESCE(i.imagen_url,'') AS imagen_url
                     FROM instalaciones i
@@ -956,6 +971,7 @@
                     LEFT JOIN categorias c ON c.categoria_id = sc.categoria_id
                     LEFT JOIN areas a ON a.area_id = i.area_id
                     LEFT JOIN estados_activo ea ON ea.estado_id = i.estado_id
+                    LEFT JOIN levantamientos_instalaciones li ON li.instalacion_id = i.instalacion_id
                     WHERE i.laboratorio_id = @lab
                     ORDER BY c.nombre, sc.nombre, i.nombre, i.instalacion_id"
                 : @"
@@ -967,6 +983,7 @@
                            COALESCE(ea.nombre,'') AS estado,
                            i.fecha_proxima_revision,
                            COALESCE(i.proveedor_servicio,'') AS proveedor,
+                           li.altura_desde_suelo_cm,
                            COALESCE(i.descripcion,'') AS descripcion,
                            COALESCE(i.imagen_url,'') AS imagen_url
                     FROM instalaciones i
@@ -974,6 +991,7 @@
                     LEFT JOIN categorias c ON c.categoria_id = sc.categoria_id
                     LEFT JOIN areas a ON a.area_id = i.area_id
                     LEFT JOIN estados_activo ea ON ea.estado_id = i.estado_id
+                    LEFT JOIN levantamientos_instalaciones li ON li.instalacion_id = i.instalacion_id
                     WHERE i.laboratorio_id = @lab
                       AND i.subcategoria_id = @sub
                     ORDER BY i.nombre, i.instalacion_id";
@@ -996,8 +1014,9 @@
                     (r.GetString(5) ?? "").Trim(),
                     r.IsDBNull(6) ? "" : r.GetDateTime(6).ToString("dd/MM/yyyy"),
                     (r.GetString(7) ?? "").Trim(),
-                    (r.GetString(8) ?? "").Trim(),
-                    (r.GetString(9) ?? "").Trim()
+                    r.IsDBNull(8) ? "" : r.GetDecimal(8).ToString(CultureInfo.InvariantCulture),
+                    (r.GetString(9) ?? "").Trim(),
+                    (r.GetString(10) ?? "").Trim()
                 ));
             }
         }
@@ -1219,8 +1238,21 @@
             }
 
             decimal? nuevaAltura = null;
+            decimal? nuevoLevantamiento = null;
             if (TryParseDecimalFlexible(_nuevoBloqueAlturaM, out var alt) && alt > 0)
                 nuevaAltura = alt;
+
+            if (TryParseDecimalFlexible(_nuevoLevantamientoCm, out var lev))
+            {
+                if (lev < 0)
+                {
+                    msg = "El levantamiento no puede ser negativo.";
+                    return;
+                }
+
+                if (lev > 0)
+                    nuevoLevantamiento = lev;
+            }
 
             var id = string.IsNullOrWhiteSpace(_nuevoId)
                 ? $"inst_{Guid.NewGuid():N}".Substring(0, 12)
@@ -1410,6 +1442,21 @@
                 await cmdInsB.ExecuteNonQueryAsync();
             }
 
+
+            if (nuevoLevantamiento.HasValue)
+            {
+                const string upLevantamiento = @"
+                    INSERT INTO levantamientos_instalaciones (instalacion_id, altura_desde_suelo_cm)
+                    VALUES (@id, @altura)
+                    ON CONFLICT (instalacion_id)
+                    DO UPDATE SET altura_desde_suelo_cm = EXCLUDED.altura_desde_suelo_cm;";
+
+                await using var cmdLev = new NpgsqlCommand(upLevantamiento, conn, tx);
+                cmdLev.Parameters.AddWithValue("id", id);
+                cmdLev.Parameters.AddWithValue("altura", nuevoLevantamiento.Value);
+                await cmdLev.ExecuteNonQueryAsync();
+            }
+
             await tx.CommitAsync();
 
             msg = "Instalación registrada y bloque creado en el canvas.";
@@ -1427,6 +1474,7 @@
             _nuevoBloqueAnchoM = null;
             _nuevoBloqueLargoM = null;
             _nuevoBloqueAlturaM = null;
+            _nuevoLevantamientoCm = null;
 
             _nuevoFechaInstalacion = null;
             _nuevoFechaUltimaRevision = null;
@@ -1660,6 +1708,7 @@
         string Estado,
         string ProximaRevision,
         string Proveedor,
+        string LevantamientoCm,
         string Descripcion,
         string ImagenUrl
     );

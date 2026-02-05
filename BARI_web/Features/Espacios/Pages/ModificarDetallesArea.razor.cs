@@ -278,6 +278,10 @@ namespace BARI_web.Features.Espacios.Pages
         private int? _nuevoMesonNiveles = null;
         private string? _nuevoMesonMsg;
 
+        private string? _nuevoCajaNivel = "1";
+        private string? _nuevoCajaDimensiones = "";
+        private string? _nuevoCajaMsg;
+
         private string _nuevoMesonImagenUrl = string.Empty;
         private string _nuevoMesonImagenModo = "url";
         private string? _nuevoMesonImagenNombre;
@@ -1034,6 +1038,47 @@ namespace BARI_web.Features.Espacios.Pages
             _nuevoIns_ImagenNombre = null;
             _nuevoIns_Msg = "Instalación registrada (recuerda guardar).";
             StateHasChanged();
+        }
+
+
+        private async Task CrearCajaParaMesonAsync(string mesonId)
+        {
+            _nuevoCajaMsg = null;
+
+            if (string.IsNullOrWhiteSpace(mesonId))
+            {
+                _nuevoCajaMsg = "Selecciona un mesón válido.";
+                return;
+            }
+
+            if (!int.TryParse((_nuevoCajaNivel ?? string.Empty).Trim(), out var nivel) || nivel < 0)
+            {
+                _nuevoCajaMsg = "El nivel de la caja debe ser un entero mayor o igual a 0.";
+                return;
+            }
+
+            var cajaId = $"caja_{Guid.NewGuid():N}".Substring(0, 12);
+
+            try
+            {
+                Pg.UseSheet("cajas");
+                var payload = new Dictionary<string, object>
+                {
+                    ["caja_id"] = cajaId,
+                    ["meson_id"] = mesonId,
+                    ["nivel"] = nivel,
+                    ["dimensiones"] = string.IsNullOrWhiteSpace(_nuevoCajaDimensiones) ? (object)DBNull.Value : _nuevoCajaDimensiones!.Trim()
+                };
+
+                await Pg.CreateAsync(payload);
+                _nuevoCajaMsg = $"Caja creada en el mesón {mesonId}.";
+                _nuevoCajaDimensiones = string.Empty;
+                _nuevoCajaNivel = "1";
+            }
+            catch (Exception ex)
+            {
+                _nuevoCajaMsg = $"No se pudo crear la caja: {ex.Message}";
+            }
         }
 
         // =========================

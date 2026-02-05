@@ -134,6 +134,11 @@
                         </div>
 
                         <div class="dl-row">
+                            <div class="dt">Levantamiento desde suelo</div>
+                            <div class="dd">@LevantamientoDisplay</div>
+                        </div>
+
+                        <div class="dl-row">
                             <div class="dt">Descripción</div>
                             <div class="dd">@NullDash(edit.Descripcion)</div>
                         </div>
@@ -311,6 +316,12 @@
                 <div class="field">
                     <label>Proveedor de servicio</label>
                     <input class="border p-1" placeholder="Ej: Empresa de gas" @bind="edit.ProveedorServicio" />
+                </div>
+
+                <div class="field">
+                    <label>Levantamiento desde suelo (cm)</label>
+                    <input class="border p-1" type="number" step="any" min="0" placeholder="0" @bind="edit.LevantamientoCm" />
+                    <div class="text-xs muted">Si está vacío o 0, se considera a ras del suelo.</div>
                 </div>
 
                 <div class="field full-span">
@@ -589,6 +600,19 @@
 
     private string CategoriaLabel => FindLabel(_categoriaOptions, edit.CategoriaId);
     private string SubcategoriaLabel => FindLabel(_subcategoriaAllOptions, edit.SubcategoriaId);
+    private string LevantamientoDisplay
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(edit.LevantamientoCm))
+                return "0 cm";
+
+            if (!TryParseDecimalFlexible(edit.LevantamientoCm, out var lev) || lev <= 0)
+                return "0 cm";
+
+            return $"{lev.ToString(CultureInfo.InvariantCulture)} cm";
+        }
+    }
 
     private static string FindLabel(List<SelectOption> list, string? id)
         => string.IsNullOrWhiteSpace(id) ? "" : (list.FirstOrDefault(x => string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase))?.Label ?? id);
@@ -722,10 +746,12 @@
                    b.pos_y,
                    b.ancho,
                    b.largo,
-                   b.altura
+                   b.altura,
+                   li.altura_desde_suelo_cm
             FROM instalaciones i
             LEFT JOIN subcategorias sc ON sc.subcategoria_id = i.subcategoria_id
             LEFT JOIN bloques_int b ON b.instalacion_id = i.instalacion_id
+            LEFT JOIN levantamientos_instalaciones li ON li.instalacion_id = i.instalacion_id
             WHERE i.instalacion_id = @id
               AND i.laboratorio_id = @lab
             LIMIT 1;
@@ -772,6 +798,7 @@
                 BloqueAncho = r.IsDBNull(16) ? null : r.GetDecimal(16).ToString(CultureInfo.InvariantCulture),
                 BloqueLargo = r.IsDBNull(17) ? null : r.GetDecimal(17).ToString(CultureInfo.InvariantCulture),
                 BloqueAltura = r.IsDBNull(18) ? null : r.GetDecimal(18).ToString(CultureInfo.InvariantCulture),
+                LevantamientoCm = r.IsDBNull(19) ? null : r.GetDecimal(19).ToString(CultureInfo.InvariantCulture),
             };
 
         // Inferir categoria si faltara
@@ -902,6 +929,7 @@
 
         decimal bx = 0, by = 0, bw = 0, bl = 0;
         decimal? bh = null;
+        decimal? levantamiento = null;
 
         if (hasCanvas || anyBlockField)
         {
@@ -921,6 +949,18 @@
                 }
                 bh = tmpH;
             }
+        }
+
+        if (!string.IsNullOrWhiteSpace(edit.LevantamientoCm))
+        {
+            if (!TryParseDecimalFlexible(edit.LevantamientoCm, out var lev) || lev < 0)
+            {
+                msg = "Levantamiento inválido.";
+                return;
+            }
+
+            if (lev > 0)
+                levantamiento = lev;
         }
 
         isSaving = true;
@@ -970,7 +1010,27 @@
                 ("img", DbOrNull(edit.ImagenUrl))
             );
 
-            // 2) Bloque: update/insert si corresponde
+            // 2) Levantamiento: opcional, si vacío o 0 => eliminar (ras de suelo)
+            if (levantamiento.HasValue)
+            {
+                const string upLevantamiento = @"
+                    INSERT INTO levantamientos_instalaciones (instalacion_id, altura_desde_suelo_cm)
+                    VALUES (@id, @altura)
+                    ON CONFLICT (instalacion_id)
+                    DO UPDATE SET altura_desde_suelo_cm = EXCLUDED.altura_desde_suelo_cm;";
+
+                await ExecAsync(conn, tx, upLevantamiento,
+                    ("id", edit.InstalacionId),
+                    ("altura", levantamiento.Value)
+                );
+            }
+            else
+            {
+                const string delLevantamiento = @"DELETE FROM levantamientos_instalaciones WHERE instalacion_id=@id;";
+                await ExecAsync(conn, tx, delLevantamiento, ("id", edit.InstalacionId));
+            }
+
+            // 3) Bloque: update/insert si corresponde
             if (hasCanvas)
             {
                 // existe bloque?
@@ -1283,6 +1343,7 @@
         public DateTime? FechaProximaRevision { get; set; }
 
         public string? ProveedorServicio { get; set; }
+        public string? LevantamientoCm { get; set; }
         public string? Descripcion { get; set; }
         public string? Observaciones { get; set; }
         public string? ImagenUrl { get; set; }
