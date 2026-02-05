@@ -557,20 +557,7 @@
                 <button class="btn" @onclick="AssignEquipoAsync" disabled="@string.IsNullOrWhiteSpace(_selectedEquipoId)">Asignar</button>
                 <span class="muted">@_assignMsg</span>
             </div>
-            <div class="assign-row">
-                <input class="field" placeholder="Modelo ID" @bind="_nuevoEquipoModeloId" />
-                <input class="field" placeholder="Serie" @bind="_nuevoEquipoSerie" />
-                <input class="field" placeholder="Estado ID" @bind="_nuevoEquipoEstadoId" />
-                <input class="field" placeholder="Posición" @bind="_nuevoEquipoPosicion" />
-                <label class="text-sm text-gray-600">
-                    <input type="checkbox" @bind="_nuevoEquipoRequiereCalibracion" /> Requiere calibración
-                </label>
-                <button class="btn" @onclick="SubirEquipoAsync">Subir equipo</button>
-                @if (!string.IsNullOrWhiteSpace(_nuevoEquipoMsg))
-                {
-                    <span class="muted">@_nuevoEquipoMsg</span>
-                }
-            </div>
+            
             @if (_equipos.Count == 0)
             {
                 <p class="muted">Sin equipos registrados.</p>
@@ -593,17 +580,7 @@
         <div class="card">
             <h3 style="margin:0 0 .5rem 0">Instalaciones</h3>
 
-            <div class="assign-row">
-                <input class="field" placeholder="Nombre" @bind="_nuevoInstalacionNombre" />
-                <input class="field" placeholder="Subcategoría ID (opcional)" @bind="_nuevoInstalacionSubcategoriaId" />
-                <input class="field" placeholder="Estado ID (opcional)" @bind="_nuevoInstalacionEstadoId" />
-                <button class="btn" @onclick="SubirInstalacionAsync">Subir instalación</button>
-                @if (!string.IsNullOrWhiteSpace(_nuevoInstalacionMsg))
-                {
-                    <span class="muted">@_nuevoInstalacionMsg</span>
-                }
-            </div>
-
+            
             @if (_instalaciones.Count == 0)
             {
                 <p class="muted">Sin instalaciones registradas.</p>
