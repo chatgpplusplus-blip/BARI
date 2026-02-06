@@ -177,7 +177,7 @@
 }
 
 .area-hit {
-    pointer-events: none;
+    pointer-events: all;
     fill: transparent;
 }
 
