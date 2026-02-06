@@ -120,6 +120,14 @@
                             <div class="dd">@(edit.UsaCajas ? NullDash(CantidadTotalCajasLabel) : NullDash(edit.Cantidad))</div>
                         </div>
 
+                        @if (edit.UsaCajas)
+                        {
+                            <div class="dl-row">
+                                <div class="dt">Distribución en cajas</div>
+                                <div class="dd">@NullDash(CajasDetalleLabel)</div>
+                            </div>
+                        }
+
                         <div class="dl-row">
                             <div class="dt">Altura (cm)</div>
                             <div class="dd">@NullDash(edit.AlturaCm)</div>
@@ -438,14 +446,14 @@
 
                 <div class="field full-span">
                     <label>Cajas y cantidad por caja</label>
-                    <div class="dropdown-checks @((!edit.UsaCajas || edit.MesonNiveles.Count == 0) ? "disabled" : "")">
+                    <div class="dropdown-checks @(!edit.UsaCajas ? "disabled" : "")">
                         @if (!edit.UsaCajas)
                         {
                             <div class="text-xs muted">Activa "Se maneja por cajas" para editar cantidades por caja.</div>
                         }
                         else if (_cajaOptions.Count == 0)
                         {
-                            <div class="text-xs muted">No hay cajas disponibles para los mesones seleccionados.</div>
+                            <div class="text-xs muted">No hay cajas disponibles para el área seleccionada.</div>
                         }
                         else
                         {
@@ -460,7 +468,7 @@
                                            step="any"
                                            placeholder="Cantidad"
                                            value="@FormatCajaCantidad(cantidadCaja)"
-                                           disabled="@(!edit.UsaCajas || edit.MesonNiveles.Count == 0)"
+                                           disabled="@(!edit.UsaCajas)"
                                            @onchange="(e) => OnCajaCantidadChanged(caja.Id, e)" />
                                 </div>
                             }
@@ -891,6 +899,23 @@
         }
     }
 
+    private string CajasDetalleLabel
+    {
+        get
+        {
+            if (_cajaCantidades.Count == 0)
+                return "";
+
+            var porCaja = _cajaCantidades
+                .Where(kv => kv.Value > 0)
+                .OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(kv => $"{FindLabel(_cajaOptions, kv.Key)}: {kv.Value.ToString(CultureInfo.InvariantCulture)}")
+                .ToList();
+
+            return porCaja.Count == 0 ? "" : string.Join(" · ", porCaja);
+        }
+    }
+
     private string CantidadTotalCajasLabel
     {
         get
@@ -1158,8 +1183,7 @@
     {
         _cajaOptions.Clear();
 
-        var mesones = edit.MesonNiveles.Select(x => x.MesonId).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        if (mesones.Length == 0)
+        if (string.IsNullOrWhiteSpace(edit.AreaId))
             return;
 
         await using var conn = await DataSource.OpenConnectionAsync();
@@ -1169,12 +1193,15 @@
                    c.nivel,
                    c.dimensiones
             FROM cajas c
-            LEFT JOIN mesones m ON m.meson_id = c.meson_id
-            WHERE c.meson_id = ANY(@mesones)
+            INNER JOIN mesones m ON m.meson_id = c.meson_id
+            INNER JOIN areas a ON a.area_id = m.area_id
+            WHERE m.area_id = @area
+              AND a.laboratorio_id = @lab
             ORDER BY meson_nombre, c.nivel, c.caja_id";
 
         await using var cmd = new NpgsqlCommand(sql, conn);
-        cmd.Parameters.AddWithValue("mesones", mesones);
+        cmd.Parameters.AddWithValue("area", edit.AreaId);
+        cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
 
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
