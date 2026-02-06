@@ -123,7 +123,7 @@ public static class InventoryDownloadEndpoints
         var selectParts = order.Select(key => $"{fieldMap[key]} AS {key}").ToArray();
         var select = string.Join(", ", selectParts);
 
-        var sql = $"{select} {BaseQueries[tipo]}";
+        var sql = $"SELECT {select} {BaseQueries[tipo]}";
         return (sql, order);
     }
 
