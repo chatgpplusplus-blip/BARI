@@ -50,7 +50,7 @@
                 <label class="bari-search-label">BUSCAR</label>
                 <input @bind-value="searchText"
                        @bind-value:event="oninput"
-                       @oninput="HandleSearchInput"
+                       @bind-value:after="HandleSearchInput"
                        class="bari-search-input"
                        placeholder="Busca áreas, mesones, instalaciones o páginas..." />
 
