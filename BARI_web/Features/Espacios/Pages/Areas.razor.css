@@ -176,11 +176,6 @@
     pointer-events: none;
 }
 
-.area-hit {
-    pointer-events: all;
-    fill: transparent;
-}
-
 /* Puertas y Ventanas */
 .door-line {
     stroke: #10b981;
