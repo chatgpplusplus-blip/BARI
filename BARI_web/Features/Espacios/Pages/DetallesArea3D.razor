@@ -1,5 +1,7 @@
 @page "/detalles-area-3d/{AreaSlug}"
 @namespace BARI_web.Features.Espacios.Pages
+@implements IAsyncDisposable
+
 @inject NavigationManager Nav
 @inject IJSRuntime Js
 
@@ -74,7 +76,9 @@
     }
     else
     {
-        <div id="area-3d-canvas" class="area-3d-canvas" role="img" aria-label="Vista 3D del área"></div>
+        <div id="area-3d-canvas" class="area-3d-canvas" role="img" aria-label="Vista 3D del área">
+            <div class="bari-3d-host"></div>
+        </div>
     }
 </section>
 
@@ -90,12 +94,19 @@
 @code {
     private bool _jsInitialized;
 
+    private bool _didInit3d;
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender || _jsInitialized || _areaData is null || IsLoading) return;
-        await Js.InvokeVoidAsync("Bari3D.initArea3D", "area-3d-canvas", _areaData);
-        _jsInitialized = true;
+        if (_didInit3d) return;
+        if (IsLoading) return;
+        if (_areaData is null) return;
+
+        // Si tu script puede no estar cargado aún, puedes reintentar
+        var ok = await Js.InvokeAsync<bool>("Bari3DInitSafe", "area-3d-canvas", _areaData);
+        if (ok) _didInit3d = true;
     }
+
 }
 
 <style>

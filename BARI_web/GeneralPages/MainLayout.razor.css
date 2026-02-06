@@ -74,12 +74,17 @@
     text-overflow: ellipsis;
 }
 
+/* ===== TOPBAR META (badge + botón descargar) ===== */
 .bari-topbar-meta {
     margin-left: auto;
     display: flex;
     align-items: center;
+    justify-content: flex-end;
+    gap: 12px; /* ✅ espacio entre badge y botón */
+    flex-wrap: wrap; /* ✅ si no cabe, baja prolijo */
 }
 
+/* Badge más compacto y alineado */
 .bari-badge {
     background: rgba(255,255,255,.12);
     border: 1px solid rgba(255,255,255,.18);
@@ -88,6 +93,57 @@
     font-size: .85rem;
     white-space: nowrap;
 }
+
+/* ✅ Estilo "botón" SOLO para el NavLink de la TOPBAR */
+.bari-topbar-meta .bari-navbtn {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .50rem .85rem;
+    border-radius: 999px;
+    text-decoration: none; /* ✅ quita subrayado */
+    color: #fff; /* ✅ evita link azul */
+
+    border: 1px solid rgba(255,255,255,.22);
+    background: rgba(255,255,255,.12);
+    font-weight: 900;
+    letter-spacing: .08em;
+    font-size: .80rem;
+    line-height: 1;
+    transition: background .15s ease, border-color .15s ease, transform .06s ease;
+}
+
+    .bari-topbar-meta .bari-navbtn:hover {
+        background: rgba(255,255,255,.20);
+        border-color: rgba(255,255,255,.55);
+        transform: translateY(-1px);
+    }
+
+    .bari-topbar-meta .bari-navbtn.active {
+        background: rgba(255,255,255,.26);
+        border-color: rgba(255,255,255,.70);
+    }
+
+/* Asegura que el span interno herede bien */
+.bari-topbar-meta .bari-navtext {
+    color: inherit;
+    font-size: inherit;
+}
+
+/* Opcional: en pantallas chicas, acorta un poco */
+@media (max-width: 520px) {
+    .bari-badge {
+        font-size: .80rem;
+        padding: .40rem .65rem;
+    }
+
+    .bari-topbar-meta .bari-navbtn {
+        padding: .48rem .75rem;
+        font-size: .76rem;
+        letter-spacing: .06em;
+    }
+}
+
 
 /* ===== SHELL ===== */
 .bari-shell {

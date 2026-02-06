@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
 using Npgsql;
 using BARI_web.General_Services.DataBaseConnection;
+using Microsoft.JSInterop;
 
 namespace BARI_web.Features.Espacios.Pages
 {
@@ -499,6 +500,17 @@ namespace BARI_web.Features.Espacios.Pages
         private static int Int(string s) => int.TryParse(s, out var n) ? n : 0;
         private static string? NullIfEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s;
         private static string Get(Dictionary<string, string> d, string key, string fallback = "") => d.TryGetValue(key, out var v) ? v : fallback;
+        public async ValueTask DisposeAsync()
+        {
+            try
+            {
+                await Js.InvokeVoidAsync("Bari3D.dispose", "area-3d-canvas");
+            }
+            catch
+            {
+                // Si el circuito ya se cerró, no hagas nada
+            }
+        }
 
         private static string Slugify(string text)
         {
