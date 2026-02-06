@@ -438,6 +438,17 @@
                             </div>
 
                             <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Levantamiento (cm) (opcional)</label>
+                                <input class="border p-1 w-full"
+                                       type="number"
+                                       step="any"
+                                       min="0"
+                                       value="@(ins.levantamiento_cm?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")"
+                                       @oninput="(e)=>{ ins.levantamiento_cm = ParseNullableDecimal(e.Value?.ToString()); StateHasChanged(); }" />
+                                <div class="text-xs text-gray-500">Si la instalación se encuentra elevada sobre el piso, completa este campo; si no, déjalo vacío.</div>
+                            </div>
+
+                            <div class="col-span-2">
                                 <label class="block text-xs text-gray-600 mb-1">Proveedor servicio</label>
                                 <input class="border p-1 w-full" value="@(ins.proveedor_servicio ?? "")"
                                        @oninput="(e)=>{ ins.proveedor_servicio = e.Value?.ToString(); StateHasChanged(); }" />
@@ -640,6 +651,17 @@
                                 <input type="date" class="border p-1 w-full"
                                        value="@(DateToInput(insBlock.fecha_proxima_revision))"
                                        @onchange="(e)=>{ insBlock.fecha_proxima_revision = ParseDate(e.Value?.ToString()); StateHasChanged(); }" />
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Levantamiento (cm) (opcional)</label>
+                                <input class="border p-1 w-full"
+                                       type="number"
+                                       step="any"
+                                       min="0"
+                                       value="@(insBlock.levantamiento_cm?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")"
+                                       @oninput="(e)=>{ insBlock.levantamiento_cm = ParseNullableDecimal(e.Value?.ToString()); StateHasChanged(); }" />
+                                <div class="text-xs text-gray-500">Si la instalación se encuentra elevada sobre el piso, completa este campo; si no, déjalo vacío.</div>
                             </div>
 
                             <div class="col-span-2">
@@ -970,6 +992,17 @@
                         <div class="col-span-2">
                             <label class="block text-xs text-gray-600 mb-1">Próxima revisión</label>
                             <input type="date" class="border p-1 w-full" @bind-value="FechaProxRevWrapper" />
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Levantamiento (cm) (opcional)</label>
+                            <input class="border p-1 w-full"
+                                   type="number"
+                                   step="any"
+                                   min="0"
+                                   @bind="_nuevoIns_LevantamientoCm"
+                                   @bind:event="oninput" />
+                            <div class="text-xs text-gray-500">Si la instalación se encuentra elevada sobre el piso, completa este campo; si no, déjalo vacío.</div>
                         </div>
 
                         <div class="col-span-2">

@@ -35,6 +35,28 @@
 
         <div class="assign-row form-grid">
 
+            <div class="field full-span stock-mode-box">
+                <div class="text-xs text-gray-500" style="margin-bottom:.35rem;">Modo de guardado de stock (elige uno para desbloquear el formulario de ubicación/stock)</div>
+                <label class="check-row">
+                    <input type="checkbox"
+                           checked="@(_nuevoMaterialModoStock == "CAJAS")"
+                           @onchange="OnModoStockCajasChanged" />
+                    <span>Este material se guarda en stocks de cajas</span>
+                </label>
+                <label class="check-row">
+                    <input type="checkbox"
+                           checked="@(_nuevoMaterialModoStock == "SUELTO")"
+                           @onchange="OnModoStockSueltoChanged" />
+                    <span>Este material se guarda suelto fuera de cajas</span>
+                </label>
+            </div>
+
+            @if (!_nuevoMaterialModoStockSeleccionado)
+            {
+                <div class="text-xs text-gray-500 full-span">Selecciona primero un modo de stock para habilitar el formulario completo.</div>
+            }
+
+            <fieldset class="stock-locker full-span" disabled="@(!_nuevoMaterialModoStockSeleccionado)">
             <select class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoMaterialCategoriaId) ? "is-filled" : "")"
                     value="@_nuevoMaterialCategoriaId"
                     @onchange="OnCategoriaMaterialChanged">
@@ -71,7 +93,8 @@
                    placeholder="Cantidad"
                    type="number"
                    step="any"
-                   @bind="_nuevoMaterialCantidad" />
+                   @bind="_nuevoMaterialCantidad"
+                   disabled="@(!_nuevoMaterialModoStockSeleccionado || _nuevoMaterialUsaCajas)" />
 
             <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(Convert.ToString(_nuevoMaterialAlturaCm)) && Convert.ToString(_nuevoMaterialAlturaCm) != "0" ? "is-filled" : "")"
                    placeholder="Altura (cm)"
@@ -135,7 +158,8 @@
             <div class="selector-split full-span">
                 <select class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoMaterialAreaId) ? "is-filled" : "")"
                         value="@_nuevoMaterialAreaId"
-                        @onchange="OnAreaChanged">
+                        @onchange="OnAreaChanged"
+                        disabled="@(!_nuevoMaterialModoStockSeleccionado)">
                     <option value="">Área</option>
                     @foreach (var area in _areaOptions)
                     {
@@ -265,7 +289,8 @@
                                     <g class="meson-visual"
                                        style="cursor:pointer"
                                        @onclick:stopPropagation="true"
-                                       @onclick="@(() => SelectMesonAsync(meson.MesonId))">
+                                       @onclick="@(() => SelectMesonAsync(meson.MesonId))"
+                                            disabled="@(!_nuevoMaterialModoStockSeleccionado)">
 
                                         <rect class="meson-rect"
                                               x="@FormatSvg(meson.X)"
@@ -305,7 +330,8 @@
 
                                 <li class="@(isSel ? "meson-item selected" : "meson-item")">
                                     <button type="button" class="btn link"
-                                            @onclick="@(() => SelectMesonAsync(meson.MesonId))">
+                                            @onclick="@(() => SelectMesonAsync(meson.MesonId))"
+                                            disabled="@(!_nuevoMaterialModoStockSeleccionado)">
                                         @meson.Nombre
                                     </button>
                                     <div class="text-xs text-gray-500">
@@ -327,7 +353,19 @@
 
             <div class="field full-span">
                 <label>Cajas (Para agregar una caja ve al apartado MESONES + Cajas)</label>
-                <div class="dropdown-checks @(_nuevoMaterialMesonIds.Count == 0 ? "disabled" : "")">
+                <div class="dropdown-checks @((!_nuevoMaterialModoStockSeleccionado || !_nuevoMaterialUsaCajas || _nuevoMaterialMesonIds.Count == 0) ? "disabled" : "")">
+                    @if (!_nuevoMaterialModoStockSeleccionado)
+                    {
+                        <div class="text-xs text-gray-500">Primero elige un modo de guardado de stock.</div>
+                    }
+                    else if (!_nuevoMaterialUsaCajas)
+                    {
+                        <div class="text-xs text-gray-500">Marca "Se guarda en stocks de cajas" para distribuir cantidades en cajas.</div>
+                    }
+                    else if (_nuevoMaterialMesonIds.Count == 0)
+                    {
+                        <div class="text-xs text-gray-500">Selecciona al menos un mesón para ver las cajas disponibles.</div>
+                    }
                     @if (_cajaOptions.Count == 0)
                     {
                         <div class="text-xs text-gray-500">Sin cajas disponibles para los mesones seleccionados.</div>
@@ -336,14 +374,17 @@
                     {
                         @foreach (var caja in _cajaOptions)
                         {
-                            var isSelCaja = _nuevoMaterialCajaIds.Contains(caja.Id, StringComparer.OrdinalIgnoreCase);
-                            <label class="check-item @(isSelCaja ? "selected" : "")">
-                                <input type="checkbox"
-                                       checked="@isSelCaja"
-                                       disabled="@(_nuevoMaterialMesonIds.Count == 0)"
-                                       @onchange="@(() => ToggleCajaAsync(caja.Id))" />
+                            var cantidadCaja = GetCajaCantidad(caja.Id);
+                            <div class="check-item caja-cantidad-item @(cantidadCaja.HasValue ? "selected" : "")">
                                 <span>@caja.Label</span>
-                            </label>
+                                <input type="number"
+                                       min="0"
+                                       step="any"
+                                       placeholder="Cantidad"
+                                       value="@FormatCajaCantidad(cantidadCaja)"
+                                       disabled="@(!_nuevoMaterialModoStockSeleccionado || !_nuevoMaterialUsaCajas || _nuevoMaterialMesonIds.Count == 0)"
+                                       @onchange="(e) => OnCajaCantidadChanged(caja.Id, e)" />
+                            </div>
                         }
                     }
                 </div>
@@ -351,7 +392,8 @@
 
             <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoMaterialNivel) ? "is-filled" : "")"
                    placeholder="Nivel"
-                   @bind="_nuevoMaterialNivel" />
+                   @bind="_nuevoMaterialNivel"
+                   disabled="@(!_nuevoMaterialModoStockSeleccionado || _nuevoMaterialUsaCajas)" />
 
             <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoMaterialPosicion) ? "is-filled" : "")"
                    placeholder="Posición (ej. al fondo, en el medio)"
@@ -405,8 +447,10 @@
                    placeholder="Observaciones"
                    @bind="_nuevoMaterialObservaciones" />
 
+            </fieldset>
+
             <div class="form-actions full-span">
-                <button class="btn primary" @onclick="SubirMaterialAsync">Subir material</button>
+                <button class="btn primary" @onclick="SubirMaterialAsync" disabled="@(!_nuevoMaterialModoStockSeleccionado)">Subir material</button>
                 @if (!string.IsNullOrWhiteSpace(_nuevoMaterialMsg))
                 {
                     <span class="text-sm text-gray-500">@_nuevoMaterialMsg</span>
@@ -634,7 +678,11 @@
     private readonly List<SelectOption> _mesonOptions = new();
     private readonly List<SelectOption> _cajaOptions = new();
 
-    private readonly List<string> _nuevoMaterialCajaIds = new();
+    private readonly Dictionary<string, decimal> _nuevoMaterialCajaCantidades = new(StringComparer.OrdinalIgnoreCase);
+
+    private bool _nuevoMaterialUsaCajas;
+    private bool _nuevoMaterialModoStockSeleccionado;
+    private string? _nuevoMaterialModoStock;
 
     private readonly List<MesonSummary> _mesonSummaries = new();
     private readonly List<MesonVisual> _mesonVisuals = new();
@@ -736,7 +784,7 @@
             _mesonSummaries.Clear();
             _mesonVisuals.Clear();
             _cajaOptions.Clear();
-            _nuevoMaterialCajaIds.Clear();
+            _nuevoMaterialCajaCantidades.Clear();
 
             _canvasViews.Clear();
             _plantasLookup.Clear();
@@ -766,13 +814,16 @@
         _nuevoMaterialAreaId = newArea;
         _nuevoMaterialMesonIds.Clear();
         _cajaOptions.Clear();
-        _nuevoMaterialCajaIds.Clear();
+        _nuevoMaterialCajaCantidades.Clear();
         await LoadMesonesAsync();
         await InvokeAsync(StateHasChanged);
     }
 
     private async Task SelectAreaFromVisualAsync(string? areaId)
     {
+        if (!_nuevoMaterialModoStockSeleccionado)
+            return;
+
         if (string.IsNullOrWhiteSpace(areaId))
             return;
 
@@ -782,7 +833,7 @@
         _nuevoMaterialAreaId = areaId;
         _nuevoMaterialMesonIds.Clear();
         _cajaOptions.Clear();
-        _nuevoMaterialCajaIds.Clear();
+        _nuevoMaterialCajaCantidades.Clear();
         await LoadMesonesAsync();
         await InvokeAsync(StateHasChanged);
     }
@@ -795,7 +846,7 @@
         _mesonSummaries.Clear();
         _mesonVisuals.Clear();
         _cajaOptions.Clear();
-        _nuevoMaterialCajaIds.Clear();
+        _nuevoMaterialCajaCantidades.Clear();
         StateHasChanged();
     }
 
@@ -803,12 +854,15 @@
     {
         _nuevoMaterialMesonIds.Clear();
         _cajaOptions.Clear();
-        _nuevoMaterialCajaIds.Clear();
+        _nuevoMaterialCajaCantidades.Clear();
         StateHasChanged();
     }
 
     private async Task SelectMesonAsync(string mesonId)
     {
+        if (!_nuevoMaterialModoStockSeleccionado)
+            return;
+
         if (_nuevoMaterialMesonIds.Contains(mesonId, StringComparer.OrdinalIgnoreCase))
             _nuevoMaterialMesonIds.RemoveAll(id => string.Equals(id, mesonId, StringComparison.OrdinalIgnoreCase));
         else
@@ -842,39 +896,79 @@
         await LoadCajasAsync();
     }
 
-    private async Task OnCajaChanged(ChangeEventArgs args)
+    private void OnModoStockCajasChanged(ChangeEventArgs args)
     {
-        _nuevoMaterialCajaIds.Clear();
+        var isChecked = args.Value is bool b
+            ? b
+            : string.Equals(args.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
 
-        if (args.Value is string[] values)
+        if (isChecked)
         {
-            foreach (var v in values.Where(v => !string.IsNullOrWhiteSpace(v)))
-                _nuevoMaterialCajaIds.Add(v);
-        }
-        else if (args.Value is IEnumerable<string> listValues)
-        {
-            foreach (var v in listValues.Where(v => !string.IsNullOrWhiteSpace(v)))
-                _nuevoMaterialCajaIds.Add(v);
+            _nuevoMaterialModoStockSeleccionado = true;
+            _nuevoMaterialModoStock = "CAJAS";
+            _nuevoMaterialUsaCajas = true;
+            _nuevoMaterialCantidad = null;
+            _nuevoMaterialNivel = null;
         }
         else
         {
-            var v = args.Value?.ToString();
-            if (!string.IsNullOrWhiteSpace(v))
-                _nuevoMaterialCajaIds.Add(v);
+            _nuevoMaterialModoStockSeleccionado = false;
+            _nuevoMaterialModoStock = null;
+            _nuevoMaterialUsaCajas = false;
+            _nuevoMaterialCajaCantidades.Clear();
         }
 
         StateHasChanged();
     }
 
-    private async Task ToggleCajaAsync(string cajaId)
+    private void OnModoStockSueltoChanged(ChangeEventArgs args)
     {
-        if (_nuevoMaterialCajaIds.Contains(cajaId, StringComparer.OrdinalIgnoreCase))
-            _nuevoMaterialCajaIds.RemoveAll(id => string.Equals(id, cajaId, StringComparison.OrdinalIgnoreCase));
+        var isChecked = args.Value is bool b
+            ? b
+            : string.Equals(args.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+
+        if (isChecked)
+        {
+            _nuevoMaterialModoStockSeleccionado = true;
+            _nuevoMaterialModoStock = "SUELTO";
+            _nuevoMaterialUsaCajas = false;
+            _nuevoMaterialCajaCantidades.Clear();
+        }
         else
-            _nuevoMaterialCajaIds.Add(cajaId);
+        {
+            _nuevoMaterialModoStockSeleccionado = false;
+            _nuevoMaterialModoStock = null;
+        }
 
         StateHasChanged();
-        await Task.CompletedTask;
+    }
+
+    private decimal? GetCajaCantidad(string cajaId)
+        => _nuevoMaterialCajaCantidades.TryGetValue(cajaId, out var cantidad) ? cantidad : null;
+
+    private static string FormatCajaCantidad(decimal? cantidad)
+        => cantidad is null ? string.Empty : cantidad.Value.ToString(CultureInfo.InvariantCulture);
+
+    private void OnCajaCantidadChanged(string cajaId, ChangeEventArgs args)
+    {
+        var raw = args.Value?.ToString();
+
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            _nuevoMaterialCajaCantidades.Remove(cajaId);
+            return;
+        }
+
+        if (!decimal.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out var cantidad) &&
+            !decimal.TryParse(raw, NumberStyles.Any, CultureInfo.CurrentCulture, out cantidad))
+        {
+            return;
+        }
+
+        if (cantidad < 0)
+            return;
+
+        _nuevoMaterialCajaCantidades[cajaId] = cantidad;
     }
 
     private async Task LoadCajasAsync()
@@ -883,7 +977,7 @@
 
         if (_nuevoMaterialMesonIds.Count == 0)
         {
-            _nuevoMaterialCajaIds.Clear();
+            _nuevoMaterialCajaCantidades.Clear();
             return;
         }
 
@@ -917,7 +1011,10 @@
             _cajaOptions.Add(new SelectOption(cajaId, label));
         }
 
-        _nuevoMaterialCajaIds.RemoveAll(id => !_cajaOptions.Any(opt => string.Equals(opt.Id, id, StringComparison.OrdinalIgnoreCase)));
+                var cajaIdsValidos = _cajaOptions.Select(opt => opt.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var invalidados = _nuevoMaterialCajaCantidades.Keys.Where(id => !cajaIdsValidos.Contains(id)).ToList();
+        foreach (var id in invalidados)
+            _nuevoMaterialCajaCantidades.Remove(id);
     }
 
     private string SelectedAreaLabel =>
@@ -998,22 +1095,32 @@ private void OnImagenModoChanged(ChangeEventArgs args)
             return;
         }
 
+        if (!_nuevoMaterialModoStockSeleccionado)
+        {
+            _nuevoMaterialMsg = "Selecciona primero cómo se guardará el material: por cajas o suelto.";
+            return;
+        }
+
         if (_nuevoMaterialMesonIds.Count == 0)
         {
             _nuevoMaterialMsg = "Selecciona al menos un mesón asociado al área.";
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(_nuevoMaterialNivel))
+        int nivelValue = 0;
+        if (!_nuevoMaterialUsaCajas)
         {
-            _nuevoMaterialMsg = "Ingresa un nivel para el material.";
-            return;
-        }
-        if (!int.TryParse(_nuevoMaterialNivel, NumberStyles.Any, CultureInfo.InvariantCulture, out var nivelValue) &&
-            !int.TryParse(_nuevoMaterialNivel, NumberStyles.Any, CultureInfo.CurrentCulture, out nivelValue))
-        {
-            _nuevoMaterialMsg = "El nivel debe ser un número entero.";
-            return;
+            if (string.IsNullOrWhiteSpace(_nuevoMaterialNivel))
+            {
+                _nuevoMaterialMsg = "Ingresa un nivel para el material.";
+                return;
+            }
+            if (!int.TryParse(_nuevoMaterialNivel, NumberStyles.Any, CultureInfo.InvariantCulture, out nivelValue) &&
+                !int.TryParse(_nuevoMaterialNivel, NumberStyles.Any, CultureInfo.CurrentCulture, out nivelValue))
+            {
+                _nuevoMaterialMsg = "El nivel debe ser un número entero.";
+                return;
+            }
         }
 
         // Reglas por tipo según constraints nuevos
@@ -1075,10 +1182,25 @@ private void OnImagenModoChanged(ChangeEventArgs args)
             alturaCm = alt;
         }
 
-        if (_nuevoMaterialTipo == "CONSUMIBLE" && cantidad is null)
+        if (_nuevoMaterialTipo == "CONSUMIBLE" && !_nuevoMaterialUsaCajas && cantidad is null)
         {
             _nuevoMaterialMsg = "En Consumible debes ingresar una cantidad.";
             return;
+        }
+
+        var cajasConStock = _nuevoMaterialCajaCantidades
+            .Where(kv => kv.Value > 0)
+            .ToList();
+
+        if (_nuevoMaterialUsaCajas)
+        {
+            if (cajasConStock.Count == 0)
+            {
+                _nuevoMaterialMsg = "Si manejas por cajas, ingresa cantidad mayor a 0 en al menos una caja.";
+                return;
+            }
+
+            cantidad = null;
         }
 
         var materialId = $"mat_{Guid.NewGuid():N}".Substring(0, 12);
@@ -1132,36 +1254,41 @@ private void OnImagenModoChanged(ChangeEventArgs args)
             await cmd.ExecuteNonQueryAsync();
         }
 
-        const string sqlMesonLink = @"
+        if (!_nuevoMaterialUsaCajas)
+        {
+            const string sqlMesonLink = @"
             INSERT INTO materiales_mesones_niveles (material_id, meson_id, nivel)
             SELECT @id, x, @nivel
             FROM unnest(@mesones::varchar[]) AS x
             ON CONFLICT DO NOTHING;
         ";
 
-        await using (var cmdMeson = new NpgsqlCommand(sqlMesonLink, conn, tx))
-        {
-            cmdMeson.Parameters.AddWithValue("id", materialId);
-            cmdMeson.Parameters.AddWithValue("mesones", _nuevoMaterialMesonIds.ToArray());
-            cmdMeson.Parameters.AddWithValue("nivel", nivelValue);
-            await cmdMeson.ExecuteNonQueryAsync();
+            await using (var cmdMeson = new NpgsqlCommand(sqlMesonLink, conn, tx))
+            {
+                cmdMeson.Parameters.AddWithValue("id", materialId);
+                cmdMeson.Parameters.AddWithValue("mesones", _nuevoMaterialMesonIds.ToArray());
+                cmdMeson.Parameters.AddWithValue("nivel", nivelValue);
+                await cmdMeson.ExecuteNonQueryAsync();
+            }
         }
 
-        if (_nuevoMaterialCajaIds.Count > 0)
+        if (_nuevoMaterialUsaCajas && cajasConStock.Count > 0)
         {
             const string sqlCajasLink = @"
                 INSERT INTO cajas_materiales (caja_id, material_id, cantidad)
-                SELECT x, @id, @cantidad_caja
-                FROM unnest(@cajas::varchar[]) AS x
+                VALUES (@caja, @id, @cantidad_caja)
                 ON CONFLICT (caja_id, material_id)
                 DO UPDATE SET cantidad = EXCLUDED.cantidad;
             ";
 
-            await using var cmdCajas = new NpgsqlCommand(sqlCajasLink, conn, tx);
-            cmdCajas.Parameters.AddWithValue("id", materialId);
-            cmdCajas.Parameters.AddWithValue("cajas", _nuevoMaterialCajaIds.ToArray());
-            cmdCajas.Parameters.AddWithValue("cantidad_caja", cantidad is null ? 1m : cantidad.Value);
-            await cmdCajas.ExecuteNonQueryAsync();
+            foreach (var entry in cajasConStock)
+            {
+                await using var cmdCajas = new NpgsqlCommand(sqlCajasLink, conn, tx);
+                cmdCajas.Parameters.AddWithValue("id", materialId);
+                cmdCajas.Parameters.AddWithValue("caja", entry.Key);
+                cmdCajas.Parameters.AddWithValue("cantidad_caja", entry.Value);
+                await cmdCajas.ExecuteNonQueryAsync();
+            }
         }
 
         // ✅ NUEVO MODELO: subcategorías en tabla puente (M:N)
@@ -1200,7 +1327,10 @@ private void OnImagenModoChanged(ChangeEventArgs args)
         _nuevoMaterialImagenModo = "url";
         _nuevoMaterialImagenArchivo = null;
         _nuevoMaterialObservaciones = null;
-        _nuevoMaterialCajaIds.Clear();
+        _nuevoMaterialCajaCantidades.Clear();
+        _nuevoMaterialUsaCajas = false;
+        _nuevoMaterialModoStockSeleccionado = false;
+        _nuevoMaterialModoStock = null;
 
         _mesonOptions.Clear();
         _mesonSummaries.Clear();
@@ -2819,6 +2949,14 @@ a.nombre_areas, mm.mesones, m.posicion
 
     .check-item.selected {
         background: #eef6ff;
+    }
+
+    .stock-locker {
+        border: 0;
+        padding: 0;
+        margin: 0;
+        min-inline-size: 0;
+        display: contents;
     }
 
 </style>
