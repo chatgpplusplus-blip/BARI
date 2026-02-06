@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.HttpOverrides;
 using BARI_web.Features.Services;
 using Microsoft.AspNetCore.SignalR;
+using BARI_web.Features.Descarga;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -128,6 +129,7 @@ app.UseRouting();
 
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
+app.MapInventoryDownloads();
 
 // Endpoint de prueba de red (se mantiene)
 app.MapGet("/admin/net-test", async (IHttpClientFactory httpFactory) =>
