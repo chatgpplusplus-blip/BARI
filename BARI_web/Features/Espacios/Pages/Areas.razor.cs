@@ -746,7 +746,7 @@ namespace BARI_web.Features.Espacios.Pages
             foreach (var ch in cleaned)
             {
                 if ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-') sb2.Append(ch);
-                else if (char.IsWhiteSpace(ch) || ch == '_' || ch == '/') sb2.Append('-');
+                else if (char.IsWhiteSpace(ch) || ch == '_' || ch == '/' || ch == '.') sb2.Append('-');
             }
             var slug = sb2.ToString().Trim('-');
             return string.IsNullOrEmpty(slug) ? "sin-area" : slug;

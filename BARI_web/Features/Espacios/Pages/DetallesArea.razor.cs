@@ -471,16 +471,19 @@ namespace BARI_web.Features.Espacios.Pages
             Pg.UseSheet("areas");
             var rows = await Pg.ReadAllAsync();
 
-            // Primero busca por nombre_areas normalizado
+            // Primero busca por area_id o nombre_areas normalizados
             foreach (var r in rows)
             {
+                var aid = NullIfEmpty(Get(r, "area_id"));
                 var name = NullIfEmpty(Get(r, "nombre_areas"));
-                var aid = Get(r, "area_id");
+                if (!string.IsNullOrWhiteSpace(aid) && string.Equals(Slugify(aid), slug, StringComparison.OrdinalIgnoreCase))
+                    return aid;
+
                 if (string.IsNullOrWhiteSpace(name)) continue;
 
-                var nameSlug = Slugify(name).Replace('-', '_');
-                if (string.Equals(nameSlug, candidateId, StringComparison.OrdinalIgnoreCase))
-                    return aid;
+                var nameSlug = Slugify(name);
+                if (string.Equals(nameSlug, slug, StringComparison.OrdinalIgnoreCase))
+                    return aid ?? candidateId;
             }
 
             // Si no, usa el propio candidate como area_id
