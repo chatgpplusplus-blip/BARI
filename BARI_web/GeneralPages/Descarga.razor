@@ -242,7 +242,7 @@
 
     private string BuildDownloadHref(string tipo, string modo, IEnumerable<string>? campos = null)
     {
-        var baseUrl = $"/descarga?tipo={Uri.EscapeDataString(tipo)}&modo={Uri.EscapeDataString(modo)}";
+        var baseUrl = $"/api/descarga?tipo={Uri.EscapeDataString(tipo)}&modo={Uri.EscapeDataString(modo)}";
         if (campos is null) return baseUrl;
 
         var joined = string.Join(",", campos);
