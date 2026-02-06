@@ -64,7 +64,18 @@
             Arrastra para rotar, usa rueda del mouse para zoom y botón derecho para desplazar.
         </div>
     </div>
-    <div id="area-3d-canvas" class="area-3d-canvas" role="img" aria-label="Vista 3D del área"></div>
+    @if (IsLoading)
+    {
+        <div class="area-3d-canvas loading" role="status">Cargando vista 3D...</div>
+    }
+    else if (_areaData is null)
+    {
+        <div class="area-3d-canvas loading" role="status">No hay datos para renderizar.</div>
+    }
+    else
+    {
+        <div id="area-3d-canvas" class="area-3d-canvas" role="img" aria-label="Vista 3D del área"></div>
+    }
 </section>
 
 <section class="page-card" style="margin-top:1rem;">
@@ -77,19 +88,13 @@
 </section>
 
 @code {
-    [Parameter] public string AreaSlug { get; set; } = "";
-    private int _initAttempts;
+    private bool _jsInitialized;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender && _initAttempts >= 3) return;
-        _initAttempts++;
-        var ready = await Js.InvokeAsync<bool>("Bari3DInitSafe", "area-3d-canvas", AreaSlug);
-        if (!ready && _initAttempts < 3)
-        {
-            await Task.Delay(250);
-            StateHasChanged();
-        }
+        if (!firstRender || _jsInitialized || _areaData is null || IsLoading) return;
+        await Js.InvokeVoidAsync("Bari3D.initArea3D", "area-3d-canvas", _areaData);
+        _jsInitialized = true;
     }
 }
 
@@ -101,5 +106,14 @@
         background: #0b1220;
         overflow: hidden;
         border: 1px solid rgba(148, 163, 184, 0.3);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #cbd5f5;
+        font-size: 0.95rem;
+    }
+
+    .area-3d-canvas.loading {
+        background: linear-gradient(135deg, #0b1220 0%, #111827 100%);
     }
 </style>
