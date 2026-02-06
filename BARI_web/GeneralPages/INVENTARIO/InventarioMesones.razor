@@ -145,6 +145,8 @@
                                                           x="@FormatSvg(area.CenterX)" y="@FormatSvg(area.CenterY)"
                                                           text-anchor="middle" dominant-baseline="middle"
                                                           font-size="@FormatSvg(fontSize)"
+                                                          textLength="@FormatSvg(labelWidth * 0.9m)"
+                                                          lengthAdjust="spacingAndGlyphs"
                                                           @onclick:stopPropagation="true">
                                                     @area.Nombre
                                                 </svg:text>
@@ -393,6 +395,8 @@
                                               x="@FormatSvg(area.CenterX)" y="@FormatSvg(area.CenterY)"
                                               text-anchor="middle" dominant-baseline="middle"
                                               font-size="@FormatSvg(fontSize)"
+                                              textLength="@FormatSvg(labelWidth * 0.9m)"
+                                              lengthAdjust="spacingAndGlyphs"
                                               @onclick:stopPropagation="true">
                                         @area.Nombre
                                     </svg:text>
@@ -453,7 +457,9 @@
                                   y="@FormatSvg(SelectedAreaForFilter.CenterY)"
                                   text-anchor="middle"
                                   dominant-baseline="middle"
-                                  font-size="@FormatSvg(AreaLabelFontSize(SelectedAreaForFilter))">
+                                  font-size="@FormatSvg(AreaLabelFontSize(SelectedAreaForFilter))"
+                                  textLength="@FormatSvg(AreaLabelWidth(SelectedAreaForFilter) * 0.9m)"
+                                  lengthAdjust="spacingAndGlyphs">
                             @SelectedAreaForFilter.Nombre
                         </svg:text>
                     </svg>

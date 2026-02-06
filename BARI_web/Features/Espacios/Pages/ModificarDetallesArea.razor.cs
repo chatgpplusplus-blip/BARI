@@ -165,6 +165,7 @@ namespace BARI_web.Features.Espacios.Pages
             public string? observaciones { get; set; }
             public string? descripcion { get; set; }
             public string? imagen_url { get; set; }
+            public decimal? levantamiento_cm { get; set; }
         }
 
         // =========================
@@ -286,8 +287,6 @@ namespace BARI_web.Features.Espacios.Pages
         private string _nuevoMesonImagenModo = "url";
         private string? _nuevoMesonImagenNombre;
         private decimal? _newBlockAltura = null;
-        public string? imagen_url { get; set; }
-
         // =========================
         // UI: crear instalación (SQL)
         // =========================
@@ -300,6 +299,7 @@ namespace BARI_web.Features.Espacios.Pages
         private string? _nuevoIns_ProveedorServicio = "";
         private string? _nuevoIns_Observaciones = "";
         private string? _nuevoIns_Descripcion = "";
+        private string? _nuevoIns_LevantamientoCm = "";
         private string? _nuevoIns_ImagenUrl = "";
         private string _nuevoIns_ImagenModo = "url";
         private string? _nuevoIns_ImagenNombre;
@@ -684,6 +684,25 @@ namespace BARI_web.Features.Espacios.Pages
                     imagen_url = NullIfEmpty(Get(r, "imagen_url"))
                 };
             }
+
+            // Levantamientos opcionales
+            var levantamientos = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+            Pg.UseSheet("levantamientos_instalaciones");
+            foreach (var r in await Pg.ReadAllAsync())
+            {
+                var instId = NullIfEmpty(Get(r, "instalacion_id"));
+                if (string.IsNullOrWhiteSpace(instId)) continue;
+
+                var lev = ParseNullableDecimal(NullIfEmpty(Get(r, "altura_desde_suelo_cm")));
+                if (lev.HasValue)
+                    levantamientos[instId] = lev.Value;
+            }
+
+            foreach (var inst in _instalaciones.Values)
+            {
+                if (levantamientos.TryGetValue(inst.instalacion_id, out var lev))
+                    inst.levantamiento_cm = lev;
+            }
         }
 
         private async Task LoadInnerItemsForArea(AreaDraw a)
@@ -1021,7 +1040,8 @@ namespace BARI_web.Features.Espacios.Pages
                 proveedor_servicio = string.IsNullOrWhiteSpace(_nuevoIns_ProveedorServicio) ? null : _nuevoIns_ProveedorServicio,
                 observaciones = string.IsNullOrWhiteSpace(_nuevoIns_Observaciones) ? null : _nuevoIns_Observaciones,
                 descripcion = string.IsNullOrWhiteSpace(_nuevoIns_Descripcion) ? null : _nuevoIns_Descripcion,
-                imagen_url = string.IsNullOrWhiteSpace(_nuevoIns_ImagenUrl) ? null : _nuevoIns_ImagenUrl
+                imagen_url = string.IsNullOrWhiteSpace(_nuevoIns_ImagenUrl) ? null : _nuevoIns_ImagenUrl,
+                levantamiento_cm = ParseNullableDecimal(_nuevoIns_LevantamientoCm)
             };
 
             _nuevoIns_Nombre = "";
@@ -1033,6 +1053,7 @@ namespace BARI_web.Features.Espacios.Pages
             _nuevoIns_ProveedorServicio = "";
             _nuevoIns_Observaciones = "";
             _nuevoIns_Descripcion = "";
+            _nuevoIns_LevantamientoCm = "";
             _nuevoIns_ImagenUrl = "";
             _nuevoIns_ImagenModo = "url";
             _nuevoIns_ImagenNombre = null;
@@ -1881,6 +1902,29 @@ namespace BARI_web.Features.Espacios.Pages
                         {
                             toSave["instalacion_id"] = ins.instalacion_id;
                             await Pg.CreateAsync(toSave);
+                        }
+                    }
+
+                    Pg.UseSheet("levantamientos_instalaciones");
+                    foreach (var ins in _instalaciones.Values)
+                    {
+                        if (ins.levantamiento_cm.HasValue && ins.levantamiento_cm.Value > 0)
+                        {
+                            var levSave = new Dictionary<string, object>
+                            {
+                                ["altura_desde_suelo_cm"] = ins.levantamiento_cm.Value
+                            };
+
+                            var okLev = await Pg.UpdateByIdAsync("instalacion_id", ins.instalacion_id, levSave);
+                            if (!okLev)
+                            {
+                                levSave["instalacion_id"] = ins.instalacion_id;
+                                await Pg.CreateAsync(levSave);
+                            }
+                        }
+                        else
+                        {
+                            await Pg.DeleteByIdAsync("instalacion_id", ins.instalacion_id);
                         }
                     }
                 }
