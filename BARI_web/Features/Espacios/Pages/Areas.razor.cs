@@ -653,8 +653,8 @@ namespace BARI_web.Features.Espacios.Pages
         private void GoToArea(string? areaId)
         {
             if (string.IsNullOrWhiteSpace(areaId)) return;
-            var name = _byArea.TryGetValue(areaId, out var a) ? a.Label : areaId.Replace('_', ' ').ToUpperInvariant();
-            var slug = Slugify(name);
+            var slugSource = areaId.Replace('_', ' ');
+            var slug = Slugify(slugSource);
             Nav.NavigateTo($"/detalles/{slug}");
         }
 
