@@ -157,9 +157,9 @@
     private void ToggleMenu() => menuOpen = !menuOpen;
     private void CloseMenu() => menuOpen = false;
 
-    private async Task HandleSearchInput(ChangeEventArgs _)
+    private void HandleSearchInput()
     {
-        await TriggerSearchAsync();
+        _ = TriggerSearchAsync();
     }
 
     private async Task TriggerSearchAsync()
