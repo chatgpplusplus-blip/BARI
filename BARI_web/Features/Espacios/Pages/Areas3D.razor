@@ -1,0 +1,168 @@
+@page "/areas-3d"
+@namespace BARI_web.Features.Espacios.Pages
+@implements IAsyncDisposable
+
+@inject NavigationManager Nav
+
+<section class="page-card">
+    <div class="toolbar">
+        <div class="toolbar-left">
+            <h2 class="toolbar-title">Mapa 3D de Áreas</h2>
+        </div>
+        <div class="toolbar-actions">
+            <button type="button" class="btn" @onclick="@(() => Nav.NavigateTo("/areas"))">
+                ← Volver al mapa 2D
+            </button>
+            <button type="button" class="btn primary" @onclick="@(() => Nav.NavigateTo("/descarga"))">
+                Descargar inventarios
+            </button>
+        </div>
+    </div>
+
+    <div class="helper" style="margin-top:.25rem;">
+        Vista general 3D con las áreas, mesones e instalaciones visibles en la planta seleccionada.
+    </div>
+</section>
+
+<section class="page-card" style="margin-top:1rem;">
+    <div class="toolbar-actions">
+        <label class="muted" style="font-size:.85rem;">Planta</label>
+        <select class="planta-select" value="@_currentPlantaId"
+                @onchange="e => OnChangePlanta(e.Value?.ToString())">
+            @foreach (var plantaKv in _plantasLookup)
+            {
+                <option value="@plantaKv.Key">@plantaKv.Value</option>
+            }
+        </select>
+    </div>
+</section>
+
+@if (IsLoading)
+{
+    <div class="canvas-card" style="text-align: center; padding: 3rem;">
+        <p class="muted">Cargando vista 3D...</p>
+    </div>
+}
+else if (_views.Count == 0)
+{
+    <div class="canvas-card" style="text-align: center; padding: 3rem;">
+        <p class="muted">No hay información disponible para mostrar.</p>
+    </div>
+}
+else
+{
+    @foreach (var view in _views)
+    {
+        <section class="canvas-card">
+            <div class="canvas-header">
+                <h3 class="canvas-title">@view.Canvas.nombre</h3>
+            </div>
+
+            @if (view.Data is null)
+            {
+                <div class="area-3d-canvas loading" role="status">Sin datos 3D para esta planta.</div>
+            }
+            else
+            {
+                <div id="@view.ContainerId" class="area-3d-canvas" role="img" aria-label="Vista 3D del mapa de áreas">
+                    <div class="bari-3d-host"></div>
+                </div>
+            }
+        </section>
+    }
+}
+
+<style>
+    .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 1rem;
+        background: #e9e9e9;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.75rem;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+
+    .toolbar-title {
+        margin: 0;
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: #0f172a;
+    }
+
+    .toolbar-actions {
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+    }
+
+    .btn {
+        padding: 0.5rem 1rem;
+        border-radius: 0.5rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+        border: 1px solid #e2e8f0;
+        background: #b2b2b2;
+        color: #0f172a;
+    }
+
+    .btn:hover {
+        border-color: #2563eb;
+        color: #2563eb;
+        background: #b2b2b2;
+    }
+
+    .btn.primary {
+        background: #2563eb;
+        color: white;
+        border-color: #2563eb;
+    }
+
+    .btn.primary:hover {
+        filter: brightness(0.9);
+    }
+
+    .planta-select {
+        padding: 0.5rem;
+        border-radius: 0.5rem;
+        border: 1px solid #e2e8f0;
+    }
+
+    .canvas-card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.75rem;
+        padding: 1rem;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+        margin-top: 1rem;
+    }
+
+    .canvas-title {
+        margin: 0 0 1rem 0;
+        font-size: 1.1rem;
+        font-weight: 600;
+    }
+
+    .area-3d-canvas {
+        width: 100%;
+        height: min(70vh, 680px);
+        border-radius: 12px;
+        background: #0b1220;
+        overflow: hidden;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #cbd5f5;
+        font-size: 0.95rem;
+    }
+
+    .area-3d-canvas.loading {
+        background: linear-gradient(135deg, #0b1220 0%, #111827 100%);
+    }
+</style>

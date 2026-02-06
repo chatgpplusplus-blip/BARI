@@ -40,13 +40,23 @@
         const host = container.querySelector(".bari-3d-host");
         if (!host) return;
 
-        host.textContent = ""; // ✅ limpia SOLO lo que tú agregas
+        let layer = host.querySelector(".bari-3d-layer");
+        if (!layer) {
+            layer = document.createElement("div");
+            layer.className = "bari-3d-layer";
+            layer.style.width = "100%";
+            layer.style.height = "100%";
+            layer.style.position = "relative";
+            host.appendChild(layer);
+        }
+
+        layer.replaceChildren(); // ✅ limpia SOLO lo que tú agregas
         container.style.position = container.style.position || "relative";
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setPixelRatio(window.devicePixelRatio || 1);
         renderer.setSize(container.clientWidth, container.clientHeight);
-        host.appendChild(renderer.domElement);
+        layer.appendChild(renderer.domElement);
 
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x0b1220);
@@ -240,7 +250,7 @@
         label.style.background = "rgba(15, 23, 42, 0.7)";
         label.style.borderRadius = "8px";
         label.style.pointerEvents = "none";
-        host.appendChild(label);
+        layer.appendChild(label);
 
         const entry = {
             renderer,
@@ -250,7 +260,8 @@
             animationId: null,
             resizeHandler: null,
             label,
-            host
+            host,
+            layer
         };
 
 
@@ -305,6 +316,7 @@
 
         entry.renderer?.domElement?.remove?.();
         entry.label?.remove?.();
+        entry.layer?.replaceChildren?.();
 
 
         state.delete(container);
