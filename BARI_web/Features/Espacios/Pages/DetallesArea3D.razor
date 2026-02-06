@@ -78,11 +78,18 @@
 
 @code {
     [Parameter] public string AreaSlug { get; set; } = "";
+    private int _initAttempts;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender) return;
-        await Js.InvokeVoidAsync("Bari3D.initArea3D", "area-3d-canvas", AreaSlug);
+        if (!firstRender && _initAttempts >= 3) return;
+        _initAttempts++;
+        var ready = await Js.InvokeAsync<bool>("Bari3DInitSafe", "area-3d-canvas", AreaSlug);
+        if (!ready && _initAttempts < 3)
+        {
+            await Task.Delay(250);
+            StateHasChanged();
+        }
     }
 }
 
@@ -96,5 +103,3 @@
         border: 1px solid rgba(148, 163, 184, 0.3);
     }
 </style>
-
-<script src="/js/area3d.js"></script>

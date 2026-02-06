@@ -131,5 +131,14 @@
         state.delete(container);
     }
 
+    function initArea3DSafe(containerId, areaSlug) {
+        if (!window.Bari3D || typeof window.Bari3D.initArea3D !== "function") {
+            return false;
+        }
+        window.Bari3D.initArea3D(containerId, areaSlug);
+        return true;
+    }
+
     window.Bari3D = { initArea3D, dispose };
+    window.Bari3DInitSafe = initArea3DSafe;
 })();
