@@ -1,6 +1,7 @@
 @page "/detalles-area-3d/{AreaSlug}"
 @namespace BARI_web.Features.Espacios.Pages
 @inject NavigationManager Nav
+@inject IJSRuntime Js
 
 <PageTitle>Vista 3D · @AreaSlug</PageTitle>
 
@@ -57,6 +58,16 @@
 </section>
 
 <section class="page-card" style="margin-top:1rem;">
+    <div class="section-header">
+        <h3 style="margin-bottom:0;">Vista 3D</h3>
+        <div class="helper">
+            Arrastra para rotar, usa rueda del mouse para zoom y botón derecho para desplazar.
+        </div>
+    </div>
+    <div id="area-3d-canvas" class="area-3d-canvas" role="img" aria-label="Vista 3D del área"></div>
+</section>
+
+<section class="page-card" style="margin-top:1rem;">
     <h3 style="margin-bottom:.5rem;">Pendientes para un 3D más realista</h3>
     <ul style="margin:0; padding-left:1.1rem;">
         <li>Texturas y modelos detallados (mobiliario, equipos, materiales).</li>
@@ -67,4 +78,23 @@
 
 @code {
     [Parameter] public string AreaSlug { get; set; } = "";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await Js.InvokeVoidAsync("Bari3D.initArea3D", "area-3d-canvas", AreaSlug);
+    }
 }
+
+<style>
+    .area-3d-canvas {
+        width: 100%;
+        height: min(70vh, 640px);
+        border-radius: 12px;
+        background: #0b1220;
+        overflow: hidden;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+    }
+</style>
+
+<script src="/js/area3d.js"></script>
