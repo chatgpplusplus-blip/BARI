@@ -1,6 +1,11 @@
 @inherits LayoutComponentBase
 @implements IDisposable
 @inject NavigationManager Nav
+@inject NpgsqlDataSource DataSource
+@using Npgsql
+@using System.Threading
+@using System.Globalization
+@using System.Text
 
 <div class="bari-layout @(menuOpen ? "menu-open" : "")">
     <header class="bari-topbar">
@@ -43,7 +48,41 @@
 
             <div class="bari-search">
                 <label class="bari-search-label">BUSCAR</label>
-                <input @bind="searchText" class="bari-search-input" placeholder="Escribe aquí (próximamente)" />
+                <input @bind-value="searchText"
+                       @bind-value:event="oninput"
+                       @bind-value:after="HandleSearchInput"
+                       class="bari-search-input"
+                       placeholder="Busca áreas, mesones, instalaciones o páginas..." />
+
+                @if (_isSearching)
+                {
+                    <div class="bari-search-loading" role="status" aria-live="polite">
+                        <span class="bari-spinner" aria-hidden="true"></span>
+                        <span>Buscando...</span>
+                    </div>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(searchText))
+                {
+                    <div class="bari-search-results" role="listbox">
+                        @if (_searchResults.Count == 0 && !_isSearching)
+                        {
+                            <div class="bari-search-empty">Sin resultados.</div>
+                        }
+                        else
+                        {
+                            @foreach (var result in _searchResults)
+                            {
+                                <button type="button"
+                                        class="bari-search-item"
+                                        @onclick="() => NavigateToResult(result.Route)">
+                                    <span class="bari-search-title">@result.Title</span>
+                                    <span class="bari-search-desc">@result.Description</span>
+                                </button>
+                            }
+                        }
+                    </div>
+                }
             </div>
 
             <div class="bari-navsection">MÓDULOS</div>
@@ -53,6 +92,8 @@
                 <NavLink class="bari-navbtn" href="/documentaciones"><span class="bari-navtext">DOCUMENTACIONES</span></NavLink>
                 <NavLink class="bari-navbtn" href="/areas"><span class="bari-navtext">ÁREAS</span></NavLink>
                 <NavLink class="bari-navbtn" href="/contenidos"><span class="bari-navtext">ASIGNATURAS, CLASES Y EXPERIENCIAS</span></NavLink>
+                <NavLink class="bari-navbtn" href="/areas-3d"><span class="bari-navtext">MAPA 3D DE ÁREAS</span></NavLink>
+                <NavLink class="bari-navbtn" href="/descarga"><span class="bari-navtext">DESCARGAR INVENTARIO</span></NavLink>
 
                 <div class="bari-navsection">INVENTARIO</div>
 
@@ -75,6 +116,29 @@
 @code {
     private bool menuOpen = false;
     private string? searchText;
+    private bool _isSearching;
+    private List<SearchResult> _searchResults = new();
+    private CancellationTokenSource? _searchCts;
+
+    private sealed record SearchResult(string Title, string Route, string Description);
+    private sealed record SearchPage(string Title, string Route, string Description, string Keywords);
+
+    private static readonly List<SearchPage> Pages = new()
+    {
+        new("Inicio", "/", "Panel principal del inventario y accesos rápidos.", "inicio home panel principal"),
+        new("Áreas", "/areas", "Mapa 2D y detalle de las áreas del laboratorio.", "areas mapa plano laboratorio 2d"),
+        new("Mapa 3D de áreas", "/areas-3d", "Vista 3D general con elementos internos.", "3d mapa areas volumenes"),
+        new("Documentaciones", "/documentaciones", "Gestión de documentación técnica y manuales.", "documentaciones manuales tecnicos"),
+        new("BARI Bot", "/baribot", "Asistente de consultas rápidas.", "chat bot asistente"),
+        new("Asignaturas, clases y experiencias", "/contenidos", "Contenido académico y experiencias de laboratorio.", "asignaturas clases experiencias"),
+        new("Inventario materiales", "/inventario-materiales", "Materiales físicos y de montaje.", "inventario materiales montaje vidrio plastico"),
+        new("Inventario equipo", "/inventario-equipo", "Equipos, modelos y estados.", "inventario equipos modelos"),
+        new("Inventario sustancias", "/inventario-sustancias", "Sustancias químicas y reactivos.", "inventario sustancias reactivos quimica"),
+        new("Inventario instalaciones", "/inventario-instalaciones", "Instalaciones fijas y ubicaciones.", "inventario instalaciones"),
+        new("Mesones y cajas", "/inventario-mesones", "Mesones, mobiliario y cajas.", "mesones cajas mobiliario"),
+        new("Datos técnicos", "/informacion-tecnica", "Información técnica del laboratorio.", "datos tecnicos informacion"),
+        new("Descargar inventario", "/descarga", "Exportación de inventarios y reportes.", "descargar exportar inventario")
+    };
 
     protected override void OnInitialized()
     {
@@ -84,14 +148,234 @@
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
     {
         menuOpen = false;
+        searchText = "";
+        _searchResults.Clear();
+        _isSearching = false;
         InvokeAsync(StateHasChanged);
     }
 
     private void ToggleMenu() => menuOpen = !menuOpen;
     private void CloseMenu() => menuOpen = false;
 
+    private void HandleSearchInput()
+    {
+        _ = TriggerSearchAsync();
+    }
+
+    private async Task TriggerSearchAsync()
+    {
+        _searchCts?.Cancel();
+        var query = (searchText ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            _isSearching = false;
+            _searchResults.Clear();
+            return;
+        }
+
+        _isSearching = true;
+        StateHasChanged();
+
+        var cts = new CancellationTokenSource();
+        _searchCts = cts;
+
+        try
+        {
+            await Task.Delay(250, cts.Token);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        var results = await BuildSearchResultsAsync(query, cts.Token);
+        if (cts.IsCancellationRequested || !string.Equals(query, (searchText ?? "").Trim(), StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _searchResults = results;
+        _isSearching = false;
+        StateHasChanged();
+    }
+
+    private async Task<List<SearchResult>> BuildSearchResultsAsync(string query, CancellationToken ct)
+    {
+        var results = new List<SearchResult>();
+        var normalized = NormalizeQuery(query);
+
+        foreach (var page in Pages)
+        {
+            if (Matches(normalized, page.Title, page.Description, page.Keywords))
+            {
+                results.Add(new SearchResult(page.Title, page.Route, page.Description));
+            }
+        }
+
+        if (ct.IsCancellationRequested) return results;
+
+        await using var conn = await DataSource.OpenConnectionAsync(ct);
+        var qParam = $"%{query}%";
+
+        await AddDbResultsAsync(results, conn, ct, @"
+            SELECT area_id, nombre_areas
+            FROM areas
+            WHERE nombre_areas ILIKE @q
+            ORDER BY nombre_areas
+            LIMIT 6;", qParam,
+            reader =>
+            {
+                var areaId = reader.GetString(0);
+                var name = reader.GetString(1);
+                var slug = Slugify(name);
+                return new SearchResult(name, $"/detalles/{slug}", "Área del laboratorio.");
+            });
+
+        await AddDbResultsAsync(results, conn, ct, @"
+            SELECT meson_id, nombre_meson
+            FROM mesones
+            WHERE nombre_meson ILIKE @q
+            ORDER BY nombre_meson
+            LIMIT 6;", qParam,
+            reader =>
+            {
+                var mesonId = reader.GetString(0);
+                var name = reader.GetString(1);
+                return new SearchResult(name, $"/detalles-meson/{mesonId}", "Mesón registrado en el laboratorio.");
+            });
+
+        await AddDbResultsAsync(results, conn, ct, @"
+            SELECT instalacion_id, nombre
+            FROM instalaciones
+            WHERE nombre ILIKE @q
+            ORDER BY nombre
+            LIMIT 6;", qParam,
+            reader =>
+            {
+                var name = reader.GetString(1);
+                return new SearchResult(name, "/inventario-instalaciones", "Instalación fija del laboratorio.");
+            });
+
+        await AddDbResultsAsync(results, conn, ct, @"
+            SELECT sustancia_id,
+                   COALESCE(NULLIF(nombre_comercial, ''),
+                            NULLIF(nombre_quimico, ''),
+                            sustancia_id) AS nombre
+            FROM sustancias
+            WHERE nombre_comercial ILIKE @q
+               OR nombre_quimico ILIKE @q
+               OR sustancia_id ILIKE @q
+            ORDER BY nombre
+            LIMIT 6;", qParam,
+            reader =>
+            {
+                var name = reader.GetString(1);
+                return new SearchResult(name, "/inventario-sustancias", "Sustancia registrada.");
+            });
+
+        await AddDbResultsAsync(results, conn, ct, @"
+            SELECT material_id, nombre
+            FROM materiales
+            WHERE nombre ILIKE @q
+            ORDER BY nombre
+            LIMIT 6;", qParam,
+            reader =>
+            {
+                var name = reader.GetString(1);
+                return new SearchResult(name, "/inventario-materiales", "Material del laboratorio.");
+            });
+
+        await AddDbResultsAsync(results, conn, ct, @"
+            SELECT modelo_id, nombre_modelo
+            FROM modelos_equipo
+            WHERE nombre_modelo ILIKE @q
+            ORDER BY nombre_modelo
+            LIMIT 6;", qParam,
+            reader =>
+            {
+                var name = reader.GetString(1);
+                return new SearchResult(name, "/inventario-equipo", "Modelo de equipo registrado.");
+            });
+
+        return results;
+    }
+
+    private static async Task AddDbResultsAsync(
+        List<SearchResult> results,
+        NpgsqlConnection conn,
+        CancellationToken ct,
+        string sql,
+        string queryParam,
+        Func<NpgsqlDataReader, SearchResult> map)
+    {
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("q", queryParam);
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            results.Add(map(reader));
+        }
+    }
+
+    private void NavigateToResult(string route)
+    {
+        searchText = "";
+        _searchResults.Clear();
+        _isSearching = false;
+        Nav.NavigateTo(route);
+    }
+
+    private static string NormalizeQuery(string value)
+    {
+        var normalized = value.Normalize(NormalizationForm.FormD);
+        var sb = new StringBuilder();
+        foreach (var ch in normalized)
+        {
+            var category = CharUnicodeInfo.GetUnicodeCategory(ch);
+            if (category != UnicodeCategory.NonSpacingMark)
+            {
+                sb.Append(char.ToLowerInvariant(ch));
+            }
+        }
+        return sb.ToString();
+    }
+
+    private static bool Matches(string query, params string[] values)
+    {
+        foreach (var value in values)
+        {
+            if (string.IsNullOrWhiteSpace(value)) continue;
+            var normalized = NormalizeQuery(value);
+            if (normalized.Contains(query, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static string Slugify(string s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "sin-area";
+        var normalized = NormalizeQuery(s);
+        var sb = new StringBuilder();
+        foreach (var ch in normalized)
+        {
+            if (char.IsLetterOrDigit(ch)) sb.Append(ch);
+            else if (char.IsWhiteSpace(ch) || ch == '-' || ch == '_') sb.Append('-');
+        }
+        var slug = sb.ToString().Trim('-');
+        while (slug.Contains("--", StringComparison.Ordinal))
+        {
+            slug = slug.Replace("--", "-", StringComparison.Ordinal);
+        }
+        return string.IsNullOrWhiteSpace(slug) ? "sin-area" : slug;
+    }
+
     public void Dispose()
     {
         Nav.LocationChanged -= OnLocationChanged;
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
     }
 }
