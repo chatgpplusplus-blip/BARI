@@ -1,0 +1,307 @@
+@page "/descarga"
+
+<PageTitle>Descargar inventarios</PageTitle>
+
+<section class="page-card">
+    <h2>Descargar inventarios</h2>
+    <p class="helper">
+        Selecciona qué columnas deseas incluir en cada inventario. Las relaciones/intermedias (por ejemplo, cajas y
+        cantidades) se resumen en una sola celda separada por comas cuando se habilita la opción.
+    </p>
+</section>
+
+<section class="page-card" style="margin-top:1.5rem;">
+    <div class="section-header">
+        <h3>Reactivos (Sustancias + Contenedores)</h3>
+        <div class="section-actions">
+            <a class="btn" href="@BuildDownloadHref("reactivos", "completo")">Descargar completo</a>
+            <a class="btn primary" href="@BuildDownloadHref("reactivos", "detallado", SelectedReactivos())">
+                Descargar detallado
+            </a>
+        </div>
+    </div>
+    <p class="helper">El inventario detallado permite elegir campos de Sustancias y Contenedores.</p>
+
+    <div class="grid-2">
+        <div>
+            <h4>Campos de Sustancias</h4>
+            @foreach (var opt in ReactivoSustanciaOptions)
+            {
+                <label class="option-row">
+                    <input type="checkbox" @bind="opt.Selected" />
+                    <span>
+                        <strong>@opt.Label</strong>
+                        <span class="muted">· @opt.Help</span>
+                    </span>
+                </label>
+            }
+        </div>
+        <div>
+            <h4>Campos de Contenedores</h4>
+            @foreach (var opt in ReactivoContenedorOptions)
+            {
+                <label class="option-row">
+                    <input type="checkbox" @bind="opt.Selected" />
+                    <span>
+                        <strong>@opt.Label</strong>
+                        <span class="muted">· @opt.Help</span>
+                    </span>
+                </label>
+            }
+        </div>
+    </div>
+</section>
+
+<section class="page-card" style="margin-top:1.5rem;">
+    <div class="section-header">
+        <h3>Equipos (Modelos + Equipos)</h3>
+        <div class="section-actions">
+            <a class="btn" href="@BuildDownloadHref("equipos", "completo")">Descargar completo</a>
+            <a class="btn primary" href="@BuildDownloadHref("equipos", "detallado", SelectedEquipos())">
+                Descargar detallado
+            </a>
+        </div>
+    </div>
+    <p class="helper">El detallado combina información del modelo de equipo y de los equipos registrados.</p>
+
+    <div class="grid-2">
+        <div>
+            <h4>Campos de Modelos</h4>
+            @foreach (var opt in EquipoModeloOptions)
+            {
+                <label class="option-row">
+                    <input type="checkbox" @bind="opt.Selected" />
+                    <span>
+                        <strong>@opt.Label</strong>
+                        <span class="muted">· @opt.Help</span>
+                    </span>
+                </label>
+            }
+        </div>
+        <div>
+            <h4>Campos de Equipos</h4>
+            @foreach (var opt in EquipoItemOptions)
+            {
+                <label class="option-row">
+                    <input type="checkbox" @bind="opt.Selected" />
+                    <span>
+                        <strong>@opt.Label</strong>
+                        <span class="muted">· @opt.Help</span>
+                    </span>
+                </label>
+            }
+        </div>
+    </div>
+</section>
+
+<section class="page-card" style="margin-top:1.5rem;">
+    <div class="section-header">
+        <h3>Materiales</h3>
+        <div class="section-actions">
+            <a class="btn" href="@BuildDownloadHref("materiales", "completo")">Descargar completo</a>
+            <a class="btn primary" href="@BuildDownloadHref("materiales", "detallado", SelectedMateriales())">
+                Descargar detallado
+            </a>
+        </div>
+    </div>
+    <p class="helper">Incluye ubicación, capacidad/cantidad y relaciones intermedias cuando se habiliten.</p>
+
+    <div class="grid-1">
+        @foreach (var opt in MaterialOptions)
+        {
+            <label class="option-row">
+                <input type="checkbox" @bind="opt.Selected" />
+                <span>
+                    <strong>@opt.Label</strong>
+                    <span class="muted">· @opt.Help</span>
+                </span>
+            </label>
+        }
+    </div>
+</section>
+
+<section class="page-card" style="margin-top:1.5rem;">
+    <div class="section-header">
+        <h3>Documentos</h3>
+        <div class="section-actions">
+            <a class="btn" href="@BuildDownloadHref("documentos", "completo")">Descargar completo</a>
+            <a class="btn primary" href="@BuildDownloadHref("documentos", "detallado", SelectedDocumentos())">
+                Descargar detallado
+            </a>
+        </div>
+    </div>
+    <p class="helper">Permite filtrar qué metadatos y relaciones incluir.</p>
+
+    <div class="grid-1">
+        @foreach (var opt in DocumentoOptions)
+        {
+            <label class="option-row">
+                <input type="checkbox" @bind="opt.Selected" />
+                <span>
+                    <strong>@opt.Label</strong>
+                    <span class="muted">· @opt.Help</span>
+                </span>
+            </label>
+        }
+    </div>
+</section>
+
+@code {
+    private sealed class FieldOption
+    {
+        public FieldOption(string key, string label, string help, bool selected = true)
+        {
+            Key = key;
+            Label = label;
+            Help = help;
+            Selected = selected;
+        }
+
+        public string Key { get; }
+        public string Label { get; }
+        public string Help { get; }
+        public bool Selected { get; set; }
+    }
+
+    private List<FieldOption> ReactivoSustanciaOptions { get; } = new()
+    {
+        new FieldOption("sustancia_id", "ID de sustancia", "Identificador único del reactivo"),
+        new FieldOption("nombre_comercial", "Nombre comercial", "Nombre usado en inventario"),
+        new FieldOption("nombre_quimico", "Nombre químico", "Nombre técnico"),
+        new FieldOption("cas", "CAS", "Código CAS de la sustancia"),
+        new FieldOption("forma_fisica", "Forma física", "Sólido, líquido, gas, etc."),
+        new FieldOption("sustancia_controlada", "Controlada", "Indica si requiere control"),
+        new FieldOption("categoria", "Categoría", "Categoría o subcategoría asignada"),
+        new FieldOption("observaciones", "Observaciones", "Notas relevantes")
+    };
+
+    private List<FieldOption> ReactivoContenedorOptions { get; } = new()
+    {
+        new FieldOption("cont_id", "ID de contenedor", "Identificador del envase"),
+        new FieldOption("marca", "Marca", "Marca del contenedor"),
+        new FieldOption("cantidad_nominal", "Cantidad nominal", "Cantidad teórica del reactivo"),
+        new FieldOption("cantidad_actual", "Cantidad actual", "Cantidad disponible"),
+        new FieldOption("unidad", "Unidad", "Unidad de medida"),
+        new FieldOption("fecha_vencimiento", "Fecha de vencimiento", "Caducidad del reactivo"),
+        new FieldOption("ubicacion", "Ubicación", "Área · mesón · nivel · posición"),
+        new FieldOption("altura_cm", "Altura (cm)", "Altura del contenedor"),
+        new FieldOption("relaciones", "Relaciones/intermedias", "Subcategorías o vínculos, separados por comas", false)
+    };
+
+    private List<FieldOption> EquipoModeloOptions { get; } = new()
+    {
+        new FieldOption("modelo_id", "ID de modelo", "Identificador del modelo"),
+        new FieldOption("nombre_modelo", "Nombre del modelo", "Modelo comercial"),
+        new FieldOption("marca", "Marca", "Marca del fabricante"),
+        new FieldOption("categoria", "Categoría", "Categoría o subcategoría"),
+        new FieldOption("es_calibrable", "Calibrable", "Indica si requiere calibración"),
+        new FieldOption("altura_cm", "Altura (cm)", "Altura del modelo"),
+        new FieldOption("relaciones", "Relaciones/intermedias", "Subcategorías u otras relaciones", false)
+    };
+
+    private List<FieldOption> EquipoItemOptions { get; } = new()
+    {
+        new FieldOption("equipo_id", "ID de equipo", "Identificador del equipo"),
+        new FieldOption("nombre", "Nombre", "Nombre asignado en inventario"),
+        new FieldOption("serie", "Serie", "Número de serie"),
+        new FieldOption("estado", "Estado", "Estado del activo"),
+        new FieldOption("ubicacion", "Ubicación", "Área · mesón · nivel · posición"),
+        new FieldOption("fecha_compra", "Fecha de compra", "Fecha registrada de compra"),
+        new FieldOption("garantia_hasta", "Garantía", "Fecha fin de garantía"),
+        new FieldOption("requiere_calibracion", "Requiere calibración", "Bandera de calibración"),
+        new FieldOption("relaciones", "Relaciones/intermedias", "Asignaciones o vínculos especiales", false)
+    };
+
+    private List<FieldOption> MaterialOptions { get; } = new()
+    {
+        new FieldOption("material_id", "ID de material", "Identificador del material"),
+        new FieldOption("nombre", "Nombre", "Nombre del material"),
+        new FieldOption("tipo", "Tipo", "Vidrio, plástico, montaje, consumible"),
+        new FieldOption("categoria", "Categoría", "Categoría o subcategoría"),
+        new FieldOption("marca", "Marca", "Marca del material"),
+        new FieldOption("estado", "Estado", "Estado del activo"),
+        new FieldOption("ubicacion", "Ubicación", "Área · mesón · nivel · posición"),
+        new FieldOption("capacidad", "Capacidad", "Capacidad con unidad"),
+        new FieldOption("cantidad", "Cantidad", "Cantidad disponible"),
+        new FieldOption("altura_cm", "Altura (cm)", "Altura registrada"),
+        new FieldOption("relaciones", "Relaciones/intermedias", "Cajas y cantidades, separados por comas", false)
+    };
+
+    private List<FieldOption> DocumentoOptions { get; } = new()
+    {
+        new FieldOption("documento_id", "ID de documento", "Identificador del documento"),
+        new FieldOption("titulo", "Título", "Título del documento"),
+        new FieldOption("categoria", "Categoría", "Categoría principal"),
+        new FieldOption("subcategoria", "Subcategoría", "Subcategoría relacionada"),
+        new FieldOption("alcance", "Alcance", "GENERAL/MARCA/EQUIPO/etc."),
+        new FieldOption("url_archivo", "URL/Archivo", "Ruta o enlace del archivo"),
+        new FieldOption("procedencia", "Procedencia", "Origen del documento"),
+        new FieldOption("relaciones", "Relaciones/intermedias", "Equipos/materiales/reactivos vinculados", false),
+        new FieldOption("notas", "Notas", "Notas u observaciones")
+    };
+
+    private string BuildDownloadHref(string tipo, string modo, IEnumerable<string>? campos = null)
+    {
+        var baseUrl = $"/descarga?tipo={Uri.EscapeDataString(tipo)}&modo={Uri.EscapeDataString(modo)}";
+        if (campos is null) return baseUrl;
+
+        var joined = string.Join(",", campos);
+        return $"{baseUrl}&campos={Uri.EscapeDataString(joined)}";
+    }
+
+    private IEnumerable<string> SelectedReactivos()
+        => ReactivoSustanciaOptions.Concat(ReactivoContenedorOptions)
+            .Where(o => o.Selected)
+            .Select(o => o.Key);
+
+    private IEnumerable<string> SelectedEquipos()
+        => EquipoModeloOptions.Concat(EquipoItemOptions)
+            .Where(o => o.Selected)
+            .Select(o => o.Key);
+
+    private IEnumerable<string> SelectedMateriales()
+        => MaterialOptions
+            .Where(o => o.Selected)
+            .Select(o => o.Key);
+
+    private IEnumerable<string> SelectedDocumentos()
+        => DocumentoOptions
+            .Where(o => o.Selected)
+            .Select(o => o.Key);
+}
+
+<style>
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .section-actions {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .grid-2 {
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        margin-top: 0.75rem;
+    }
+
+    .grid-1 {
+        display: grid;
+        gap: 0.5rem;
+        margin-top: 0.75rem;
+    }
+
+    .option-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.5rem;
+        padding: 0.4rem 0;
+    }
+</style>

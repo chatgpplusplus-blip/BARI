@@ -12,6 +12,9 @@
             <button type="button" class="btn" @onclick="@(()=>Nav.NavigateTo("/areas"))">
                 ← Volver al mapa
             </button>
+            <button type="button" class="btn" @onclick="@(()=>Nav.NavigateTo($"/detalles-area-3d/{AreaSlug}"))">
+                🧭 Ver 3D
+            </button>
             <button type="button" class="btn primary"
                     @onclick="@(()=>Nav.NavigateTo($"/modificar-detalles/{AreaSlug}"))">
                 ✏️ Editar instalaciones / mesones
