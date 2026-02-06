@@ -35,6 +35,28 @@
 
         <div class="assign-row form-grid">
 
+            <div class="field full-span stock-mode-box">
+                <div class="text-xs text-gray-500" style="margin-bottom:.35rem;">Modo de guardado de stock (elige uno para desbloquear el formulario de ubicación/stock)</div>
+                <label class="check-row">
+                    <input type="checkbox"
+                           checked="@(_nuevoMaterialModoStock == "CAJAS")"
+                           @onchange="OnModoStockCajasChanged" />
+                    <span>Este material se guarda en stocks de cajas</span>
+                </label>
+                <label class="check-row">
+                    <input type="checkbox"
+                           checked="@(_nuevoMaterialModoStock == "SUELTO")"
+                           @onchange="OnModoStockSueltoChanged" />
+                    <span>Este material se guarda suelto fuera de cajas</span>
+                </label>
+            </div>
+
+            @if (!_nuevoMaterialModoStockSeleccionado)
+            {
+                <div class="text-xs text-gray-500 full-span">Selecciona primero un modo de stock para habilitar el formulario completo.</div>
+            }
+
+            <fieldset class="stock-locker full-span" disabled="@(!_nuevoMaterialModoStockSeleccionado)">
             <select class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoMaterialCategoriaId) ? "is-filled" : "")"
                     value="@_nuevoMaterialCategoriaId"
                     @onchange="OnCategoriaMaterialChanged">
@@ -73,22 +95,6 @@
                    step="any"
                    @bind="_nuevoMaterialCantidad"
                    disabled="@(!_nuevoMaterialModoStockSeleccionado || _nuevoMaterialUsaCajas)" />
-
-            <div class="field full-span stock-mode-box">
-                <div class="text-xs text-gray-500" style="margin-bottom:.35rem;">Modo de guardado de stock (elige uno para desbloquear el formulario de ubicación/stock)</div>
-                <label class="check-row">
-                    <input type="checkbox"
-                           checked="@(_nuevoMaterialModoStock == "CAJAS")"
-                           @onchange="OnModoStockCajasChanged" />
-                    <span>Este material se guarda en stocks de cajas</span>
-                </label>
-                <label class="check-row">
-                    <input type="checkbox"
-                           checked="@(_nuevoMaterialModoStock == "SUELTO")"
-                           @onchange="OnModoStockSueltoChanged" />
-                    <span>Este material se guarda suelto fuera de cajas</span>
-                </label>
-            </div>
 
             <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(Convert.ToString(_nuevoMaterialAlturaCm)) && Convert.ToString(_nuevoMaterialAlturaCm) != "0" ? "is-filled" : "")"
                    placeholder="Altura (cm)"
@@ -441,8 +447,10 @@
                    placeholder="Observaciones"
                    @bind="_nuevoMaterialObservaciones" />
 
+            </fieldset>
+
             <div class="form-actions full-span">
-                <button class="btn primary" @onclick="SubirMaterialAsync">Subir material</button>
+                <button class="btn primary" @onclick="SubirMaterialAsync" disabled="@(!_nuevoMaterialModoStockSeleccionado)">Subir material</button>
                 @if (!string.IsNullOrWhiteSpace(_nuevoMaterialMsg))
                 {
                     <span class="text-sm text-gray-500">@_nuevoMaterialMsg</span>
@@ -2941,6 +2949,14 @@ a.nombre_areas, mm.mesones, m.posicion
 
     .check-item.selected {
         background: #eef6ff;
+    }
+
+    .stock-locker {
+        border: 0;
+        padding: 0;
+        margin: 0;
+        min-inline-size: 0;
+        display: contents;
     }
 
 </style>
