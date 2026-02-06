@@ -909,7 +909,7 @@
             var porCaja = _cajaCantidades
                 .Where(kv => kv.Value > 0)
                 .OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
-                .Select(kv => $"{FindLabel(_cajaOptions, kv.Key)}: {kv.Value.ToString(CultureInfo.InvariantCulture)}")
+                .Select(kv => $"{kv.Key}: {kv.Value.ToString(CultureInfo.InvariantCulture)}")
                 .ToList();
 
             return porCaja.Count == 0 ? "" : string.Join(" · ", porCaja);
@@ -1207,15 +1207,7 @@
         while (await reader.ReadAsync())
         {
             var cajaId = reader.GetString(0);
-            var mesonNombre = reader.IsDBNull(1) ? "" : reader.GetString(1);
-            var nivel = reader.IsDBNull(2) ? 0 : reader.GetInt32(2);
-            var dimensiones = reader.IsDBNull(3) ? "" : reader.GetString(3);
-
-            var label = $"{cajaId} · {mesonNombre} · nivel {nivel}";
-            if (!string.IsNullOrWhiteSpace(dimensiones))
-                label = $"{label} · {dimensiones}";
-
-            _cajaOptions.Add(new SelectOption(cajaId, label));
+            _cajaOptions.Add(new SelectOption(cajaId, cajaId));
         }
 
         var ids = _cajaOptions.Select(x => x.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
