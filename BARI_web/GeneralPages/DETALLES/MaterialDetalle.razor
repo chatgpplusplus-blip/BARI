@@ -111,8 +111,13 @@
                         </div>
 
                         <div class="dl-row">
+                            <div class="dt">Modo de stock</div>
+                            <div class="dd">@(edit.UsaCajas ? "Por cajas" : "Suelto")</div>
+                        </div>
+
+                        <div class="dl-row">
                             <div class="dt">Cantidad</div>
-                            <div class="dd">@NullDash(edit.Cantidad)</div>
+                            <div class="dd">@(edit.UsaCajas ? NullDash(CantidadTotalCajasLabel) : NullDash(edit.Cantidad))</div>
                         </div>
 
                         <div class="dl-row">
@@ -330,11 +335,21 @@
                            type="number"
                            step="@(string.Equals(edit.Tipo,"CONSUMIBLE",StringComparison.OrdinalIgnoreCase) ? "1" : "any")"
                            placeholder="Cantidad"
-                           @bind="edit.Cantidad" />
-                    @if (string.Equals(edit.Tipo, "CONSUMIBLE", StringComparison.OrdinalIgnoreCase))
+                           @bind="edit.Cantidad"
+                           disabled="@edit.UsaCajas" />
+                    @if (string.Equals(edit.Tipo, "CONSUMIBLE", StringComparison.OrdinalIgnoreCase) && !edit.UsaCajas)
                     {
                         <div class="text-xs muted">Consumible: cantidad obligatoria (ideal entero).</div>
                     }
+                </div>
+
+                <div class="field full-span">
+                    <label class="toggle @(edit.UsaCajas ? "is-filled" : "")">
+                        <input type="checkbox"
+                               checked="@edit.UsaCajas"
+                               @onchange="OnUsaCajasChanged" />
+                        <span>Se maneja por cajas (stock por caja)</span>
+                    </label>
                 </div>
 
                 <div class="field">
@@ -386,7 +401,7 @@
                 </div>
 
                 <div class="field full-span">
-                    <label>Mesones y niveles</label>
+                    <label>@(edit.UsaCajas ? "Mesones disponibles para cajas" : "Mesones y niveles")</label>
                     @if (string.IsNullOrWhiteSpace(edit.AreaId))
                     {
                         <div class="text-xs muted">Selecciona un área para asignar mesones.</div>
@@ -414,11 +429,43 @@
                                            min="1"
                                            value="@GetMesonNivel(m.Id)"
                                            @oninput="(e) => OnMesonNivelChanged(m.Id, e)"
-                                           disabled="@(!selected)" />
+                                           disabled="@(!selected || edit.UsaCajas)" />
                                 </div>
                             }
                         </div>
                     }
+                </div>
+
+                <div class="field full-span">
+                    <label>Cajas y cantidad por caja</label>
+                    <div class="dropdown-checks @((!edit.UsaCajas || edit.MesonNiveles.Count == 0) ? "disabled" : "")">
+                        @if (!edit.UsaCajas)
+                        {
+                            <div class="text-xs muted">Activa "Se maneja por cajas" para editar cantidades por caja.</div>
+                        }
+                        else if (_cajaOptions.Count == 0)
+                        {
+                            <div class="text-xs muted">No hay cajas disponibles para los mesones seleccionados.</div>
+                        }
+                        else
+                        {
+                            @foreach (var caja in _cajaOptions)
+                            {
+                                var cantidadCaja = GetCajaCantidad(caja.Id);
+                                <div class="check-item caja-cantidad-item @((cantidadCaja.HasValue && cantidadCaja.Value > 0) ? "caja-con-material" : "")">
+                                    <span>@caja.Label</span>
+                                    <input class="border p-1 meson-link-level"
+                                           type="number"
+                                           min="0"
+                                           step="any"
+                                           placeholder="Cantidad"
+                                           value="@FormatCajaCantidad(cantidadCaja)"
+                                           disabled="@(!edit.UsaCajas || edit.MesonNiveles.Count == 0)"
+                                           @onchange="(e) => OnCajaCantidadChanged(caja.Id, e)" />
+                                </div>
+                            }
+                        }
+                    </div>
                 </div>
 
                 <div class="field">
@@ -612,6 +659,9 @@
 
     private readonly List<SelectOption> _areaOptions = new();
     private readonly List<SelectOption> _mesonOptions = new();
+    private readonly List<SelectOption> _cajaOptions = new();
+
+    private readonly Dictionary<string, decimal> _cajaCantidades = new(StringComparer.OrdinalIgnoreCase);
 
     // Categorías materiales + subcategorías filtradas por categoría
     private readonly List<SelectOption> _categoriaOptions = new();
@@ -681,6 +731,8 @@
 
         _areaOptions.Clear();
         _mesonOptions.Clear();
+        _cajaOptions.Clear();
+        _cajaCantidades.Clear();
 
         _categoriaOptions.Clear();
         _subcategoriaAllOptions.Clear();
@@ -704,6 +756,8 @@
                     await LoadMesonesAsync(edit.AreaId);
 
                 await LoadMaterialMesonesAsync(edit.MaterialId);
+                await LoadCajasAsync();
+                await LoadMaterialCajasAsync(edit.MaterialId);
                 await LoadExperienciasLigadasAsync(edit.MaterialId);
                 await LoadExperienciasOptionsAsync();
             }
@@ -835,6 +889,62 @@
 
             return ubicaciones.Count == 0 ? "Sin ubicación" : string.Join(" · ", ubicaciones);
         }
+    }
+
+    private string CantidadTotalCajasLabel
+    {
+        get
+        {
+            if (_cajaCantidades.Count == 0)
+                return "";
+
+            return _cajaCantidades.Values.Sum().ToString(CultureInfo.InvariantCulture);
+        }
+    }
+
+    private decimal? GetCajaCantidad(string cajaId)
+        => _cajaCantidades.TryGetValue(cajaId, out var c) ? c : null;
+
+    private static string FormatCajaCantidad(decimal? cantidad)
+        => cantidad is null ? string.Empty : cantidad.Value.ToString(CultureInfo.InvariantCulture);
+
+    private void OnCajaCantidadChanged(string cajaId, ChangeEventArgs args)
+    {
+        var raw = args.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            _cajaCantidades.Remove(cajaId);
+            return;
+        }
+
+        if (!decimal.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out var cantidad) &&
+            !decimal.TryParse(raw, NumberStyles.Any, CultureInfo.CurrentCulture, out cantidad))
+            return;
+
+        if (cantidad < 0)
+            return;
+
+        _cajaCantidades[cajaId] = cantidad;
+    }
+
+    private void OnUsaCajasChanged(ChangeEventArgs args)
+    {
+        var isChecked = args.Value is bool b
+            ? b
+            : string.Equals(args.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+
+        edit.UsaCajas = isChecked;
+
+        if (edit.UsaCajas)
+        {
+            edit.Cantidad = null;
+        }
+        else
+        {
+            _cajaCantidades.Clear();
+        }
+
+        msg = null;
     }
 
     private static string FindLabel(List<SelectOption> list, string? id)
@@ -996,6 +1106,8 @@
     private async Task LoadMesonesAsync(string areaId)
     {
         _mesonOptions.Clear();
+        _cajaOptions.Clear();
+        _cajaCantidades.Clear();
 
         await using var conn = await DataSource.OpenConnectionAsync();
 
@@ -1040,6 +1152,73 @@
         {
             edit.MesonNiveles.Add(new MesonNivelLink(reader.GetString(0), reader.GetInt32(1)));
         }
+    }
+
+    private async Task LoadCajasAsync()
+    {
+        _cajaOptions.Clear();
+
+        var mesones = edit.MesonNiveles.Select(x => x.MesonId).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        if (mesones.Length == 0)
+            return;
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+        const string sql = @"
+            SELECT c.caja_id,
+                   COALESCE(m.nombre_meson, c.meson_id) AS meson_nombre,
+                   c.nivel,
+                   c.dimensiones
+            FROM cajas c
+            LEFT JOIN mesones m ON m.meson_id = c.meson_id
+            WHERE c.meson_id = ANY(@mesones)
+            ORDER BY meson_nombre, c.nivel, c.caja_id";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("mesones", mesones);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var cajaId = reader.GetString(0);
+            var mesonNombre = reader.IsDBNull(1) ? "" : reader.GetString(1);
+            var nivel = reader.IsDBNull(2) ? 0 : reader.GetInt32(2);
+            var dimensiones = reader.IsDBNull(3) ? "" : reader.GetString(3);
+
+            var label = $"{cajaId} · {mesonNombre} · nivel {nivel}";
+            if (!string.IsNullOrWhiteSpace(dimensiones))
+                label = $"{label} · {dimensiones}";
+
+            _cajaOptions.Add(new SelectOption(cajaId, label));
+        }
+
+        var ids = _cajaOptions.Select(x => x.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in _cajaCantidades.Keys.Where(k => !ids.Contains(k)).ToList())
+            _cajaCantidades.Remove(key);
+    }
+
+    private async Task LoadMaterialCajasAsync(string materialId)
+    {
+        _cajaCantidades.Clear();
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+        const string sql = @"
+            SELECT cm.caja_id, cm.cantidad
+            FROM cajas_materiales cm
+            INNER JOIN cajas c ON c.caja_id = cm.caja_id
+            INNER JOIN mesones m ON m.meson_id = c.meson_id
+            INNER JOIN areas a ON a.area_id = m.area_id
+            WHERE cm.material_id = @material_id
+              AND a.laboratorio_id = @lab";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("material_id", materialId);
+        cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            _cajaCantidades[reader.GetString(0)] = reader.GetDecimal(1);
+
+        edit.UsaCajas = _cajaCantidades.Count > 0 || edit.UsaCajas;
     }
 
     // ========= Carga material =========
@@ -1217,8 +1396,13 @@
         edit.MesonNiveles.Clear();
 
         _mesonOptions.Clear();
+        _cajaOptions.Clear();
+        _cajaCantidades.Clear();
         if (!string.IsNullOrWhiteSpace(edit.AreaId))
+        {
             await LoadMesonesAsync(edit.AreaId);
+            await LoadCajasAsync();
+        }
 
         msg = null;
         await InvokeAsync(StateHasChanged);
@@ -1239,6 +1423,7 @@
             edit.MesonNiveles.Remove(current);
         }
 
+        _ = LoadCajasAsync();
         msg = null;
     }
 
@@ -1336,7 +1521,7 @@
             return;
         }
 
-        if (edit.MesonNiveles.Count == 0)
+        if (!edit.UsaCajas && edit.MesonNiveles.Count == 0)
         {
             msg = "Selecciona al menos un mesón y su nivel.";
             return;
@@ -1443,10 +1628,25 @@
             cantidad = cant;
         }
 
-        if (tipo == "CONSUMIBLE" && cantidad is null)
+        if (tipo == "CONSUMIBLE" && !edit.UsaCajas && cantidad is null)
         {
             msg = "Consumible: ingresa una cantidad.";
             return;
+        }
+
+        var cajasConStock = _cajaCantidades
+            .Where(kv => kv.Value > 0)
+            .ToList();
+
+        if (edit.UsaCajas)
+        {
+            if (cajasConStock.Count == 0)
+            {
+                msg = "Si manejas por cajas, ingresa cantidad mayor a 0 para al menos una caja.";
+                return;
+            }
+
+            cantidad = null;
         }
 
         decimal? alturaCm = null;
@@ -1517,7 +1717,7 @@
 
             await ExecAsync(conn, tx, "DELETE FROM materiales_mesones_niveles WHERE material_id=@id", ("id", edit.MaterialId));
 
-            if (edit.MesonNiveles.Count > 0)
+            if (!edit.UsaCajas && edit.MesonNiveles.Count > 0)
             {
                 const string insMesonNivel = @"
                     INSERT INTO materiales_mesones_niveles (material_id, meson_id, nivel)
@@ -1530,6 +1730,25 @@
                         ("mat", edit.MaterialId),
                         ("meson", link.MesonId),
                         ("nivel", link.Nivel));
+                }
+            }
+
+            await ExecAsync(conn, tx, "DELETE FROM cajas_materiales WHERE material_id=@id", ("id", edit.MaterialId));
+
+            if (edit.UsaCajas)
+            {
+                const string insCaja = @"
+                    INSERT INTO cajas_materiales (caja_id, material_id, cantidad)
+                    VALUES (@caja, @material, @cantidad)
+                    ON CONFLICT (caja_id, material_id)
+                    DO UPDATE SET cantidad = EXCLUDED.cantidad;";
+
+                foreach (var kv in cajasConStock)
+                {
+                    await ExecAsync(conn, tx, insCaja,
+                        ("caja", kv.Key),
+                        ("material", edit.MaterialId),
+                        ("cantidad", kv.Value));
                 }
             }
 
@@ -1700,6 +1919,7 @@
         public string? EstadoId { get; set; }
 
         public string? Cantidad { get; set; }
+        public bool UsaCajas { get; set; }
 
         // ✅ NUEVO (DB: materiales.altura_cm)
         public string? AlturaCm { get; set; }
@@ -1807,6 +2027,22 @@
 
     .meson-link-level {
         width: 88px;
+    }
+
+    .caja-cantidad-item {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: .55rem;
+        padding: .5rem .6rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: .6rem;
+    }
+
+    .caja-cantidad-item.caja-con-material {
+        background: #ecfdf3;
+        border-color: #86efac;
     }
     .btn.primary {
             background: #2563eb;
