@@ -142,11 +142,157 @@
             metalness: 0.1,
         });
 
-        const boxMaterial = new THREE.MeshStandardMaterial({
-            color: 0x8b5a2b,
-            roughness: 0.6,
+        const shelfMaterial = new THREE.MeshStandardMaterial({
+            color: 0x3b82f6,
+            roughness: 0.45,
             metalness: 0.05,
         });
+
+        const boxMaterial = new THREE.MeshStandardMaterial({
+            color: 0x60a5fa,
+            roughness: 0.5,
+            metalness: 0.05,
+        });
+
+        const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+        const parseDimensions = (raw) => {
+            if (!raw || typeof raw !== "string") return null;
+            const nums = raw
+                .replace(/[^0-9.,xX*\\s-]/g, " ")
+                .split(/[xX*\\s,]+/)
+                .map((v) => parseFloat(v.replace(",", ".")))
+                .filter((v) => Number.isFinite(v) && v > 0);
+            if (nums.length < 2) return null;
+            const dims = nums.slice(0, 3);
+            const max = Math.max(...dims);
+            if (max > 3) {
+                return dims.map((v) => v / 100);
+            }
+            return dims;
+        };
+
+        const buildShelfUnit = (b, mat, group) => {
+            const w = Number(b.w ?? 0);
+            const l = Number(b.l ?? 0);
+            const h = Number(b.h ?? 0);
+            if (!w || !l || !h) return;
+
+            const longAxisIsX = w >= l;
+            const longSide = longAxisIsX ? w : l;
+            const shortSide = longAxisIsX ? l : w;
+            const thickness = clamp(shortSide * 0.08, 0.02, 0.08);
+
+            const innerLong = longSide - thickness * 2;
+            const innerShort = shortSide - thickness * 2;
+            const innerHeight = Math.max(0.2, h - thickness * 2);
+
+            const levels = Math.max(1, Math.round(b.levels || 0) || 3);
+            const levelHeight = innerHeight / levels;
+
+            const shelfGroup = new THREE.Group();
+
+            const baseGeom = longAxisIsX
+                ? new THREE.BoxGeometry(longSide, thickness, shortSide)
+                : new THREE.BoxGeometry(shortSide, thickness, longSide);
+            const baseMesh = new THREE.Mesh(baseGeom, mat);
+            baseMesh.position.set(0, thickness / 2, 0);
+            shelfGroup.add(baseMesh);
+
+            const topMesh = new THREE.Mesh(baseGeom, mat);
+            topMesh.position.set(0, h - thickness / 2, 0);
+            shelfGroup.add(topMesh);
+
+            const sideGeom = longAxisIsX
+                ? new THREE.BoxGeometry(longSide, h, thickness)
+                : new THREE.BoxGeometry(thickness, h, longSide);
+            const sideOffset = shortSide / 2 - thickness / 2;
+
+            if (longAxisIsX) {
+                const sideA = new THREE.Mesh(sideGeom, mat);
+                sideA.position.set(0, h / 2, -sideOffset);
+                shelfGroup.add(sideA);
+
+                const sideB = new THREE.Mesh(sideGeom, mat);
+                sideB.position.set(0, h / 2, sideOffset);
+                shelfGroup.add(sideB);
+            } else {
+                const sideA = new THREE.Mesh(sideGeom, mat);
+                sideA.position.set(-sideOffset, h / 2, 0);
+                shelfGroup.add(sideA);
+
+                const sideB = new THREE.Mesh(sideGeom, mat);
+                sideB.position.set(sideOffset, h / 2, 0);
+                shelfGroup.add(sideB);
+            }
+
+            for (let i = 1; i < levels; i += 1) {
+                const shelf = new THREE.Mesh(baseGeom, mat);
+                shelf.position.set(0, thickness + levelHeight * i, 0);
+                shelfGroup.add(shelf);
+            }
+
+            const bayCount = clamp(Math.round(longSide / 0.8), 2, 5);
+            const dividerHeight = h - thickness * 2;
+            const dividerGeom = longAxisIsX
+                ? new THREE.BoxGeometry(thickness, dividerHeight, innerShort)
+                : new THREE.BoxGeometry(innerShort, dividerHeight, thickness);
+
+            for (let i = 1; i < bayCount; i += 1) {
+                const offset = -innerLong / 2 + (innerLong / bayCount) * i;
+                const divider = new THREE.Mesh(dividerGeom, mat);
+                if (longAxisIsX) {
+                    divider.position.set(offset, h / 2, 0);
+                } else {
+                    divider.position.set(0, h / 2, offset);
+                }
+                shelfGroup.add(divider);
+            }
+
+            const boxes = Array.isArray(b.boxes) ? b.boxes : [];
+            const boxesByLevel = new Map();
+            boxes.forEach((box) => {
+                const level = Math.max(1, Math.round(box.level || 1));
+                if (!boxesByLevel.has(level)) boxesByLevel.set(level, []);
+                boxesByLevel.get(level).push(box);
+            });
+
+            boxesByLevel.forEach((items, level) => {
+                const y = thickness + levelHeight * (level - 0.5);
+                const baySize = innerLong / bayCount;
+                items.forEach((box, index) => {
+                    const dims = parseDimensions(box.dimensions);
+                    const rawW = dims?.[0] ?? innerLong * 0.3;
+                    const rawL = dims?.[1] ?? innerShort * 0.7;
+                    const rawH = dims?.[2] ?? levelHeight * 0.7;
+
+                    const bw = clamp(rawW, 0.05, innerLong * 0.9);
+                    const bl = clamp(rawL, 0.05, innerShort * 0.9);
+                    const bh = clamp(rawH, 0.05, levelHeight * 0.9);
+
+                    const boxGeom = longAxisIsX
+                        ? new THREE.BoxGeometry(bw, bh, bl)
+                        : new THREE.BoxGeometry(bl, bh, bw);
+                    const boxMesh = new THREE.Mesh(boxGeom, boxMaterial);
+
+                    const col = index % bayCount;
+                    const offset = -innerLong / 2 + baySize * col + baySize / 2;
+                    if (longAxisIsX) {
+                        boxMesh.position.set(offset, y, 0);
+                    } else {
+                        boxMesh.position.set(0, y, offset);
+                    }
+                    shelfGroup.add(boxMesh);
+                });
+            });
+
+            shelfGroup.position.set(
+                (b.x - centerX) + w / 2,
+                0,
+                (b.y - centerZ) + l / 2
+            );
+            group.add(shelfGroup);
+        };
 
         (data.blocks || []).forEach((b) => {
             const w = Number(b.w ?? 0);
@@ -155,10 +301,15 @@
 
             if (!w || !l || !h) return;
 
-            const geom = new THREE.BoxGeometry(w, h, l);
             const mat = baseBlockMaterial.clone();
             mat.color = new THREE.Color(b.color || "#2563eb");
 
+            if (b.isMeson) {
+                buildShelfUnit(b, shelfMaterial.clone(), areaGroup);
+                return;
+            }
+
+            const geom = new THREE.BoxGeometry(w, h, l);
             const mesh = new THREE.Mesh(geom, mat);
             mesh.position.set(
                 (b.x - centerX) + w / 2,

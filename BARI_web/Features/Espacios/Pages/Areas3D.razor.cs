@@ -83,6 +83,13 @@ namespace BARI_web.Features.Espacios.Pages
             public string? etiqueta { get; set; }
             public string? meson_id { get; set; }
             public int? niveles_totales { get; set; }
+            public List<BoxItem> cajas { get; set; } = new();
+        }
+
+        private class BoxItem
+        {
+            public int nivel { get; set; }
+            public string? dimensiones { get; set; }
         }
 
         private class Door
@@ -102,6 +109,7 @@ namespace BARI_web.Features.Espacios.Pages
         }
 
         private sealed record PointDto(decimal X, decimal Y);
+        private sealed record BoxDto(int Level, string? Dimensions);
         private sealed record BlockDto(
             decimal X,
             decimal Y,
@@ -110,10 +118,9 @@ namespace BARI_web.Features.Espacios.Pages
             decimal H,
             string Color,
             string? Label,
-            string? MesonId,
-            int? Levels,
-            List<int>? BoxCounts
-        );
+            bool IsMeson,
+            int Levels,
+            List<BoxDto> Boxes);
         private sealed record OpeningDto(decimal X, decimal Y, decimal L, string Orient);
 
         private sealed record Area3DData(
@@ -282,22 +289,17 @@ namespace BARI_web.Features.Espacios.Pages
             var cajaCounts = await LoadCajaCountsForMesonesAsync(blocks);
 
             var blockDtos = blocks
-                .Select(b =>
-                {
-                    var levels = ResolveMesonLevels(b.niveles_totales);
-                    return new BlockDto(
-                        b.abs_x,
-                        b.abs_y,
-                        b.ancho,
-                        b.largo,
-                        b.altura ?? 0.8m,
-                        string.IsNullOrWhiteSpace(b.color_hex) ? "#2563eb" : b.color_hex!,
-                        b.etiqueta,
-                        b.meson_id,
-                        b.meson_id is null ? null : levels,
-                        BuildBoxCounts(b.meson_id, levels, cajaCounts)
-                    );
-                })
+                .Select(b => new BlockDto(
+                    b.abs_x,
+                    b.abs_y,
+                    b.ancho,
+                    b.largo,
+                    b.altura ?? 0.8m,
+                    string.IsNullOrWhiteSpace(b.color_hex) ? "#2563eb" : b.color_hex!,
+                    b.etiqueta,
+                    !string.IsNullOrWhiteSpace(b.meson_id),
+                    b.niveles_totales ?? 0,
+                    b.cajas.Select(c => new BoxDto(c.nivel, c.dimensiones)).ToList()))
                 .ToList();
 
             var doorDtos = doors
@@ -314,7 +316,7 @@ namespace BARI_web.Features.Espacios.Pages
             var maxY = orderedPolys.Max(p => p.puntos.Max(pt => pt.Y));
 
             var height = ResolvePlantaHeight(areaIds);
-            var label = _plantasLookup.TryGetValue(plantaId ?? "", out var name) ? name : "Áreas";
+            var label = _plantasLookup.TryGetValue(plantaId ?? "", out var name) ? name : "Ãreas";
 
             return new Area3DData(
                 label,
@@ -427,6 +429,7 @@ namespace BARI_web.Features.Espacios.Pages
                 SELECT b.bloque_id,
                        b.etiqueta,
                        b.color_hex,
+                       b.meson_id,
                        b.pos_x,
                        b.pos_y,
                        b.ancho,
@@ -434,7 +437,6 @@ namespace BARI_web.Features.Espacios.Pages
                        b.altura,
                        b.offset_x,
                        b.offset_y,
-                       b.meson_id,
                        me.niveles_totales,
                        COALESCE(me.area_id, ins.area_id) AS area_id
                 FROM bloques_int b
@@ -496,95 +498,53 @@ namespace BARI_web.Features.Espacios.Pages
                     color_hex = reader.IsDBNull(iColor) ? "#2563eb" : reader.GetString(iColor),
                     etiqueta = reader.IsDBNull(iEtiqueta) ? null : reader.GetString(iEtiqueta),
                     meson_id = reader.IsDBNull(iMeson) ? null : reader.GetString(iMeson),
-                    niveles_totales = reader.IsDBNull(iNiveles) ? (int?)null : reader.GetInt32(iNiveles)
+                    niveles_totales = reader.IsDBNull(iNiveles) ? null : reader.GetInt32(iNiveles)
                 });
             }
 
+            await reader.DisposeAsync();
+            await LoadCajasForBlocksAsync(blocks, conn);
             return blocks;
         }
 
-        private static int ResolveMesonLevels(int? nivelesTotales)
-        {
-            return nivelesTotales.HasValue && nivelesTotales.Value > 0 ? nivelesTotales.Value : 1;
-        }
-
-        private static List<int>? BuildBoxCounts(
-            string? mesonId,
-            int levels,
-            Dictionary<string, Dictionary<int, int>> cajaCounts)
-        {
-            if (string.IsNullOrWhiteSpace(mesonId)) return null;
-
-            var safeLevels = Math.Max(1, levels);
-            var counts = Enumerable.Repeat(0, safeLevels).ToList();
-
-            if (!cajaCounts.TryGetValue(mesonId, out var byLevel) || byLevel.Count == 0)
-            {
-                return counts;
-            }
-
-            var minLevel = byLevel.Keys.Min();
-            var offset = minLevel == 0 ? 0 : 1;
-
-            for (var i = 0; i < safeLevels; i++)
-            {
-                var levelValue = i + offset;
-                if (byLevel.TryGetValue(levelValue, out var count))
-                {
-                    counts[i] = count;
-                }
-            }
-
-            return counts;
-        }
-
-        private async Task<Dictionary<string, Dictionary<int, int>>> LoadCajaCountsForMesonesAsync(IEnumerable<BlockItem> blocks)
+        private static async Task LoadCajasForBlocksAsync(List<BlockItem> blocks, NpgsqlConnection conn)
         {
             var mesonIds = blocks
                 .Select(b => b.meson_id)
                 .Where(id => !string.IsNullOrWhiteSpace(id))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+                .ToList();
 
-            var result = new Dictionary<string, Dictionary<int, int>>(StringComparer.OrdinalIgnoreCase);
-            if (mesonIds.Length == 0)
-            {
-                return result;
-            }
+            if (mesonIds.Count == 0) return;
 
-            await using var conn = await DataSource.OpenConnectionAsync();
             const string sql = @"
-                SELECT meson_id,
-                       nivel,
-                       COUNT(*) AS total
+                SELECT meson_id, nivel, dimensiones
                 FROM cajas
-                WHERE meson_id = ANY(@meson_ids)
-                GROUP BY meson_id, nivel
-                ORDER BY meson_id, nivel;";
+                WHERE meson_id = ANY(@meson_ids);";
+
             await using var cmd = new NpgsqlCommand(sql, conn);
-            cmd.Parameters.Add("meson_ids", NpgsqlDbType.Array | NpgsqlDbType.Text).Value = mesonIds;
+            cmd.Parameters.AddWithValue("meson_ids", mesonIds.ToArray());
             await using var reader = await cmd.ExecuteReaderAsync();
 
             var iMeson = reader.GetOrdinal("meson_id");
             var iNivel = reader.GetOrdinal("nivel");
-            var iTotal = reader.GetOrdinal("total");
+            var iDim = reader.GetOrdinal("dimensiones");
+
+            var lookup = blocks
+                .Where(b => !string.IsNullOrWhiteSpace(b.meson_id))
+                .ToDictionary(b => b.meson_id!, StringComparer.OrdinalIgnoreCase);
 
             while (await reader.ReadAsync())
             {
                 var mesonId = reader.GetString(iMeson);
-                var nivel = reader.IsDBNull(iNivel) ? 0 : reader.GetInt32(iNivel);
-                var total = reader.IsDBNull(iTotal) ? 0 : reader.GetInt32(iTotal);
+                if (!lookup.TryGetValue(mesonId, out var block)) continue;
 
-                if (!result.TryGetValue(mesonId, out var byLevel))
+                block.cajas.Add(new BoxItem
                 {
-                    byLevel = new Dictionary<int, int>();
-                    result[mesonId] = byLevel;
-                }
-
-                byLevel[nivel] = total;
+                    nivel = reader.IsDBNull(iNivel) ? 1 : reader.GetInt32(iNivel),
+                    dimensiones = reader.IsDBNull(iDim) ? null : reader.GetString(iDim)
+                });
             }
-
-            return result;
         }
 
         private async Task<(List<Door> Doors, List<Win> Windows)> LoadDoorsAndWindowsForAreasAsync(string canvasId, List<string> areaIds)
