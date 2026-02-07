@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
+using BARI_web.General_Services;
 using BARI_web.General_Services.DataBaseConnection;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
@@ -11,13 +12,20 @@ using Npgsql;
 
 namespace BARI_web.Features.Espacios.Pages
 {
-    public partial class ModificarAreas : ComponentBase
+    public partial class ModificarAreas : ComponentBase, IDisposable
     {
         // ===== Inyección de servicios
         [Inject] private NavigationManager Nav { get; set; } = default!;
         [Inject] private PgCrud Pg { get; set; } = default!;
         [Inject] private NpgsqlDataSource DataSource { get; set; } = default!;
         [Inject] private IJSRuntime JS { get; set; } = default!;
+        [Inject] private LaboratorioState LaboratorioState { get; set; } = default!;
+
+        [Parameter, SupplyParameterFromQuery(Name = "canvas")]
+        public string? CanvasId { get; set; }
+
+        [Parameter, SupplyParameterFromQuery(Name = "planta")]
+        public string? PlantaId { get; set; }
 
         // ---- Dibujo: entrada manual de vértices ----
 
@@ -240,6 +248,8 @@ namespace BARI_web.Features.Espacios.Pages
         private Dictionary<string, string> _areasLookup = new(StringComparer.OrdinalIgnoreCase);
         private Dictionary<string, string> _canvasLookup = new(StringComparer.OrdinalIgnoreCase);
         private string? _currentCanvasId;
+        private string? _requestedCanvasId;
+        private string? _requestedPlantaId;
 
         // --- Vista filtrada por planta activa ---
         private IEnumerable<Poly> VisiblePolys() => _polys.Where(IsVisible);
@@ -361,9 +371,54 @@ namespace BARI_web.Features.Espacios.Pages
         // ===== init
         protected override async Task OnInitializedAsync()
         {
-            _canvasLookup = await Pg.GetLookupAsync("canvas_lab", "canvas_id", "nombre");
-            _currentCanvasId = _canvasLookup.Keys.FirstOrDefault();
+            LaboratorioState.OnChange += HandleLaboratorioChanged;
+            _requestedCanvasId = string.IsNullOrWhiteSpace(CanvasId) ? null : CanvasId;
+            _requestedPlantaId = string.IsNullOrWhiteSpace(PlantaId) ? null : PlantaId;
+
+            await LoadCanvasLookupAsync();
+            _currentCanvasId = ResolveInitialCanvasId();
+            _requestedCanvasId = null;
             await ReloadCanvasDataAsync();
+        }
+
+        private async void HandleLaboratorioChanged()
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadCanvasLookupAsync();
+                _currentCanvasId = ResolveInitialCanvasId();
+                await ReloadCanvasDataAsync();
+            });
+        }
+
+        private async Task LoadCanvasLookupAsync()
+        {
+            Pg.UseSheet("canvas_lab");
+            var rows = await Pg.ReadAllAsync();
+            var labId = LaboratorioState.LaboratorioId;
+
+            _canvasLookup = rows
+                .Select(r => new CanvasLab(
+                    Get(r, "canvas_id"),
+                    Get(r, "nombre"),
+                    Dec(Get(r, "ancho_m", "0")),
+                    Dec(Get(r, "largo_m", "0")),
+                    Dec(Get(r, "margen_m", "0")),
+                    IntOrNull(NullIfEmpty(Get(r, "laboratorio_id")))))
+                .Where(c => c.laboratorio_id == labId)
+                .OrderBy(c => c.canvas_id, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(c => c.canvas_id, c => c.nombre, StringComparer.OrdinalIgnoreCase);
+        }
+
+        private string? ResolveInitialCanvasId()
+        {
+            if (!string.IsNullOrWhiteSpace(_requestedCanvasId)
+                && _canvasLookup.ContainsKey(_requestedCanvasId))
+            {
+                return _requestedCanvasId;
+            }
+
+            return _canvasLookup.Keys.FirstOrDefault();
         }
 
         private void CenterView()
@@ -390,7 +445,8 @@ namespace BARI_web.Features.Espacios.Pages
             await LoadPolyPointsDataAsync();
             _plantasLookup = await Pg.GetLookupAsync("plantas", "planta_id", "nombre");
 
-            _currentPlantaId = ResolveInitialPlanta();
+            _currentPlantaId = ResolveInitialPlanta(_requestedPlantaId);
+            _requestedPlantaId = null;
             _drawAreaId = DefaultAreaIdForCurrentPlanta();
             _newAreaPlantaId = _currentPlantaId;
             _sel = _polys.FirstOrDefault(IsVisible);
@@ -472,8 +528,14 @@ namespace BARI_web.Features.Espacios.Pages
             }
         }
 
-        private string? ResolveInitialPlanta()
+        private string? ResolveInitialPlanta(string? preferredPlantaId)
         {
+            if (!string.IsNullOrWhiteSpace(preferredPlantaId)
+                && _plantasLookup.ContainsKey(preferredPlantaId))
+            {
+                return preferredPlantaId;
+            }
+
             var firstWithArea = _polys.FirstOrDefault(p => PlantaOf(p) != null);
             var planta = PlantaOf(firstWithArea ?? _polys.FirstOrDefault() ?? new Poly());
             if (!string.IsNullOrWhiteSpace(planta)) return planta;
@@ -3398,6 +3460,10 @@ namespace BARI_web.Features.Espacios.Pages
        && _areasMeta.TryGetValue(areaId!, out var meta)
        && meta.laboratorio_id == _canvas?.laboratorio_id;
 
+        public void Dispose()
+        {
+            LaboratorioState.OnChange -= HandleLaboratorioChanged;
+        }
+
     }
 }
-

@@ -27,6 +27,8 @@ namespace BARI_web.Features.Espacios.Pages
         private bool IsLoading { get; set; } = true;
         private string? _currentPlantaId;
         private Dictionary<string, string> _plantasLookup = new(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, string> _canvasLookup = new(StringComparer.OrdinalIgnoreCase);
+        private string? _selectedCanvasId;
         private readonly Dictionary<string, AreaMeta> _areasMeta = new(StringComparer.OrdinalIgnoreCase);
         private readonly List<Canvas3DView> _views = new();
         private readonly HashSet<string> _initializedContainers = new(StringComparer.OrdinalIgnoreCase);
@@ -202,9 +204,12 @@ namespace BARI_web.Features.Espacios.Pages
             _initializedContainers.Clear();
 
             var canvases = await LoadCanvasesAsync();
+            _canvasLookup = canvases
+                .ToDictionary(c => c.canvas_id, c => c.nombre, StringComparer.OrdinalIgnoreCase);
+            EnsureCanvasSelection(canvases);
             EnsurePlantaSelection();
 
-            foreach (var canvas in canvases)
+            foreach (var canvas in canvases.Where(ShouldRenderCanvas))
             {
                 var data = await BuildCanvasDataAsync(canvas, _currentPlantaId);
                 _views.Add(new Canvas3DView(canvas, data));
@@ -262,6 +267,25 @@ namespace BARI_web.Features.Espacios.Pages
 
             _currentPlantaId = _plantasLookup.Keys.FirstOrDefault();
         }
+
+        private void EnsureCanvasSelection(List<CanvasLab> canvases)
+        {
+            if (string.IsNullOrWhiteSpace(_selectedCanvasId))
+            {
+                return;
+            }
+
+            if (canvases.Any(c => string.Equals(c.canvas_id, _selectedCanvasId, StringComparison.OrdinalIgnoreCase)))
+            {
+                return;
+            }
+
+            _selectedCanvasId = null;
+        }
+
+        private bool ShouldRenderCanvas(CanvasLab canvas)
+            => string.IsNullOrWhiteSpace(_selectedCanvasId)
+               || string.Equals(canvas.canvas_id, _selectedCanvasId, StringComparison.OrdinalIgnoreCase);
 
         private async Task<Area3DData?> BuildCanvasDataAsync(CanvasLab canvas, string? plantaId)
         {
@@ -634,6 +658,12 @@ namespace BARI_web.Features.Espacios.Pages
         private void OnChangePlanta(string? plantaId)
         {
             _currentPlantaId = string.IsNullOrWhiteSpace(plantaId) ? null : plantaId;
+            _ = ReloadForPlantaAsync();
+        }
+
+        private void OnChangeCanvas(string? canvasId)
+        {
+            _selectedCanvasId = string.IsNullOrWhiteSpace(canvasId) ? null : canvasId;
             _ = ReloadForPlantaAsync();
         }
 
