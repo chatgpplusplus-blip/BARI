@@ -149,9 +149,9 @@
         });
 
         const boxMaterial = new THREE.MeshStandardMaterial({
-            color: 0x60a5fa,
-            roughness: 0.5,
-            metalness: 0.05,
+            color: 0x8b5a2b,
+            roughness: 0.6,
+            metalness: 0.02,
         });
 
         const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
@@ -232,23 +232,6 @@
                 shelfGroup.add(shelf);
             }
 
-            const bayCount = clamp(Math.round(longSide / 0.8), 2, 5);
-            const dividerHeight = h - thickness * 2;
-            const dividerGeom = longAxisIsX
-                ? new THREE.BoxGeometry(thickness, dividerHeight, innerShort)
-                : new THREE.BoxGeometry(innerShort, dividerHeight, thickness);
-
-            for (let i = 1; i < bayCount; i += 1) {
-                const offset = -innerLong / 2 + (innerLong / bayCount) * i;
-                const divider = new THREE.Mesh(dividerGeom, mat);
-                if (longAxisIsX) {
-                    divider.position.set(offset, h / 2, 0);
-                } else {
-                    divider.position.set(0, h / 2, offset);
-                }
-                shelfGroup.add(divider);
-            }
-
             const boxes = Array.isArray(b.boxes) ? b.boxes : [];
             const boxesByLevel = new Map();
             boxes.forEach((box) => {
@@ -259,7 +242,7 @@
 
             boxesByLevel.forEach((items, level) => {
                 const y = thickness + levelHeight * (level - 0.5);
-                const columns = Math.max(1, bayCount);
+                const columns = Math.max(1, Math.ceil(Math.sqrt(items.length)));
                 const rows = Math.max(1, Math.ceil(items.length / columns));
                 const cellLong = innerLong / columns;
                 const cellShort = innerShort / rows;
