@@ -286,8 +286,6 @@ namespace BARI_web.Features.Espacios.Pages
                 .Select(p => p.puntos.Select(pt => new PointDto(pt.X, pt.Y)).ToList())
                 .ToList();
 
-            var cajaCounts = await LoadCajaCountsForMesonesAsync(blocks);
-
             var blockDtos = blocks
                 .Select(b => new BlockDto(
                     b.abs_x,
