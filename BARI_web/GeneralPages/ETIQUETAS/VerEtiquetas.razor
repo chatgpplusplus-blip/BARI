@@ -108,27 +108,114 @@ else if (_etiqueta is not null)
         <div class="label-layout">
             <div class="label-edit">
                 <h4>Campos editables</h4>
-                <div class="form-grid">
-                    <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editNombrePrincipal) ? "is-filled" : "")"
-                           placeholder="Nombre principal" @bind="_editNombrePrincipal" />
-                    <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editNombreQuimico) ? "is-filled" : "")"
-                           placeholder="Nombre químico" @bind="_editNombreQuimico" />
-                    <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editCas) ? "is-filled" : "")"
-                           placeholder="CAS" @bind="_editCas" />
-                    <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editFormaFisica) ? "is-filled" : "")"
-                           placeholder="Forma física" @bind="_editFormaFisica" />
-                    <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editCategoria) ? "is-filled" : "")"
-                           placeholder="Categoría" @bind="_editCategoria" />
-                    <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editSubcategorias) ? "is-filled" : "")"
-                           placeholder="Subcategorías" @bind="_editSubcategorias" />
-                    <textarea class="border p-1 form-control"
-                              placeholder="Descripción"
-                              rows="3"
-                              @bind="_editDescripcion"></textarea>
-                    <textarea class="border p-1 form-control"
-                              placeholder="Observaciones"
-                              rows="3"
-                              @bind="_editObservaciones"></textarea>
+                <div class="label-edit-section">
+                    <div class="label-edit-title">Reactivo</div>
+                    <div class="label-edit-grid">
+                        <div class="label-edit-field">
+                            <label class="text-xs text-gray-500">Nombre principal</label>
+                            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editNombrePrincipal) ? "is-filled" : "")"
+                                   @bind="_editNombrePrincipal" />
+                        </div>
+                        <div class="label-edit-field">
+                            <label class="text-xs text-gray-500">Nombre químico</label>
+                            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editNombreQuimico) ? "is-filled" : "")"
+                                   @bind="_editNombreQuimico" />
+                        </div>
+                        <div class="label-edit-field">
+                            <label class="text-xs text-gray-500">CAS</label>
+                            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editCas) ? "is-filled" : "")"
+                                   @bind="_editCas" />
+                        </div>
+                        <div class="label-edit-field">
+                            <label class="text-xs text-gray-500">Forma física</label>
+                            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editFormaFisica) ? "is-filled" : "")"
+                                   @bind="_editFormaFisica" />
+                        </div>
+                        <div class="label-edit-field">
+                            <label class="text-xs text-gray-500">Categoría</label>
+                            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editCategoria) ? "is-filled" : "")"
+                                   @bind="_editCategoria" />
+                        </div>
+                        <div class="label-edit-field">
+                            <label class="text-xs text-gray-500">Subcategorías</label>
+                            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editSubcategorias) ? "is-filled" : "")"
+                                   @bind="_editSubcategorias" />
+                        </div>
+                        <div class="label-edit-field label-edit-wide">
+                            <label class="text-xs text-gray-500">Descripción</label>
+                            <textarea class="border p-1 form-control"
+                                      rows="3"
+                                      @bind="_editDescripcion"></textarea>
+                        </div>
+                        <div class="label-edit-field label-edit-wide">
+                            <label class="text-xs text-gray-500">Observaciones</label>
+                            <textarea class="border p-1 form-control"
+                                      rows="3"
+                                      @bind="_editObservaciones"></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="label-edit-section">
+                    <div class="label-edit-title">Contenedor</div>
+                    <div class="label-edit-grid">
+                        <div class="label-edit-field">
+                            <label class="text-xs text-gray-500">ID contenedor</label>
+                            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editContenedorId) ? "is-filled" : "")"
+                                   @bind="_editContenedorId" />
+                        </div>
+                        <div class="label-edit-field">
+                            <label class="text-xs text-gray-500">QR</label>
+                            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editQrText) ? "is-filled" : "")"
+                                   @bind="EditQrText"
+                                   @bind:event="oninput" />
+                        </div>
+                        <div class="label-edit-field">
+                            <label class="text-xs text-gray-500">Cantidad nominal</label>
+                            <InputNumber class="border p-1 form-control @(_editContCantidadNominal.HasValue ? "is-filled" : "")"
+                                         @bind-Value="_editContCantidadNominal" />
+                        </div>
+                        <div class="label-edit-field">
+                            <label class="text-xs text-gray-500">Cantidad actual</label>
+                            <InputNumber class="border p-1 form-control @(_editContCantidadActual.HasValue ? "is-filled" : "")"
+                                         @bind-Value="_editContCantidadActual" />
+                        </div>
+                        <div class="label-edit-field">
+                            <label class="text-xs text-gray-500">Unidad</label>
+                            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editContUnidad) ? "is-filled" : "")"
+                                   @bind="_editContUnidad" />
+                        </div>
+                        <div class="label-edit-field">
+                            <label class="text-xs text-gray-500">Proveedor</label>
+                            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editContProveedor) ? "is-filled" : "")"
+                                   @bind="_editContProveedor" />
+                        </div>
+                        <div class="label-edit-field">
+                            <label class="text-xs text-gray-500">Condición</label>
+                            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editContCondicion) ? "is-filled" : "")"
+                                   @bind="_editContCondicion" />
+                        </div>
+                        <div class="label-edit-field">
+                            <label class="text-xs text-gray-500">Fecha adquisición</label>
+                            <InputDate class="border p-1 form-control @(_editFechaCompra.HasValue ? "is-filled" : "")"
+                                       @bind-Value="_editFechaCompra" />
+                        </div>
+                        <div class="label-edit-field">
+                            <label class="text-xs text-gray-500">Fecha recepción</label>
+                            <InputDate class="border p-1 form-control @(_editFechaRecepcion.HasValue ? "is-filled" : "")"
+                                       @bind-Value="_editFechaRecepcion" />
+                        </div>
+                        <div class="label-edit-field">
+                            <label class="text-xs text-gray-500">Fecha apertura</label>
+                            <InputDate class="border p-1 form-control @(_editFechaApertura.HasValue ? "is-filled" : "")"
+                                       @bind-Value="_editFechaApertura" />
+                        </div>
+                        <div class="label-edit-field">
+                            <label class="text-xs text-gray-500">Fecha vencimiento</label>
+                            <InputDate class="border p-1 form-control @(_editFechaVencimiento.HasValue ? "is-filled" : "")"
+                                       @bind-Value="_editFechaVencimiento" />
+                        </div>
+                    </div>
                 </div>
                 <p class="text-xs text-gray-500" style="margin-top:.75rem;">
                     Los cambios solo afectan el visualizador (no se guardan en la base de datos).
@@ -174,11 +261,11 @@ else if (_etiqueta is not null)
                         </div>
                         <div class="label-pair">
                             <span class="label-key">Cantidad nominal</span>
-                            <span>@FormatCantidad(_contCantidadNominal, _contUnidad)</span>
+                            <span>@FormatCantidad(_editContCantidadNominal, _editContUnidad)</span>
                         </div>
                         <div class="label-pair">
                             <span class="label-key">Cantidad actual</span>
-                            <span>@FormatCantidad(_contCantidadActual, _contUnidad)</span>
+                            <span>@FormatCantidad(_editContCantidadActual, _editContUnidad)</span>
                         </div>
                         <div class="label-pair">
                             <span class="label-key">QR</span>
@@ -186,7 +273,7 @@ else if (_etiqueta is not null)
                         </div>
                         <div class="label-pair">
                             <span class="label-key">Contenedor</span>
-                            <span>@(_selectedContenedorId ?? "—")</span>
+                            <span>@(_editContenedorId ?? "—")</span>
                         </div>
                         <div class="label-pair">
                             <span class="label-key">Categoría</span>
@@ -198,27 +285,27 @@ else if (_etiqueta is not null)
                         </div>
                         <div class="label-pair">
                             <span class="label-key">Adquisición</span>
-                            <span>@FormatDate(_fechaCompra)</span>
+                            <span>@FormatDate(_editFechaCompra)</span>
                         </div>
                         <div class="label-pair">
                             <span class="label-key">Recepción</span>
-                            <span>@FormatDate(_fechaRecepcion)</span>
+                            <span>@FormatDate(_editFechaRecepcion)</span>
                         </div>
                         <div class="label-pair">
                             <span class="label-key">Apertura</span>
-                            <span>@FormatDate(_fechaApertura)</span>
+                            <span>@FormatDate(_editFechaApertura)</span>
                         </div>
                         <div class="label-pair">
                             <span class="label-key">Vencimiento</span>
-                            <span>@FormatDate(_fechaVencimiento)</span>
+                            <span>@FormatDate(_editFechaVencimiento)</span>
                         </div>
                         <div class="label-pair">
                             <span class="label-key">Proveedor</span>
-                            <span>@(_contProveedor ?? "—")</span>
+                            <span>@(_editContProveedor ?? "—")</span>
                         </div>
                         <div class="label-pair">
                             <span class="label-key">Condición</span>
-                            <span>@(_contCondicion ?? "—")</span>
+                            <span>@(_editContCondicion ?? "—")</span>
                         </div>
                     </div>
 
@@ -320,6 +407,17 @@ else if (_etiqueta is not null)
     private string? _editSubcategorias;
     private string? _editDescripcion;
     private string? _editObservaciones;
+    private string? _editContenedorId;
+    private string? _editQrText;
+    private decimal? _editContCantidadNominal;
+    private decimal? _editContCantidadActual;
+    private string? _editContUnidad;
+    private string? _editContProveedor;
+    private string? _editContCondicion;
+    private DateTime? _editFechaCompra;
+    private DateTime? _editFechaRecepcion;
+    private DateTime? _editFechaApertura;
+    private DateTime? _editFechaVencimiento;
     private string? _romboSalud;
     private string? _romboInflamabilidad;
     private string? _romboReactividad;
@@ -414,6 +512,17 @@ ORDER BY nombre, c.cont_id;
             _contUnidad = null;
             _contProveedor = null;
             _contCondicion = null;
+            _editContenedorId = null;
+            _editQrText = null;
+            _editContCantidadNominal = null;
+            _editContCantidadActual = null;
+            _editContUnidad = null;
+            _editContProveedor = null;
+            _editContCondicion = null;
+            _editFechaCompra = null;
+            _editFechaRecepcion = null;
+            _editFechaApertura = null;
+            _editFechaVencimiento = null;
             return;
         }
 
@@ -447,6 +556,17 @@ ORDER BY nombre, c.cont_id;
         _contUnidad = null;
         _contProveedor = null;
         _contCondicion = null;
+        _editContenedorId = null;
+        _editQrText = null;
+        _editContCantidadNominal = null;
+        _editContCantidadActual = null;
+        _editContUnidad = null;
+        _editContProveedor = null;
+        _editContCondicion = null;
+        _editFechaCompra = null;
+        _editFechaRecepcion = null;
+        _editFechaApertura = null;
+        _editFechaVencimiento = null;
 
         if (string.IsNullOrWhiteSpace(_selectedContenedorId))
             return;
@@ -663,6 +783,17 @@ WHERE s.sustancia_id = @id;
         _labelImagenUrl = _etiqueta.ImagenUrl;
         _labelImagenDataUrl = null;
         _labelImagenArchivoNombre = null;
+        _editContenedorId = _selectedContenedorId;
+        _editQrText = _qrTexto;
+        _editContCantidadNominal = _contCantidadNominal;
+        _editContCantidadActual = _contCantidadActual;
+        _editContUnidad = _contUnidad;
+        _editContProveedor = _contProveedor;
+        _editContCondicion = _contCondicion;
+        _editFechaCompra = _fechaCompra;
+        _editFechaRecepcion = _fechaRecepcion;
+        _editFechaApertura = _fechaApertura;
+        _editFechaVencimiento = _fechaVencimiento;
     }
 
     private string GetStockDisplay()
@@ -678,12 +809,12 @@ WHERE s.sustancia_id = @id;
 
     private string GetQrShortLabel()
     {
-        if (string.IsNullOrWhiteSpace(_qrTexto))
+        if (string.IsNullOrWhiteSpace(_editQrText))
         {
             return "QR: —";
         }
 
-        var texto = _qrTexto.Length > 18 ? $"{_qrTexto[..18]}…" : _qrTexto;
+        var texto = _editQrText.Length > 18 ? $"{_editQrText[..18]}…" : _editQrText;
         return $"QR: {texto}";
     }
 
@@ -707,6 +838,19 @@ WHERE s.sustancia_id = @id;
         await stream.CopyToAsync(ms);
         var base64 = Convert.ToBase64String(ms.ToArray());
         _labelImagenDataUrl = $"data:{file.ContentType};base64,{base64}";
+    }
+
+    private string? EditQrText
+    {
+        get => _editQrText;
+        set
+        {
+            _editQrText = value;
+            _qrTexto = value;
+            _qrImageUrl = string.IsNullOrWhiteSpace(value)
+                ? null
+                : $"https://api.qrserver.com/v1/create-qr-code/?size=120x120&data={Uri.EscapeDataString(value)}";
+        }
     }
 
     private sealed record ContenedorLookup(string Id, string Label);
