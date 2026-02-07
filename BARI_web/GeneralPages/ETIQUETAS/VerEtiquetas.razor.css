@@ -34,14 +34,17 @@
 }
 
 .label-card {
-    border: 1px solid #d9d9d9;
-    border-radius: .75rem;
-    padding: .75rem;
-    background: #fff;
+    border: 1px solid #1f2937;
+    border-radius: .2rem;
+    padding: .65rem .75rem;
+    background: #fdfdfb;
     display: grid;
-    gap: .5rem;
-    grid-template-rows: auto 1fr auto;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+    gap: .5rem .85rem;
+    grid-template-columns: minmax(0, 2.1fr) minmax(0, 1fr);
+    grid-template-areas:
+        "brand brand"
+        "main media"
+        "rombo extra";
 }
 
 .label-brand {
@@ -50,36 +53,46 @@
     gap: .5rem;
     font-weight: 700;
     color: #1b3a2f;
+    grid-area: brand;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    font-size: .75rem;
 }
 
 .label-brand img {
-    width: 36px;
-    height: 36px;
+    width: 28px;
+    height: 28px;
     object-fit: cover;
-    border-radius: 50%;
+    border-radius: .2rem;
+    border: 1px solid #d1d5db;
 }
 
 .label-main {
     display: grid;
     gap: .35rem;
+    grid-area: main;
 }
 
 .label-title {
-    font-size: 1.1rem;
+    font-size: 1rem;
     font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
 }
 
 .label-sub {
-    font-size: .95rem;
-    color: #1f2937;
+    font-size: .85rem;
+    color: #111827;
 }
 
 .label-meta {
     display: flex;
     gap: .75rem;
     flex-wrap: wrap;
-    font-size: .8rem;
-    color: #4b5563;
+    font-size: .72rem;
+    color: #374151;
+    text-transform: uppercase;
+    letter-spacing: .03em;
 }
 
 .label-media {
@@ -88,25 +101,46 @@
     gap: .35rem;
     flex-wrap: wrap;
     min-height: 32px;
+    grid-area: media;
+    justify-content: flex-end;
 }
 
 .label-media img {
-    width: 32px;
-    height: 32px;
+    width: 30px;
+    height: 30px;
     object-fit: contain;
 }
 
 .label-extra {
     display: grid;
-    gap: .35rem;
-    font-size: .78rem;
-    color: #374151;
+    gap: .3rem .6rem;
+    grid-template-columns: 86px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-items: start;
+    font-size: .72rem;
+    color: #1f2937;
+    grid-area: extra;
 }
 
 .label-extra img {
-    max-width: 120px;
-    max-height: 80px;
+    max-width: 100%;
+    max-height: 64px;
     object-fit: contain;
+}
+
+.label-photo {
+    min-height: 64px;
+    display: flex;
+    align-items: center;
+}
+
+.label-notes {
+    grid-column: 2 / -1;
+    line-height: 1.25;
+}
+
+.label-rombo {
+    grid-area: rombo;
 }
 
 @media (max-width: 960px) {

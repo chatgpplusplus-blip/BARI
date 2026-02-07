@@ -151,6 +151,10 @@ else if (_etiqueta is not null)
                             <span>Forma: @(_editFormaFisica ?? "—")</span>
                         </div>
                         <div class="label-meta">
+                            <span>Cantidad total: @GetStockDisplay()</span>
+                            <span>@GetQrShortLabel()</span>
+                        </div>
+                        <div class="label-meta">
                             <span>@(_editCategoria ?? "—")</span>
                             <span>@(_editSubcategorias ?? "—")</span>
                         </div>
@@ -171,7 +175,7 @@ else if (_etiqueta is not null)
                     </div>
 
                     <div class="label-rombo">
-                        <div class="rombo-grid">
+                        <div class="rombo-diamond">
                             <div class="rombo-cell rombo-salud">S @(_romboSalud ?? "—")</div>
                             <div class="rombo-cell rombo-inflam">I @(_romboInflamabilidad ?? "—")</div>
                             <div class="rombo-cell rombo-react">R @(_romboReactividad ?? "—")</div>
@@ -181,10 +185,22 @@ else if (_etiqueta is not null)
                     </div>
 
                     <div class="label-extra">
-                        @if (!string.IsNullOrWhiteSpace(_labelImagenFinal))
-                        {
-                            <img src="@_labelImagenFinal" alt="Imagen etiqueta" />
-                        }
+                        <div class="label-qr">
+                            @if (!string.IsNullOrWhiteSpace(_qrImageUrl))
+                            {
+                                <img src="@_qrImageUrl" alt="QR etiqueta" />
+                            }
+                            else
+                            {
+                                <span class="text-xs text-gray-500">Sin QR</span>
+                            }
+                        </div>
+                        <div class="label-photo">
+                            @if (!string.IsNullOrWhiteSpace(_labelImagenFinal))
+                            {
+                                <img src="@_labelImagenFinal" alt="Imagen etiqueta" />
+                            }
+                        </div>
                         <div class="label-notes">@_editDescripcion</div>
                         <div class="label-notes">@_editObservaciones</div>
                     </div>
@@ -226,6 +242,10 @@ else if (_etiqueta is not null)
     private string? _romboInflamabilidad;
     private string? _romboReactividad;
     private string? _romboEspecial;
+    private decimal? _stockTotal;
+    private string? _stockUnidad;
+    private string? _qrTexto;
+    private string? _qrImageUrl;
 
     private string? _labelImagenFinal =>
         _labelImagenModo == "url" ? _labelImagenUrl : _labelImagenDataUrl;
@@ -279,6 +299,10 @@ ORDER BY nombre;
             _etiqueta = null;
             _ghsIconUrls.Clear();
             _loadError = null;
+            _stockTotal = null;
+            _stockUnidad = null;
+            _qrTexto = null;
+            _qrImageUrl = null;
             return;
         }
 
@@ -295,6 +319,10 @@ ORDER BY nombre;
         _romboInflamabilidad = null;
         _romboReactividad = null;
         _romboEspecial = null;
+        _stockTotal = null;
+        _stockUnidad = null;
+        _qrTexto = null;
+        _qrImageUrl = null;
 
         if (string.IsNullOrWhiteSpace(_selectedSustanciaId))
             return;
@@ -408,6 +436,51 @@ WHERE sr.sustancia_id = @id;
                 }
             }
 
+            await readerRombo.CloseAsync();
+
+            const string sqlStock = @"
+SELECT SUM(COALESCE(c.cantidad_reactivo_actual, c.cantidad_reactivo_nominal)) AS total,
+       CASE WHEN COUNT(DISTINCT c.unidad_id) = 1 THEN MAX(u.simbolo) ELSE '' END AS unidad
+FROM contenedores c
+LEFT JOIN unidades u ON u.unidad_id = c.unidad_id
+WHERE c.sustancia_id = @id
+  AND c.laboratorio_id = @lab;
+";
+            await using var cmdStock = new NpgsqlCommand(sqlStock, conn);
+            cmdStock.Parameters.AddWithValue("id", _selectedSustanciaId);
+            cmdStock.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var readerStock = await cmdStock.ExecuteReaderAsync();
+            if (await readerStock.ReadAsync())
+            {
+                _stockTotal = readerStock.IsDBNull(0) ? null : readerStock.GetDecimal(0);
+                _stockUnidad = readerStock.IsDBNull(1) ? null : readerStock.GetString(1);
+            }
+
+            await readerStock.CloseAsync();
+
+            const string sqlQr = @"
+SELECT c.qr
+FROM contenedores c
+WHERE c.sustancia_id = @id
+  AND c.laboratorio_id = @lab
+  AND c.qr IS NOT NULL
+  AND c.qr <> ''
+ORDER BY c.fecha_apertura DESC NULLS LAST, c.cont_id
+LIMIT 1;
+";
+            await using var cmdQr = new NpgsqlCommand(sqlQr, conn);
+            cmdQr.Parameters.AddWithValue("id", _selectedSustanciaId);
+            cmdQr.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            await using var readerQr = await cmdQr.ExecuteReaderAsync();
+            if (await readerQr.ReadAsync())
+            {
+                _qrTexto = readerQr.IsDBNull(0) ? null : readerQr.GetString(0);
+            }
+
+            _qrImageUrl = string.IsNullOrWhiteSpace(_qrTexto)
+                ? null
+                : $"https://api.qrserver.com/v1/create-qr-code/?size=120x120&data={Uri.EscapeDataString(_qrTexto)}";
+
             HydrateEditableFields();
         }
         catch (Exception ex)
@@ -432,6 +505,28 @@ WHERE sr.sustancia_id = @id;
         _labelImagenUrl = _etiqueta.ImagenUrl;
         _labelImagenDataUrl = null;
         _labelImagenArchivoNombre = null;
+    }
+
+    private string GetStockDisplay()
+    {
+        if (!_stockTotal.HasValue)
+        {
+            return "—";
+        }
+
+        var cantidad = _stockTotal.Value.ToString("0.##", CultureInfo.CurrentCulture);
+        return string.IsNullOrWhiteSpace(_stockUnidad) ? cantidad : $"{cantidad} {_stockUnidad}".Trim();
+    }
+
+    private string GetQrShortLabel()
+    {
+        if (string.IsNullOrWhiteSpace(_qrTexto))
+        {
+            return "QR: —";
+        }
+
+        var texto = _qrTexto.Length > 18 ? $"{_qrTexto[..18]}…" : _qrTexto;
+        return $"QR: {texto}";
     }
 
     private async Task OnEtiquetaImagenSeleccionada(InputFileChangeEventArgs e)
@@ -465,17 +560,21 @@ WHERE sr.sustancia_id = @id;
 
 <style>
     .label-rombo {
-        margin-top: .5rem;
+        margin-top: 0;
         display: grid;
         gap: .25rem;
         justify-items: start;
     }
 
-    .rombo-grid {
+    .rombo-diamond {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: .2rem;
-        width: 80px;
+        width: 90px;
+        height: 90px;
+        transform: rotate(45deg);
+        border: 2px solid #0f172a;
+        border-radius: .35rem;
+        overflow: hidden;
     }
 
     .rombo-cell {
@@ -483,12 +582,32 @@ WHERE sr.sustancia_id = @id;
         font-size: .7rem;
         font-weight: 700;
         text-align: center;
-        border-radius: .2rem;
-        padding: .2rem .1rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transform: rotate(-45deg);
+        letter-spacing: .02em;
+        border: 1px solid rgba(255, 255, 255, .2);
     }
 
     .rombo-salud { background: #1e3a8a; }
     .rombo-inflam { background: #b91c1c; }
     .rombo-react { background: #a16207; }
     .rombo-especial { background: #6b7280; }
+
+    .label-qr {
+        display: grid;
+        place-items: center;
+        border: 1px solid #e5e7eb;
+        border-radius: .5rem;
+        padding: .35rem;
+        background: #f8fafc;
+        width: 80px;
+    }
+
+    .label-qr img {
+        width: 72px;
+        height: 72px;
+        object-fit: contain;
+    }
 </style>
