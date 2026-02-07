@@ -99,7 +99,7 @@
 else if (_loadError is not null)
 {
     <section class="page-card" style="margin-top:1.5rem;">
-        <p class="error-note">No se pudo cargar el reactivo: @_loadError</p>
+        <p class="error-note">No se pudo cargar el contenedor: @_loadError</p>
     </section>
 }
 else if (_etiqueta is not null)
@@ -173,6 +173,14 @@ else if (_etiqueta is not null)
                             <span>@GetStockDisplay()</span>
                         </div>
                         <div class="label-pair">
+                            <span class="label-key">Cantidad nominal</span>
+                            <span>@FormatCantidad(_contCantidadNominal, _contUnidad)</span>
+                        </div>
+                        <div class="label-pair">
+                            <span class="label-key">Cantidad actual</span>
+                            <span>@FormatCantidad(_contCantidadActual, _contUnidad)</span>
+                        </div>
+                        <div class="label-pair">
                             <span class="label-key">QR</span>
                             <span>@GetQrShortLabel()</span>
                         </div>
@@ -197,8 +205,20 @@ else if (_etiqueta is not null)
                             <span>@FormatDate(_fechaRecepcion)</span>
                         </div>
                         <div class="label-pair">
+                            <span class="label-key">Apertura</span>
+                            <span>@FormatDate(_fechaApertura)</span>
+                        </div>
+                        <div class="label-pair">
                             <span class="label-key">Vencimiento</span>
                             <span>@FormatDate(_fechaVencimiento)</span>
+                        </div>
+                        <div class="label-pair">
+                            <span class="label-key">Proveedor</span>
+                            <span>@(_contProveedor ?? "—")</span>
+                        </div>
+                        <div class="label-pair">
+                            <span class="label-key">Condición</span>
+                            <span>@(_contCondicion ?? "—")</span>
                         </div>
                     </div>
 
@@ -314,7 +334,13 @@ else if (_etiqueta is not null)
     private string? _marcaLogoUrl;
     private DateTime? _fechaCompra;
     private DateTime? _fechaRecepcion;
+    private DateTime? _fechaApertura;
     private DateTime? _fechaVencimiento;
+    private decimal? _contCantidadNominal;
+    private decimal? _contCantidadActual;
+    private string? _contUnidad;
+    private string? _contProveedor;
+    private string? _contCondicion;
 
     private string? _labelImagenFinal =>
         _labelImagenModo == "url" ? _labelImagenUrl : _labelImagenDataUrl;
@@ -381,7 +407,13 @@ ORDER BY nombre, c.cont_id;
             _marcaLogoUrl = null;
             _fechaCompra = null;
             _fechaRecepcion = null;
+            _fechaApertura = null;
             _fechaVencimiento = null;
+            _contCantidadNominal = null;
+            _contCantidadActual = null;
+            _contUnidad = null;
+            _contProveedor = null;
+            _contCondicion = null;
             return;
         }
 
@@ -408,7 +440,13 @@ ORDER BY nombre, c.cont_id;
         _marcaLogoUrl = null;
         _fechaCompra = null;
         _fechaRecepcion = null;
+        _fechaApertura = null;
         _fechaVencimiento = null;
+        _contCantidadNominal = null;
+        _contCantidadActual = null;
+        _contUnidad = null;
+        _contProveedor = null;
+        _contCondicion = null;
 
         if (string.IsNullOrWhiteSpace(_selectedContenedorId))
             return;
@@ -433,7 +471,13 @@ SELECT s.sustancia_id,
        c.qr,
        c.fecha_compra,
        c.fecha_recepcion,
+       c.fecha_apertura,
        c.fecha_vencimiento,
+       c.cantidad_reactivo_nominal,
+       c.cantidad_reactivo_actual,
+       COALESCE(u.simbolo, '') AS unidad,
+       COALESCE(c.proveedor, '') AS proveedor,
+       COALESCE(cond.nombre, '') AS condicion,
        COALESCE(ma.nombre, '') AS marca_nombre,
        ma.imagen_url AS marca_logo
 FROM sustancias s
@@ -441,6 +485,8 @@ INNER JOIN contenedores c ON c.sustancia_id = s.sustancia_id
 LEFT JOIN categorias cat ON cat.categoria_id = s.categoria_id
 LEFT JOIN sustancias_subcategorias ssc ON ssc.sustancia_id = s.sustancia_id
 LEFT JOIN subcategorias sc ON sc.subcategoria_id = ssc.subcategoria_id AND sc.categoria_id = s.categoria_id
+LEFT JOIN unidades u ON u.unidad_id = c.unidad_id
+LEFT JOIN condiciones cond ON cond.condicion_id = c.condicion_id
 LEFT JOIN marcas ma ON ma.marca_id = c.marca_id
 WHERE c.cont_id = @cont
   AND c.laboratorio_id = @lab
@@ -448,7 +494,9 @@ WHERE c.cont_id = @cont
 GROUP BY s.sustancia_id, c.cont_id, s.nombre_comercial, s.nombre_quimico, s.cas,
          s.forma_fisica, s.descripcion, s.observaciones, s.imagen_url,
          cat.nombre, s.sustancia_controlada, c.qr, c.fecha_compra,
-         c.fecha_recepcion, c.fecha_vencimiento, ma.nombre, ma.imagen_url
+         c.fecha_recepcion, c.fecha_apertura, c.fecha_vencimiento,
+         c.cantidad_reactivo_nominal, c.cantidad_reactivo_actual, u.simbolo,
+         c.proveedor, cond.nombre, ma.nombre, ma.imagen_url
 LIMIT 1;
 ";
             await using var cmd = new NpgsqlCommand(sql, conn);
@@ -477,9 +525,15 @@ LIMIT 1;
                 _qrTexto = reader.IsDBNull(13) ? null : reader.GetString(13);
                 _fechaCompra = reader.IsDBNull(14) ? null : reader.GetDateTime(14);
                 _fechaRecepcion = reader.IsDBNull(15) ? null : reader.GetDateTime(15);
-                _fechaVencimiento = reader.IsDBNull(16) ? null : reader.GetDateTime(16);
-                _marcaNombre = reader.IsDBNull(17) ? null : reader.GetString(17);
-                _marcaLogoUrl = reader.IsDBNull(18) ? null : reader.GetString(18);
+                _fechaApertura = reader.IsDBNull(16) ? null : reader.GetDateTime(16);
+                _fechaVencimiento = reader.IsDBNull(17) ? null : reader.GetDateTime(17);
+                _contCantidadNominal = reader.IsDBNull(18) ? null : reader.GetDecimal(18);
+                _contCantidadActual = reader.IsDBNull(19) ? null : reader.GetDecimal(19);
+                _contUnidad = reader.IsDBNull(20) ? null : reader.GetString(20);
+                _contProveedor = reader.IsDBNull(21) ? null : reader.GetString(21);
+                _contCondicion = reader.IsDBNull(22) ? null : reader.GetString(22);
+                _marcaNombre = reader.IsDBNull(23) ? null : reader.GetString(23);
+                _marcaLogoUrl = reader.IsDBNull(24) ? null : reader.GetString(24);
             }
             else
             {
@@ -631,6 +685,17 @@ WHERE s.sustancia_id = @id;
 
         var texto = _qrTexto.Length > 18 ? $"{_qrTexto[..18]}…" : _qrTexto;
         return $"QR: {texto}";
+    }
+
+    private static string FormatCantidad(decimal? cantidad, string? unidad)
+    {
+        if (!cantidad.HasValue)
+        {
+            return "—";
+        }
+
+        var valor = cantidad.Value.ToString("0.##", CultureInfo.CurrentCulture);
+        return string.IsNullOrWhiteSpace(unidad) ? valor : $"{valor} {unidad}".Trim();
     }
 
     private async Task OnEtiquetaImagenSeleccionada(InputFileChangeEventArgs e)
