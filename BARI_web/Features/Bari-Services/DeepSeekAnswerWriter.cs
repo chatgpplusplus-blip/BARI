@@ -40,7 +40,7 @@ No inventes cantidades exactas."
 
         msgs.Add(new ChatMessage { Role = "user", Content = userQuestion });
 
-        return await _llm.CreateChatCompletionAsync(_opt.ModelWriter, msgs, jsonMode: false, maxTokens: _opt.WriterMaxTokens, temperature: 0.35, ct: ct);
+        return await _llm.CreateChatCompletionAsync(_opt.ModelWriter, msgs, jsonMode: false, maxTokens: _opt.PlannerMaxTokens, temperature: 0.35, ct: ct);
     }
 
     public async Task<string> WriteFromDbSqlAsync(string userQuestion, SqlPlan plan, DbQueryResult data, CancellationToken ct = default)
@@ -70,6 +70,6 @@ No inventes datos."
             new() { Role="user", Content = $"Pregunta: {userQuestion}\n\nDatos (json):\n{summaryJson}"}
         };
 
-        return await _llm.CreateChatCompletionAsync(_opt.ModelWriter, msgs, jsonMode: false, maxTokens: _opt.WriterMaxTokens, temperature: 0.2, ct: ct);
+        return await _llm.CreateChatCompletionAsync(_opt.ModelWriter, msgs, jsonMode: false, maxTokens: _opt.PlannerMaxTokens, temperature: 0.2, ct: ct);
     }
 }
