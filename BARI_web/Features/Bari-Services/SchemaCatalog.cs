@@ -270,6 +270,10 @@ ORDER BY from_schema, from_table, tc.constraint_name, kcu.ordinal_position;", co
             "material_subcategorias", "subcategorias", "categorias",
             "marcas", "estados_activo"
         },
+        ["stock"] = new[] { "materiales", "cajas_materiales", "cajas" },
+        ["cantidad"] = new[] { "materiales", "cajas_materiales" },
+        ["caja"] = new[] { "cajas", "cajas_materiales", "materiales" },
+        ["cajas"] = new[] { "cajas", "cajas_materiales", "materiales" },
 
         // Ubicación / espacios
         ["área"] = new[] { "areas", "laboratorios", "mesones", "canvas_lab" },

@@ -107,6 +107,11 @@ RECORDATORIOS DEL ESQUEMA:
   - laboratorio_contexto_id (opcional)
 - Instalaciones fijas están en instalaciones (subcategoria_id, laboratorio_id, area_id, fechas de revisión).
 - Ubicación típica: area_id, meson_id, nivel, posicion, canvas_id.
+- Stock de materiales:
+  - materiales.cantidad representa stock suelto.
+  - cajas_materiales.cantidad representa stock por caja (sumar por material).
+  - Para "mayor stock", "cantidad neta" o "stock total", calcula cantidad_neta = COALESCE(materiales.cantidad, SUM(cajas_materiales.cantidad)).
+  - Usa LEFT JOIN cajas_materiales y GROUP BY material_id cuando sumes cantidades.
 
 COMPATIBILIDAD / USO:
 - Si preguntan por compatibilidad (ej. ""compatible con bomba de vacío""), NO inventes columnas.
