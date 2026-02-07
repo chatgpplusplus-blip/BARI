@@ -224,7 +224,7 @@ else if (_etiqueta is not null)
 
             <div class="label-preview">
                 <h4>Vista previa de etiqueta</h4>
-                <div class="label-card" style="width:@($"{_labelWidthMm}mm"); height:@($"{_labelHeightMm}mm");">
+                <div class="label-card @LabelSizeClass" style="@LabelCardStyle">
                     <div class="label-brand">
                         <div class="label-brand-left">
                             <img src="@UpsaLogoUrl" alt="Logo UPSA" />
@@ -324,7 +324,7 @@ else if (_etiqueta is not null)
                         <div class="label-media">
                             @if (_ghsIconUrls.Count > 0)
                             {
-                                foreach (var icon in _ghsIconUrls.Take(3))
+                                foreach (var icon in _ghsIconUrls.Take(GhsMaxIcons))
                                 {
                                     <img src="@icon" alt="GHS" />
                                 }
@@ -337,10 +337,10 @@ else if (_etiqueta is not null)
 
                         <div class="label-rombo">
                             <div class="rombo-diamond">
-                                <div class="rombo-cell rombo-salud">S @(_romboSalud ?? "—")</div>
-                                <div class="rombo-cell rombo-inflam">I @(_romboInflamabilidad ?? "—")</div>
-                                <div class="rombo-cell rombo-react">R @(_romboReactividad ?? "—")</div>
-                                <div class="rombo-cell rombo-especial">E @(_romboEspecial ?? "—")</div>
+                                <div class="rombo-cell rombo-salud" title="Salud">@(_romboSalud ?? "—")</div>
+                                <div class="rombo-cell rombo-inflam" title="Inflamabilidad">@(_romboInflamabilidad ?? "—")</div>
+                                <div class="rombo-cell rombo-react" title="Reactividad">@(_romboReactividad ?? "—")</div>
+                                <div class="rombo-cell rombo-especial" title="Especial">@(_romboEspecial ?? "—")</div>
                             </div>
                             <div class="text-xs text-gray-500">Rombo NFPA</div>
                         </div>
@@ -454,6 +454,19 @@ else if (_etiqueta is not null)
         => $"border p-1 form-control {(_editFechaApertura.HasValue ? "is-filled" : "")}";
     private string FechaVencimientoClass
         => $"border p-1 form-control {(_editFechaVencimiento.HasValue ? "is-filled" : "")}";
+    private string LabelSizeClass
+        => GetLabelSizeClass();
+    private int GhsMaxIcons
+        => LabelSizeClass switch
+        {
+            "size-sm" => 3,
+            "size-md" => 4,
+            "size-lg" => 6,
+            _ => 8
+        };
+    private string LabelCardStyle =>
+        $"width:{_labelWidthMm}mm; height:{_labelHeightMm}mm; " +
+        $"--label-w:{_labelWidthMm}mm; --label-h:{_labelHeightMm}mm; --label-scale:{GetLabelScale().ToString("0.###", CultureInfo.InvariantCulture)};";
 
     protected override async Task OnInitializedAsync()
     {
@@ -884,6 +897,40 @@ WHERE s.sustancia_id = @id;
 
     private static string FormatDate(DateTime? dt)
         => dt.HasValue ? dt.Value.ToString("dd/MM/yyyy") : "—";
+
+    private double GetLabelScale()
+    {
+        if (_labelWidthMm <= 0 || _labelHeightMm <= 0)
+        {
+            return 1;
+        }
+
+        var baseW = 90d;
+        var baseH = 50d;
+        var scale = Math.Min(_labelWidthMm / baseW, _labelHeightMm / baseH);
+        return Math.Clamp(scale, 0.65, 2.1);
+    }
+
+    private string GetLabelSizeClass()
+    {
+        var minDim = Math.Min(_labelWidthMm, _labelHeightMm);
+        if (minDim < 45)
+        {
+            return "size-sm";
+        }
+
+        if (minDim < 65)
+        {
+            return "size-md";
+        }
+
+        if (minDim < 90)
+        {
+            return "size-lg";
+        }
+
+        return "size-xl";
+    }
 }
 
 <style>
@@ -896,8 +943,8 @@ WHERE s.sustancia_id = @id;
     .rombo-diamond {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        width: 78px;
-        height: 78px;
+        width: var(--rombo-size, 78px);
+        height: var(--rombo-size, 78px);
         transform: rotate(45deg);
         border: 2px solid #0f172a;
         border-radius: .2rem;
@@ -906,7 +953,7 @@ WHERE s.sustancia_id = @id;
 
     .rombo-cell {
         color: #fff;
-        font-size: .62rem;
+        font-size: calc(.62rem * var(--label-scale, 1));
         font-weight: 700;
         text-align: center;
         display: flex;
@@ -914,7 +961,7 @@ WHERE s.sustancia_id = @id;
         justify-content: center;
         transform: rotate(-45deg);
         letter-spacing: .02em;
-        border: 1px solid rgba(255, 255, 255, .2);
+        border: 1px solid rgba(255, 255, 255, .35);
     }
 
     .rombo-salud { background: #1e3a8a; }
@@ -927,14 +974,14 @@ WHERE s.sustancia_id = @id;
         place-items: center;
         border: 1px solid #e5e7eb;
         border-radius: .4rem;
-        padding: .3rem;
+        padding: calc(.3rem * var(--label-scale, 1));
         background: #f8fafc;
-        width: 78px;
+        width: var(--qr-size, 78px);
     }
 
     .label-qr img {
-        width: 70px;
-        height: 70px;
+        width: calc(var(--qr-size, 78px) - 8px);
+        height: calc(var(--qr-size, 78px) - 8px);
         object-fit: contain;
     }
 </style>
