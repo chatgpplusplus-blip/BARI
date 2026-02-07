@@ -59,6 +59,15 @@ namespace BARI_web.Features.Espacios.Pages
             public decimal? altura { get; set; }
             public string? color_hex { get; set; }
             public string? etiqueta { get; set; }
+            public string? meson_id { get; set; }
+            public int? niveles_totales { get; set; }
+            public List<BoxItem> cajas { get; set; } = new();
+        }
+
+        private class BoxItem
+        {
+            public int nivel { get; set; }
+            public string? dimensiones { get; set; }
         }
 
         private class Door
@@ -79,7 +88,19 @@ namespace BARI_web.Features.Espacios.Pages
 
         private sealed record PointDto(decimal X, decimal Y);
 
-        private sealed record BlockDto(decimal X, decimal Y, decimal W, decimal L, decimal H, string Color, string? Label);
+        private sealed record BoxDto(int Level, string? Dimensions);
+
+        private sealed record BlockDto(
+            decimal X,
+            decimal Y,
+            decimal W,
+            decimal L,
+            decimal H,
+            string Color,
+            string? Label,
+            bool IsMeson,
+            int Levels,
+            List<BoxDto> Boxes);
 
         private sealed record OpeningDto(decimal X, decimal Y, decimal L, string Orient);
 
@@ -145,7 +166,10 @@ namespace BARI_web.Features.Espacios.Pages
                         b.largo,
                         b.altura ?? 0.8m,
                         string.IsNullOrWhiteSpace(b.color_hex) ? "#2563eb" : b.color_hex!,
-                        b.etiqueta))
+                        b.etiqueta,
+                        !string.IsNullOrWhiteSpace(b.meson_id),
+                        b.niveles_totales ?? 0,
+                        b.cajas.Select(c => new BoxDto(c.nivel, c.dimensiones)).ToList()))
                     .ToList();
 
                 var doorDtos = doors
@@ -282,13 +306,15 @@ namespace BARI_web.Features.Espacios.Pages
                        b.etiqueta,
                        b.color_hex,
                        b.z_order,
+                       b.meson_id,
                        b.pos_x,
                        b.pos_y,
                        b.ancho,
                        b.largo,
                        b.altura,
                        b.offset_x,
-                       b.offset_y
+                       b.offset_y,
+                       me.niveles_totales
                 FROM bloques_int b
                 LEFT JOIN mesones me
                   ON lower(trim(me.meson_id)) = lower(trim(b.meson_id))
@@ -311,6 +337,8 @@ namespace BARI_web.Features.Espacios.Pages
             var iOffY = reader.GetOrdinal("offset_y");
             var iColor = reader.GetOrdinal("color_hex");
             var iEtiqueta = reader.GetOrdinal("etiqueta");
+            var iMeson = reader.GetOrdinal("meson_id");
+            var iNiveles = reader.GetOrdinal("niveles_totales");
 
             while (await reader.ReadAsync())
             {
@@ -338,11 +366,55 @@ namespace BARI_web.Features.Espacios.Pages
                     largo = reader.IsDBNull(iLargo) ? 0.4m : reader.GetDecimal(iLargo),
                     altura = reader.IsDBNull(iAltura) ? (decimal?)null : reader.GetDecimal(iAltura),
                     color_hex = reader.IsDBNull(iColor) ? "#2563eb" : reader.GetString(iColor),
-                    etiqueta = reader.IsDBNull(iEtiqueta) ? null : reader.GetString(iEtiqueta)
+                    etiqueta = reader.IsDBNull(iEtiqueta) ? null : reader.GetString(iEtiqueta),
+                    meson_id = reader.IsDBNull(iMeson) ? null : reader.GetString(iMeson),
+                    niveles_totales = reader.IsDBNull(iNiveles) ? null : reader.GetInt32(iNiveles)
                 });
             }
 
+            await reader.DisposeAsync();
+            await LoadCajasForBlocksAsync(blocks, conn);
             return blocks;
+        }
+
+        private static async Task LoadCajasForBlocksAsync(List<BlockItem> blocks, NpgsqlConnection conn)
+        {
+            var mesonIds = blocks
+                .Select(b => b.meson_id)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (mesonIds.Count == 0) return;
+
+            const string sql = @"
+                SELECT meson_id, nivel, dimensiones
+                FROM cajas
+                WHERE meson_id = ANY(@meson_ids);";
+
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("meson_ids", mesonIds.ToArray());
+            await using var reader = await cmd.ExecuteReaderAsync();
+
+            var iMeson = reader.GetOrdinal("meson_id");
+            var iNivel = reader.GetOrdinal("nivel");
+            var iDim = reader.GetOrdinal("dimensiones");
+
+            var lookup = blocks
+                .Where(b => !string.IsNullOrWhiteSpace(b.meson_id))
+                .ToDictionary(b => b.meson_id!, StringComparer.OrdinalIgnoreCase);
+
+            while (await reader.ReadAsync())
+            {
+                var mesonId = reader.GetString(iMeson);
+                if (!lookup.TryGetValue(mesonId, out var block)) continue;
+
+                block.cajas.Add(new BoxItem
+                {
+                    nivel = reader.IsDBNull(iNivel) ? 1 : reader.GetInt32(iNivel),
+                    dimensiones = reader.IsDBNull(iDim) ? null : reader.GetString(iDim)
+                });
+            }
         }
 
         private async Task<(List<Door> Doors, List<Win> Windows)> LoadDoorsAndWindowsForArea(AreaDraw a, string canvasId)
@@ -508,7 +580,7 @@ namespace BARI_web.Features.Espacios.Pages
             }
             catch
             {
-                // Si el circuito ya se cerró, no hagas nada
+                // Si el circuito ya se cerrÃ³, no hagas nada
             }
         }
 
