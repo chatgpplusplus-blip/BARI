@@ -14,10 +14,13 @@
     <div class="section-header">
         <h3>Reactivos (Sustancias + Contenedores)</h3>
         <div class="section-actions">
-            <a class="btn" href="@BuildDownloadHref("reactivos", "completo")">Descargar completo</a>
-            <a class="btn primary" href="@BuildDownloadHref("reactivos", "detallado", SelectedReactivos())">
-                Descargar detallado
+            <a class="btn primary" href="@BuildDownloadHref("materiales", "detallado", SelectedMateriales(), "xlsx")">
+                Descargar Excel
             </a>
+            <a class="btn" href="@BuildDownloadHref("materiales", "detallado", SelectedMateriales(), "csv")">
+                Descargar CSV
+            </a>
+
         </div>
     </div>
     <p class="helper">El inventario detallado permite elegir campos de Sustancias y Contenedores.</p>
@@ -240,9 +243,9 @@
         new FieldOption("notas", "Notas", "Notas u observaciones")
     };
 
-    private string BuildDownloadHref(string tipo, string modo, IEnumerable<string>? campos = null)
+    private string BuildDownloadHref(string tipo, string modo, IEnumerable<string>? campos = null, string formato = "xlsx")
     {
-        var baseUrl = $"/api/descarga?tipo={Uri.EscapeDataString(tipo)}&modo={Uri.EscapeDataString(modo)}";
+        var baseUrl = $"/api/descarga?tipo={Uri.EscapeDataString(tipo)}&modo={Uri.EscapeDataString(modo)}&formato={Uri.EscapeDataString(formato)}";
         if (campos is null) return baseUrl;
 
         var joined = string.Join(",", campos);
