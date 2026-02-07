@@ -333,7 +333,7 @@
             const baseZ = (b.y - centerZ);
             const shelfThickness = Math.max(0.03, Math.min(0.08, h * 0.04));
             const shelfColor = mat.color.clone().multiplyScalar(0.7);
-            const shelfMaterial = new THREE.MeshStandardMaterial({
+            const blockShelfMaterial = new THREE.MeshStandardMaterial({
                 color: shelfColor,
                 roughness: 0.55,
                 metalness: 0.05,
@@ -341,7 +341,7 @@
 
             for (let i = 1; i < levelCount; i += 1) {
                 const shelfGeom = new THREE.BoxGeometry(w * 0.98, shelfThickness, l * 0.98);
-                const shelf = new THREE.Mesh(shelfGeom, shelfMaterial);
+                const shelf = new THREE.Mesh(shelfGeom, blockShelfMaterial);
                 shelf.position.set(
                     baseX + w / 2,
                     (h / levelCount) * i,
