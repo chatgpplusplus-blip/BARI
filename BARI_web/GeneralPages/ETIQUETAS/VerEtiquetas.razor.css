@@ -168,16 +168,16 @@
 
 .label-media {
     display: flex;
-    align-items: center;
-    gap: .35rem;
+    align-items: flex-start;
+    gap: .3rem;
     flex-wrap: wrap;
     min-height: 32px;
     justify-content: flex-end;
 }
 
 .label-media img {
-    width: 30px;
-    height: 30px;
+    width: 28px;
+    height: 28px;
     object-fit: contain;
 }
 
