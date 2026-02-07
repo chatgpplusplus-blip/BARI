@@ -195,10 +195,12 @@ else if (_etiqueta is not null)
                                 <span class="text-xs text-gray-500">Sin QR</span>
                             }
                         </div>
-                        @if (!string.IsNullOrWhiteSpace(_labelImagenFinal))
-                        {
-                            <img src="@_labelImagenFinal" alt="Imagen etiqueta" />
-                        }
+                        <div class="label-photo">
+                            @if (!string.IsNullOrWhiteSpace(_labelImagenFinal))
+                            {
+                                <img src="@_labelImagenFinal" alt="Imagen etiqueta" />
+                            }
+                        </div>
                         <div class="label-notes">@_editDescripcion</div>
                         <div class="label-notes">@_editObservaciones</div>
                     </div>
@@ -558,7 +560,7 @@ LIMIT 1;
 
 <style>
     .label-rombo {
-        margin-top: .5rem;
+        margin-top: 0;
         display: grid;
         gap: .25rem;
         justify-items: start;
@@ -600,7 +602,7 @@ LIMIT 1;
         border-radius: .5rem;
         padding: .35rem;
         background: #f8fafc;
-        width: fit-content;
+        width: 80px;
     }
 
     .label-qr img {
