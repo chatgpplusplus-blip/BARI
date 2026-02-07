@@ -317,6 +317,66 @@
                 (b.y - centerZ) + l / 2
             );
             areaGroup.add(mesh);
+
+            const levelCount = Math.max(1, Number(b.levels ?? 0) || 1);
+            const isMeson = b.mesonId || b.levels || b.boxCounts;
+            if (!isMeson) return;
+
+            const baseX = (b.x - centerX);
+            const baseZ = (b.y - centerZ);
+            const shelfThickness = Math.max(0.03, Math.min(0.08, h * 0.04));
+            const shelfColor = mat.color.clone().multiplyScalar(0.7);
+            const shelfMaterial = new THREE.MeshStandardMaterial({
+                color: shelfColor,
+                roughness: 0.55,
+                metalness: 0.05,
+            });
+
+            for (let i = 1; i < levelCount; i += 1) {
+                const shelfGeom = new THREE.BoxGeometry(w * 0.98, shelfThickness, l * 0.98);
+                const shelf = new THREE.Mesh(shelfGeom, shelfMaterial);
+                shelf.position.set(
+                    baseX + w / 2,
+                    (h / levelCount) * i,
+                    baseZ + l / 2
+                );
+                areaGroup.add(shelf);
+            }
+
+            const boxCounts = Array.isArray(b.boxCounts) ? b.boxCounts : null;
+            if (!boxCounts) return;
+
+            const margin = Math.min(w, l) * 0.08;
+            const innerW = Math.max(0.05, w - margin * 2);
+            const innerL = Math.max(0.05, l - margin * 2);
+
+            for (let level = 0; level < levelCount; level += 1) {
+                const count = Number(boxCounts[level] ?? 0);
+                if (!count) continue;
+
+                const columns = Math.ceil(Math.sqrt(count));
+                const rows = Math.ceil(count / columns);
+                const cellW = innerW / columns;
+                const cellL = innerL / rows;
+                const boxW = cellW * 0.7;
+                const boxL = cellL * 0.7;
+                const cellHeight = h / levelCount;
+                const yPadding = Math.min(0.06, cellHeight * 0.12);
+                const boxHeight = Math.max(0.08, Math.min(cellHeight * 0.6, cellHeight - yPadding * 2));
+                const levelBaseY = cellHeight * level;
+                const boxY = levelBaseY + yPadding + boxHeight / 2;
+
+                for (let i = 0; i < count; i += 1) {
+                    const col = i % columns;
+                    const row = Math.floor(i / columns);
+                    const x = baseX + margin + cellW * (col + 0.5);
+                    const z = baseZ + margin + cellL * (row + 0.5);
+                    const boxGeom = new THREE.BoxGeometry(boxW, boxHeight, boxL);
+                    const box = new THREE.Mesh(boxGeom, boxMaterial);
+                    box.position.set(x, boxY, z);
+                    areaGroup.add(box);
+                }
+            }
         });
 
         const doorMaterial = new THREE.MeshStandardMaterial({

@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
 using Npgsql;
+using NpgsqlTypes;
 using BARI_web.General_Services.DataBaseConnection;
 using Microsoft.JSInterop;
 
@@ -157,6 +158,8 @@ namespace BARI_web.Features.Espacios.Pages
                     .OrderBy(p => p.z_order)
                     .Select(p => p.puntos.Select(pt => new PointDto(pt.X, pt.Y)).ToList())
                     .ToList();
+
+                var cajaCounts = await LoadCajaCountsForMesonesAsync(blocks);
 
                 var blockDtos = blocks
                     .Select(b => new BlockDto(
