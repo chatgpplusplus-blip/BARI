@@ -1,0 +1,414 @@
+@page "/ver-etiquetas"
+@page "/ver-etiquetas/reactivo/{SustanciaId}"
+
+@using Npgsql
+@using System
+@using System.Globalization
+@using System.IO
+@using Microsoft.AspNetCore.Components.Forms
+@inject NpgsqlDataSource DataSource
+@inject LaboratorioState LaboratorioState
+@inject NavigationManager Nav
+
+<PageTitle>Etiquetado de Reactivos</PageTitle>
+
+<section class="page-card">
+    <h2>Etiquetado de Reactivos</h2>
+    <p>
+        Visualizador inspirado en etiquetas de Merck. Selecciona un reactivo para ver y ajustar el diseño
+        antes de imprimir. Puedes modificar campos, dimensiones e importar una imagen.
+    </p>
+</section>
+
+<section class="page-card" style="margin-top:1.5rem;">
+    <div class="label-controls">
+        <div class="label-control">
+            <label class="text-xs text-gray-500">Reactivo</label>
+            <select class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_selectedSustanciaId) ? "is-filled" : "")"
+                    @onchange="OnSustanciaChanged">
+                <option value="">Del desplegable seleccione un reactivo para ver o editar</option>
+                @foreach (var s in _sustanciasLookup)
+                {
+                    <option value="@s.Id" selected="@(s.Id == _selectedSustanciaId)">@s.Nombre</option>
+                }
+            </select>
+        </div>
+
+        <div class="label-control">
+            <label class="text-xs text-gray-500">Ancho (mm)</label>
+            <input class="border p-1 form-control @(_labelWidthMm > 0 ? "is-filled" : "")"
+                   type="number"
+                   min="20"
+                   @bind-value="_labelWidthMm"
+                   @bind-value:event="oninput" />
+        </div>
+
+        <div class="label-control">
+            <label class="text-xs text-gray-500">Alto (mm)</label>
+            <input class="border p-1 form-control @(_labelHeightMm > 0 ? "is-filled" : "")"
+                   type="number"
+                   min="20"
+                   @bind-value="_labelHeightMm"
+                   @bind-value:event="oninput" />
+        </div>
+
+        <div class="label-control">
+            <label class="text-xs text-gray-500">Imagen de etiqueta</label>
+            <div class="inline-radio">
+                <label class="toggle @(_labelImagenModo == "url" ? "is-filled" : "")">
+                    <input type="radio" name="imagen-etiqueta" value="url" checked="@(_labelImagenModo == "url")"
+                           @onchange="@(() => _labelImagenModo = "url")" />
+                    <span>URL</span>
+                </label>
+                <label class="toggle @(_labelImagenModo == "archivo" ? "is-filled" : "")">
+                    <input type="radio" name="imagen-etiqueta" value="archivo" checked="@(_labelImagenModo == "archivo")"
+                           @onchange="@(() => _labelImagenModo = "archivo")" />
+                    <span>Archivo</span>
+                </label>
+            </div>
+
+            @if (_labelImagenModo == "url")
+            {
+                <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_labelImagenUrl) ? "is-filled" : "")"
+                       placeholder="URL de imagen"
+                       @bind="_labelImagenUrl" />
+            }
+            else
+            {
+                <label class="upload-drop">
+                    <InputFile OnChange="OnEtiquetaImagenSeleccionada" accept="image/png,image/jpeg,image/jpg,image/webp" />
+                    <span>Arrastra una imagen o haz clic para buscar</span>
+                </label>
+                @if (!string.IsNullOrWhiteSpace(_labelImagenArchivoNombre))
+                {
+                    <div class="text-xs text-gray-500">Archivo: @_labelImagenArchivoNombre</div>
+                }
+            }
+        </div>
+    </div>
+</section>
+
+@if (string.IsNullOrWhiteSpace(_selectedSustanciaId))
+{
+    <section class="page-card" style="margin-top:1.5rem;">
+        <div class="empty">
+            <div class="helper">Del desplegable seleccione un reactivo para ver o editar.</div>
+        </div>
+    </section>
+}
+else if (_loadError is not null)
+{
+    <section class="page-card" style="margin-top:1.5rem;">
+        <p class="error-note">No se pudo cargar el reactivo: @_loadError</p>
+    </section>
+}
+else if (_etiqueta is not null)
+{
+    <section class="page-card" style="margin-top:1.5rem;">
+        <div class="label-layout">
+            <div class="label-edit">
+                <h4>Campos editables</h4>
+                <div class="form-grid">
+                    <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editNombrePrincipal) ? "is-filled" : "")"
+                           placeholder="Nombre principal" @bind="_editNombrePrincipal" />
+                    <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editNombreQuimico) ? "is-filled" : "")"
+                           placeholder="Nombre químico" @bind="_editNombreQuimico" />
+                    <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editCas) ? "is-filled" : "")"
+                           placeholder="CAS" @bind="_editCas" />
+                    <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editFormaFisica) ? "is-filled" : "")"
+                           placeholder="Forma física" @bind="_editFormaFisica" />
+                    <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editCategoria) ? "is-filled" : "")"
+                           placeholder="Categoría" @bind="_editCategoria" />
+                    <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editSubcategorias) ? "is-filled" : "")"
+                           placeholder="Subcategorías" @bind="_editSubcategorias" />
+                    <textarea class="border p-1 form-control"
+                              placeholder="Descripción"
+                              rows="3"
+                              @bind="_editDescripcion"></textarea>
+                    <textarea class="border p-1 form-control"
+                              placeholder="Observaciones"
+                              rows="3"
+                              @bind="_editObservaciones"></textarea>
+                </div>
+                <p class="text-xs text-gray-500" style="margin-top:.75rem;">
+                    Los cambios solo afectan el visualizador (no se guardan en la base de datos).
+                </p>
+            </div>
+
+            <div class="label-preview">
+                <h4>Vista previa de etiqueta</h4>
+                <div class="label-card" style="width:@($"{_labelWidthMm}mm"); height:@($"{_labelHeightMm}mm");">
+                    <div class="label-brand">
+                        <img src="@UpsaLogoUrl" alt="Logo UPSA" />
+                        <span>UPSA · Inventario</span>
+                    </div>
+
+                    <div class="label-main">
+                        <div class="label-title">@_editNombrePrincipal</div>
+                        <div class="label-sub">@_editNombreQuimico</div>
+                        <div class="label-meta">
+                            <span>CAS: @(_editCas ?? "—")</span>
+                            <span>Forma: @(_editFormaFisica ?? "—")</span>
+                        </div>
+                        <div class="label-meta">
+                            <span>@(_editCategoria ?? "—")</span>
+                            <span>@(_editSubcategorias ?? "—")</span>
+                        </div>
+                    </div>
+
+                    <div class="label-media">
+                        @if (_ghsIconUrls.Count > 0)
+                        {
+                            foreach (var icon in _ghsIconUrls.Take(3))
+                            {
+                                <img src="@icon" alt="GHS" />
+                            }
+                        }
+                        else
+                        {
+                            <span class="text-xs text-gray-500">Sin pictogramas</span>
+                        }
+                    </div>
+
+                    <div class="label-extra">
+                        @if (!string.IsNullOrWhiteSpace(_labelImagenFinal))
+                        {
+                            <img src="@_labelImagenFinal" alt="Imagen etiqueta" />
+                        }
+                        <div class="label-notes">@_editDescripcion</div>
+                        <div class="label-notes">@_editObservaciones</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+}
+
+@code {
+    [Parameter] public string? SustanciaId { get; set; }
+
+    private const string CategoriaReactivoId = "reactivo-quimico";
+    private const string UpsaLogoUrl = "https://vc4a.com/wp-content/uploads/2022/06/198068246_2916680591924255_5728041621538232491_n.jpg";
+
+    private readonly List<SustanciaLookup> _sustanciasLookup = new();
+    private readonly List<string> _ghsIconUrls = new();
+
+    private string? _selectedSustanciaId;
+    private string? _loadError;
+    private EtiquetaReactivo? _etiqueta;
+
+    private int _labelWidthMm = 90;
+    private int _labelHeightMm = 50;
+    private string _labelImagenModo = "url";
+    private string? _labelImagenUrl;
+    private string? _labelImagenDataUrl;
+    private string? _labelImagenArchivoNombre;
+
+    private string? _editNombrePrincipal;
+    private string? _editNombreQuimico;
+    private string? _editCas;
+    private string? _editFormaFisica;
+    private string? _editCategoria;
+    private string? _editSubcategorias;
+    private string? _editDescripcion;
+    private string? _editObservaciones;
+
+    private string? _labelImagenFinal =>
+        _labelImagenModo == "url" ? _labelImagenUrl : _labelImagenDataUrl;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSustanciasLookupAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(SustanciaId) && SustanciaId != _selectedSustanciaId)
+        {
+            _selectedSustanciaId = SustanciaId;
+            await LoadEtiquetaAsync();
+        }
+    }
+
+    private async Task LoadSustanciasLookupAsync()
+    {
+        _sustanciasLookup.Clear();
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+        const string sql = @"
+SELECT s.sustancia_id,
+       COALESCE(NULLIF(s.nombre_comercial, ''), NULLIF(s.nombre_quimico, ''), s.sustancia_id) AS nombre
+FROM sustancias s
+WHERE s.laboratorio_id = @lab
+  AND s.categoria_id = @cat
+ORDER BY nombre;
+";
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+        cmd.Parameters.AddWithValue("cat", CategoriaReactivoId);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            _sustanciasLookup.Add(new SustanciaLookup(
+                reader.GetString(0),
+                reader.GetString(1)
+            ));
+        }
+    }
+
+    private async Task OnSustanciaChanged(ChangeEventArgs args)
+    {
+        _selectedSustanciaId = args.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(_selectedSustanciaId))
+        {
+            _etiqueta = null;
+            _ghsIconUrls.Clear();
+            _loadError = null;
+            return;
+        }
+
+        Nav.NavigateTo($"/ver-etiquetas/reactivo/{_selectedSustanciaId}");
+        await LoadEtiquetaAsync();
+    }
+
+    private async Task LoadEtiquetaAsync()
+    {
+        _loadError = null;
+        _etiqueta = null;
+        _ghsIconUrls.Clear();
+
+        if (string.IsNullOrWhiteSpace(_selectedSustanciaId))
+            return;
+
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            const string sql = @"
+SELECT s.sustancia_id,
+       COALESCE(NULLIF(s.nombre_comercial, ''), NULLIF(s.nombre_quimico, ''), s.sustancia_id) AS nombre,
+       s.nombre_comercial,
+       s.nombre_quimico,
+       s.cas,
+       s.forma_fisica,
+       s.descripcion,
+       s.observaciones,
+       s.imagen_url,
+       COALESCE(c.nombre, '') AS categoria,
+       COALESCE(string_agg(DISTINCT (c.nombre || ' · ' || sc.nombre), ', ' ORDER BY (c.nombre || ' · ' || sc.nombre)), '') AS subcategorias,
+       COALESCE(s.sustancia_controlada, false) AS controlada
+FROM sustancias s
+LEFT JOIN categorias c ON c.categoria_id = s.categoria_id
+LEFT JOIN sustancias_subcategorias ssc ON ssc.sustancia_id = s.sustancia_id
+LEFT JOIN subcategorias sc ON sc.subcategoria_id = ssc.subcategoria_id AND sc.categoria_id = s.categoria_id
+WHERE s.sustancia_id = @id
+  AND s.laboratorio_id = @lab
+  AND s.categoria_id = @cat
+GROUP BY s.sustancia_id, s.nombre_comercial, s.nombre_quimico, s.cas,
+         s.forma_fisica, s.descripcion, s.observaciones, s.imagen_url,
+         c.nombre, s.sustancia_controlada
+LIMIT 1;
+";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("id", _selectedSustanciaId);
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            cmd.Parameters.AddWithValue("cat", CategoriaReactivoId);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
+            {
+                _etiqueta = new EtiquetaReactivo(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetString(2),
+                    reader.IsDBNull(3) ? null : reader.GetString(3),
+                    reader.IsDBNull(4) ? null : reader.GetString(4),
+                    reader.IsDBNull(5) ? null : reader.GetString(5),
+                    reader.IsDBNull(6) ? null : reader.GetString(6),
+                    reader.IsDBNull(7) ? null : reader.GetString(7),
+                    reader.IsDBNull(8) ? null : reader.GetString(8),
+                    reader.IsDBNull(9) ? null : reader.GetString(9),
+                    reader.IsDBNull(10) ? null : reader.GetString(10),
+                    !reader.IsDBNull(11) && reader.GetBoolean(11)
+                );
+            }
+            else
+            {
+                _loadError = "No se encontró el reactivo.";
+                return;
+            }
+
+            await reader.CloseAsync();
+
+            const string sqlGhs = @"
+SELECT g.icon_url
+FROM sustancias_pictogramas sp
+INNER JOIN ghs_pictogramas g ON g.ghs_id = sp.ghs_id
+WHERE sp.sustancia_id = @id
+ORDER BY sp.ghs_id;
+";
+            await using var cmdGhs = new NpgsqlCommand(sqlGhs, conn);
+            cmdGhs.Parameters.AddWithValue("id", _selectedSustanciaId);
+            await using var readerGhs = await cmdGhs.ExecuteReaderAsync();
+            while (await readerGhs.ReadAsync())
+            {
+                if (!readerGhs.IsDBNull(0))
+                {
+                    _ghsIconUrls.Add(readerGhs.GetString(0));
+                }
+            }
+
+            HydrateEditableFields();
+        }
+        catch (Exception ex)
+        {
+            _loadError = ex.Message;
+        }
+    }
+
+    private void HydrateEditableFields()
+    {
+        if (_etiqueta is null)
+            return;
+
+        _editNombrePrincipal = _etiqueta.Nombre;
+        _editNombreQuimico = string.IsNullOrWhiteSpace(_etiqueta.NombreQuimico) ? _etiqueta.NombreComercial : _etiqueta.NombreQuimico;
+        _editCas = _etiqueta.Cas;
+        _editFormaFisica = _etiqueta.FormaFisica;
+        _editCategoria = _etiqueta.Categoria;
+        _editSubcategorias = _etiqueta.Subcategorias;
+        _editDescripcion = _etiqueta.Descripcion;
+        _editObservaciones = _etiqueta.Observaciones;
+        _labelImagenUrl = _etiqueta.ImagenUrl;
+        _labelImagenDataUrl = null;
+        _labelImagenArchivoNombre = null;
+    }
+
+    private async Task OnEtiquetaImagenSeleccionada(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        _labelImagenArchivoNombre = file.Name;
+        await using var stream = file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        var base64 = Convert.ToBase64String(ms.ToArray());
+        _labelImagenDataUrl = $"data:{file.ContentType};base64,{base64}";
+    }
+
+    private sealed record SustanciaLookup(string Id, string Nombre);
+
+    private sealed record EtiquetaReactivo(
+        string Id,
+        string Nombre,
+        string? NombreComercial,
+        string? NombreQuimico,
+        string? Cas,
+        string? FormaFisica,
+        string? Descripcion,
+        string? Observaciones,
+        string? ImagenUrl,
+        string? Categoria,
+        string? Subcategorias,
+        bool Controlada
+    );
+}

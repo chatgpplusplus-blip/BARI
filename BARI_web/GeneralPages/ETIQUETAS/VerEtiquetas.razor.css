@@ -1,0 +1,116 @@
+.label-controls {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.label-control {
+    display: flex;
+    flex-direction: column;
+    gap: .35rem;
+}
+
+.inline-radio {
+    display: flex;
+    gap: .5rem;
+    flex-wrap: wrap;
+}
+
+.label-layout {
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) minmax(280px, 1.2fr);
+    gap: 1.5rem;
+}
+
+.label-edit .form-grid {
+    display: grid;
+    gap: .75rem;
+}
+
+.label-preview {
+    display: flex;
+    flex-direction: column;
+    gap: .75rem;
+}
+
+.label-card {
+    border: 1px solid #d9d9d9;
+    border-radius: .75rem;
+    padding: .75rem;
+    background: #fff;
+    display: grid;
+    gap: .5rem;
+    grid-template-rows: auto 1fr auto;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+
+.label-brand {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    font-weight: 700;
+    color: #1b3a2f;
+}
+
+.label-brand img {
+    width: 36px;
+    height: 36px;
+    object-fit: cover;
+    border-radius: 50%;
+}
+
+.label-main {
+    display: grid;
+    gap: .35rem;
+}
+
+.label-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+.label-sub {
+    font-size: .95rem;
+    color: #1f2937;
+}
+
+.label-meta {
+    display: flex;
+    gap: .75rem;
+    flex-wrap: wrap;
+    font-size: .8rem;
+    color: #4b5563;
+}
+
+.label-media {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+    flex-wrap: wrap;
+    min-height: 32px;
+}
+
+.label-media img {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+}
+
+.label-extra {
+    display: grid;
+    gap: .35rem;
+    font-size: .78rem;
+    color: #374151;
+}
+
+.label-extra img {
+    max-width: 120px;
+    max-height: 80px;
+    object-fit: contain;
+}
+
+@media (max-width: 960px) {
+    .label-layout {
+        grid-template-columns: 1fr;
+    }
+}

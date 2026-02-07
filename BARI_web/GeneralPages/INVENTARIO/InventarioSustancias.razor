@@ -22,6 +22,9 @@
         Gestión de reactivos del laboratorio: sustancias (entidad química) y contenedores (envases físicos).
         Incluye seguridad (GHS/H/P), stock, ubicación real y carga de imágenes.
     </p>
+    <div class="form-actions">
+        <NavLink class="btn primary" href="/ver-etiquetas">Ver etiquetas</NavLink>
+    </div>
     <LaboratorioSelector />
 </section>
 
@@ -935,6 +938,7 @@
                         <th>Vencimiento</th>
                         <th>QR</th>
                         <th>Imagen</th>
+                        <th>Etiqueta</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -976,6 +980,12 @@
                                 {
                                     <span class="text-xs text-gray-500">—</span>
                                 }
+                            </td>
+
+                            <td>
+                                <NavLink class="btn-link" href="@($"/ver-etiquetas/reactivo/{c.SustanciaId}")">
+                                    Ver etiqueta
+                                </NavLink>
                             </td>
                         </tr>
                     }
@@ -2134,6 +2144,7 @@ ORDER BY nombre, s.sustancia_id";
 
             const string sql = @"
 SELECT c.cont_id,
+       s.sustancia_id,
        COALESCE(NULLIF(s.nombre_comercial, ''), NULLIF(s.nombre_quimico, ''), s.sustancia_id) AS reactivo,
        COALESCE(ma.nombre, '') AS marca_nombre,
        ma.imagen_url AS marca_imagen,
@@ -2182,32 +2193,34 @@ ORDER BY reactivo, c.cont_id";
             while (await reader.ReadAsync())
             {
                 var id = reader.GetString(0);
-                var reactivo = reader.GetString(1);
+                var sustanciaId = reader.GetString(1);
+                var reactivo = reader.GetString(2);
 
-                var marcaNombre = reader.GetString(2);
-                var marcaImagen = reader.IsDBNull(3) ? null : reader.GetString(3);
+                var marcaNombre = reader.GetString(3);
+                var marcaImagen = reader.IsDBNull(4) ? null : reader.GetString(4);
 
-                var cantidad = reader.GetDecimal(4);
-                var unidad = reader.GetString(5);
+                var cantidad = reader.GetDecimal(5);
+                var unidad = reader.GetString(6);
 
-                var condicion = reader.GetString(6);
+                var condicion = reader.GetString(7);
 
-                var area = reader.GetString(7);
-                var meson = reader.GetString(8);
-                var posicion = reader.GetString(9);
+                var area = reader.GetString(8);
+                var meson = reader.GetString(9);
+                var posicion = reader.GetString(10);
 
-                var alturaCm = reader.IsDBNull(10)
+                var alturaCm = reader.IsDBNull(11)
                     ? null
-                    : reader.GetDecimal(10).ToString(CultureInfo.InvariantCulture);
+                    : reader.GetDecimal(11).ToString(CultureInfo.InvariantCulture);
 
-                var fechaApertura = reader.IsDBNull(11) ? "—" : reader.GetDateTime(11).ToString("dd/MM/yyyy");
-                var fechaVencimiento = reader.IsDBNull(12) ? "—" : reader.GetDateTime(12).ToString("dd/MM/yyyy");
+                var fechaApertura = reader.IsDBNull(12) ? "—" : reader.GetDateTime(12).ToString("dd/MM/yyyy");
+                var fechaVencimiento = reader.IsDBNull(13) ? "—" : reader.GetDateTime(13).ToString("dd/MM/yyyy");
 
-                var qr = reader.GetString(13);
-                var img = reader.IsDBNull(14) ? null : reader.GetString(14);
+                var qr = reader.GetString(14);
+                var img = reader.IsDBNull(15) ? null : reader.GetString(15);
 
                 newList.Add(new ContenedorRow(
                     Id: id,
+                    SustanciaId: sustanciaId,
                     Reactivo: reactivo,
                     MarcaNombre: marcaNombre,
                     MarcaImagenUrl: marcaImagen,
@@ -2868,6 +2881,7 @@ ORDER BY reactivo, c.cont_id";
 
     private sealed record ContenedorRow(
         string Id,
+        string SustanciaId,
         string Reactivo,
         string MarcaNombre,
         string? MarcaImagenUrl,
