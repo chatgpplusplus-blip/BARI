@@ -24,16 +24,32 @@
     </div>
 </section>
 
-<section class="page-card" style="margin-top:1rem;">
-    <div class="toolbar-actions">
-        <label class="muted" style="font-size:.85rem;">Planta</label>
-        <select class="planta-select" value="@_currentPlantaId"
-                @onchange="e => OnChangePlanta(e.Value?.ToString())">
-            @foreach (var plantaKv in _plantasLookup)
-            {
-                <option value="@plantaKv.Key">@plantaKv.Value</option>
-            }
-        </select>
+<section class="page-card filters-card" style="margin-top:1rem;">
+    <div class="filters-grid">
+        <div class="filter-block">
+            <LaboratorioSelector />
+        </div>
+        <div class="filter-block">
+            <label class="muted" style="font-size:.85rem;">Canvas</label>
+            <select class="planta-select" value="@(_selectedCanvasId ?? "")"
+                    @onchange="e => OnChangeCanvas(e.Value?.ToString())">
+                <option value="">Todos los canvas</option>
+                @foreach (var canvasKv in _canvasLookup)
+                {
+                    <option value="@canvasKv.Key">@canvasKv.Value</option>
+                }
+            </select>
+        </div>
+        <div class="filter-block">
+            <label class="muted" style="font-size:.85rem;">Planta</label>
+            <select class="planta-select" value="@_currentPlantaId"
+                    @onchange="e => OnChangePlanta(e.Value?.ToString())">
+                @foreach (var plantaKv in _plantasLookup)
+                {
+                    <option value="@plantaKv.Key">@plantaKv.Value</option>
+                }
+            </select>
+        </div>
     </div>
 </section>
 
@@ -97,6 +113,31 @@ else
         display: flex;
         gap: 0.75rem;
         align-items: center;
+    }
+
+    .filters-grid {
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        align-items: start;
+    }
+
+    .filter-block {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+    }
+
+    .filters-card .lab-selector {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        margin: 0;
+    }
+
+    .filters-card .lab-selector small {
+        font-size: 0.75rem;
+        color: #64748b;
     }
 
     .btn {
