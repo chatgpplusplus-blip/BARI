@@ -557,6 +557,7 @@ LIMIT 1;
                 _marcaNombre = readerQr.IsDBNull(4) ? null : readerQr.GetString(4);
                 _marcaLogoUrl = readerQr.IsDBNull(5) ? null : readerQr.GetString(5);
             }
+            await readerQr.CloseAsync();
 
             _qrImageUrl = string.IsNullOrWhiteSpace(_qrTexto)
                 ? null
