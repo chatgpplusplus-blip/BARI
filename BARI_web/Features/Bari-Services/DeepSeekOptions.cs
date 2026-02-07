@@ -7,6 +7,8 @@ public sealed class DeepSeekOptions
     public string ModelPlanner { get; set; } = "deepseek-chat";
     public string ModelWriter { get; set; } = "deepseek-chat";
     public int TimeoutSeconds { get; set; } = 60;
+    public int PlannerMaxTokens { get; set; } = 700;
+    public int WriterMaxTokens { get; set; } = 550;
 
     /// <summary>
     /// Límite por defecto para listados (si el usuario no especifica).

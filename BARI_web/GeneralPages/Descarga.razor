@@ -2,7 +2,7 @@
 
 <PageTitle>Descargar inventarios</PageTitle>
 
-<section class="page-card">
+<section class="page-card download-hero">
     <h2>Descargar inventarios</h2>
     <p class="helper">
         Selecciona qué columnas deseas incluir en cada inventario. Las relaciones/intermedias (por ejemplo, cajas y
@@ -10,7 +10,7 @@
     </p>
 </section>
 
-<section class="page-card" style="margin-top:1.5rem;">
+<section class="page-card download-card">
     <div class="section-header">
         <h3>Reactivos (Sustancias + Contenedores)</h3>
         <div class="section-actions">
@@ -55,7 +55,7 @@
     </div>
 </section>
 
-<section class="page-card" style="margin-top:1.5rem;">
+<section class="page-card download-card">
     <div class="section-header">
         <h3>Equipos (Modelos + Equipos)</h3>
         <div class="section-actions">
@@ -97,7 +97,7 @@
     </div>
 </section>
 
-<section class="page-card" style="margin-top:1.5rem;">
+<section class="page-card download-card">
     <div class="section-header">
         <h3>Materiales</h3>
         <div class="section-actions">
@@ -123,7 +123,7 @@
     </div>
 </section>
 
-<section class="page-card" style="margin-top:1.5rem;">
+<section class="page-card download-card">
     <div class="section-header">
         <h3>Documentos</h3>
         <div class="section-actions">
@@ -274,12 +274,31 @@
 }
 
 <style>
+    .download-hero {
+        background: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(99, 102, 241, 0.12));
+        border: 1px solid rgba(37, 99, 235, 0.25);
+        box-shadow: 0 10px 25px -20px rgba(15, 23, 42, 0.4);
+    }
+
+    .download-hero h2 {
+        margin-bottom: 0.35rem;
+        font-size: 1.5rem;
+        color: #0f172a;
+    }
+
+    .download-card + .download-card {
+        margin-top: 1.5rem;
+    }
+
     .section-header {
         display: flex;
         justify-content: space-between;
         gap: 1rem;
         align-items: center;
         flex-wrap: wrap;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+        padding-bottom: 0.75rem;
+        margin-bottom: 0.5rem;
     }
 
     .section-actions {
@@ -305,6 +324,24 @@
         display: flex;
         align-items: flex-start;
         gap: 0.5rem;
-        padding: 0.4rem 0;
+        padding: 0.55rem 0.65rem;
+        border-radius: 0.65rem;
+        border: 1px solid transparent;
+        background: rgba(248, 250, 252, 0.7);
+        transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+    }
+
+    .option-row:hover {
+        border-color: rgba(37, 99, 235, 0.35);
+        box-shadow: 0 6px 14px -12px rgba(15, 23, 42, 0.35);
+        transform: translateY(-1px);
+    }
+
+    .option-row input {
+        margin-top: 0.2rem;
+    }
+
+    .muted {
+        color: #64748b;
     }
 </style>
