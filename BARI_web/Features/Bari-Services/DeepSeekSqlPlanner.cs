@@ -110,7 +110,7 @@ RECORDATORIOS DEL ESQUEMA:
 - Stock de materiales:
   - materiales.cantidad representa stock suelto.
   - cajas_materiales.cantidad representa stock por caja (sumar por material).
-  - Para "mayor stock", "cantidad neta" o "stock total", calcula cantidad_neta = COALESCE(materiales.cantidad, SUM(cajas_materiales.cantidad)).
+  - Para ""mayor stock"", ""cantidad neta"" o ""stock total"", calcula cantidad_neta = COALESCE(materiales.cantidad, SUM(cajas_materiales.cantidad)).
   - Usa LEFT JOIN cajas_materiales y GROUP BY material_id cuando sumes cantidades.
 
 COMPATIBILIDAD / USO:
@@ -193,7 +193,7 @@ Instrucciones:
 
         msgs.Add(new ChatMessage { Role = "user", Content = q });
 
-        var plan = await _llm.CreateJsonAsync<SqlActionPlan>(_opt.ModelPlanner, msgs, maxTokens: _opt.PlannerMaxTokens, ct: ct);
+        var plan = await _llm.CreateJsonAsync<SqlActionPlan>(_opt.ModelPlanner, msgs, maxTokens: _opt.WriterMaxTokens, ct: ct);
 
         // Normalización básica
         plan.Intent = (plan.Intent ?? "db_query").Trim().ToLowerInvariant();
