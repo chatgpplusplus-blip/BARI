@@ -110,7 +110,7 @@ RECORDATORIOS DEL ESQUEMA:
 - Stock de materiales:
   - materiales.cantidad representa stock suelto.
   - cajas_materiales.cantidad representa stock por caja (sumar por material).
-  - Para "mayor stock", "cantidad neta" o "stock total", calcula cantidad_neta = COALESCE(materiales.cantidad, SUM(cajas_materiales.cantidad)).
+  - Para ""mayor stock"", ""cantidad neta"" o ""stock total"", calcula cantidad_neta = COALESCE(materiales.cantidad, SUM(cajas_materiales.cantidad)).
   - Usa LEFT JOIN cajas_materiales y GROUP BY material_id cuando sumes cantidades.
 
 COMPATIBILIDAD / USO:
