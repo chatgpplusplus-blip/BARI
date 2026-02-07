@@ -244,6 +244,59 @@
             </div>
 
             <!-- ============================
+                 Rombo NFPA
+                 ============================ -->
+            <div class="upload-card full-span">
+                <div class="text-xs text-gray-500">Rombo NFPA (seguridad)</div>
+                <div class="form-grid" style="grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:.75rem;">
+                    <div>
+                        <label class="text-xs text-gray-500">Salud (azul)</label>
+                        <select class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoSustanciaRomboSaludId) ? "is-filled" : "")"
+                                @bind="_nuevoSustanciaRomboSaludId">
+                            <option value="">—</option>
+                            @foreach (var opt in RomboSaludOptions)
+                            {
+                                <option value="@opt.Id">@opt.DisplayLabel</option>
+                            }
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-500">Inflamabilidad (rojo)</label>
+                        <select class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoSustanciaRomboInflamabilidadId) ? "is-filled" : "")"
+                                @bind="_nuevoSustanciaRomboInflamabilidadId">
+                            <option value="">—</option>
+                            @foreach (var opt in RomboInflamabilidadOptions)
+                            {
+                                <option value="@opt.Id">@opt.DisplayLabel</option>
+                            }
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-500">Reactividad (amarillo)</label>
+                        <select class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoSustanciaRomboReactividadId) ? "is-filled" : "")"
+                                @bind="_nuevoSustanciaRomboReactividadId">
+                            <option value="">—</option>
+                            @foreach (var opt in RomboReactividadOptions)
+                            {
+                                <option value="@opt.Id">@opt.DisplayLabel</option>
+                            }
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-500">Especial (blanco)</label>
+                        <select class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoSustanciaRomboEspecialId) ? "is-filled" : "")"
+                                @bind="_nuevoSustanciaRomboEspecialId">
+                            <option value="">—</option>
+                            @foreach (var opt in RomboEspecialOptions)
+                            {
+                                <option value="@opt.Id">@opt.DisplayLabel</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================
                  IMAGEN SUSTANCIA
                  ============================ -->
             <div class="upload-card full-span @(((_nuevoSustanciaImagenModo == "url" && !string.IsNullOrWhiteSpace(_nuevoSustanciaImagenUrl)) || (_nuevoSustanciaImagenModo == "archivo" && !string.IsNullOrWhiteSpace(_nuevoSustanciaImagenArchivo))) ? "is-filled" : "")">
@@ -843,6 +896,24 @@
                                         <span class="text-xs text-gray-500">—</span>
                                     }
                                 </div>
+                                <div class="text-xs text-gray-500" style="margin-top:.35rem;">
+                                    @if (s.HasRombo)
+                                    {
+                                        <span style="display:inline-flex; gap:.35rem; flex-wrap:wrap;">
+                                            <span style="background:#1e3a8a; color:#fff; padding:.1rem .35rem; border-radius:.35rem;">S @s.RomboSalud</span>
+                                            <span style="background:#b91c1c; color:#fff; padding:.1rem .35rem; border-radius:.35rem;">I @s.RomboInflamabilidad</span>
+                                            <span style="background:#a16207; color:#fff; padding:.1rem .35rem; border-radius:.35rem;">R @s.RomboReactividad</span>
+                                            @if (!string.IsNullOrWhiteSpace(s.RomboEspecial))
+                                            {
+                                                <span style="background:#6b7280; color:#fff; padding:.1rem .35rem; border-radius:.35rem;">E @s.RomboEspecial</span>
+                                            }
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span>Rombo: —</span>
+                                    }
+                                </div>
                             </td>
 
                             <td>
@@ -1047,10 +1118,15 @@
     private readonly List<GhsOption> _ghsOptions = new();
     private readonly List<HCodeOption> _hCodeOptions = new();
     private readonly List<PCodeOption> _pCodeOptions = new();
+    private readonly List<RomboOption> _romboOptions = new();
 
     private readonly HashSet<string> _nuevoSustanciaGhsIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _nuevoSustanciaHIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _nuevoSustanciaPIds = new(StringComparer.OrdinalIgnoreCase);
+    private string? _nuevoSustanciaRomboSaludId;
+    private string? _nuevoSustanciaRomboInflamabilidadId;
+    private string? _nuevoSustanciaRomboReactividadId;
+    private string? _nuevoSustanciaRomboEspecialId;
 
     // ============================
     // Form: Sustancia
@@ -1116,6 +1192,18 @@
     private string? SelectedContenedorMarcaLogoUrl =>
         _marcaOptions.FirstOrDefault(m => string.Equals(m.Id, _nuevoContenedorMarcaId, StringComparison.OrdinalIgnoreCase))?.ImageUrl;
 
+    private IEnumerable<RomboOption> RomboSaludOptions =>
+        _romboOptions.Where(o => o.Seccion == "SALUD").OrderBy(o => o.Numero ?? 99);
+
+    private IEnumerable<RomboOption> RomboInflamabilidadOptions =>
+        _romboOptions.Where(o => o.Seccion == "INFLAMABILIDAD").OrderBy(o => o.Numero ?? 99);
+
+    private IEnumerable<RomboOption> RomboReactividadOptions =>
+        _romboOptions.Where(o => o.Seccion == "REACTIVIDAD").OrderBy(o => o.Numero ?? 99);
+
+    private IEnumerable<RomboOption> RomboEspecialOptions =>
+        _romboOptions.Where(o => o.Seccion == "ESPECIAL").OrderBy(o => o.Codigo);
+
     // ============================
     // List filtered
     // ============================
@@ -1140,7 +1228,11 @@
                 Hit(s.Subcategoria) ||
                 Hit(s.Ubicacion) ||
                 (s.Controlada && q.Contains("control", StringComparison.OrdinalIgnoreCase)) ||
-                (s.GhsIds is not null && s.GhsIds.Any(id => Hit(id)))
+                (s.GhsIds is not null && s.GhsIds.Any(id => Hit(id))) ||
+                Hit(s.RomboSalud) ||
+                Hit(s.RomboInflamabilidad) ||
+                Hit(s.RomboReactividad) ||
+                Hit(s.RomboEspecial)
             );
         }
     }
@@ -1546,11 +1638,38 @@
                 await cmd.ExecuteNonQueryAsync();
             }
 
+            const string insRombo = @"
+INSERT INTO sustancia_rombo (sustancia_id, seccion, rombo_id)
+VALUES (@sid, @seccion, @rombo)
+ON CONFLICT (sustancia_id, seccion) DO UPDATE SET rombo_id = EXCLUDED.rombo_id";
+
+            async Task InsertRomboAsync(string seccion, string? romboId)
+            {
+                if (string.IsNullOrWhiteSpace(romboId)) return;
+                await using var cmd = new NpgsqlCommand(insRombo, conn, tx);
+                cmd.Parameters.AddWithValue("sid", sustanciaId);
+                cmd.Parameters.AddWithValue("seccion", seccion);
+                cmd.Parameters.AddWithValue("rombo", romboId);
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            await InsertRomboAsync("SALUD", _nuevoSustanciaRomboSaludId);
+            await InsertRomboAsync("INFLAMABILIDAD", _nuevoSustanciaRomboInflamabilidadId);
+            await InsertRomboAsync("REACTIVIDAD", _nuevoSustanciaRomboReactividadId);
+            await InsertRomboAsync("ESPECIAL", _nuevoSustanciaRomboEspecialId);
+
             await tx.CommitAsync();
 
             var cG = _nuevoSustanciaGhsIds.Count;
             var cH = _nuevoSustanciaHIds.Count;
             var cP = _nuevoSustanciaPIds.Count;
+            var cR = new[]
+            {
+                _nuevoSustanciaRomboSaludId,
+                _nuevoSustanciaRomboInflamabilidadId,
+                _nuevoSustanciaRomboReactividadId,
+                _nuevoSustanciaRomboEspecialId
+            }.Count(v => !string.IsNullOrWhiteSpace(v));
 
             // Reset form
             _nuevoSustanciaId = null;
@@ -1569,8 +1688,12 @@
             _nuevoSustanciaGhsIds.Clear();
             _nuevoSustanciaHIds.Clear();
             _nuevoSustanciaPIds.Clear();
+            _nuevoSustanciaRomboSaludId = null;
+            _nuevoSustanciaRomboInflamabilidadId = null;
+            _nuevoSustanciaRomboReactividadId = null;
+            _nuevoSustanciaRomboEspecialId = null;
 
-            _nuevoSustanciaMsg = $"Sustancia registrada. GHS: {cG} · H: {cH} · P: {cP}";
+            _nuevoSustanciaMsg = $"Sustancia registrada. GHS: {cG} · H: {cH} · P: {cP} · Rombo: {cR}";
 
             await LoadSustanciasLookupAsync();
             await LoadSustanciasAsync();
@@ -1770,6 +1893,7 @@
         _ghsOptions.Clear();
         _hCodeOptions.Clear();
         _pCodeOptions.Clear();
+        _romboOptions.Clear();
 
         await using var conn = await DataSource.OpenConnectionAsync();
 
@@ -1922,6 +2046,27 @@
                 ));
             }
         }
+
+        // Rombo NFPA
+        await using (var cmd = new NpgsqlCommand(@"
+                SELECT rombo_id, seccion, numero, codigo, significado, lugar
+                FROM rombo
+                ORDER BY seccion, numero NULLS LAST, codigo
+            ", conn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                _romboOptions.Add(new RomboOption(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.IsDBNull(2) ? (int?)null : reader.GetInt32(2),
+                    reader.IsDBNull(3) ? null : reader.GetString(3),
+                    reader.GetString(4),
+                    reader.GetString(5)
+                ));
+            }
+        }
     }
 
     // ============================
@@ -1995,7 +2140,12 @@ SELECT s.sustancia_id,
        COALESCE(loc.posicion, '') AS posicion,
 
        ghs.ghs_ids,
-       ghs.icon_urls
+       ghs.icon_urls,
+
+       rombo.salud_val,
+       rombo.inflam_val,
+       rombo.react_val,
+       rombo.especial_val
 
 FROM sustancias s
 INNER JOIN categorias c ON c.categoria_id = s.categoria_id
@@ -2035,6 +2185,16 @@ LEFT JOIN LATERAL (
     WHERE sp.sustancia_id = s.sustancia_id
 ) ghs ON true
 
+LEFT JOIN LATERAL (
+    SELECT MAX(CASE WHEN r.seccion = 'SALUD' THEN COALESCE(r.numero::text, r.codigo) END) AS salud_val,
+           MAX(CASE WHEN r.seccion = 'INFLAMABILIDAD' THEN COALESCE(r.numero::text, r.codigo) END) AS inflam_val,
+           MAX(CASE WHEN r.seccion = 'REACTIVIDAD' THEN COALESCE(r.numero::text, r.codigo) END) AS react_val,
+           MAX(CASE WHEN r.seccion = 'ESPECIAL' THEN COALESCE(r.codigo, r.numero::text) END) AS especial_val
+    FROM sustancia_rombo sr
+    INNER JOIN rombo r ON r.rombo_id = sr.rombo_id
+    WHERE sr.sustancia_id = s.sustancia_id
+) rombo ON true
+
 WHERE s.laboratorio_id = @lab
   AND s.categoria_id = ANY(@cats)
   AND (
@@ -2052,7 +2212,8 @@ GROUP BY s.sustancia_id, s.nombre_comercial, s.nombre_quimico, s.cas,
          stats.cont_count, stats.stock_total, stats.unidad_id,
          u.simbolo,
          a.nombre_areas, m.nombre_meson, loc.posicion,
-         ghs.ghs_ids, ghs.icon_urls
+         ghs.ghs_ids, ghs.icon_urls,
+         rombo.salud_val, rombo.inflam_val, rombo.react_val, rombo.especial_val
 
 ORDER BY nombre, s.sustancia_id";
 
@@ -2086,12 +2247,28 @@ ORDER BY nombre, s.sustancia_id";
 
                 string[]? ghsIds = null;
                 string[]? ghsIcons = null;
+                string? romboSalud = null;
+                string? romboInflamabilidad = null;
+                string? romboReactividad = null;
+                string? romboEspecial = null;
 
                 if (!reader.IsDBNull(13))
                     ghsIds = reader.GetFieldValue<string[]>(13);
 
                 if (!reader.IsDBNull(14))
                     ghsIcons = reader.GetFieldValue<string[]>(14);
+
+                if (!reader.IsDBNull(15))
+                    romboSalud = reader.GetString(15);
+
+                if (!reader.IsDBNull(16))
+                    romboInflamabilidad = reader.GetString(16);
+
+                if (!reader.IsDBNull(17))
+                    romboReactividad = reader.GetString(17);
+
+                if (!reader.IsDBNull(18))
+                    romboEspecial = reader.GetString(18);
 
                 var ubic = BuildUbicacion(area, meson, posicion);
                 var stockLabel = BuildStockLabel(stockTotal, unidadSymbol);
@@ -2108,7 +2285,11 @@ ORDER BY nombre, s.sustancia_id";
                     Ubicacion: ubic,
                     ImagenUrl: imagen,
                     GhsIds: ghsIds,
-                    GhsIconUrls: ghsIcons
+                    GhsIconUrls: ghsIcons,
+                    RomboSalud: romboSalud,
+                    RomboInflamabilidad: romboInflamabilidad,
+                    RomboReactividad: romboReactividad,
+                    RomboEspecial: romboEspecial
                 ));
             }
         }
@@ -2876,8 +3057,19 @@ ORDER BY reactivo, c.cont_id";
         string Ubicacion,
         string? ImagenUrl,
         string[]? GhsIds,
-        string[]? GhsIconUrls
-    );
+        string[]? GhsIconUrls,
+        string? RomboSalud,
+        string? RomboInflamabilidad,
+        string? RomboReactividad,
+        string? RomboEspecial
+    )
+    {
+        public bool HasRombo =>
+            !string.IsNullOrWhiteSpace(RomboSalud) ||
+            !string.IsNullOrWhiteSpace(RomboInflamabilidad) ||
+            !string.IsNullOrWhiteSpace(RomboReactividad) ||
+            !string.IsNullOrWhiteSpace(RomboEspecial);
+    }
 
     private sealed record ContenedorRow(
         string Id,
@@ -2968,6 +3160,11 @@ ORDER BY reactivo, c.cont_id";
     private sealed record GhsOption(string Id, string Nombre, string? IconUrl, string? Detalle);
     private sealed record HCodeOption(string Id, string Descripcion, string? Grupo);
     private sealed record PCodeOption(string Id, string Descripcion, string? Grupo);
+    private sealed record RomboOption(string Id, string Seccion, int? Numero, string? Codigo, string Significado, string Lugar)
+    {
+        public string DisplayLabel =>
+            Numero.HasValue ? $"{Numero} · {Significado}" : $"{Codigo} · {Significado}";
+    }
 }
 
 

@@ -232,6 +232,29 @@
                                     }
                                 </div>
                             </div>
+
+                            <div>
+                                <div class="muted">Rombo NFPA</div>
+                                <div class="sec-list">
+                                    @if (string.IsNullOrWhiteSpace(edit.RomboSaludId)
+                                         && string.IsNullOrWhiteSpace(edit.RomboInflamabilidadId)
+                                         && string.IsNullOrWhiteSpace(edit.RomboReactividadId)
+                                         && string.IsNullOrWhiteSpace(edit.RomboEspecialId))
+                                    {
+                                        <span class="muted text-xs">—</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="tag" title="Salud">S @GetRomboDisplay(edit.RomboSaludId)</span>
+                                        <span class="tag" title="Inflamabilidad">I @GetRomboDisplay(edit.RomboInflamabilidadId)</span>
+                                        <span class="tag" title="Reactividad">R @GetRomboDisplay(edit.RomboReactividadId)</span>
+                                        @if (!string.IsNullOrWhiteSpace(edit.RomboEspecialId))
+                                        {
+                                            <span class="tag" title="Especial">E @GetRomboDisplay(edit.RomboEspecialId)</span>
+                                        }
+                                    }
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -586,6 +609,53 @@
                             </div>
                         </details>
                     </div>
+
+                    <div class="upload-card">
+                        <div class="text-xs muted">Rombo NFPA</div>
+
+                        <div style="display:grid; gap:.5rem;">
+                            <label style="display:grid; gap:.25rem;">
+                                <span class="text-xs muted">Salud (azul)</span>
+                                <select class="border p-1" @bind="edit.RomboSaludId">
+                                    <option value="">—</option>
+                                    @foreach (var opt in RomboSaludOptions)
+                                    {
+                                        <option value="@opt.Id">@opt.DisplayLabel</option>
+                                    }
+                                </select>
+                            </label>
+                            <label style="display:grid; gap:.25rem;">
+                                <span class="text-xs muted">Inflamabilidad (rojo)</span>
+                                <select class="border p-1" @bind="edit.RomboInflamabilidadId">
+                                    <option value="">—</option>
+                                    @foreach (var opt in RomboInflamabilidadOptions)
+                                    {
+                                        <option value="@opt.Id">@opt.DisplayLabel</option>
+                                    }
+                                </select>
+                            </label>
+                            <label style="display:grid; gap:.25rem;">
+                                <span class="text-xs muted">Reactividad (amarillo)</span>
+                                <select class="border p-1" @bind="edit.RomboReactividadId">
+                                    <option value="">—</option>
+                                    @foreach (var opt in RomboReactividadOptions)
+                                    {
+                                        <option value="@opt.Id">@opt.DisplayLabel</option>
+                                    }
+                                </select>
+                            </label>
+                            <label style="display:grid; gap:.25rem;">
+                                <span class="text-xs muted">Especial (blanco)</span>
+                                <select class="border p-1" @bind="edit.RomboEspecialId">
+                                    <option value="">—</option>
+                                    @foreach (var opt in RomboEspecialOptions)
+                                    {
+                                        <option value="@opt.Id">@opt.DisplayLabel</option>
+                                    }
+                                </select>
+                            </label>
+                        </div>
+                    </div>
                 </div>
 
                 @* ===== Imagen (estándar) ===== *@
@@ -717,6 +787,7 @@
     private readonly List<GhsOption> _ghsOptions = new();
     private readonly List<HCodeOption> _hCodeOptions = new();
     private readonly List<PCodeOption> _pCodeOptions = new();
+    private readonly List<RomboOption> _romboOptions = new();
 
     // Experiencias (tabla intermedia experiencia_sustancias)
     private readonly List<SelectOption> _experienciaOptions = new();
@@ -732,6 +803,30 @@
     private string GhsEditLabel => edit.GhsIds.Count == 0 ? "Selecciona pictogramas…" : $"Pictogramas seleccionados: {edit.GhsIds.Count}";
     private string HEditLabel => edit.HIds.Count == 0 ? "Selecciona H codes…" : $"H codes seleccionados: {edit.HIds.Count}";
     private string PEditLabel => edit.PIds.Count == 0 ? "Selecciona P codes…" : $"P codes seleccionados: {edit.PIds.Count}";
+
+    private IEnumerable<RomboOption> RomboSaludOptions =>
+        _romboOptions.Where(o => o.Seccion == "SALUD").OrderBy(o => o.Numero ?? 99);
+
+    private IEnumerable<RomboOption> RomboInflamabilidadOptions =>
+        _romboOptions.Where(o => o.Seccion == "INFLAMABILIDAD").OrderBy(o => o.Numero ?? 99);
+
+    private IEnumerable<RomboOption> RomboReactividadOptions =>
+        _romboOptions.Where(o => o.Seccion == "REACTIVIDAD").OrderBy(o => o.Numero ?? 99);
+
+    private IEnumerable<RomboOption> RomboEspecialOptions =>
+        _romboOptions.Where(o => o.Seccion == "ESPECIAL").OrderBy(o => o.Codigo);
+
+    private string GetRomboDisplay(string? romboId)
+    {
+        if (string.IsNullOrWhiteSpace(romboId))
+            return "—";
+
+        var opt = _romboOptions.FirstOrDefault(o => string.Equals(o.Id, romboId, StringComparison.OrdinalIgnoreCase));
+        if (opt is null)
+            return romboId;
+
+        return opt.Numero?.ToString() ?? opt.Codigo ?? "—";
+    }
 
     private void ToggleSubcatsDropdown()
         => _showSubcatsDropdown = !_showSubcatsDropdown;
@@ -819,6 +914,7 @@
         _ghsOptions.Clear();
         _hCodeOptions.Clear();
         _pCodeOptions.Clear();
+        _romboOptions.Clear();
 
         _experienciaOptions.Clear();
         _experienciasLigadas.Clear();
@@ -973,6 +1069,24 @@
                     r.IsDBNull(2) ? null : r.GetString(2)
                 ));
         }
+
+        // Rombo NFPA
+        await using (var cmd = new NpgsqlCommand(@"
+            SELECT rombo_id, seccion, numero, codigo, significado, lugar
+            FROM rombo
+            ORDER BY seccion, numero NULLS LAST, codigo", conn))
+        await using (var r = await cmd.ExecuteReaderAsync())
+        {
+            while (await r.ReadAsync())
+                _romboOptions.Add(new RomboOption(
+                    r.GetString(0),
+                    r.GetString(1),
+                    r.IsDBNull(2) ? (int?)null : r.GetInt32(2),
+                    r.IsDBNull(3) ? null : r.GetString(3),
+                    r.GetString(4),
+                    r.GetString(5)
+                ));
+        }
     }
 
     private async Task LoadReactivoAsync(NpgsqlConnection conn, string sustanciaId)
@@ -1061,6 +1175,10 @@
         edit.GhsIds.Clear();
         edit.HIds.Clear();
         edit.PIds.Clear();
+        edit.RomboSaludId = null;
+        edit.RomboInflamabilidadId = null;
+        edit.RomboReactividadId = null;
+        edit.RomboEspecialId = null;
 
         // GHS
         await using (var cmd = new NpgsqlCommand(@"
@@ -1096,6 +1214,37 @@
             await using var r = await cmd.ExecuteReaderAsync();
             while (await r.ReadAsync())
                 edit.PIds.Add(r.GetString(0));
+        }
+
+        // Rombo NFPA
+        await using (var cmd = new NpgsqlCommand(@"
+            SELECT r.seccion, sr.rombo_id
+            FROM sustancia_rombo sr
+            INNER JOIN rombo r ON r.rombo_id = sr.rombo_id
+            WHERE sr.sustancia_id = @id", conn))
+        {
+            cmd.Parameters.AddWithValue("id", sustanciaId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                var seccion = r.GetString(0);
+                var romboId = r.GetString(1);
+                switch (seccion)
+                {
+                    case "SALUD":
+                        edit.RomboSaludId = romboId;
+                        break;
+                    case "INFLAMABILIDAD":
+                        edit.RomboInflamabilidadId = romboId;
+                        break;
+                    case "REACTIVIDAD":
+                        edit.RomboReactividadId = romboId;
+                        break;
+                    case "ESPECIAL":
+                        edit.RomboEspecialId = romboId;
+                        break;
+                }
+            }
         }
     }
 
@@ -1408,6 +1557,7 @@
                 DELETE FROM sustancias_h WHERE sustancia_id = @id;
                 DELETE FROM sustancias_p WHERE sustancia_id = @id;
                 DELETE FROM sustancias_pictogramas WHERE sustancia_id = @id;
+                DELETE FROM sustancia_rombo WHERE sustancia_id = @id;
             ", conn, tx))
             {
                 del.Parameters.AddWithValue("id", edit.SustanciaId);
@@ -1440,6 +1590,26 @@
                 c.Parameters.AddWithValue("gid", gid);
                 await c.ExecuteNonQueryAsync();
             }
+
+            const string insRombo = @"
+                INSERT INTO sustancia_rombo (sustancia_id, seccion, rombo_id)
+                VALUES (@sid, @seccion, @rombo)
+                ON CONFLICT (sustancia_id, seccion) DO UPDATE SET rombo_id = EXCLUDED.rombo_id;
+            ";
+            async Task InsertRomboAsync(string seccion, string? romboId)
+            {
+                if (string.IsNullOrWhiteSpace(romboId)) return;
+                await using var c = new NpgsqlCommand(insRombo, conn, tx);
+                c.Parameters.AddWithValue("sid", edit.SustanciaId);
+                c.Parameters.AddWithValue("seccion", seccion);
+                c.Parameters.AddWithValue("rombo", romboId);
+                await c.ExecuteNonQueryAsync();
+            }
+
+            await InsertRomboAsync("SALUD", edit.RomboSaludId);
+            await InsertRomboAsync("INFLAMABILIDAD", edit.RomboInflamabilidadId);
+            await InsertRomboAsync("REACTIVIDAD", edit.RomboReactividadId);
+            await InsertRomboAsync("ESPECIAL", edit.RomboEspecialId);
 
             await tx.CommitAsync();
 
@@ -1599,6 +1769,10 @@
         public HashSet<string> GhsIds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public HashSet<string> HIds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public HashSet<string> PIds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public string? RomboSaludId { get; set; }
+        public string? RomboInflamabilidadId { get; set; }
+        public string? RomboReactividadId { get; set; }
+        public string? RomboEspecialId { get; set; }
 
         // ✅ Experiencias
         public HashSet<string> ExperienciaIds { get; } = new(StringComparer.OrdinalIgnoreCase);
@@ -1619,6 +1793,11 @@
     private sealed record GhsOption(string Id, string Nombre, string? IconUrl, string? Detalle);
     private sealed record HCodeOption(string Id, string Descripcion, string? Grupo);
     private sealed record PCodeOption(string Id, string Descripcion, string? Grupo);
+    private sealed record RomboOption(string Id, string Seccion, int? Numero, string? Codigo, string Significado, string Lugar)
+    {
+        public string DisplayLabel =>
+            Numero.HasValue ? $"{Numero} · {Significado}" : $"{Codigo} · {Significado}";
+    }
 }
 
 <style>

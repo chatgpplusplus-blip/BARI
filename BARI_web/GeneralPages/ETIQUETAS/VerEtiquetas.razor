@@ -170,6 +170,16 @@ else if (_etiqueta is not null)
                         }
                     </div>
 
+                    <div class="label-rombo">
+                        <div class="rombo-grid">
+                            <div class="rombo-cell rombo-salud">S @(_romboSalud ?? "—")</div>
+                            <div class="rombo-cell rombo-inflam">I @(_romboInflamabilidad ?? "—")</div>
+                            <div class="rombo-cell rombo-react">R @(_romboReactividad ?? "—")</div>
+                            <div class="rombo-cell rombo-especial">E @(_romboEspecial ?? "—")</div>
+                        </div>
+                        <div class="text-xs text-gray-500">Rombo NFPA</div>
+                    </div>
+
                     <div class="label-extra">
                         @if (!string.IsNullOrWhiteSpace(_labelImagenFinal))
                         {
@@ -212,6 +222,10 @@ else if (_etiqueta is not null)
     private string? _editSubcategorias;
     private string? _editDescripcion;
     private string? _editObservaciones;
+    private string? _romboSalud;
+    private string? _romboInflamabilidad;
+    private string? _romboReactividad;
+    private string? _romboEspecial;
 
     private string? _labelImagenFinal =>
         _labelImagenModo == "url" ? _labelImagenUrl : _labelImagenDataUrl;
@@ -277,6 +291,10 @@ ORDER BY nombre;
         _loadError = null;
         _etiqueta = null;
         _ghsIconUrls.Clear();
+        _romboSalud = null;
+        _romboInflamabilidad = null;
+        _romboReactividad = null;
+        _romboEspecial = null;
 
         if (string.IsNullOrWhiteSpace(_selectedSustanciaId))
             return;
@@ -358,6 +376,38 @@ ORDER BY sp.ghs_id;
                 }
             }
 
+            await readerGhs.CloseAsync();
+
+            const string sqlRombo = @"
+SELECT r.seccion, COALESCE(r.numero::text, r.codigo)
+FROM sustancia_rombo sr
+INNER JOIN rombo r ON r.rombo_id = sr.rombo_id
+WHERE sr.sustancia_id = @id;
+";
+            await using var cmdRombo = new NpgsqlCommand(sqlRombo, conn);
+            cmdRombo.Parameters.AddWithValue("id", _selectedSustanciaId);
+            await using var readerRombo = await cmdRombo.ExecuteReaderAsync();
+            while (await readerRombo.ReadAsync())
+            {
+                var seccion = readerRombo.GetString(0);
+                var valor = readerRombo.IsDBNull(1) ? null : readerRombo.GetString(1);
+                switch (seccion)
+                {
+                    case "SALUD":
+                        _romboSalud = valor;
+                        break;
+                    case "INFLAMABILIDAD":
+                        _romboInflamabilidad = valor;
+                        break;
+                    case "REACTIVIDAD":
+                        _romboReactividad = valor;
+                        break;
+                    case "ESPECIAL":
+                        _romboEspecial = valor;
+                        break;
+                }
+            }
+
             HydrateEditableFields();
         }
         catch (Exception ex)
@@ -412,3 +462,33 @@ ORDER BY sp.ghs_id;
         bool Controlada
     );
 }
+
+<style>
+    .label-rombo {
+        margin-top: .5rem;
+        display: grid;
+        gap: .25rem;
+        justify-items: start;
+    }
+
+    .rombo-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: .2rem;
+        width: 80px;
+    }
+
+    .rombo-cell {
+        color: #fff;
+        font-size: .7rem;
+        font-weight: 700;
+        text-align: center;
+        border-radius: .2rem;
+        padding: .2rem .1rem;
+    }
+
+    .rombo-salud { background: #1e3a8a; }
+    .rombo-inflam { background: #b91c1c; }
+    .rombo-react { background: #a16207; }
+    .rombo-especial { background: #6b7280; }
+</style>

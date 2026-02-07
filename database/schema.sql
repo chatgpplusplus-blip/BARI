@@ -270,6 +270,56 @@ CREATE TABLE IF NOT EXISTS sustancias_pictogramas (
   PRIMARY KEY (sustancia_id, ghs_id)
 );
 
+CREATE TABLE IF NOT EXISTS rombo (
+  rombo_id varchar PRIMARY KEY,
+  seccion text NOT NULL CHECK (seccion IN ('SALUD', 'INFLAMABILIDAD', 'REACTIVIDAD', 'ESPECIAL')),
+  numero integer,
+  codigo text,
+  significado text NOT NULL,
+  lugar text NOT NULL,
+  CONSTRAINT rombo_valor_valido CHECK (
+    (seccion = 'ESPECIAL' AND codigo IS NOT NULL AND numero IS NULL)
+    OR
+    (seccion <> 'ESPECIAL' AND codigo IS NULL AND numero BETWEEN 0 AND 4)
+  ),
+  CONSTRAINT rombo_unique_valor UNIQUE (seccion, numero, codigo)
+);
+
+CREATE TABLE IF NOT EXISTS sustancia_rombo (
+  sustancia_id varchar NOT NULL REFERENCES sustancias(sustancia_id) ON DELETE CASCADE,
+  seccion text NOT NULL CHECK (seccion IN ('SALUD', 'INFLAMABILIDAD', 'REACTIVIDAD', 'ESPECIAL')),
+  rombo_id varchar NOT NULL REFERENCES rombo(rombo_id),
+  PRIMARY KEY (sustancia_id, seccion)
+);
+
+INSERT INTO rombo (rombo_id, seccion, numero, codigo, significado, lugar)
+VALUES
+  ('SALUD-0', 'SALUD', 0, NULL, 'Sin riesgo significativo para la salud.', 'Azul (salud)'),
+  ('SALUD-1', 'SALUD', 1, NULL, 'Irritación o lesión menor.', 'Azul (salud)'),
+  ('SALUD-2', 'SALUD', 2, NULL, 'Lesión temporal o residual.', 'Azul (salud)'),
+  ('SALUD-3', 'SALUD', 3, NULL, 'Lesión seria o permanente.', 'Azul (salud)'),
+  ('SALUD-4', 'SALUD', 4, NULL, 'Riesgo extremo o mortal.', 'Azul (salud)'),
+  ('INFLAMABILIDAD-0', 'INFLAMABILIDAD', 0, NULL, 'No arde.', 'Rojo (inflamabilidad)'),
+  ('INFLAMABILIDAD-1', 'INFLAMABILIDAD', 1, NULL, 'Requiere precalentamiento para arder.', 'Rojo (inflamabilidad)'),
+  ('INFLAMABILIDAD-2', 'INFLAMABILIDAD', 2, NULL, 'Debe calentarse moderadamente para arder.', 'Rojo (inflamabilidad)'),
+  ('INFLAMABILIDAD-3', 'INFLAMABILIDAD', 3, NULL, 'Puede encenderse a temperatura ambiente.', 'Rojo (inflamabilidad)'),
+  ('INFLAMABILIDAD-4', 'INFLAMABILIDAD', 4, NULL, 'Extremadamente inflamable.', 'Rojo (inflamabilidad)'),
+  ('REACTIVIDAD-0', 'REACTIVIDAD', 0, NULL, 'Estable.', 'Amarillo (reactividad)'),
+  ('REACTIVIDAD-1', 'REACTIVIDAD', 1, NULL, 'Inestable si se calienta.', 'Amarillo (reactividad)'),
+  ('REACTIVIDAD-2', 'REACTIVIDAD', 2, NULL, 'Cambio violento posible.', 'Amarillo (reactividad)'),
+  ('REACTIVIDAD-3', 'REACTIVIDAD', 3, NULL, 'Puede detonar con fuerte iniciación o calor.', 'Amarillo (reactividad)'),
+  ('REACTIVIDAD-4', 'REACTIVIDAD', 4, NULL, 'Detona fácilmente.', 'Amarillo (reactividad)'),
+  ('ESPECIAL-OX', 'ESPECIAL', NULL, 'OX', 'Oxidante.', 'Blanco (especial)'),
+  ('ESPECIAL-W', 'ESPECIAL', NULL, 'W', 'Reacciona con agua (no usar agua).', 'Blanco (especial)'),
+  ('ESPECIAL-SA', 'ESPECIAL', NULL, 'SA', 'Gas asfixiante simple.', 'Blanco (especial)'),
+  ('ESPECIAL-COR', 'ESPECIAL', NULL, 'COR', 'Corrosivo.', 'Blanco (especial)'),
+  ('ESPECIAL-ACID', 'ESPECIAL', NULL, 'ACID', 'Ácido.', 'Blanco (especial)'),
+  ('ESPECIAL-ALK', 'ESPECIAL', NULL, 'ALK', 'Alcalino.', 'Blanco (especial)'),
+  ('ESPECIAL-BIO', 'ESPECIAL', NULL, 'BIO', 'Riesgo biológico.', 'Blanco (especial)'),
+  ('ESPECIAL-RAD', 'ESPECIAL', NULL, 'RAD', 'Radiactivo.', 'Blanco (especial)'),
+  ('ESPECIAL-CRYO', 'ESPECIAL', NULL, 'CRYO', 'Criogénico.', 'Blanco (especial)')
+ON CONFLICT DO NOTHING;
+
 -- =========================================================
 -- CONTENEDORES
 -- =========================================================
