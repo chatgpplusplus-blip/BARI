@@ -60,10 +60,10 @@
 .label-card {
     border: 1px solid #1f2937;
     border-radius: .2rem;
-    padding: .65rem .75rem;
+    padding: calc(.65rem * var(--label-scale, 1)) calc(.75rem * var(--label-scale, 1));
     background: #ffffff;
     display: grid;
-    gap: .55rem .9rem;
+    gap: calc(.55rem * var(--label-scale, 1)) calc(.9rem * var(--label-scale, 1));
     grid-template-columns: minmax(0, 1.6fr) minmax(0, .9fr);
     grid-template-rows: auto auto auto auto minmax(0, 1fr);
     grid-template-areas:
@@ -76,7 +76,9 @@
     overflow: hidden;
     box-shadow: none;
     box-sizing: border-box;
-    font-size: .78rem;
+    font-size: calc(.78rem * var(--label-scale, 1));
+    --rombo-size: calc(78px * var(--label-scale, 1));
+    --qr-size: calc(78px * var(--label-scale, 1));
 }
 
 .label-brand {
@@ -97,20 +99,20 @@
 }
 
 .label-org {
-    font-size: .7rem;
+    font-size: calc(.7rem * var(--label-scale, 1));
     font-weight: 700;
 }
 
 .label-brand-name {
-    font-size: .65rem;
+    font-size: calc(.65rem * var(--label-scale, 1));
     font-weight: 600;
     color: #0f172a;
 }
 
 .label-brand img,
 .label-brand-logo img {
-    width: 28px;
-    height: 28px;
+    width: calc(28px * var(--label-scale, 1));
+    height: calc(28px * var(--label-scale, 1));
     object-fit: cover;
     border-radius: .2rem;
     border: 1px solid #d1d5db;
@@ -123,7 +125,7 @@
 }
 
 .label-title {
-    font-size: .95rem;
+    font-size: calc(.95rem * var(--label-scale, 1));
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: .04em;
@@ -134,7 +136,7 @@
 }
 
 .label-sub {
-    font-size: .84rem;
+    font-size: calc(.84rem * var(--label-scale, 1));
     color: #111827;
     display: -webkit-box;
     -webkit-box-orient: vertical;
@@ -144,26 +146,26 @@
 
 .label-details {
     display: grid;
-    gap: .25rem .65rem;
+    gap: calc(.25rem * var(--label-scale, 1)) calc(.65rem * var(--label-scale, 1));
     grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-area: details;
-    font-size: .64rem;
+    font-size: calc(.64rem * var(--label-scale, 1));
     color: #111827;
 }
 
 .label-safety {
     display: grid;
-    gap: .35rem;
+    gap: calc(.35rem * var(--label-scale, 1));
     grid-template-columns: minmax(0, 1fr);
     grid-area: safety;
-    font-size: .6rem;
+    font-size: calc(.6rem * var(--label-scale, 1));
     color: #111827;
 }
 
 .label-pair {
     display: grid;
     grid-template-columns: auto 1fr;
-    gap: .35rem;
+    gap: calc(.35rem * var(--label-scale, 1));
     align-items: baseline;
 }
 
@@ -193,31 +195,31 @@
 .label-media {
     display: flex;
     align-items: flex-start;
-    gap: .3rem;
+    gap: calc(.3rem * var(--label-scale, 1));
     flex-wrap: wrap;
-    min-height: 32px;
+    min-height: calc(32px * var(--label-scale, 1));
     justify-content: flex-end;
 }
 
 .label-media img {
-    width: 28px;
-    height: 28px;
+    width: calc(28px * var(--label-scale, 1));
+    height: calc(28px * var(--label-scale, 1));
     object-fit: contain;
 }
 
 .label-notes {
     grid-area: notes;
-    font-size: .6rem;
+    font-size: calc(.6rem * var(--label-scale, 1));
     color: #1f2937;
     line-height: 1.3;
     display: grid;
-    gap: .35rem;
+    gap: calc(.35rem * var(--label-scale, 1));
     overflow: hidden;
 }
 
 .label-note-section {
     display: grid;
-    gap: .15rem;
+    gap: calc(.15rem * var(--label-scale, 1));
     min-height: 0;
 }
 
@@ -226,7 +228,7 @@
     text-transform: uppercase;
     letter-spacing: .03em;
     color: #374151;
-    margin-bottom: .15rem;
+    margin-bottom: calc(.15rem * var(--label-scale, 1));
 }
 
 .label-note-section > div:last-child {
@@ -243,12 +245,70 @@
 
 .label-photo img {
     max-width: 100%;
-    max-height: 70px;
+    max-height: calc(70px * var(--label-scale, 1));
     object-fit: contain;
 }
 
 .label-rombo {
     justify-self: end;
+}
+
+.label-card.size-sm {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+        "brand"
+        "main"
+        "side"
+        "details"
+        "safety"
+        "notes";
+}
+
+.label-card.size-sm .label-details {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.label-card.size-sm .label-side {
+    justify-items: start;
+}
+
+.label-card.size-xl .label-details {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.label-card.size-sm .label-title,
+.label-card.size-sm .label-sub {
+    -webkit-line-clamp: 2;
+}
+
+.label-card.size-lg .label-title,
+.label-card.size-lg .label-sub {
+    -webkit-line-clamp: 2;
+}
+
+.label-card.size-xl .label-title,
+.label-card.size-xl .label-sub {
+    -webkit-line-clamp: 3;
+}
+
+.label-card.size-sm .label-pair span:last-child {
+    -webkit-line-clamp: 2;
+}
+
+.label-card.size-lg .label-pair span:last-child {
+    -webkit-line-clamp: 4;
+}
+
+.label-card.size-xl .label-pair span:last-child {
+    -webkit-line-clamp: 6;
+}
+
+.label-card.size-lg .label-note-section > div:last-child {
+    -webkit-line-clamp: 4;
+}
+
+.label-card.size-xl .label-note-section > div:last-child {
+    -webkit-line-clamp: 6;
 }
 
 @media (max-width: 960px) {
