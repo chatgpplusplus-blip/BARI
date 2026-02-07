@@ -149,9 +149,9 @@
         });
 
         const boxMaterial = new THREE.MeshStandardMaterial({
-            color: 0x60a5fa,
-            roughness: 0.5,
-            metalness: 0.05,
+            color: 0x8b5a2b,
+            roughness: 0.6,
+            metalness: 0.02,
         });
 
         const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
@@ -203,50 +203,33 @@
             topMesh.position.set(0, h - thickness / 2, 0);
             shelfGroup.add(topMesh);
 
-            const sideGeom = longAxisIsX
-                ? new THREE.BoxGeometry(longSide, h, thickness)
-                : new THREE.BoxGeometry(thickness, h, longSide);
-            const sideOffset = shortSide / 2 - thickness / 2;
+            const endGeom = longAxisIsX
+                ? new THREE.BoxGeometry(thickness, h, shortSide)
+                : new THREE.BoxGeometry(shortSide, h, thickness);
+            const endOffset = longSide / 2 - thickness / 2;
 
             if (longAxisIsX) {
-                const sideA = new THREE.Mesh(sideGeom, mat);
-                sideA.position.set(0, h / 2, -sideOffset);
-                shelfGroup.add(sideA);
+                const endA = new THREE.Mesh(endGeom, mat);
+                endA.position.set(-endOffset, h / 2, 0);
+                shelfGroup.add(endA);
 
-                const sideB = new THREE.Mesh(sideGeom, mat);
-                sideB.position.set(0, h / 2, sideOffset);
-                shelfGroup.add(sideB);
+                const endB = new THREE.Mesh(endGeom, mat);
+                endB.position.set(endOffset, h / 2, 0);
+                shelfGroup.add(endB);
             } else {
-                const sideA = new THREE.Mesh(sideGeom, mat);
-                sideA.position.set(-sideOffset, h / 2, 0);
-                shelfGroup.add(sideA);
+                const endA = new THREE.Mesh(endGeom, mat);
+                endA.position.set(0, h / 2, -endOffset);
+                shelfGroup.add(endA);
 
-                const sideB = new THREE.Mesh(sideGeom, mat);
-                sideB.position.set(sideOffset, h / 2, 0);
-                shelfGroup.add(sideB);
+                const endB = new THREE.Mesh(endGeom, mat);
+                endB.position.set(0, h / 2, endOffset);
+                shelfGroup.add(endB);
             }
 
             for (let i = 1; i < levels; i += 1) {
                 const shelf = new THREE.Mesh(baseGeom, mat);
                 shelf.position.set(0, thickness + levelHeight * i, 0);
                 shelfGroup.add(shelf);
-            }
-
-            const bayCount = clamp(Math.round(longSide / 0.8), 2, 5);
-            const dividerHeight = h - thickness * 2;
-            const dividerGeom = longAxisIsX
-                ? new THREE.BoxGeometry(thickness, dividerHeight, innerShort)
-                : new THREE.BoxGeometry(innerShort, dividerHeight, thickness);
-
-            for (let i = 1; i < bayCount; i += 1) {
-                const offset = -innerLong / 2 + (innerLong / bayCount) * i;
-                const divider = new THREE.Mesh(dividerGeom, mat);
-                if (longAxisIsX) {
-                    divider.position.set(offset, h / 2, 0);
-                } else {
-                    divider.position.set(0, h / 2, offset);
-                }
-                shelfGroup.add(divider);
             }
 
             const boxes = Array.isArray(b.boxes) ? b.boxes : [];
@@ -259,15 +242,19 @@
 
             boxesByLevel.forEach((items, level) => {
                 const y = thickness + levelHeight * (level - 0.5);
-                const baySize = innerLong / bayCount;
+                const columns = Math.max(1, Math.ceil(Math.sqrt(items.length)));
+                const rows = Math.max(1, Math.ceil(items.length / columns));
+                const cellLong = innerLong / columns;
+                const cellShort = innerShort / rows;
+
                 items.forEach((box, index) => {
                     const dims = parseDimensions(box.dimensions);
-                    const rawW = dims?.[0] ?? innerLong * 0.3;
-                    const rawL = dims?.[1] ?? innerShort * 0.7;
+                    const rawW = dims?.[0] ?? cellLong * 0.7;
+                    const rawL = dims?.[1] ?? cellShort * 0.7;
                     const rawH = dims?.[2] ?? levelHeight * 0.7;
 
-                    const bw = clamp(rawW, 0.05, innerLong * 0.9);
-                    const bl = clamp(rawL, 0.05, innerShort * 0.9);
+                    const bw = clamp(rawW, 0.05, cellLong * 0.9);
+                    const bl = clamp(rawL, 0.05, cellShort * 0.9);
                     const bh = clamp(rawH, 0.05, levelHeight * 0.9);
 
                     const boxGeom = longAxisIsX
@@ -275,12 +262,15 @@
                         : new THREE.BoxGeometry(bl, bh, bw);
                     const boxMesh = new THREE.Mesh(boxGeom, boxMaterial);
 
-                    const col = index % bayCount;
-                    const offset = -innerLong / 2 + baySize * col + baySize / 2;
+                    const col = index % columns;
+                    const row = Math.floor(index / columns);
+                    const offsetLong = -innerLong / 2 + cellLong * col + cellLong / 2;
+                    const offsetShort = -innerShort / 2 + cellShort * row + cellShort / 2;
+
                     if (longAxisIsX) {
-                        boxMesh.position.set(offset, y, 0);
+                        boxMesh.position.set(offsetLong, y, offsetShort);
                     } else {
-                        boxMesh.position.set(0, y, offset);
+                        boxMesh.position.set(offsetShort, y, offsetLong);
                     }
                     shelfGroup.add(boxMesh);
                 });
@@ -326,7 +316,7 @@
             const baseZ = (b.y - centerZ);
             const shelfThickness = Math.max(0.03, Math.min(0.08, h * 0.04));
             const shelfColor = mat.color.clone().multiplyScalar(0.7);
-            const shelfMaterial = new THREE.MeshStandardMaterial({
+            const blockShelfMaterial = new THREE.MeshStandardMaterial({
                 color: shelfColor,
                 roughness: 0.55,
                 metalness: 0.05,
@@ -334,7 +324,7 @@
 
             for (let i = 1; i < levelCount; i += 1) {
                 const shelfGeom = new THREE.BoxGeometry(w * 0.98, shelfThickness, l * 0.98);
-                const shelf = new THREE.Mesh(shelfGeom, shelfMaterial);
+                const shelf = new THREE.Mesh(shelfGeom, blockShelfMaterial);
                 shelf.position.set(
                     baseX + w / 2,
                     (h / levelCount) * i,
