@@ -1,5 +1,5 @@
 @page "/ver-etiquetas"
-@page "/ver-etiquetas/reactivo/{SustanciaId}"
+@page "/ver-etiquetas/contenedor/{ContenedorId}"
 
 @using Npgsql
 @using System
@@ -15,7 +15,7 @@
 <section class="page-card">
     <h2>Etiquetado de Reactivos</h2>
     <p>
-        Visualizador inspirado en etiquetas de Merck. Selecciona un reactivo para ver y ajustar el diseño
+        Visualizador inspirado en etiquetas de Merck. Selecciona un contenedor para ver y ajustar el diseño
         antes de imprimir. Puedes modificar campos, dimensiones e importar una imagen.
     </p>
 </section>
@@ -23,13 +23,13 @@
 <section class="page-card" style="margin-top:1.5rem;">
     <div class="label-controls">
         <div class="label-control">
-            <label class="text-xs text-gray-500">Reactivo</label>
-            <select class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_selectedSustanciaId) ? "is-filled" : "")"
-                    @onchange="OnSustanciaChanged">
-                <option value="">Del desplegable seleccione un reactivo para ver o editar</option>
-                @foreach (var s in _sustanciasLookup)
+            <label class="text-xs text-gray-500">Contenedor</label>
+            <select class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_selectedContenedorId) ? "is-filled" : "")"
+                    @onchange="OnContenedorChanged">
+                <option value="">Del desplegable seleccione un contenedor para ver o editar</option>
+                @foreach (var c in _contenedoresLookup)
                 {
-                    <option value="@s.Id" selected="@(s.Id == _selectedSustanciaId)">@s.Nombre</option>
+                    <option value="@c.Id" selected="@(c.Id == _selectedContenedorId)">@c.Label</option>
                 }
             </select>
         </div>
@@ -88,11 +88,11 @@
     </div>
 </section>
 
-@if (string.IsNullOrWhiteSpace(_selectedSustanciaId))
+@if (string.IsNullOrWhiteSpace(_selectedContenedorId))
 {
     <section class="page-card" style="margin-top:1.5rem;">
         <div class="empty">
-            <div class="helper">Del desplegable seleccione un reactivo para ver o editar.</div>
+            <div class="helper">Del desplegable seleccione un contenedor para ver o editar.</div>
         </div>
     </section>
 }
@@ -175,6 +175,10 @@ else if (_etiqueta is not null)
                         <div class="label-pair">
                             <span class="label-key">QR</span>
                             <span>@GetQrShortLabel()</span>
+                        </div>
+                        <div class="label-pair">
+                            <span class="label-key">Contenedor</span>
+                            <span>@(_selectedContenedorId ?? "—")</span>
                         </div>
                         <div class="label-pair">
                             <span class="label-key">Categoría</span>
@@ -269,15 +273,15 @@ else if (_etiqueta is not null)
 }
 
 @code {
-    [Parameter] public string? SustanciaId { get; set; }
+    [Parameter] public string? ContenedorId { get; set; }
 
     private const string CategoriaReactivoId = "reactivo-quimico";
     private const string UpsaLogoUrl = "https://vc4a.com/wp-content/uploads/2022/06/198068246_2916680591924255_5728041621538232491_n.jpg";
 
-    private readonly List<SustanciaLookup> _sustanciasLookup = new();
+    private readonly List<ContenedorLookup> _contenedoresLookup = new();
     private readonly List<string> _ghsIconUrls = new();
 
-    private string? _selectedSustanciaId;
+    private string? _selectedContenedorId;
     private string? _loadError;
     private EtiquetaReactivo? _etiqueta;
 
@@ -317,30 +321,31 @@ else if (_etiqueta is not null)
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadSustanciasLookupAsync();
+        await LoadContenedoresLookupAsync();
     }
 
     protected override async Task OnParametersSetAsync()
     {
-        if (!string.IsNullOrWhiteSpace(SustanciaId) && SustanciaId != _selectedSustanciaId)
+        if (!string.IsNullOrWhiteSpace(ContenedorId) && ContenedorId != _selectedContenedorId)
         {
-            _selectedSustanciaId = SustanciaId;
+            _selectedContenedorId = ContenedorId;
             await LoadEtiquetaAsync();
         }
     }
 
-    private async Task LoadSustanciasLookupAsync()
+    private async Task LoadContenedoresLookupAsync()
     {
-        _sustanciasLookup.Clear();
+        _contenedoresLookup.Clear();
 
         await using var conn = await DataSource.OpenConnectionAsync();
         const string sql = @"
-SELECT s.sustancia_id,
+SELECT c.cont_id,
        COALESCE(NULLIF(s.nombre_comercial, ''), NULLIF(s.nombre_quimico, ''), s.sustancia_id) AS nombre
-FROM sustancias s
-WHERE s.laboratorio_id = @lab
+FROM contenedores c
+INNER JOIN sustancias s ON s.sustancia_id = c.sustancia_id
+WHERE c.laboratorio_id = @lab
   AND s.categoria_id = @cat
-ORDER BY nombre;
+ORDER BY nombre, c.cont_id;
 ";
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
@@ -349,17 +354,19 @@ ORDER BY nombre;
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
-            _sustanciasLookup.Add(new SustanciaLookup(
-                reader.GetString(0),
-                reader.GetString(1)
+            var contId = reader.GetString(0);
+            var nombre = reader.GetString(1);
+            _contenedoresLookup.Add(new ContenedorLookup(
+                contId,
+                $"{nombre} - {contId}"
             ));
         }
     }
 
-    private async Task OnSustanciaChanged(ChangeEventArgs args)
+    private async Task OnContenedorChanged(ChangeEventArgs args)
     {
-        _selectedSustanciaId = args.Value?.ToString();
-        if (string.IsNullOrWhiteSpace(_selectedSustanciaId))
+        _selectedContenedorId = args.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(_selectedContenedorId))
         {
             _etiqueta = null;
             _ghsIconUrls.Clear();
@@ -368,10 +375,17 @@ ORDER BY nombre;
             _stockUnidad = null;
             _qrTexto = null;
             _qrImageUrl = null;
+            _hCodesText = null;
+            _pCodesText = null;
+            _marcaNombre = null;
+            _marcaLogoUrl = null;
+            _fechaCompra = null;
+            _fechaRecepcion = null;
+            _fechaVencimiento = null;
             return;
         }
 
-        Nav.NavigateTo($"/ver-etiquetas/reactivo/{_selectedSustanciaId}");
+        Nav.NavigateTo($"/ver-etiquetas/contenedor/{_selectedContenedorId}");
         await LoadEtiquetaAsync();
     }
 
@@ -396,7 +410,7 @@ ORDER BY nombre;
         _fechaRecepcion = null;
         _fechaVencimiento = null;
 
-        if (string.IsNullOrWhiteSpace(_selectedSustanciaId))
+        if (string.IsNullOrWhiteSpace(_selectedContenedorId))
             return;
 
         try
@@ -404,6 +418,7 @@ ORDER BY nombre;
             await using var conn = await DataSource.OpenConnectionAsync();
             const string sql = @"
 SELECT s.sustancia_id,
+       c.cont_id,
        COALESCE(NULLIF(s.nombre_comercial, ''), NULLIF(s.nombre_quimico, ''), s.sustancia_id) AS nombre,
        s.nombre_comercial,
        s.nombre_quimico,
@@ -412,23 +427,32 @@ SELECT s.sustancia_id,
        s.descripcion,
        s.observaciones,
        s.imagen_url,
-       COALESCE(c.nombre, '') AS categoria,
-       COALESCE(string_agg(DISTINCT (c.nombre || ' · ' || sc.nombre), ', ' ORDER BY (c.nombre || ' · ' || sc.nombre)), '') AS subcategorias,
-       COALESCE(s.sustancia_controlada, false) AS controlada
+       COALESCE(cat.nombre, '') AS categoria,
+       COALESCE(string_agg(DISTINCT (cat.nombre || ' · ' || sc.nombre), ', ' ORDER BY (cat.nombre || ' · ' || sc.nombre)), '') AS subcategorias,
+       COALESCE(s.sustancia_controlada, false) AS controlada,
+       c.qr,
+       c.fecha_compra,
+       c.fecha_recepcion,
+       c.fecha_vencimiento,
+       COALESCE(ma.nombre, '') AS marca_nombre,
+       ma.imagen_url AS marca_logo
 FROM sustancias s
-LEFT JOIN categorias c ON c.categoria_id = s.categoria_id
+INNER JOIN contenedores c ON c.sustancia_id = s.sustancia_id
+LEFT JOIN categorias cat ON cat.categoria_id = s.categoria_id
 LEFT JOIN sustancias_subcategorias ssc ON ssc.sustancia_id = s.sustancia_id
 LEFT JOIN subcategorias sc ON sc.subcategoria_id = ssc.subcategoria_id AND sc.categoria_id = s.categoria_id
-WHERE s.sustancia_id = @id
-  AND s.laboratorio_id = @lab
+LEFT JOIN marcas ma ON ma.marca_id = c.marca_id
+WHERE c.cont_id = @cont
+  AND c.laboratorio_id = @lab
   AND s.categoria_id = @cat
-GROUP BY s.sustancia_id, s.nombre_comercial, s.nombre_quimico, s.cas,
+GROUP BY s.sustancia_id, c.cont_id, s.nombre_comercial, s.nombre_quimico, s.cas,
          s.forma_fisica, s.descripcion, s.observaciones, s.imagen_url,
-         c.nombre, s.sustancia_controlada
+         cat.nombre, s.sustancia_controlada, c.qr, c.fecha_compra,
+         c.fecha_recepcion, c.fecha_vencimiento, ma.nombre, ma.imagen_url
 LIMIT 1;
 ";
             await using var cmd = new NpgsqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("id", _selectedSustanciaId);
+            cmd.Parameters.AddWithValue("cont", _selectedContenedorId);
             cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
             cmd.Parameters.AddWithValue("cat", CategoriaReactivoId);
 
@@ -437,8 +461,7 @@ LIMIT 1;
             {
                 _etiqueta = new EtiquetaReactivo(
                     reader.GetString(0),
-                    reader.GetString(1),
-                    reader.IsDBNull(2) ? null : reader.GetString(2),
+                    reader.GetString(2),
                     reader.IsDBNull(3) ? null : reader.GetString(3),
                     reader.IsDBNull(4) ? null : reader.GetString(4),
                     reader.IsDBNull(5) ? null : reader.GetString(5),
@@ -447,12 +470,20 @@ LIMIT 1;
                     reader.IsDBNull(8) ? null : reader.GetString(8),
                     reader.IsDBNull(9) ? null : reader.GetString(9),
                     reader.IsDBNull(10) ? null : reader.GetString(10),
-                    !reader.IsDBNull(11) && reader.GetBoolean(11)
+                    reader.IsDBNull(11) ? null : reader.GetString(11),
+                    !reader.IsDBNull(12) && reader.GetBoolean(12)
                 );
+
+                _qrTexto = reader.IsDBNull(13) ? null : reader.GetString(13);
+                _fechaCompra = reader.IsDBNull(14) ? null : reader.GetDateTime(14);
+                _fechaRecepcion = reader.IsDBNull(15) ? null : reader.GetDateTime(15);
+                _fechaVencimiento = reader.IsDBNull(16) ? null : reader.GetDateTime(16);
+                _marcaNombre = reader.IsDBNull(17) ? null : reader.GetString(17);
+                _marcaLogoUrl = reader.IsDBNull(18) ? null : reader.GetString(18);
             }
             else
             {
-                _loadError = "No se encontró el reactivo.";
+                _loadError = "No se encontró el contenedor.";
                 return;
             }
 
@@ -466,7 +497,7 @@ WHERE sp.sustancia_id = @id
 ORDER BY sp.ghs_id;
 ";
             await using var cmdGhs = new NpgsqlCommand(sqlGhs, conn);
-            cmdGhs.Parameters.AddWithValue("id", _selectedSustanciaId);
+            cmdGhs.Parameters.AddWithValue("id", _etiqueta.Id);
             await using var readerGhs = await cmdGhs.ExecuteReaderAsync();
             while (await readerGhs.ReadAsync())
             {
@@ -485,7 +516,7 @@ INNER JOIN rombo r ON r.rombo_id = sr.rombo_id
 WHERE sr.sustancia_id = @id;
 ";
             await using var cmdRombo = new NpgsqlCommand(sqlRombo, conn);
-            cmdRombo.Parameters.AddWithValue("id", _selectedSustanciaId);
+            cmdRombo.Parameters.AddWithValue("id", _etiqueta.Id);
             await using var readerRombo = await cmdRombo.ExecuteReaderAsync();
             while (await readerRombo.ReadAsync())
             {
@@ -519,7 +550,7 @@ WHERE c.sustancia_id = @id
   AND c.laboratorio_id = @lab;
 ";
             await using var cmdStock = new NpgsqlCommand(sqlStock, conn);
-            cmdStock.Parameters.AddWithValue("id", _selectedSustanciaId);
+            cmdStock.Parameters.AddWithValue("id", _etiqueta.Id);
             cmdStock.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
             await using var readerStock = await cmdStock.ExecuteReaderAsync();
             if (await readerStock.ReadAsync())
@@ -529,35 +560,6 @@ WHERE c.sustancia_id = @id
             }
 
             await readerStock.CloseAsync();
-
-            const string sqlQr = @"
-SELECT c.qr,
-       c.fecha_compra,
-       c.fecha_recepcion,
-       c.fecha_vencimiento,
-       COALESCE(ma.nombre, '') AS marca_nombre,
-       ma.imagen_url AS marca_logo
-FROM contenedores c
-LEFT JOIN marcas ma ON ma.marca_id = c.marca_id
-WHERE c.sustancia_id = @id
-  AND c.laboratorio_id = @lab
-ORDER BY c.fecha_apertura DESC NULLS LAST, c.cont_id
-LIMIT 1;
-";
-            await using var cmdQr = new NpgsqlCommand(sqlQr, conn);
-            cmdQr.Parameters.AddWithValue("id", _selectedSustanciaId);
-            cmdQr.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
-            await using var readerQr = await cmdQr.ExecuteReaderAsync();
-            if (await readerQr.ReadAsync())
-            {
-                _qrTexto = readerQr.IsDBNull(0) ? null : readerQr.GetString(0);
-                _fechaCompra = readerQr.IsDBNull(1) ? null : readerQr.GetDateTime(1);
-                _fechaRecepcion = readerQr.IsDBNull(2) ? null : readerQr.GetDateTime(2);
-                _fechaVencimiento = readerQr.IsDBNull(3) ? null : readerQr.GetDateTime(3);
-                _marcaNombre = readerQr.IsDBNull(4) ? null : readerQr.GetString(4);
-                _marcaLogoUrl = readerQr.IsDBNull(5) ? null : readerQr.GetString(5);
-            }
-            await readerQr.CloseAsync();
 
             _qrImageUrl = string.IsNullOrWhiteSpace(_qrTexto)
                 ? null
@@ -575,7 +577,7 @@ LEFT JOIN p_codes p ON p.p_id = sp.p_id
 WHERE s.sustancia_id = @id;
 ";
             await using var cmdHp = new NpgsqlCommand(sqlHpCodes, conn);
-            cmdHp.Parameters.AddWithValue("id", _selectedSustanciaId);
+            cmdHp.Parameters.AddWithValue("id", _etiqueta.Id);
             await using var readerHp = await cmdHp.ExecuteReaderAsync();
             if (await readerHp.ReadAsync())
             {
@@ -642,7 +644,7 @@ WHERE s.sustancia_id = @id;
         _labelImagenDataUrl = $"data:{file.ContentType};base64,{base64}";
     }
 
-    private sealed record SustanciaLookup(string Id, string Nombre);
+    private sealed record ContenedorLookup(string Id, string Label);
 
     private sealed record EtiquetaReactivo(
         string Id,
