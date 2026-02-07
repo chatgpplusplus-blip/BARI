@@ -715,6 +715,32 @@ namespace BARI_web.Features.Espacios.Pages
             _ = ReloadOpeningsForPlantaAsync();
         }
 
+        private string BuildModificarAreasUrl()
+        {
+            var canvasId = ResolveCanvasForEdit();
+            var queryParts = new List<string>();
+
+            if (!string.IsNullOrWhiteSpace(_currentPlantaId))
+            {
+                queryParts.Add($"planta={Uri.EscapeDataString(_currentPlantaId)}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(canvasId))
+            {
+                queryParts.Add($"canvas={Uri.EscapeDataString(canvasId)}");
+            }
+
+            return queryParts.Count == 0
+                ? "/modificarareas"
+                : $"/modificarareas?{string.Join("&", queryParts)}";
+        }
+
+        private string? ResolveCanvasForEdit()
+        {
+            var viewMatch = _canvasViews.FirstOrDefault(v => v.Areas.Keys.Any(IsAreaInCurrentPlanta));
+            return viewMatch?.Canvas.canvas_id ?? _canvasViews.FirstOrDefault()?.Canvas.canvas_id;
+        }
+
         private async Task ReloadOpeningsForPlantaAsync()
         {
             foreach (var view in _canvasViews)
