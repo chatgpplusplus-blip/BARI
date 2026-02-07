@@ -172,12 +172,12 @@ else if (_etiqueta is not null)
                         </div>
                         <div class="label-edit-field">
                             <label class="text-xs text-gray-500">Cantidad nominal</label>
-                            <InputNumber class="border p-1 form-control @(_editContCantidadNominal.HasValue ? "is-filled" : "")"
+                            <InputNumber class="@($"border p-1 form-control {(_editContCantidadNominal.HasValue ? "is-filled" : "")}")"
                                          @bind-Value="_editContCantidadNominal" />
                         </div>
                         <div class="label-edit-field">
                             <label class="text-xs text-gray-500">Cantidad actual</label>
-                            <InputNumber class="border p-1 form-control @(_editContCantidadActual.HasValue ? "is-filled" : "")"
+                            <InputNumber class="@($"border p-1 form-control {(_editContCantidadActual.HasValue ? "is-filled" : "")}")"
                                          @bind-Value="_editContCantidadActual" />
                         </div>
                         <div class="label-edit-field">
@@ -197,22 +197,22 @@ else if (_etiqueta is not null)
                         </div>
                         <div class="label-edit-field">
                             <label class="text-xs text-gray-500">Fecha adquisición</label>
-                            <InputDate class="border p-1 form-control @(_editFechaCompra.HasValue ? "is-filled" : "")"
+                            <InputDate class="@($"border p-1 form-control {(_editFechaCompra.HasValue ? "is-filled" : "")}")"
                                        @bind-Value="_editFechaCompra" />
                         </div>
                         <div class="label-edit-field">
                             <label class="text-xs text-gray-500">Fecha recepción</label>
-                            <InputDate class="border p-1 form-control @(_editFechaRecepcion.HasValue ? "is-filled" : "")"
+                            <InputDate class="@($"border p-1 form-control {(_editFechaRecepcion.HasValue ? "is-filled" : "")}")"
                                        @bind-Value="_editFechaRecepcion" />
                         </div>
                         <div class="label-edit-field">
                             <label class="text-xs text-gray-500">Fecha apertura</label>
-                            <InputDate class="border p-1 form-control @(_editFechaApertura.HasValue ? "is-filled" : "")"
+                            <InputDate class="@($"border p-1 form-control {(_editFechaApertura.HasValue ? "is-filled" : "")}")"
                                        @bind-Value="_editFechaApertura" />
                         </div>
                         <div class="label-edit-field">
                             <label class="text-xs text-gray-500">Fecha vencimiento</label>
-                            <InputDate class="border p-1 form-control @(_editFechaVencimiento.HasValue ? "is-filled" : "")"
+                            <InputDate class="@($"border p-1 form-control {(_editFechaVencimiento.HasValue ? "is-filled" : "")}")"
                                        @bind-Value="_editFechaVencimiento" />
                         </div>
                     </div>
