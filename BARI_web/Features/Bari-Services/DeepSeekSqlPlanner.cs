@@ -193,7 +193,7 @@ Instrucciones:
 
         msgs.Add(new ChatMessage { Role = "user", Content = q });
 
-        var plan = await _llm.CreateJsonAsync<SqlActionPlan>(_opt.ModelPlanner, msgs, maxTokens: _opt.PlannerMaxTokens, ct: ct);
+        var plan = await _llm.CreateJsonAsync<SqlActionPlan>(_opt.ModelPlanner, msgs, maxTokens: _opt.WriterMaxTokens, ct: ct);
 
         // Normalización básica
         plan.Intent = (plan.Intent ?? "db_query").Trim().ToLowerInvariant();
