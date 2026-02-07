@@ -1,5 +1,5 @@
 @page "/ver-etiquetas"
-@page "/ver-etiquetas/reactivo/{SustanciaId}"
+@page "/ver-etiquetas/contenedor/{ContenedorId}"
 
 @using Npgsql
 @using System
@@ -15,7 +15,7 @@
 <section class="page-card">
     <h2>Etiquetado de Reactivos</h2>
     <p>
-        Visualizador inspirado en etiquetas de Merck. Selecciona un reactivo para ver y ajustar el diseño
+        Visualizador inspirado en etiquetas de Merck. Selecciona un contenedor para ver y ajustar el diseño
         antes de imprimir. Puedes modificar campos, dimensiones e importar una imagen.
     </p>
 </section>
@@ -23,13 +23,13 @@
 <section class="page-card" style="margin-top:1.5rem;">
     <div class="label-controls">
         <div class="label-control">
-            <label class="text-xs text-gray-500">Reactivo</label>
-            <select class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_selectedSustanciaId) ? "is-filled" : "")"
-                    @onchange="OnSustanciaChanged">
-                <option value="">Del desplegable seleccione un reactivo para ver o editar</option>
-                @foreach (var s in _sustanciasLookup)
+            <label class="text-xs text-gray-500">Contenedor</label>
+            <select class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_selectedContenedorId) ? "is-filled" : "")"
+                    @onchange="OnContenedorChanged">
+                <option value="">Del desplegable seleccione un contenedor para ver o editar</option>
+                @foreach (var c in _contenedoresLookup)
                 {
-                    <option value="@s.Id" selected="@(s.Id == _selectedSustanciaId)">@s.Nombre</option>
+                    <option value="@c.Id" selected="@(c.Id == _selectedContenedorId)">@c.Label</option>
                 }
             </select>
         </div>
@@ -88,11 +88,11 @@
     </div>
 </section>
 
-@if (string.IsNullOrWhiteSpace(_selectedSustanciaId))
+@if (string.IsNullOrWhiteSpace(_selectedContenedorId))
 {
     <section class="page-card" style="margin-top:1.5rem;">
         <div class="empty">
-            <div class="helper">Del desplegable seleccione un reactivo para ver o editar.</div>
+            <div class="helper">Del desplegable seleccione un contenedor para ver o editar.</div>
         </div>
     </section>
 }
@@ -139,52 +139,105 @@ else if (_etiqueta is not null)
                 <h4>Vista previa de etiqueta</h4>
                 <div class="label-card" style="width:@($"{_labelWidthMm}mm"); height:@($"{_labelHeightMm}mm");">
                     <div class="label-brand">
-                        <img src="@UpsaLogoUrl" alt="Logo UPSA" />
-                        <span>UPSA · Inventario</span>
+                        <div class="label-brand-left">
+                            <img src="@UpsaLogoUrl" alt="Logo UPSA" />
+                            <div>
+                                <div class="label-org">UPSA · Inventario</div>
+                                <div class="label-brand-name">@(_marcaNombre ?? "Marca: —")</div>
+                            </div>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(_marcaLogoUrl))
+                        {
+                            <div class="label-brand-logo">
+                                <img src="@_marcaLogoUrl" alt="Logo de marca" />
+                            </div>
+                        }
                     </div>
 
                     <div class="label-main">
                         <div class="label-title">@_editNombrePrincipal</div>
                         <div class="label-sub">@_editNombreQuimico</div>
-                        <div class="label-meta">
-                            <span>CAS: @(_editCas ?? "—")</span>
-                            <span>Forma: @(_editFormaFisica ?? "—")</span>
+                    </div>
+
+                    <div class="label-details">
+                        <div class="label-pair">
+                            <span class="label-key">CAS</span>
+                            <span>@(_editCas ?? "—")</span>
                         </div>
-                        <div class="label-meta">
-                            <span>Cantidad total: @GetStockDisplay()</span>
+                        <div class="label-pair">
+                            <span class="label-key">Forma</span>
+                            <span>@(_editFormaFisica ?? "—")</span>
+                        </div>
+                        <div class="label-pair">
+                            <span class="label-key">Cantidad total</span>
+                            <span>@GetStockDisplay()</span>
+                        </div>
+                        <div class="label-pair">
+                            <span class="label-key">QR</span>
                             <span>@GetQrShortLabel()</span>
                         </div>
-                        <div class="label-meta">
+                        <div class="label-pair">
+                            <span class="label-key">Contenedor</span>
+                            <span>@(_selectedContenedorId ?? "—")</span>
+                        </div>
+                        <div class="label-pair">
+                            <span class="label-key">Categoría</span>
                             <span>@(_editCategoria ?? "—")</span>
+                        </div>
+                        <div class="label-pair">
+                            <span class="label-key">Subcategorías</span>
                             <span>@(_editSubcategorias ?? "—")</span>
                         </div>
-                    </div>
-
-                    <div class="label-media">
-                        @if (_ghsIconUrls.Count > 0)
-                        {
-                            foreach (var icon in _ghsIconUrls.Take(3))
-                            {
-                                <img src="@icon" alt="GHS" />
-                            }
-                        }
-                        else
-                        {
-                            <span class="text-xs text-gray-500">Sin pictogramas</span>
-                        }
-                    </div>
-
-                    <div class="label-rombo">
-                        <div class="rombo-diamond">
-                            <div class="rombo-cell rombo-salud">S @(_romboSalud ?? "—")</div>
-                            <div class="rombo-cell rombo-inflam">I @(_romboInflamabilidad ?? "—")</div>
-                            <div class="rombo-cell rombo-react">R @(_romboReactividad ?? "—")</div>
-                            <div class="rombo-cell rombo-especial">E @(_romboEspecial ?? "—")</div>
+                        <div class="label-pair">
+                            <span class="label-key">Adquisición</span>
+                            <span>@FormatDate(_fechaCompra)</span>
                         </div>
-                        <div class="text-xs text-gray-500">Rombo NFPA</div>
+                        <div class="label-pair">
+                            <span class="label-key">Recepción</span>
+                            <span>@FormatDate(_fechaRecepcion)</span>
+                        </div>
+                        <div class="label-pair">
+                            <span class="label-key">Vencimiento</span>
+                            <span>@FormatDate(_fechaVencimiento)</span>
+                        </div>
                     </div>
 
-                    <div class="label-extra">
+                    <div class="label-safety">
+                        <div class="label-pair">
+                            <span class="label-key">H codes</span>
+                            <span>@(string.IsNullOrWhiteSpace(_hCodesText) ? "—" : _hCodesText)</span>
+                        </div>
+                        <div class="label-pair">
+                            <span class="label-key">P codes</span>
+                            <span>@(string.IsNullOrWhiteSpace(_pCodesText) ? "—" : _pCodesText)</span>
+                        </div>
+                    </div>
+
+                    <div class="label-side">
+                        <div class="label-media">
+                            @if (_ghsIconUrls.Count > 0)
+                            {
+                                foreach (var icon in _ghsIconUrls.Take(3))
+                                {
+                                    <img src="@icon" alt="GHS" />
+                                }
+                            }
+                            else
+                            {
+                                <span class="text-xs text-gray-500">Sin pictogramas</span>
+                            }
+                        </div>
+
+                        <div class="label-rombo">
+                            <div class="rombo-diamond">
+                                <div class="rombo-cell rombo-salud">S @(_romboSalud ?? "—")</div>
+                                <div class="rombo-cell rombo-inflam">I @(_romboInflamabilidad ?? "—")</div>
+                                <div class="rombo-cell rombo-react">R @(_romboReactividad ?? "—")</div>
+                                <div class="rombo-cell rombo-especial">E @(_romboEspecial ?? "—")</div>
+                            </div>
+                            <div class="text-xs text-gray-500">Rombo NFPA</div>
+                        </div>
+
                         <div class="label-qr">
                             @if (!string.IsNullOrWhiteSpace(_qrImageUrl))
                             {
@@ -201,8 +254,17 @@ else if (_etiqueta is not null)
                                 <img src="@_labelImagenFinal" alt="Imagen etiqueta" />
                             }
                         </div>
-                        <div class="label-notes">@_editDescripcion</div>
-                        <div class="label-notes">@_editObservaciones</div>
+                    </div>
+
+                    <div class="label-notes">
+                        <div class="label-note-section">
+                            <div class="label-note-title">Descripción</div>
+                            <div>@_editDescripcion</div>
+                        </div>
+                        <div class="label-note-section">
+                            <div class="label-note-title">Observaciones</div>
+                            <div>@_editObservaciones</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -211,15 +273,15 @@ else if (_etiqueta is not null)
 }
 
 @code {
-    [Parameter] public string? SustanciaId { get; set; }
+    [Parameter] public string? ContenedorId { get; set; }
 
     private const string CategoriaReactivoId = "reactivo-quimico";
     private const string UpsaLogoUrl = "https://vc4a.com/wp-content/uploads/2022/06/198068246_2916680591924255_5728041621538232491_n.jpg";
 
-    private readonly List<SustanciaLookup> _sustanciasLookup = new();
+    private readonly List<ContenedorLookup> _contenedoresLookup = new();
     private readonly List<string> _ghsIconUrls = new();
 
-    private string? _selectedSustanciaId;
+    private string? _selectedContenedorId;
     private string? _loadError;
     private EtiquetaReactivo? _etiqueta;
 
@@ -246,36 +308,44 @@ else if (_etiqueta is not null)
     private string? _stockUnidad;
     private string? _qrTexto;
     private string? _qrImageUrl;
+    private string? _hCodesText;
+    private string? _pCodesText;
+    private string? _marcaNombre;
+    private string? _marcaLogoUrl;
+    private DateTime? _fechaCompra;
+    private DateTime? _fechaRecepcion;
+    private DateTime? _fechaVencimiento;
 
     private string? _labelImagenFinal =>
         _labelImagenModo == "url" ? _labelImagenUrl : _labelImagenDataUrl;
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadSustanciasLookupAsync();
+        await LoadContenedoresLookupAsync();
     }
 
     protected override async Task OnParametersSetAsync()
     {
-        if (!string.IsNullOrWhiteSpace(SustanciaId) && SustanciaId != _selectedSustanciaId)
+        if (!string.IsNullOrWhiteSpace(ContenedorId) && ContenedorId != _selectedContenedorId)
         {
-            _selectedSustanciaId = SustanciaId;
+            _selectedContenedorId = ContenedorId;
             await LoadEtiquetaAsync();
         }
     }
 
-    private async Task LoadSustanciasLookupAsync()
+    private async Task LoadContenedoresLookupAsync()
     {
-        _sustanciasLookup.Clear();
+        _contenedoresLookup.Clear();
 
         await using var conn = await DataSource.OpenConnectionAsync();
         const string sql = @"
-SELECT s.sustancia_id,
+SELECT c.cont_id,
        COALESCE(NULLIF(s.nombre_comercial, ''), NULLIF(s.nombre_quimico, ''), s.sustancia_id) AS nombre
-FROM sustancias s
-WHERE s.laboratorio_id = @lab
+FROM contenedores c
+INNER JOIN sustancias s ON s.sustancia_id = c.sustancia_id
+WHERE c.laboratorio_id = @lab
   AND s.categoria_id = @cat
-ORDER BY nombre;
+ORDER BY nombre, c.cont_id;
 ";
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
@@ -284,17 +354,19 @@ ORDER BY nombre;
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
-            _sustanciasLookup.Add(new SustanciaLookup(
-                reader.GetString(0),
-                reader.GetString(1)
+            var contId = reader.GetString(0);
+            var nombre = reader.GetString(1);
+            _contenedoresLookup.Add(new ContenedorLookup(
+                contId,
+                $"{nombre} - {contId}"
             ));
         }
     }
 
-    private async Task OnSustanciaChanged(ChangeEventArgs args)
+    private async Task OnContenedorChanged(ChangeEventArgs args)
     {
-        _selectedSustanciaId = args.Value?.ToString();
-        if (string.IsNullOrWhiteSpace(_selectedSustanciaId))
+        _selectedContenedorId = args.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(_selectedContenedorId))
         {
             _etiqueta = null;
             _ghsIconUrls.Clear();
@@ -303,10 +375,17 @@ ORDER BY nombre;
             _stockUnidad = null;
             _qrTexto = null;
             _qrImageUrl = null;
+            _hCodesText = null;
+            _pCodesText = null;
+            _marcaNombre = null;
+            _marcaLogoUrl = null;
+            _fechaCompra = null;
+            _fechaRecepcion = null;
+            _fechaVencimiento = null;
             return;
         }
 
-        Nav.NavigateTo($"/ver-etiquetas/reactivo/{_selectedSustanciaId}");
+        Nav.NavigateTo($"/ver-etiquetas/contenedor/{_selectedContenedorId}");
         await LoadEtiquetaAsync();
     }
 
@@ -323,8 +402,15 @@ ORDER BY nombre;
         _stockUnidad = null;
         _qrTexto = null;
         _qrImageUrl = null;
+        _hCodesText = null;
+        _pCodesText = null;
+        _marcaNombre = null;
+        _marcaLogoUrl = null;
+        _fechaCompra = null;
+        _fechaRecepcion = null;
+        _fechaVencimiento = null;
 
-        if (string.IsNullOrWhiteSpace(_selectedSustanciaId))
+        if (string.IsNullOrWhiteSpace(_selectedContenedorId))
             return;
 
         try
@@ -332,6 +418,7 @@ ORDER BY nombre;
             await using var conn = await DataSource.OpenConnectionAsync();
             const string sql = @"
 SELECT s.sustancia_id,
+       c.cont_id,
        COALESCE(NULLIF(s.nombre_comercial, ''), NULLIF(s.nombre_quimico, ''), s.sustancia_id) AS nombre,
        s.nombre_comercial,
        s.nombre_quimico,
@@ -340,23 +427,32 @@ SELECT s.sustancia_id,
        s.descripcion,
        s.observaciones,
        s.imagen_url,
-       COALESCE(c.nombre, '') AS categoria,
-       COALESCE(string_agg(DISTINCT (c.nombre || ' · ' || sc.nombre), ', ' ORDER BY (c.nombre || ' · ' || sc.nombre)), '') AS subcategorias,
-       COALESCE(s.sustancia_controlada, false) AS controlada
+       COALESCE(cat.nombre, '') AS categoria,
+       COALESCE(string_agg(DISTINCT (cat.nombre || ' · ' || sc.nombre), ', ' ORDER BY (cat.nombre || ' · ' || sc.nombre)), '') AS subcategorias,
+       COALESCE(s.sustancia_controlada, false) AS controlada,
+       c.qr,
+       c.fecha_compra,
+       c.fecha_recepcion,
+       c.fecha_vencimiento,
+       COALESCE(ma.nombre, '') AS marca_nombre,
+       ma.imagen_url AS marca_logo
 FROM sustancias s
-LEFT JOIN categorias c ON c.categoria_id = s.categoria_id
+INNER JOIN contenedores c ON c.sustancia_id = s.sustancia_id
+LEFT JOIN categorias cat ON cat.categoria_id = s.categoria_id
 LEFT JOIN sustancias_subcategorias ssc ON ssc.sustancia_id = s.sustancia_id
 LEFT JOIN subcategorias sc ON sc.subcategoria_id = ssc.subcategoria_id AND sc.categoria_id = s.categoria_id
-WHERE s.sustancia_id = @id
-  AND s.laboratorio_id = @lab
+LEFT JOIN marcas ma ON ma.marca_id = c.marca_id
+WHERE c.cont_id = @cont
+  AND c.laboratorio_id = @lab
   AND s.categoria_id = @cat
-GROUP BY s.sustancia_id, s.nombre_comercial, s.nombre_quimico, s.cas,
+GROUP BY s.sustancia_id, c.cont_id, s.nombre_comercial, s.nombre_quimico, s.cas,
          s.forma_fisica, s.descripcion, s.observaciones, s.imagen_url,
-         c.nombre, s.sustancia_controlada
+         cat.nombre, s.sustancia_controlada, c.qr, c.fecha_compra,
+         c.fecha_recepcion, c.fecha_vencimiento, ma.nombre, ma.imagen_url
 LIMIT 1;
 ";
             await using var cmd = new NpgsqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("id", _selectedSustanciaId);
+            cmd.Parameters.AddWithValue("cont", _selectedContenedorId);
             cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
             cmd.Parameters.AddWithValue("cat", CategoriaReactivoId);
 
@@ -365,8 +461,7 @@ LIMIT 1;
             {
                 _etiqueta = new EtiquetaReactivo(
                     reader.GetString(0),
-                    reader.GetString(1),
-                    reader.IsDBNull(2) ? null : reader.GetString(2),
+                    reader.GetString(2),
                     reader.IsDBNull(3) ? null : reader.GetString(3),
                     reader.IsDBNull(4) ? null : reader.GetString(4),
                     reader.IsDBNull(5) ? null : reader.GetString(5),
@@ -375,12 +470,20 @@ LIMIT 1;
                     reader.IsDBNull(8) ? null : reader.GetString(8),
                     reader.IsDBNull(9) ? null : reader.GetString(9),
                     reader.IsDBNull(10) ? null : reader.GetString(10),
-                    !reader.IsDBNull(11) && reader.GetBoolean(11)
+                    reader.IsDBNull(11) ? null : reader.GetString(11),
+                    !reader.IsDBNull(12) && reader.GetBoolean(12)
                 );
+
+                _qrTexto = reader.IsDBNull(13) ? null : reader.GetString(13);
+                _fechaCompra = reader.IsDBNull(14) ? null : reader.GetDateTime(14);
+                _fechaRecepcion = reader.IsDBNull(15) ? null : reader.GetDateTime(15);
+                _fechaVencimiento = reader.IsDBNull(16) ? null : reader.GetDateTime(16);
+                _marcaNombre = reader.IsDBNull(17) ? null : reader.GetString(17);
+                _marcaLogoUrl = reader.IsDBNull(18) ? null : reader.GetString(18);
             }
             else
             {
-                _loadError = "No se encontró el reactivo.";
+                _loadError = "No se encontró el contenedor.";
                 return;
             }
 
@@ -394,7 +497,7 @@ WHERE sp.sustancia_id = @id
 ORDER BY sp.ghs_id;
 ";
             await using var cmdGhs = new NpgsqlCommand(sqlGhs, conn);
-            cmdGhs.Parameters.AddWithValue("id", _selectedSustanciaId);
+            cmdGhs.Parameters.AddWithValue("id", _etiqueta.Id);
             await using var readerGhs = await cmdGhs.ExecuteReaderAsync();
             while (await readerGhs.ReadAsync())
             {
@@ -413,7 +516,7 @@ INNER JOIN rombo r ON r.rombo_id = sr.rombo_id
 WHERE sr.sustancia_id = @id;
 ";
             await using var cmdRombo = new NpgsqlCommand(sqlRombo, conn);
-            cmdRombo.Parameters.AddWithValue("id", _selectedSustanciaId);
+            cmdRombo.Parameters.AddWithValue("id", _etiqueta.Id);
             await using var readerRombo = await cmdRombo.ExecuteReaderAsync();
             while (await readerRombo.ReadAsync())
             {
@@ -447,7 +550,7 @@ WHERE c.sustancia_id = @id
   AND c.laboratorio_id = @lab;
 ";
             await using var cmdStock = new NpgsqlCommand(sqlStock, conn);
-            cmdStock.Parameters.AddWithValue("id", _selectedSustanciaId);
+            cmdStock.Parameters.AddWithValue("id", _etiqueta.Id);
             cmdStock.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
             await using var readerStock = await cmdStock.ExecuteReaderAsync();
             if (await readerStock.ReadAsync())
@@ -458,28 +561,29 @@ WHERE c.sustancia_id = @id
 
             await readerStock.CloseAsync();
 
-            const string sqlQr = @"
-SELECT c.qr
-FROM contenedores c
-WHERE c.sustancia_id = @id
-  AND c.laboratorio_id = @lab
-  AND c.qr IS NOT NULL
-  AND c.qr <> ''
-ORDER BY c.fecha_apertura DESC NULLS LAST, c.cont_id
-LIMIT 1;
-";
-            await using var cmdQr = new NpgsqlCommand(sqlQr, conn);
-            cmdQr.Parameters.AddWithValue("id", _selectedSustanciaId);
-            cmdQr.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
-            await using var readerQr = await cmdQr.ExecuteReaderAsync();
-            if (await readerQr.ReadAsync())
-            {
-                _qrTexto = readerQr.IsDBNull(0) ? null : readerQr.GetString(0);
-            }
-
             _qrImageUrl = string.IsNullOrWhiteSpace(_qrTexto)
                 ? null
                 : $"https://api.qrserver.com/v1/create-qr-code/?size=120x120&data={Uri.EscapeDataString(_qrTexto)}";
+
+            const string sqlHpCodes = @"
+SELECT
+    COALESCE(string_agg(DISTINCT h.h_id, ', ' ORDER BY h.h_id), '') AS h_codes,
+    COALESCE(string_agg(DISTINCT p.p_id, ', ' ORDER BY p.p_id), '') AS p_codes
+FROM sustancias s
+LEFT JOIN sustancias_h sh ON sh.sustancia_id = s.sustancia_id
+LEFT JOIN h_codes h ON h.h_id = sh.h_id
+LEFT JOIN sustancias_p sp ON sp.sustancia_id = s.sustancia_id
+LEFT JOIN p_codes p ON p.p_id = sp.p_id
+WHERE s.sustancia_id = @id;
+";
+            await using var cmdHp = new NpgsqlCommand(sqlHpCodes, conn);
+            cmdHp.Parameters.AddWithValue("id", _etiqueta.Id);
+            await using var readerHp = await cmdHp.ExecuteReaderAsync();
+            if (await readerHp.ReadAsync())
+            {
+                _hCodesText = readerHp.IsDBNull(0) ? null : readerHp.GetString(0);
+                _pCodesText = readerHp.IsDBNull(1) ? null : readerHp.GetString(1);
+            }
 
             HydrateEditableFields();
         }
@@ -540,7 +644,7 @@ LIMIT 1;
         _labelImagenDataUrl = $"data:{file.ContentType};base64,{base64}";
     }
 
-    private sealed record SustanciaLookup(string Id, string Nombre);
+    private sealed record ContenedorLookup(string Id, string Label);
 
     private sealed record EtiquetaReactivo(
         string Id,
@@ -556,11 +660,13 @@ LIMIT 1;
         string? Subcategorias,
         bool Controlada
     );
+
+    private static string FormatDate(DateTime? dt)
+        => dt.HasValue ? dt.Value.ToString("dd/MM/yyyy") : "—";
 }
 
 <style>
     .label-rombo {
-        margin-top: 0;
         display: grid;
         gap: .25rem;
         justify-items: start;
@@ -569,17 +675,17 @@ LIMIT 1;
     .rombo-diamond {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        width: 90px;
-        height: 90px;
+        width: 78px;
+        height: 78px;
         transform: rotate(45deg);
         border: 2px solid #0f172a;
-        border-radius: .35rem;
+        border-radius: .2rem;
         overflow: hidden;
     }
 
     .rombo-cell {
         color: #fff;
-        font-size: .7rem;
+        font-size: .62rem;
         font-weight: 700;
         text-align: center;
         display: flex;
@@ -599,15 +705,15 @@ LIMIT 1;
         display: grid;
         place-items: center;
         border: 1px solid #e5e7eb;
-        border-radius: .5rem;
-        padding: .35rem;
+        border-radius: .4rem;
+        padding: .3rem;
         background: #f8fafc;
-        width: 80px;
+        width: 78px;
     }
 
     .label-qr img {
-        width: 72px;
-        height: 72px;
+        width: 70px;
+        height: 70px;
         object-fit: contain;
     }
 </style>
