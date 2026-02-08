@@ -1,6 +1,5 @@
 ﻿@using System.Globalization
 @using Microsoft.AspNetCore.Components.Web
-@using Microsoft.JSInterop
 @inject IJSRuntime JS
 
 <div class="sd-card">
@@ -11,10 +10,9 @@
         </div>
 
         <div class="sd-actions">
-            <button class="sd-btn" type="button" @onclick="() => QuickAdd(8, 10)">+ 08–10</button>
-            <button class="sd-btn" type="button" @onclick="() => QuickAdd(10, 12)">+ 10–12</button>
-            <button class="sd-btn primary" type="button" @onclick="() => QuickAdd(14, 16)">+ 14–16</button>
+            <button class="sd-btn primary" type="button" @onclick="QuickAdd" disabled="@Disabled">+</button>
         </div>
+
     </div>
 
     <div class="sd-body">
@@ -27,11 +25,18 @@
             </div>
 
             <div class="sd-surface"
+                 style="@($"height:{MinuteToPx(EndMinute - StartMinute)}px")"
                  @ref="_surfaceRef"
                  @onpointerdown="SurfacePointerDown"
                  @onpointermove="SurfacePointerMove"
                  @onpointerup="SurfacePointerUp"
                  @onpointercancel="SurfacePointerUp">
+                @if (Disabled)
+                {
+                    <div class="sd-overlay">
+                        <div class="sd-overlay-card">@DisabledMessage</div>
+                    </div>
+                }
 
                 @for (var h = StartHour; h <= EndHour; h++)
                 {
@@ -45,32 +50,30 @@
 
                     <div class="sd-block @item.CssClass @(item == _selected ? "selected" : "")"
                          style="@($"top:{top}px; height:{height}px;")"
-                         @onpointerdown:stopPropagation="true"
-                         @onclick:stopPropagation="true"
-                         @onpointerdown="(e) => BlockPointerDown(e, item)"
+                         @onpointerdown="async (e) => await BlockPointerDown(e, item)"
                          @onclick="() => Select(item)">
-
                         <div class="sd-block-title">
                             <span>@item.Label</span>
                             <span class="sd-block-time">@MinutesToTime(item.StartMinute)–@MinutesToTime(item.EndMinute)</span>
                         </div>
 
+                        <!-- Handles: stopPropagation evita iniciar selección del fondo -->
                         <div class="sd-handle top"
                              @onpointerdown:stopPropagation="true"
-                             @onpointerdown="(e) => ResizePointerDown(e, item, true)"></div>
+                             @onpointerdown="async (e) => await ResizePointerDown(e, item, true)"></div>
 
                         <div class="sd-handle bot"
                              @onpointerdown:stopPropagation="true"
-                             @onpointerdown="(e) => ResizePointerDown(e, item, false)"></div>
+                             @onpointerdown="async (e) => await ResizePointerDown(e, item, false)"></div>
                     </div>
                 }
 
                 @if (_isSelecting)
                 {
-                    var top = Math.Min(_selStartPx, _selEndPx);
-                    var height = Math.Abs(_selEndPx - _selStartPx);
+                    var gTop = Math.Min(_selStartPx, _selEndPx);
+                    var gHeight = Math.Abs(_selEndPx - _selStartPx);
 
-                    <div class="sd-ghost" style="@($"top:{top}px; height:{height}px;")">
+                    <div class="sd-ghost" style="@($"top:{gTop}px; height:{gHeight}px;")">
                         <span>Nuevo</span>
                     </div>
                 }
@@ -153,6 +156,9 @@
 </div>
 
 @code {
+    // =========================
+    // Parameters
+    // =========================
     [Parameter] public DateTime Date { get; set; }
     [Parameter] public string Subtitle { get; set; } = "";
     [Parameter] public List<ScheduleItemVm> Items { get; set; } = new();
@@ -165,6 +171,13 @@
 
     public string[] Statuses { get; } = new[] { "pendiente", "validado", "rechazado" };
 
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string DisabledMessage { get; set; } = "Selecciona una persona para crear o editar bloques.";
+
+
+    // =========================
+    // Config
+    // =========================
     public int StartHour { get; set; } = 6;
     public int EndHour { get; set; } = 22;
 
@@ -173,16 +186,20 @@
 
     private ElementReference _surfaceRef;
 
+    // Surface rect (px)
     private double _rectTop;
     private double _rectHeight;
 
+    // Selection (ghost)
     private bool _isSelecting;
     private double _selStartPx;
     private double _selEndPx;
 
+    // Drawer + selection
     private ScheduleItemVm? _selected;
     private bool _drawerOpen;
 
+    // Drag/resize state
     private bool _dragging;
     private bool _resizing;
     private bool _resizeTop;
@@ -206,17 +223,40 @@
         public string CssClass { get; set; } = "work-lab";
     }
 
-    private double MinuteToPx(int minutes) => minutes * 1.2;
-    private int PxToMinute(double px) => (int)Math.Round(px / 1.2);
+    // =========================
+    // Math helpers
+    // =========================
+    private const double PxPerMinute = 1.2; // 60min = 72px
+
+    private double MinuteToPx(int minutes) => minutes * PxPerMinute;
+    private int PxToMinute(double px) => (int)Math.Round(px / PxPerMinute);
+
     private string MinutesToTime(int m) => $"{m / 60:00}:{m % 60:00}";
 
-    private async Task EnsureRectAsync()
+    private string? _interopError;
+
+    private async Task<bool> EnsureRectAsync()
     {
-        var rect = await JS.InvokeAsync<Rect>("scheduleInterop.getRect", _surfaceRef);
-        if (rect is null) return;
-        _rectTop = rect.top;
-        _rectHeight = rect.height <= 0 ? 1 : rect.height;
+        try
+        {
+            var rect = await JS.InvokeAsync<Rect>("scheduleInterop.getRect", _surfaceRef);
+            if (rect is null) return false;
+
+            _rectTop = rect.top;
+            _rectHeight = rect.height <= 0 ? 1 : rect.height;
+            _interopError = null;
+            return true;
+        }
+        catch (Microsoft.JSInterop.JSException ex)
+        {
+            _interopError = ex.Message;
+            return false;
+        }
     }
+
+
+    private int Snap(int minute, int step) =>
+        (int)Math.Round(minute / (double)step) * step;
 
     private int ClientYToMinute(double clientY)
     {
@@ -225,32 +265,40 @@
 
         var totalMinutes = EndMinute - StartMinute;
         var minute = StartMinute + (int)Math.Round((y / _rectHeight) * totalMinutes);
+
         minute = Snap(minute, 15);
         return Math.Clamp(minute, StartMinute, EndMinute);
     }
 
-    private int Snap(int minute, int step) => (int)Math.Round(minute / (double)step) * step;
-
+    // =========================
+    // Surface interactions
+    // =========================
     private async Task SurfacePointerDown(PointerEventArgs e)
     {
-        await EnsureRectAsync();
+        if (Disabled) return;
 
-        // si estás arrastrando algo, no inicies selección
+        if (!await EnsureRectAsync()) return;
+
+        // si estamos arrastrando por algún motivo, ignorar
         if (_dragging || _resizing) return;
 
         _isSelecting = true;
-        _selStartPx = MinuteToPx(ClientYToMinute(e.ClientY) - StartMinute);
+        var m = ClientYToMinute(e.ClientY);
+        _selStartPx = MinuteToPx(m - StartMinute);
         _selEndPx = _selStartPx;
+
         _selected = null;
         _drawerOpen = false;
+        StateHasChanged();
     }
 
-    // ✅ SOLO UNA versión
     private async Task SurfacePointerMove(PointerEventArgs e)
     {
-        if (_selected is not null && (_dragging || _resizing))
+        if (Disabled) return;
+
+        if (_dragging || _resizing)
         {
-            SurfaceDragMove(e);
+            DragOrResizeMove(e);
             await Task.CompletedTask;
             return;
         }
@@ -260,12 +308,15 @@
         var m = ClientYToMinute(e.ClientY);
         _selEndPx = MinuteToPx(m - StartMinute);
         StateHasChanged();
+
         await Task.CompletedTask;
     }
 
-    // ✅ SOLO UNA versión
     private async Task SurfacePointerUp(PointerEventArgs e)
     {
+        if (Disabled) return;
+
+        // fin drag/resize
         if (_dragging || _resizing)
         {
             _dragging = false;
@@ -274,6 +325,7 @@
             return;
         }
 
+        // fin selección
         if (!_isSelecting) return;
         _isSelecting = false;
 
@@ -283,7 +335,12 @@
         var start = Math.Min(a, b);
         var end = Math.Max(a, b);
 
-        if (end - start < 15) { StateHasChanged(); return; }
+        // mínimo 15 min
+        if (end - start < 15)
+        {
+            StateHasChanged();
+            return;
+        }
 
         var item = new ScheduleItemVm
             {
@@ -301,48 +358,72 @@
         Select(item);
         _drawerOpen = true;
         StateHasChanged();
+
+        await Task.CompletedTask;
     }
 
+    // =========================
+    // Block interactions
+    // =========================
     private void Select(ScheduleItemVm item)
     {
         _selected = item;
         _drawerOpen = true;
+        StateHasChanged();
     }
 
     private async Task BlockPointerDown(PointerEventArgs e, ScheduleItemVm item)
     {
-        if (!item.Editable) { Select(item); return; }
+        if (Disabled) return;
 
-        await EnsureRectAsync();
+        if (!item.Editable)
+        {
+            Select(item);
+            return;
+        }
+
+        if (!await EnsureRectAsync()) return;
+
+        _selected = item;
+        _drawerOpen = true;
 
         _dragging = true;
         _resizing = false;
-        _selected = item;
-        _drawerOpen = true;
 
         _dragStartMinute = ClientYToMinute(e.ClientY);
         _origStart = item.StartMinute;
         _origEnd = item.EndMinute;
+
+        StateHasChanged();
     }
 
     private async Task ResizePointerDown(PointerEventArgs e, ScheduleItemVm item, bool top)
     {
-        if (!item.Editable) { Select(item); return; }
+        if (Disabled) return;
 
-        await EnsureRectAsync();
+        if (!item.Editable)
+        {
+            Select(item);
+            return;
+        }
+
+        if (!await EnsureRectAsync()) return;
+
+        _selected = item;
+        _drawerOpen = true;
 
         _resizing = true;
         _dragging = false;
         _resizeTop = top;
-        _selected = item;
-        _drawerOpen = true;
 
         _dragStartMinute = ClientYToMinute(e.ClientY);
         _origStart = item.StartMinute;
         _origEnd = item.EndMinute;
+
+        StateHasChanged();
     }
 
-    private void SurfaceDragMove(PointerEventArgs e)
+    private void DragOrResizeMove(PointerEventArgs e)
     {
         if (_selected is null) return;
 
@@ -373,26 +454,36 @@
         StateHasChanged();
     }
 
+    // =========================
+    // Drawer actions
+    // =========================
     private void CloseDrawer()
     {
         _drawerOpen = false;
         _selected = null;
+        StateHasChanged();
     }
 
     private async Task SaveSelected()
     {
         if (_selected is null) return;
+        if (!_selected.Editable) return;
         if (_selected.EndMinute <= _selected.StartMinute + 14) return;
 
         ApplyStyle(_selected);
+
+        // Guardar en backend (insert/update)
         var saved = await OnSave(_selected);
         _selected.Id = saved.Id;
+
         StateHasChanged();
     }
 
     private async Task DeleteSelected()
     {
         if (_selected is null) return;
+        if (!_selected.Editable) return;
+
         var item = _selected;
 
         Items.Remove(item);
@@ -404,28 +495,67 @@
 
         StateHasChanged();
     }
+    private int SnapCeil(int minute, int step) => ((minute + step - 1) / step) * step;
 
-    private void QuickAdd(int startH, int endH)
+    private static bool Overlap(int a1, int a2, int b1, int b2) => a1 < b2 && b1 < a2;
+
+    private bool IsFree(int start, int end, ScheduleItemVm? ignore = null)
     {
-        var start = Math.Clamp(startH * 60, StartMinute, EndMinute);
-        var end = Math.Clamp(endH * 60, StartMinute, EndMinute);
-        if (end <= start) return;
+        foreach (var it in Items)
+        {
+            if (ignore is not null && ReferenceEquals(it, ignore)) continue;
+            if (Overlap(start, end, it.StartMinute, it.EndMinute)) return false;
+        }
+        return true;
+    }
 
-        var item = new ScheduleItemVm
+    private void QuickAdd()
+    {
+        const int step = 15;
+
+        // Duración por defecto: 60min (si no hay hueco, intenta 30 y 15)
+        int[] durations = { 60, 30, 15 };
+
+        int from = StartMinute;
+
+        if (Date.Date == DateTime.Today)
+        {
+            var now = DateTime.Now;
+            var nowMin = now.Hour * 60 + now.Minute;
+            from = Math.Max(StartMinute, SnapCeil(nowMin, step));
+        }
+
+        from = Math.Clamp(from, StartMinute, EndMinute);
+
+        foreach (var dur in durations)
+        {
+            var lastStart = EndMinute - dur;
+            for (var s = from; s <= lastStart; s += step)
             {
-                Id = 0,
-                Date = Date.Date,
-                StartMinute = start,
-                EndMinute = end,
-                Editable = true
-            };
+                var e = s + dur;
+                if (IsFree(s, e))
+                {
+                    var item = new ScheduleItemVm
+                        {
+                            Id = 0,
+                            Date = Date.Date,
+                            StartMinute = s,
+                            EndMinute = e,
+                            Editable = true
+                        };
 
-        item.Type = WorkTypes.Length > 0 ? WorkTypes[0] : "trabajo";
-        ApplyStyle(item);
+                    item.Type = WorkTypes.Length > 0 ? WorkTypes[0] : "trabajo";
+                    ApplyStyle(item);
 
-        Items.Add(item);
-        Select(item);
-        _drawerOpen = true;
+                    Items.Add(item);
+                    Select(item);
+                    _drawerOpen = true;
+                    return;
+                }
+            }
+        }
+
+        // Si no hay hueco: no hace nada (o puedes mostrar mensaje)
     }
 
     private void OnTypeChange(ChangeEventArgs e)
@@ -445,14 +575,17 @@
     private void OnTimeChange(ChangeEventArgs e, bool start)
     {
         if (_selected is null) return;
+        if (!_selected.Editable) return;
 
         if (TimeSpan.TryParse(e.Value?.ToString(), out var ts))
         {
             var m = Snap((int)ts.TotalMinutes, 15);
             m = Math.Clamp(m, StartMinute, EndMinute);
 
-            if (start) _selected.StartMinute = Math.Min(m, _selected.EndMinute - 15);
-            else _selected.EndMinute = Math.Max(m, _selected.StartMinute + 15);
+            if (start)
+                _selected.StartMinute = Math.Min(m, _selected.EndMinute - 15);
+            else
+                _selected.EndMinute = Math.Max(m, _selected.StartMinute + 15);
 
             StateHasChanged();
         }
@@ -460,6 +593,7 @@
 
     private void ApplyStyle(ScheduleItemVm item)
     {
+        // Docente: colores por tipo
         if (WorkTypes.Length > 0)
         {
             item.Label = item.Type;
@@ -472,6 +606,7 @@
             return;
         }
 
+        // Becario: colores por estado
         item.Label = "trabajo";
         item.CssClass = item.Status switch
         {
@@ -487,121 +622,3 @@
         public double height { get; set; }
     }
 }
-
-
-<style>
-    .editor-layout {
-        display: grid;
-        grid-template-columns: minmax(0,1150px) 420px;
-        gap: 16px;
-        align-items: start;
-    }
-
-    .canvas-host {
-        overflow-x: auto;
-    }
-
-    .prop-panel {
-        position: sticky;
-        top: 80px;
-        max-height: calc(100vh - 100px);
-        overflow: auto;
-        background: #fff;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        padding: 12px;
-    }
-
-    .panel-box > summary {
-    cursor: pointer;
-    user-select: none;
-    list-style: none;
-}
-.panel-box > summary::-webkit-details-marker {
-    display: none;
-}
-
-
-    .zoom-btn {
-        width: 32px;
-        height: 32px;
-        line-height: 32px;
-        text-align: center;
-        border: 1px solid #ddd;
-        border-radius: 6px;
-        background: #fff;
-    }
-
-    .under-canvas-actions {
-        margin-top: 12px;
-    }
-
-    .btn-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-bottom: 10px;
-    }
-
-    .panel-box {
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        padding: 12px;
-        background: #fff;
-        box-shadow: 0 1px 2px rgba(0,0,0,.04);
-        margin-bottom: 10px;
-    }
-
-    .upload-drop {
-        position: relative;
-        display: flex;
-        align-items: center;
-        gap: .5rem;
-        padding: .6rem;
-        border: 1px solid #e5e7eb;
-        border-radius: .5rem;
-        color: #6b7280;
-        cursor: pointer;
-        background: #fff;
-    }
-
-        .upload-drop input[type="file"] {
-            position: absolute;
-            inset: 0;
-            opacity: 0;
-            cursor: pointer;
-        }
-
-    .panel-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 8px;
-    }
-
-    .panel-title {
-        font-weight: 600;
-    }
-
-    @@media (max-width: 900px) {
-        .editor-layout {
-            grid-template-columns: 1fr;
-        }
-
-        .prop-panel {
-            position: static;
-            top: auto;
-            max-height: none;
-            overflow: visible;
-        }
-
-        .canvas-host {
-            overflow: visible;
-        }
-
-        .canvas-box {
-            max-width: 100%;
-            min-height: 62vh;
-        }
-    }
-</style>

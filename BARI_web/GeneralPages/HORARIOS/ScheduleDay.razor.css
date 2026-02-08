@@ -1,0 +1,316 @@
+﻿.sd-card {
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,.14);
+    background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
+    backdrop-filter: blur(8px);
+    box-shadow: 0 10px 30px rgba(0,0,0,.18);
+    overflow: hidden;
+}
+
+.sd-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 16px;
+    border-bottom: 1px solid rgba(255,255,255,.12);
+}
+
+.sd-title .sd-date {
+    font-weight: 800;
+    letter-spacing: .2px;
+    font-size: 1.05rem;
+    color: #eef2ff;
+    text-transform: capitalize;
+}
+
+.sd-title .sd-sub {
+    font-size: .82rem;
+    color: rgba(255,255,255,.68);
+    margin-top: 2px;
+}
+
+.sd-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.sd-btn {
+    border: 1px solid rgba(255,255,255,.14);
+    background: rgba(255,255,255,.06);
+    color: rgba(255,255,255,.88);
+    padding: 8px 10px;
+    border-radius: 10px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+    .sd-btn:hover {
+        background: rgba(255,255,255,.10);
+    }
+
+    .sd-btn.primary {
+        border-color: rgba(99,102,241,.45);
+        background: rgba(99,102,241,.18);
+    }
+
+.sd-body {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    min-height: 520px;
+}
+
+@media (max-width: 980px) {
+    .sd-body {
+        grid-template-columns: 1fr;
+    }
+
+    .sd-side {
+        border-left: none !important;
+        border-top: 1px solid rgba(255,255,255,.12);
+    }
+}
+
+.sd-grid {
+    display: grid;
+    grid-template-columns: 64px 1fr;
+    gap: 12px;
+    padding: 14px 14px 14px 10px;
+}
+
+.sd-hours {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding-top: 4px;
+}
+
+.sd-hour {
+    height: 72px; /* 60min * 1.2px/min = 72px */
+    font-size: .78rem;
+    color: rgba(255,255,255,.55);
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+    padding-right: 6px;
+}
+
+.sd-surface {
+    position: relative;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,.14);
+    background: radial-gradient(1200px 400px at 20% 0%, rgba(99,102,241,.18), transparent 60%), linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+    overflow: hidden;
+    cursor: crosshair;
+
+
+}
+
+.sd-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: rgba(255,255,255,.08);
+}
+
+.sd-block {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,.16);
+    padding: 10px 10px 10px 12px;
+    cursor: grab;
+    user-select: none;
+    box-shadow: 0 10px 20px rgba(0,0,0,.18);
+}
+
+    .sd-block.selected {
+        outline: 2px solid rgba(255,255,255,.28);
+        box-shadow: 0 14px 30px rgba(0,0,0,.24);
+    }
+
+.sd-block-title {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    font-weight: 800;
+    color: rgba(255,255,255,.92);
+    font-size: .9rem;
+}
+
+.sd-block-time {
+    font-weight: 800;
+    color: rgba(255,255,255,.75);
+    font-size: .82rem;
+}
+
+.sd-handle {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    height: 10px;
+    opacity: .0;
+}
+
+    .sd-handle.top {
+        top: 0;
+        cursor: ns-resize;
+    }
+
+    .sd-handle.bot {
+        bottom: 0;
+        cursor: ns-resize;
+    }
+
+.sd-block:hover .sd-handle {
+    opacity: .25;
+}
+
+.sd-ghost {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    border-radius: 14px;
+    border: 1px dashed rgba(255,255,255,.35);
+    background: rgba(255,255,255,.08);
+    display: flex;
+    align-items: center;
+    padding-left: 12px;
+    color: rgba(255,255,255,.75);
+    font-weight: 800;
+}
+
+/* Colores de docentes (tipo) */
+.work-lab {
+    background: linear-gradient(180deg, rgba(34,197,94,.36), rgba(34,197,94,.16));
+}
+
+.work-class {
+    background: linear-gradient(180deg, rgba(168,85,247,.36), rgba(168,85,247,.16));
+}
+
+.work-other {
+    background: linear-gradient(180deg, rgba(148,163,184,.30), rgba(148,163,184,.12));
+}
+
+/* Colores de becario (estado) */
+.st-ok {
+    background: linear-gradient(180deg, rgba(34,197,94,.36), rgba(34,197,94,.16));
+}
+
+.st-pend {
+    background: linear-gradient(180deg, rgba(245,158,11,.36), rgba(245,158,11,.16));
+}
+
+.st-bad {
+    background: linear-gradient(180deg, rgba(239,68,68,.36), rgba(239,68,68,.16));
+}
+
+/* Panel lateral */
+.sd-side {
+    border-left: 1px solid rgba(255,255,255,.12);
+    background: rgba(0,0,0,.10);
+    padding: 12px;
+}
+
+.sd-side-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 8px 10px;
+}
+
+.sd-side-title {
+    font-weight: 900;
+    color: rgba(255,255,255,.9);
+}
+
+.sd-x {
+    border: 1px solid rgba(255,255,255,.14);
+    background: rgba(255,255,255,.06);
+    color: rgba(255,255,255,.85);
+    border-radius: 10px;
+    padding: 6px 10px;
+    cursor: pointer;
+}
+
+.sd-form {
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.sd-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+    .sd-field.full {
+        grid-column: 1 / -1;
+    }
+
+    .sd-field label {
+        font-size: .8rem;
+        color: rgba(255,255,255,.62);
+        font-weight: 800;
+    }
+
+.sd-input {
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 12px;
+    background: rgba(255,255,255,.06);
+    padding: 10px 10px;
+    color: rgba(255,255,255,.9);
+    outline: none;
+}
+
+    .sd-input:focus {
+        border-color: rgba(99,102,241,.55);
+    }
+
+.sd-side-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 6px;
+}
+
+.sd-btn.danger {
+    border-color: rgba(239,68,68,.45);
+    background: rgba(239,68,68,.18);
+}
+
+.sd-muted {
+    color: rgba(255,255,255,.6);
+    font-weight: 700;
+}
+
+.sd-empty {
+    color: rgba(255,255,255,.62);
+    padding: 12px;
+    font-weight: 700;
+}
+
+.sd-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(2px);
+    z-index: 20;
+}
+
+.sd-overlay-card {
+    border: 1px solid rgba(255,255,255,.14);
+    background: rgba(10, 14, 24, .72);
+    color: rgba(255,255,255,.88);
+    padding: 12px 14px;
+    border-radius: 14px;
+    font-weight: 900;
+}
