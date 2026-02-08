@@ -100,6 +100,13 @@
     gap: 4px;
 }
 
+.h-hours-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+}
+
 .h-big {
     font-size: 1.4rem;
     font-weight: 900;
@@ -189,6 +196,50 @@
     .h-btn:hover {
         background: rgba(255,255,255,.10);
     }
+
+.h-btn.h-btn-xs {
+    padding: 6px 10px;
+    font-size: .75rem;
+}
+
+.h-range-panel {
+    margin-top: 12px;
+    border: 1px solid rgba(255,255,255,.14);
+    background: rgba(255,255,255,.04);
+    border-radius: 14px;
+    padding: 12px;
+}
+
+.h-range-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+
+.h-range-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.h-range-ctrl {
+    margin-bottom: 10px;
+}
+
+.h-range-cal .h-day.range-start,
+.h-range-cal .h-day.range-end {
+    background: rgba(239,68,68,.28);
+    border-color: rgba(239,68,68,.75);
+    color: rgba(255,255,255,.95);
+}
+
+.h-range-cal .h-day.range-mid {
+    background: rgba(239,68,68,.16);
+    border-color: rgba(239,68,68,.4);
+}
 
 .h-cal {
     display: grid;
@@ -314,4 +365,3 @@
             grid-area: next;
         }
 }
-

@@ -68,12 +68,65 @@
             <!-- DER: Acumulado -->
             <div class="h-slot right">
                 <div class="h-chip h-hours">
-                    <span>Acumulado del mes</span>
+                    <span>Acumulado</span>
                     <div class="h-big">@_horasAcumuladasMensual.ToString("0.00", CultureInfo.InvariantCulture)h</div>
                     <div class="h-muted">@_rangoMesTexto</div>
+                    <div class="h-hours-actions">
+                        <button class="h-btn h-btn-xs" type="button" @onclick="ToggleRangePicker">Modificar intervalo</button>
+                        @if (HasPersona())
+                        {
+                            <a class="h-btn h-btn-xs" href="@BuildHorasDownloadHref()">Descargar horas</a>
+                        }
+                        else
+                        {
+                            <button class="h-btn h-btn-xs" type="button" disabled>Descargar horas</button>
+                        }
+                    </div>
                 </div>
             </div>
         </div>
+
+        @if (_showRangePicker)
+        {
+            <div class="h-range-panel">
+                <div class="h-range-head">
+                    <div>
+                        <div class="h-cardtitle">Intervalo de horas</div>
+                        <div class="h-muted">@RangeSelectionTexto</div>
+                    </div>
+                    <div class="h-range-actions">
+                        <button class="h-btn h-btn-xs" type="button" @onclick="ResetRangeToMonth">Mes actual</button>
+                        <button class="h-btn h-btn-xs" type="button" @onclick="ToggleRangePicker">Cerrar</button>
+                    </div>
+                </div>
+
+                <div class="h-calctrl h-range-ctrl">
+                    <button class="h-btn" type="button" @onclick="GoRangePrev">←</button>
+                    <div class="h-month">@RangoAnchorTexto</div>
+                    <button class="h-btn" type="button" @onclick="GoRangeToday">Hoy</button>
+                    <button class="h-btn" type="button" @onclick="GoRangeNext">→</button>
+                </div>
+
+                <div class="h-cal h-range-cal">
+                    @foreach (var dayName in _dayHeaders)
+                    {
+                        <div class="h-cal-h">@dayName</div>
+                    }
+
+                    @foreach (var day in BuildMonthDays(_rangeAnchorDate))
+                    {
+                        var isCurrentMonth = day.Month == _rangeAnchorDate.Month;
+                        var rangeClass = GetRangeClass(day.Date);
+
+                        <button class="h-day @rangeClass @(isCurrentMonth ? "" : "mut")"
+                                type="button"
+                                @onclick="() => OnRangeDaySelected(day.Date)">
+                            <span class="n">@day.Day</span>
+                        </button>
+                    }
+                </div>
+            </div>
+        }
     </div>
 
     @if (!string.IsNullOrWhiteSpace(_loadError))

@@ -130,6 +130,7 @@ app.UseRouting();
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
 app.MapInventoryDownloads();
+app.MapHorasDownloads();
 
 // Endpoint de prueba de red (se mantiene)
 app.MapGet("/admin/net-test", async (IHttpClientFactory httpFactory) =>
