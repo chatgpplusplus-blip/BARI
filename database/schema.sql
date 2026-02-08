@@ -123,6 +123,13 @@ CREATE TABLE IF NOT EXISTS mesones (
   UNIQUE (area_id, nombre_meson)
 );
 
+CREATE TABLE IF NOT EXISTS cajas (
+  caja_id varchar PRIMARY KEY,
+  meson_id varchar NOT NULL REFERENCES mesones(meson_id) ON DELETE CASCADE,
+  nivel integer NOT NULL,
+  dimensiones text
+);
+
 -- =========================================================
 -- CATÁLOGOS BÁSICOS
 -- =========================================================
@@ -419,8 +426,6 @@ CREATE TABLE IF NOT EXISTS materiales (
   marca_id varchar REFERENCES marcas(marca_id),
   estado_id varchar REFERENCES estados_activo(estado_id),
   area_id varchar REFERENCES areas(area_id),
-  meson_id varchar REFERENCES mesones(meson_id),
-  nivel integer,
   posicion text,
   laboratorio_id integer NOT NULL REFERENCES laboratorios(laboratorio_id),
   observaciones text,
@@ -445,6 +450,20 @@ CREATE TABLE IF NOT EXISTS material_subcategorias (
   material_id varchar NOT NULL REFERENCES materiales(material_id) ON DELETE CASCADE,
   subcategoria_id varchar NOT NULL REFERENCES subcategorias(subcategoria_id) ON DELETE RESTRICT,
   PRIMARY KEY (material_id, subcategoria_id)
+);
+
+CREATE TABLE IF NOT EXISTS materiales_mesones_niveles (
+  material_id varchar NOT NULL REFERENCES materiales(material_id) ON DELETE CASCADE,
+  meson_id varchar NOT NULL REFERENCES mesones(meson_id) ON DELETE CASCADE,
+  nivel integer NOT NULL,
+  PRIMARY KEY (material_id, meson_id, nivel)
+);
+
+CREATE TABLE IF NOT EXISTS cajas_materiales (
+  caja_id varchar NOT NULL REFERENCES cajas(caja_id) ON DELETE CASCADE,
+  material_id varchar NOT NULL REFERENCES materiales(material_id) ON DELETE CASCADE,
+  cantidad numeric NOT NULL DEFAULT 1,
+  PRIMARY KEY (caja_id, material_id)
 );
 
 CREATE TABLE IF NOT EXISTS modelo_equipo_subcategorias (
