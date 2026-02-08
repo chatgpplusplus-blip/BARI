@@ -275,6 +275,16 @@ ORDER BY from_schema, from_table, tc.constraint_name, kcu.ordinal_position;", co
         ["caja"] = new[] { "cajas", "cajas_materiales", "materiales" },
         ["cajas"] = new[] { "cajas", "cajas_materiales", "materiales" },
 
+        // Personal académico
+        ["docente"] = new[] { "docentes", "docente_clase", "horarios_docentes", "asignaturas" },
+        ["profesor"] = new[] { "docentes", "docente_clase", "horarios_docentes", "asignaturas" },
+        ["becario"] = new[] { "becarios", "becario_laboratorio", "horario_clases_becario", "horario_bloqueado_becario", "horas_trabajadas_becario" },
+        ["horario"] = new[] { "horarios_docentes", "horario_clases_becario", "horario_bloqueado_becario", "horas_trabajadas_becario" },
+
+        // Seguridad adicional
+        ["rombo"] = new[] { "rombo", "sustancia_rombo", "sustancias" },
+        ["nfpa"] = new[] { "rombo", "sustancia_rombo", "sustancias" },
+
         // Ubicación / espacios
         ["área"] = new[] { "areas", "laboratorios", "mesones", "canvas_lab" },
         ["area"] = new[] { "areas", "laboratorios", "mesones", "canvas_lab" },
