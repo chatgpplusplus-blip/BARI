@@ -27,6 +27,11 @@ public partial class Horarios : ComponentBase
 
     private DateTime _anchorDate = DateTime.Today;
     private DateTime? _selectedDate = DateTime.Today;
+    private DateTime _rangeAnchorDate = DateTime.Today;
+    private DateTime? _rangeStart;
+    private DateTime? _rangeEnd;
+    private bool _useCustomRange;
+    private bool _showRangePicker;
 
     private string? _loadError;
     private string _laboratorioNombre = "Laboratorio";
@@ -47,6 +52,7 @@ public partial class Horarios : ComponentBase
 
     protected override async Task OnInitializedAsync()
     {
+        SetDefaultRangeFromAnchor();
         await LoadPersonalAsync();
         await LoadLaboratorioNombreAsync();
         await ReloadDayAsync();
@@ -113,12 +119,20 @@ public partial class Horarios : ComponentBase
     private void GoPrev()
     {
         _anchorDate = _anchorDate.AddMonths(-1);
+        if (!_useCustomRange)
+        {
+            SetDefaultRangeFromAnchor();
+        }
         _ = ReloadDayAsync();
     }
 
     private void GoNext()
     {
         _anchorDate = _anchorDate.AddMonths(1);
+        if (!_useCustomRange)
+        {
+            SetDefaultRangeFromAnchor();
+        }
         _ = ReloadDayAsync();
     }
 
@@ -126,6 +140,10 @@ public partial class Horarios : ComponentBase
     {
         _anchorDate = DateTime.Today;
         _selectedDate = DateTime.Today;
+        if (!_useCustomRange)
+        {
+            SetDefaultRangeFromAnchor();
+        }
         _ = ReloadDayAsync();
     }
 
@@ -140,6 +158,11 @@ public partial class Horarios : ComponentBase
     private string MesAnchorTexto =>
     CultureInfo.GetCultureInfo("es-ES").TextInfo.ToTitleCase(
         _anchorDate.ToString("MMMM yyyy", new CultureInfo("es-ES"))
+    );
+
+    private string RangoAnchorTexto =>
+    CultureInfo.GetCultureInfo("es-ES").TextInfo.ToTitleCase(
+        _rangeAnchorDate.ToString("MMMM yyyy", new CultureInfo("es-ES"))
     );
 
     private DateTime StartOfWeek(DateTime d)
@@ -171,7 +194,7 @@ public partial class Horarios : ComponentBase
         _loadError = null;
         _scheduleItemsDelDia = new();
 
-        var (ms, me) = GetMonthRange(_anchorDate);
+        var (ms, me) = GetActiveRange();
         _rangoMesTexto = $"{ms:dd/MM} - {me:dd/MM}";
 
         if (!_selectedDate.HasValue || !HasPersona())
@@ -205,6 +228,135 @@ public partial class Horarios : ComponentBase
         }
 
         StateHasChanged();
+    }
+
+    private (DateTime Start, DateTime End) GetActiveRange()
+    {
+        if (_useCustomRange && _rangeStart.HasValue && _rangeEnd.HasValue)
+        {
+            var start = _rangeStart.Value.Date;
+            var end = _rangeEnd.Value.Date;
+            if (end < start)
+            {
+                (start, end) = (end, start);
+            }
+
+            return (start, end);
+        }
+
+        return GetMonthRange(_anchorDate);
+    }
+
+    private void SetDefaultRangeFromAnchor()
+    {
+        var (ms, me) = GetMonthRange(_anchorDate);
+        _rangeStart = ms;
+        _rangeEnd = me;
+        _rangeAnchorDate = _anchorDate;
+        _useCustomRange = false;
+    }
+
+    private void ToggleRangePicker()
+    {
+        _showRangePicker = !_showRangePicker;
+        if (_showRangePicker)
+        {
+            _rangeAnchorDate = _rangeStart ?? _anchorDate;
+        }
+    }
+
+    private void ResetRangeToMonth()
+    {
+        SetDefaultRangeFromAnchor();
+        _ = ReloadDayAsync();
+    }
+
+    private void GoRangePrev()
+    {
+        _rangeAnchorDate = _rangeAnchorDate.AddMonths(-1);
+    }
+
+    private void GoRangeNext()
+    {
+        _rangeAnchorDate = _rangeAnchorDate.AddMonths(1);
+    }
+
+    private void GoRangeToday()
+    {
+        _rangeAnchorDate = DateTime.Today;
+    }
+
+    private void OnRangeDaySelected(DateTime date)
+    {
+        if (!_rangeStart.HasValue || (_rangeStart.HasValue && _rangeEnd.HasValue))
+        {
+            _rangeStart = date.Date;
+            _rangeEnd = null;
+            _useCustomRange = true;
+            return;
+        }
+
+        _rangeEnd = date.Date;
+        _useCustomRange = true;
+        _ = ReloadDayAsync();
+    }
+
+    private string RangeSelectionTexto
+    {
+        get
+        {
+            if (!_useCustomRange || !_rangeStart.HasValue || !_rangeEnd.HasValue)
+            {
+                return "Selecciona el día de inicio y fin.";
+            }
+
+            var (start, end) = GetActiveRange();
+            return $"{start:dd/MM/yyyy} - {end:dd/MM/yyyy}";
+        }
+    }
+
+    private string GetRangeClass(DateTime date)
+    {
+        if (!_useCustomRange || !_rangeStart.HasValue)
+        {
+            return string.Empty;
+        }
+
+        var start = _rangeStart.Value.Date;
+        var end = _rangeEnd?.Date;
+
+        if (!end.HasValue)
+        {
+            return date.Date == start ? "range-start" : string.Empty;
+        }
+
+        var (s, e) = GetActiveRange();
+
+        if (date.Date == s)
+        {
+            return "range-start";
+        }
+
+        if (date.Date == e)
+        {
+            return "range-end";
+        }
+
+        if (date.Date > s && date.Date < e)
+        {
+            return "range-mid";
+        }
+
+        return string.Empty;
+    }
+
+    private string BuildHorasDownloadHref()
+    {
+        var (start, end) = GetActiveRange();
+        var tipo = _tipoSeleccionado == TipoPersona.Docente ? "docente" : "becario";
+        var id = _tipoSeleccionado == TipoPersona.Docente ? _docenteIdSeleccionado : _becarioIdSeleccionado;
+
+        return $"/api/descarga-horas?tipo={tipo}&id={id}&start={start:yyyy-MM-dd}&end={end:yyyy-MM-dd}";
     }
 
     private async Task LoadMonthlyTotalAsync(NpgsqlConnection conn, DateTime start, DateTime end)
