@@ -1,0 +1,471 @@
+@page "/personal"
+@using Npgsql
+@using System.Globalization
+@inject NpgsqlDataSource DataSource
+
+<PageTitle>Personal</PageTitle>
+
+<section class="page-card">
+    <h2>Personal</h2>
+    <p class="helper">
+        Gestión rápida de docentes y becarios. CRUD directo en una sola pantalla.
+    </p>
+    <LaboratorioSelector />
+</section>
+
+@if (!string.IsNullOrWhiteSpace(_loadError))
+{
+    <section class="page-card" style="margin-top:1rem;">
+        <p class="error-note">Error: @_loadError</p>
+    </section>
+}
+
+<section class="page-card" style="margin-top:1rem;">
+    <div class="section-head">
+        <h3>Docentes</h3>
+        <span class="badge">@_docentes.Count</span>
+    </div>
+
+    <details>
+        <summary style="cursor:pointer; font-weight:800;">Agregar docente</summary>
+
+        <div class="form-grid" style="margin-top:.75rem;">
+            <div class="field">
+                <label>Usuario ID</label>
+                <input class="border p-1 val-hint"
+                       type="number"
+                       placeholder="ID de usuario"
+                       @bind="_newDocenteUsuarioId" />
+            </div>
+            <div class="field">
+                <label>Activo</label>
+                <label class="check-row">
+                    <input type="checkbox" @bind="_newDocenteActivo" />
+                    <span>Disponible</span>
+                </label>
+            </div>
+
+            <div class="form-actions full-span">
+                <button class="btn primary" type="button" @onclick="AddDocenteAsync" disabled="@_isSaving">Guardar</button>
+                @if (!string.IsNullOrWhiteSpace(_msgDocentes))
+                {
+                    <span class="text-sm muted">@_msgDocentes</span>
+                }
+            </div>
+        </div>
+    </details>
+
+    <div class="table-wrap" style="margin-top:1rem;">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:110px;">ID</th>
+                    <th style="width:140px;">Usuario</th>
+                    <th style="width:100px;">Activo</th>
+                    <th style="width:190px;">Creado</th>
+                    <th style="width:220px;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var docente in _docentes.OrderBy(d => d.Id))
+                {
+                    var editing = _editingDocentes.Contains(docente.Id);
+
+                    <tr>
+                        <td><code>@docente.Id</code></td>
+
+                        @if (!editing)
+                        {
+                            <td>@docente.UsuarioId</td>
+                            <td>@(docente.Activo ? "Sí" : "No")</td>
+                            <td>@docente.CreatedAt.ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture)</td>
+                            <td>
+                                <button class="btn" type="button" @onclick="() => StartEditDocente(docente.Id)">Editar</button>
+                                <button class="btn danger" type="button" @onclick="() => DeleteDocenteAsync(docente.Id)" disabled="@_isSaving">Eliminar</button>
+                            </td>
+                        }
+                        else
+                        {
+                            var ed = _editDocentes[docente.Id];
+                            <td>
+                                <input class="border p-1 val-hint" type="number" @bind="ed.UsuarioId" />
+                            </td>
+                            <td>
+                                <label class="check-row" style="margin:0;">
+                                    <input type="checkbox" @bind="ed.Activo" />
+                                    <span>Activo</span>
+                                </label>
+                            </td>
+                            <td>@docente.CreatedAt.ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture)</td>
+                            <td>
+                                <button class="btn primary" type="button" @onclick="() => SaveDocenteAsync(docente.Id)" disabled="@_isSaving">Guardar</button>
+                                <button class="btn" type="button" @onclick="() => CancelEditDocente(docente.Id)" disabled="@_isSaving">Cancelar</button>
+                            </td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="page-card" style="margin-top:1rem;">
+    <div class="section-head">
+        <h3>Becarios</h3>
+        <span class="badge">@_becarios.Count</span>
+    </div>
+
+    <details>
+        <summary style="cursor:pointer; font-weight:800;">Agregar becario</summary>
+
+        <div class="form-grid" style="margin-top:.75rem;">
+            <div class="field">
+                <label>Usuario ID</label>
+                <input class="border p-1 val-hint"
+                       type="number"
+                       placeholder="ID de usuario"
+                       @bind="_newBecarioUsuarioId" />
+            </div>
+            <div class="field">
+                <label>Activo</label>
+                <label class="check-row">
+                    <input type="checkbox" @bind="_newBecarioActivo" />
+                    <span>Disponible</span>
+                </label>
+            </div>
+
+            <div class="form-actions full-span">
+                <button class="btn primary" type="button" @onclick="AddBecarioAsync" disabled="@_isSaving">Guardar</button>
+                @if (!string.IsNullOrWhiteSpace(_msgBecarios))
+                {
+                    <span class="text-sm muted">@_msgBecarios</span>
+                }
+            </div>
+        </div>
+    </details>
+
+    <div class="table-wrap" style="margin-top:1rem;">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:110px;">ID</th>
+                    <th style="width:140px;">Usuario</th>
+                    <th style="width:100px;">Activo</th>
+                    <th style="width:190px;">Creado</th>
+                    <th style="width:220px;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var becario in _becarios.OrderBy(b => b.Id))
+                {
+                    var editing = _editingBecarios.Contains(becario.Id);
+
+                    <tr>
+                        <td><code>@becario.Id</code></td>
+
+                        @if (!editing)
+                        {
+                            <td>@becario.UsuarioId</td>
+                            <td>@(becario.Activo ? "Sí" : "No")</td>
+                            <td>@becario.CreatedAt.ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture)</td>
+                            <td>
+                                <button class="btn" type="button" @onclick="() => StartEditBecario(becario.Id)">Editar</button>
+                                <button class="btn danger" type="button" @onclick="() => DeleteBecarioAsync(becario.Id)" disabled="@_isSaving">Eliminar</button>
+                            </td>
+                        }
+                        else
+                        {
+                            var ed = _editBecarios[becario.Id];
+                            <td>
+                                <input class="border p-1 val-hint" type="number" @bind="ed.UsuarioId" />
+                            </td>
+                            <td>
+                                <label class="check-row" style="margin:0;">
+                                    <input type="checkbox" @bind="ed.Activo" />
+                                    <span>Activo</span>
+                                </label>
+                            </td>
+                            <td>@becario.CreatedAt.ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture)</td>
+                            <td>
+                                <button class="btn primary" type="button" @onclick="() => SaveBecarioAsync(becario.Id)" disabled="@_isSaving">Guardar</button>
+                                <button class="btn" type="button" @onclick="() => CancelEditBecario(becario.Id)" disabled="@_isSaving">Cancelar</button>
+                            </td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@code {
+    private sealed record PersonalRow(int Id, int UsuarioId, bool Activo, DateTime CreatedAt, DateTime? UpdatedAt);
+    private sealed class PersonalEdit
+    {
+        public int UsuarioId { get; set; }
+        public bool Activo { get; set; }
+    }
+
+    private List<PersonalRow> _docentes = new();
+    private List<PersonalRow> _becarios = new();
+    private string? _loadError;
+    private string? _msgDocentes;
+    private string? _msgBecarios;
+    private bool _isSaving;
+
+    private int? _newDocenteUsuarioId;
+    private bool _newDocenteActivo = true;
+    private int? _newBecarioUsuarioId;
+    private bool _newBecarioActivo = true;
+
+    private readonly HashSet<int> _editingDocentes = new();
+    private readonly Dictionary<int, PersonalEdit> _editDocentes = new();
+    private readonly HashSet<int> _editingBecarios = new();
+    private readonly Dictionary<int, PersonalEdit> _editBecarios = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAllAsync();
+    }
+
+    private async Task LoadAllAsync()
+    {
+        _loadError = null;
+        try
+        {
+            _docentes = await LoadPersonalAsync("docentes", "docente_id");
+            _becarios = await LoadPersonalAsync("becarios", "becario_id");
+        }
+        catch (Exception ex)
+        {
+            _loadError = ex.Message;
+        }
+    }
+
+    private async Task<List<PersonalRow>> LoadPersonalAsync(string tableName, string idColumn)
+    {
+        var results = new List<PersonalRow>();
+        await using var conn = await DataSource.OpenConnectionAsync();
+        var cmdText = $"SELECT {idColumn}, usuario_id, activo, created_at, updated_at FROM {tableName} ORDER BY {idColumn};";
+        await using var cmd = new NpgsqlCommand(cmdText, conn);
+        await using var reader = await cmd.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            results.Add(new PersonalRow(
+                reader.GetInt32(0),
+                reader.GetInt32(1),
+                reader.GetBoolean(2),
+                reader.GetDateTime(3),
+                reader.IsDBNull(4) ? null : reader.GetDateTime(4)));
+        }
+
+        return results;
+    }
+
+    private async Task AddDocenteAsync()
+    {
+        _msgDocentes = null;
+        if (!_newDocenteUsuarioId.HasValue)
+        {
+            _msgDocentes = "Ingresa un usuario válido.";
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var cmd = new NpgsqlCommand("INSERT INTO docentes (usuario_id, activo, created_at) VALUES (@usuario_id, @activo, NOW())", conn);
+            cmd.Parameters.AddWithValue("usuario_id", _newDocenteUsuarioId.Value);
+            cmd.Parameters.AddWithValue("activo", _newDocenteActivo);
+            await cmd.ExecuteNonQueryAsync();
+
+            _newDocenteUsuarioId = null;
+            _newDocenteActivo = true;
+            _docentes = await LoadPersonalAsync("docentes", "docente_id");
+        }
+        catch (Exception ex)
+        {
+            _msgDocentes = $"Error al guardar: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task SaveDocenteAsync(int docenteId)
+    {
+        if (!_editDocentes.TryGetValue(docenteId, out var edit))
+        {
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var cmd = new NpgsqlCommand("UPDATE docentes SET usuario_id = @usuario_id, activo = @activo, updated_at = NOW() WHERE docente_id = @docente_id", conn);
+            cmd.Parameters.AddWithValue("usuario_id", edit.UsuarioId);
+            cmd.Parameters.AddWithValue("activo", edit.Activo);
+            cmd.Parameters.AddWithValue("docente_id", docenteId);
+            await cmd.ExecuteNonQueryAsync();
+
+            _editingDocentes.Remove(docenteId);
+            _editDocentes.Remove(docenteId);
+            _docentes = await LoadPersonalAsync("docentes", "docente_id");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task DeleteDocenteAsync(int docenteId)
+    {
+        _isSaving = true;
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var cmd = new NpgsqlCommand("DELETE FROM docentes WHERE docente_id = @docente_id", conn);
+            cmd.Parameters.AddWithValue("docente_id", docenteId);
+            await cmd.ExecuteNonQueryAsync();
+            _docentes = await LoadPersonalAsync("docentes", "docente_id");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void StartEditDocente(int docenteId)
+    {
+        if (_editingDocentes.Contains(docenteId))
+        {
+            return;
+        }
+
+        var item = _docentes.FirstOrDefault(d => d.Id == docenteId);
+        if (item is null)
+        {
+            return;
+        }
+
+        _editDocentes[docenteId] = new PersonalEdit
+        {
+            UsuarioId = item.UsuarioId,
+            Activo = item.Activo
+        };
+        _editingDocentes.Add(docenteId);
+    }
+
+    private void CancelEditDocente(int docenteId)
+    {
+        _editingDocentes.Remove(docenteId);
+        _editDocentes.Remove(docenteId);
+    }
+
+    private async Task AddBecarioAsync()
+    {
+        _msgBecarios = null;
+        if (!_newBecarioUsuarioId.HasValue)
+        {
+            _msgBecarios = "Ingresa un usuario válido.";
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var cmd = new NpgsqlCommand("INSERT INTO becarios (usuario_id, activo, created_at) VALUES (@usuario_id, @activo, NOW())", conn);
+            cmd.Parameters.AddWithValue("usuario_id", _newBecarioUsuarioId.Value);
+            cmd.Parameters.AddWithValue("activo", _newBecarioActivo);
+            await cmd.ExecuteNonQueryAsync();
+
+            _newBecarioUsuarioId = null;
+            _newBecarioActivo = true;
+            _becarios = await LoadPersonalAsync("becarios", "becario_id");
+        }
+        catch (Exception ex)
+        {
+            _msgBecarios = $"Error al guardar: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task SaveBecarioAsync(int becarioId)
+    {
+        if (!_editBecarios.TryGetValue(becarioId, out var edit))
+        {
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var cmd = new NpgsqlCommand("UPDATE becarios SET usuario_id = @usuario_id, activo = @activo, updated_at = NOW() WHERE becario_id = @becario_id", conn);
+            cmd.Parameters.AddWithValue("usuario_id", edit.UsuarioId);
+            cmd.Parameters.AddWithValue("activo", edit.Activo);
+            cmd.Parameters.AddWithValue("becario_id", becarioId);
+            await cmd.ExecuteNonQueryAsync();
+
+            _editingBecarios.Remove(becarioId);
+            _editBecarios.Remove(becarioId);
+            _becarios = await LoadPersonalAsync("becarios", "becario_id");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task DeleteBecarioAsync(int becarioId)
+    {
+        _isSaving = true;
+        try
+        {
+            await using var conn = await DataSource.OpenConnectionAsync();
+            await using var cmd = new NpgsqlCommand("DELETE FROM becarios WHERE becario_id = @becario_id", conn);
+            cmd.Parameters.AddWithValue("becario_id", becarioId);
+            await cmd.ExecuteNonQueryAsync();
+            _becarios = await LoadPersonalAsync("becarios", "becario_id");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void StartEditBecario(int becarioId)
+    {
+        if (_editingBecarios.Contains(becarioId))
+        {
+            return;
+        }
+
+        var item = _becarios.FirstOrDefault(b => b.Id == becarioId);
+        if (item is null)
+        {
+            return;
+        }
+
+        _editBecarios[becarioId] = new PersonalEdit
+        {
+            UsuarioId = item.UsuarioId,
+            Activo = item.Activo
+        };
+        _editingBecarios.Add(becarioId);
+    }
+
+    private void CancelEditBecario(int becarioId)
+    {
+        _editingBecarios.Remove(becarioId);
+        _editBecarios.Remove(becarioId);
+    }
+}
