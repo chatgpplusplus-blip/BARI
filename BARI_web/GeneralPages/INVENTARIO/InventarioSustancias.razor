@@ -58,6 +58,15 @@
             <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoSustanciaFormaFisica) ? "is-filled" : "")"
                    placeholder="Forma física" @bind="_nuevoSustanciaFormaFisica" />
 
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoSustanciaPalabraAdvertencia) ? "is-filled" : "")"
+                   placeholder="Palabra de advertencia (PELIGRO/ADVERTENCIA)" @bind="_nuevoSustanciaPalabraAdvertencia" />
+
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoSustanciaConcentracion) ? "is-filled" : "")"
+                   placeholder="Concentración (ej: 98%, 1M)" @bind="_nuevoSustanciaConcentracion" />
+
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoSustanciaPureza) ? "is-filled" : "")"
+                   placeholder="Pureza (ej: 99%)" @bind="_nuevoSustanciaPureza" />
+
             <select class="border p-1 form-control category-select @(!string.IsNullOrWhiteSpace(_nuevoSustanciaCategoriaId) ? "is-filled" : "")"
                     value="@_nuevoSustanciaCategoriaId"
                     @onchange="OnNuevoSustanciaCategoriaChanged">
@@ -404,6 +413,12 @@
 
             <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoContenedorProveedor) ? "is-filled" : "")"
                    placeholder="Proveedor" @bind="_nuevoContenedorProveedor" />
+
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoContenedorProveedorDireccion) ? "is-filled" : "")"
+                   placeholder="Dirección proveedor" @bind="_nuevoContenedorProveedorDireccion" />
+
+            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_nuevoContenedorProveedorTelefono) ? "is-filled" : "")"
+                   placeholder="Teléfono de emergencia proveedor" @bind="_nuevoContenedorProveedorTelefono" />
 
             <div class="field-stack">
                 <label class="field-label">Fecha de compra</label>
@@ -1136,6 +1151,9 @@
     private string? _nuevoSustanciaNombreQuimico;
     private string? _nuevoSustanciaCas;
     private string? _nuevoSustanciaFormaFisica;
+    private string? _nuevoSustanciaPalabraAdvertencia;
+    private string? _nuevoSustanciaConcentracion;
+    private string? _nuevoSustanciaPureza;
     private string? _nuevoSustanciaCategoriaId = "reactivo-quimico";
     private readonly HashSet<string> _nuevoSustanciaSubcategoriaIds = new(StringComparer.OrdinalIgnoreCase);
     private string? _nuevoSustanciaDescripcion;
@@ -1154,6 +1172,8 @@
     private string? _nuevoContenedorMarcaId;
     private string? _nuevoContenedorDensidad;
     private string? _nuevoContenedorProveedor;
+    private string? _nuevoContenedorProveedorDireccion;
+    private string? _nuevoContenedorProveedorTelefono;
     private DateTime? _nuevoContenedorFechaCompra;
     private DateTime? _nuevoContenedorFechaRecepcion;
     private DateTime? _nuevoContenedorFechaVencimiento;
@@ -1567,10 +1587,10 @@
 
             const string sqlSust = @"
     INSERT INTO sustancias
-    (sustancia_id, nombre_comercial, nombre_quimico, cas, forma_fisica, sustancia_controlada,
-     categoria_id, observaciones, descripcion, imagen_url, laboratorio_id)
-    VALUES (@id, @comercial, @quimico, @cas, @forma, @controlada,
-            @cat, @obs, @descripcion, @imagen, @lab)
+    (sustancia_id, nombre_comercial, nombre_quimico, cas, forma_fisica, palabra_advertencia,
+     concentracion, pureza, sustancia_controlada, categoria_id, observaciones, descripcion, imagen_url, laboratorio_id)
+    VALUES (@id, @comercial, @quimico, @cas, @forma, @advertencia,
+            @concentracion, @pureza, @controlada, @cat, @obs, @descripcion, @imagen, @lab)
     ON CONFLICT (sustancia_id) DO NOTHING";
 
             int rows;
@@ -1581,6 +1601,9 @@
                 cmd.Parameters.AddWithValue("quimico", string.IsNullOrWhiteSpace(_nuevoSustanciaNombreQuimico) ? (object)DBNull.Value : _nuevoSustanciaNombreQuimico!);
                 cmd.Parameters.AddWithValue("cas", string.IsNullOrWhiteSpace(_nuevoSustanciaCas) ? (object)DBNull.Value : _nuevoSustanciaCas!);
                 cmd.Parameters.AddWithValue("forma", string.IsNullOrWhiteSpace(_nuevoSustanciaFormaFisica) ? (object)DBNull.Value : _nuevoSustanciaFormaFisica!);
+                cmd.Parameters.AddWithValue("advertencia", string.IsNullOrWhiteSpace(_nuevoSustanciaPalabraAdvertencia) ? (object)DBNull.Value : _nuevoSustanciaPalabraAdvertencia!);
+                cmd.Parameters.AddWithValue("concentracion", string.IsNullOrWhiteSpace(_nuevoSustanciaConcentracion) ? (object)DBNull.Value : _nuevoSustanciaConcentracion!);
+                cmd.Parameters.AddWithValue("pureza", string.IsNullOrWhiteSpace(_nuevoSustanciaPureza) ? (object)DBNull.Value : _nuevoSustanciaPureza!);
                 cmd.Parameters.AddWithValue("controlada", _nuevoSustanciaControlada);
                 cmd.Parameters.AddWithValue("cat", _nuevoSustanciaCategoriaId!);
                 cmd.Parameters.AddWithValue("obs", string.IsNullOrWhiteSpace(_nuevoSustanciaObservaciones) ? (object)DBNull.Value : _nuevoSustanciaObservaciones!);
@@ -1677,6 +1700,9 @@ ON CONFLICT (sustancia_id, seccion) DO UPDATE SET rombo_id = EXCLUDED.rombo_id";
             _nuevoSustanciaNombreQuimico = null;
             _nuevoSustanciaCas = null;
             _nuevoSustanciaFormaFisica = null;
+            _nuevoSustanciaPalabraAdvertencia = null;
+            _nuevoSustanciaConcentracion = null;
+            _nuevoSustanciaPureza = null;
             _nuevoSustanciaSubcategoriaIds.Clear();
             _nuevoSustanciaDescripcion = null;
             _nuevoSustanciaImagenUrl = null;
@@ -1742,14 +1768,14 @@ ON CONFLICT (sustancia_id, seccion) DO UPDATE SET rombo_id = EXCLUDED.rombo_id";
 
             const string sqlCont = @"
     INSERT INTO contenedores
-    (cont_id, sustancia_id, marca_id, densidad_g_ml, fecha_compra, proveedor, fecha_recepcion, fecha_vencimiento,
-     masa_envase_vacio_g, masa_tapa_g, color_envase, altura_cm, unidad_id, cantidad_reactivo_nominal,
-     cantidad_reactivo_actual, fecha_apertura, condicion_id, observaciones, area_id, meson_id, nivel, posicion,
-     laboratorio_id, qr, imagen_url)
-    VALUES (@cont, @sus, @marca, @densidad, @fcompra, @proveedor, @frecep, @fvenc,
-            @menvase, @mtapa, @color, @altura_cm, @unidad, @nominal,
-            @actual, @fapertura, @cond, @obs, @area, @meson, @nivel, @posicion,
-            @lab, @qr, @img)";
+    (cont_id, sustancia_id, marca_id, densidad_g_ml, fecha_compra, proveedor, proveedor_direccion, proveedor_telefono_emergencia,
+     fecha_recepcion, fecha_vencimiento, masa_envase_vacio_g, masa_tapa_g, color_envase, altura_cm, unidad_id,
+     cantidad_reactivo_nominal, cantidad_reactivo_actual, fecha_apertura, condicion_id, observaciones, area_id,
+     meson_id, nivel, posicion, laboratorio_id, qr, imagen_url)
+    VALUES (@cont, @sus, @marca, @densidad, @fcompra, @proveedor, @proveedor_direccion, @proveedor_telefono,
+            @frecep, @fvenc, @menvase, @mtapa, @color, @altura_cm, @unidad,
+            @nominal, @actual, @fapertura, @cond, @obs, @area,
+            @meson, @nivel, @posicion, @lab, @qr, @img)";
 
             await using var cmd = new NpgsqlCommand(sqlCont, conn);
             cmd.Parameters.AddWithValue("cont", contenedorId);
@@ -1758,6 +1784,8 @@ ON CONFLICT (sustancia_id, seccion) DO UPDATE SET rombo_id = EXCLUDED.rombo_id";
             cmd.Parameters.AddWithValue("densidad", ParseDecimalOrNull(_nuevoContenedorDensidad));
             cmd.Parameters.AddWithValue("fcompra", ParseDateOrNull(_nuevoContenedorFechaCompra));
             cmd.Parameters.AddWithValue("proveedor", string.IsNullOrWhiteSpace(_nuevoContenedorProveedor) ? (object)DBNull.Value : _nuevoContenedorProveedor!);
+            cmd.Parameters.AddWithValue("proveedor_direccion", string.IsNullOrWhiteSpace(_nuevoContenedorProveedorDireccion) ? (object)DBNull.Value : _nuevoContenedorProveedorDireccion!);
+            cmd.Parameters.AddWithValue("proveedor_telefono", string.IsNullOrWhiteSpace(_nuevoContenedorProveedorTelefono) ? (object)DBNull.Value : _nuevoContenedorProveedorTelefono!);
             cmd.Parameters.AddWithValue("frecep", ParseDateOrNull(_nuevoContenedorFechaRecepcion));
             cmd.Parameters.AddWithValue("fvenc", ParseDateOrNull(_nuevoContenedorFechaVencimiento));
             cmd.Parameters.AddWithValue("menvase", ParseDecimalOrNull(_nuevoContenedorMasaEnvase));
@@ -1786,6 +1814,8 @@ ON CONFLICT (sustancia_id, seccion) DO UPDATE SET rombo_id = EXCLUDED.rombo_id";
             _nuevoContenedorMarcaId = null;
             _nuevoContenedorDensidad = null;
             _nuevoContenedorProveedor = null;
+            _nuevoContenedorProveedorDireccion = null;
+            _nuevoContenedorProveedorTelefono = null;
             _nuevoContenedorFechaCompra = null;
             _nuevoContenedorFechaRecepcion = null;
             _nuevoContenedorFechaVencimiento = null;
