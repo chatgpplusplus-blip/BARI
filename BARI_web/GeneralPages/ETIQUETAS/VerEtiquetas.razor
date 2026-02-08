@@ -226,13 +226,7 @@
                                             </div>
                                         </div>
 
-                                        <div class="lbl-footer">
-                                            <span>Solo para uso en laboratorio.</span>
-                                            @if (_etiqueta.Controlada)
-                                            {
-                                                <span class="danger-chip">Sustancia controlada</span>
-                                            }
-                                        </div>
+                                       
                                     </div>
 
                                     <div class="lbl-right">
@@ -267,6 +261,14 @@
                                                 }
                                             </div>
                                         </div>
+
+                                        <div class="lbl-footer">
+                                            @if (_etiqueta.Controlada)
+                                            {
+                                                <span class="danger-chip">Sustancia controlada</span>
+                                            }
+                                        </div>
+
                                     </div>
                                 </div>
                             </div>

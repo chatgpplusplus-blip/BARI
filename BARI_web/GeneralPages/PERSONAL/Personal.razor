@@ -1,557 +1,644 @@
 @page "/personal"
-@using Npgsql
 @using System.Globalization
-@inject NpgsqlDataSource DataSource
+@inject Npgsql.NpgsqlDataSource DataSource
 
 <PageTitle>Personal</PageTitle>
 
-<section class="page-card">
-    <h2>Personal</h2>
-    <p class="helper">
-        Gestión rápida de docentes y becarios. CRUD directo en una sola pantalla.
-    </p>
-    <LaboratorioSelector />
-</section>
-
-@if (!string.IsNullOrWhiteSpace(_loadError))
-{
-    <section class="page-card" style="margin-top:1rem;">
-        <p class="error-note">Error: @_loadError</p>
-    </section>
-}
-
-<section class="page-card" style="margin-top:1rem;">
-    <div class="section-head">
-        <h3>Docentes</h3>
-        <span class="badge">@_docentes.Count</span>
+<div class="h-wrap">
+    <div class="h-hero">
+        <div>
+            <div class="h-title">Personal</div>
+            <div class="h-sub">Gestiona docentes y becarios con una vista limpia y profesional.</div>
+        </div>
+        <div class="h-pill">
+            Lab: <strong>@_laboratorioNombre</strong>
+        </div>
     </div>
 
-    <details>
-        <summary style="cursor:pointer; font-weight:800;">Agregar docente</summary>
+    <div class="h-topcard">
+        <LaboratorioSelector />
 
-        <div class="form-grid" style="margin-top:.75rem;">
-            <div class="field">
-                <label>Usuario ID</label>
-                <input class="border p-1 val-hint"
-                       type="number"
-                       placeholder="ID de usuario"
-                       @bind="_newDocenteUsuarioId" />
-            </div>
-            <div class="field">
-                <label>Nombre</label>
-                <input class="border p-1 val-hint"
-                       placeholder="Nombre completo"
-                       @bind="_newDocenteNombre" />
-            </div>
-            <div class="field">
-                <label>Imagen URL</label>
-                <input class="border p-1 val-hint"
-                       placeholder="https://..."
-                       @bind="_newDocenteImagenUrl" />
-            </div>
-            <div class="field">
-                <label>Activo</label>
-                <label class="check-row">
-                    <input type="checkbox" @bind="_newDocenteActivo" />
-                    <span>Disponible</span>
-                </label>
+        <div class="h-toprow">
+            <!-- Tipo -->
+            <div class="h-slot left">
+                <div class="h-chip">
+                    <span class="h-chiptitle">Tipo</span>
+
+                    <label class="h-radio">
+                        <input type="radio" name="tipoPersonal" value="docente"
+                        checked="@(_tipo == TipoPersona.Docente)"
+                        @onchange="@(()=>SetTipo(TipoPersona.Docente))" />
+                        Docente
+                    </label>
+
+                    <label class="h-radio">
+                        <input type="radio" name="tipoPersonal" value="becario"
+                        checked="@(_tipo == TipoPersona.Becario)"
+                        @onchange="@(()=>SetTipo(TipoPersona.Becario))" />
+                        Becario
+                    </label>
+                </div>
             </div>
 
-            <div class="form-actions full-span">
-                <button class="btn primary" type="button" @onclick="AddDocenteAsync" disabled="@_isSaving">Guardar</button>
-                @if (!string.IsNullOrWhiteSpace(_msgDocentes))
-                {
-                    <span class="text-sm muted">@_msgDocentes</span>
-                }
+            <!-- Modo -->
+            <div class="h-slot center">
+                <div class="h-chip">
+                    <span class="h-chiptitle">Acción</span>
+                    <select class="h-select" @bind="_modo">
+                        <option value="@Modo.Ver">Ver</option>
+                        <option value="@Modo.Crear">Crear</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Total + búsqueda -->
+            <div class="h-slot right">
+                <div class="h-chip h-hours">
+                    <span class="h-chiptitle">Total</span>
+                    <div class="h-big">@ListadoActual.Count</div>
+                    <div class="h-muted">@(_tipo == TipoPersona.Docente ? "Docentes" : "Becarios")</div>
+
+                    <div style="margin-top:10px;">
+                        <input class="ui-input" placeholder="Buscar por nombre / usuario..."
+                        @bind="_q" @bind:event="oninput" />
+                    </div>
+                </div>
             </div>
         </div>
-    </details>
-
-    <div class="table-wrap" style="margin-top:1rem;">
-        <table>
-            <thead>
-                <tr>
-                    <th style="width:110px;">ID</th>
-                    <th style="width:140px;">Usuario</th>
-                    <th>Nombre</th>
-                    <th style="width:140px;">Imagen</th>
-                    <th style="width:100px;">Activo</th>
-                    <th style="width:190px;">Creado</th>
-                    <th style="width:220px;">Acciones</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var docente in _docentes.OrderBy(d => d.Id))
-                {
-                    var editing = _editingDocentes.Contains(docente.Id);
-
-                    <tr>
-                        <td><code>@docente.Id</code></td>
-
-                        @if (!editing)
-                        {
-                            <td>@docente.UsuarioId</td>
-                            <td>@docente.Nombre</td>
-                            <td>
-                                @if (!string.IsNullOrWhiteSpace(docente.ImagenUrl))
-                                {
-                                    <img src="@docente.ImagenUrl" alt="@docente.Nombre" class="thumb thumb-logo" />
-                                }
-                                else
-                                {
-                                    <span class="muted text-xs">—</span>
-                                }
-                            </td>
-                            <td>@(docente.Activo ? "Sí" : "No")</td>
-                            <td>@docente.CreatedAt.ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture)</td>
-                            <td>
-                                <button class="btn" type="button" @onclick="() => StartEditDocente(docente.Id)">Editar</button>
-                                <button class="btn danger" type="button" @onclick="() => DeleteDocenteAsync(docente.Id)" disabled="@_isSaving">Eliminar</button>
-                            </td>
-                        }
-                        else
-                        {
-                            var ed = _editDocentes[docente.Id];
-                            <td>
-                                <input class="border p-1 val-hint" type="number" @bind="ed.UsuarioId" />
-                            </td>
-                            <td>
-                                <input class="border p-1 val-hint" @bind="ed.Nombre" />
-                            </td>
-                            <td>
-                                <input class="border p-1 val-hint" @bind="ed.ImagenUrl" />
-                            </td>
-                            <td>
-                                <label class="check-row" style="margin:0;">
-                                    <input type="checkbox" @bind="ed.Activo" />
-                                    <span>Activo</span>
-                                </label>
-                            </td>
-                            <td>@docente.CreatedAt.ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture)</td>
-                            <td>
-                                <button class="btn primary" type="button" @onclick="() => SaveDocenteAsync(docente.Id)" disabled="@_isSaving">Guardar</button>
-                                <button class="btn" type="button" @onclick="() => CancelEditDocente(docente.Id)" disabled="@_isSaving">Cancelar</button>
-                            </td>
-                        }
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-</section>
-
-<section class="page-card" style="margin-top:1rem;">
-    <div class="section-head">
-        <h3>Becarios</h3>
-        <span class="badge">@_becarios.Count</span>
     </div>
 
-    <details>
-        <summary style="cursor:pointer; font-weight:800;">Agregar becario</summary>
+    @if (!string.IsNullOrWhiteSpace(_loadError))
+    {
+        <div class="h-error">Error: @_loadError</div>
+    }
 
-        <div class="form-grid" style="margin-top:.75rem;">
-            <div class="field">
-                <label>Usuario ID</label>
-                <input class="border p-1 val-hint"
-                       type="number"
-                       placeholder="ID de usuario"
-                       @bind="_newBecarioUsuarioId" />
-            </div>
-            <div class="field">
-                <label>Nombre</label>
-                <input class="border p-1 val-hint"
-                       placeholder="Nombre completo"
-                       @bind="_newBecarioNombre" />
-            </div>
-            <div class="field">
-                <label>Imagen URL</label>
-                <input class="border p-1 val-hint"
-                       placeholder="https://..."
-                       @bind="_newBecarioImagenUrl" />
-            </div>
-            <div class="field">
-                <label>Activo</label>
-                <label class="check-row">
-                    <input type="checkbox" @bind="_newBecarioActivo" />
-                    <span>Disponible</span>
-                </label>
+    <!-- Crear -->
+    @if (_modo == Modo.Crear)
+    {
+        <div class="h-card" style="margin-top:16px;">
+            <div class="h-cardhead">
+                <div>
+                    <div class="h-cardtitle">Crear @(_tipo == TipoPersona.Docente ? "docente" : "becario")</div>
+                    <div class="h-muted">Datos de identificación (contacto y etiquetas sutiles).</div>
+                </div>
             </div>
 
-            <div class="form-actions full-span">
-                <button class="btn primary" type="button" @onclick="AddBecarioAsync" disabled="@_isSaving">Guardar</button>
-                @if (!string.IsNullOrWhiteSpace(_msgBecarios))
+            <div class="ui-formgrid">
+                <div class="ui-field">
+                    <label>Usuario ID</label>
+                    <input class="ui-input" type="number" @bind="_newUsuarioId" />
+                </div>
+
+                <div class="ui-field">
+                    <label>Nombre</label>
+                    <input class="ui-input" @bind="_newNombre" />
+                </div>
+
+                <div class="ui-field">
+                    <label>Correo</label>
+                    <input class="ui-input" @bind="_newCorreo" placeholder="nombre@upsa.edu..." />
+                </div>
+
+                <div class="ui-field">
+                    <label>Teléfono</label>
+                    <input class="ui-input" @bind="_newTelefono" placeholder="7xxxxxxx" />
+                </div>
+
+                <div class="ui-field">
+                    <label>CI / Documento</label>
+                    <input class="ui-input" @bind="_newCi" />
+                </div>
+
+                @if (_tipo == TipoPersona.Docente)
                 {
-                    <span class="text-sm muted">@_msgBecarios</span>
+                    <div class="ui-field">
+                        <label>Especialidad</label>
+                        <input class="ui-input" @bind="_newEspecialidad" placeholder="Química, Bioquímica..." />
+                    </div>
                 }
+                else
+                {
+                    <div class="ui-field">
+                        <label>Carrera</label>
+                        <input class="ui-input" @bind="_newCarrera" placeholder="Ing. Química..." />
+                    </div>
+
+                    <div class="ui-field">
+                        <label>Semestre</label>
+                        <input class="ui-input" type="number" @bind="_newSemestre" />
+                    </div>
+                }
+
+                <div class="ui-field">
+                    <label>Imagen URL</label>
+                    <input class="ui-input" @bind="_newImagenUrl" placeholder="https://..." />
+                </div>
+
+                <div class="ui-field">
+                    <label>Activo</label>
+                    <label class="ui-check">
+                        <input type="checkbox" @bind="_newActivo" />
+                        <span>Disponible</span>
+                    </label>
+                </div>
+
+                <div class="ui-actions">
+                    <button class="h-btn" type="button" @onclick="ResetForm">Limpiar</button>
+                    <button class="h-btn primary" type="button" @onclick="CreateAsync" disabled="@_isSaving">
+                        Guardar
+                    </button>
+                    @if (!string.IsNullOrWhiteSpace(_msg))
+                    {
+                        <span class="h-muted" style="margin-left:10px;">@_msg</span>
+                    }
+                </div>
             </div>
         </div>
-    </details>
+    }
 
-    <div class="table-wrap" style="margin-top:1rem;">
-        <table>
-            <thead>
-                <tr>
-                    <th style="width:110px;">ID</th>
-                    <th style="width:140px;">Usuario</th>
-                    <th>Nombre</th>
-                    <th style="width:140px;">Imagen</th>
-                    <th style="width:100px;">Activo</th>
-                    <th style="width:190px;">Creado</th>
-                    <th style="width:220px;">Acciones</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var becario in _becarios.OrderBy(b => b.Id))
-                {
-                    var editing = _editingBecarios.Contains(becario.Id);
+    <!-- Listado -->
+    <div class="h-card" style="margin-top:16px;">
+        <div class="h-cardhead">
+            <div>
+                <div class="h-cardtitle">Listado</div>
+                <div class="h-muted">Tarjetas con datos útiles (sin saturar).</div>
+            </div>
+        </div>
 
-                    <tr>
-                        <td><code>@becario.Id</code></td>
+        <div class="ui-cardgrid">
+            @foreach (var p in Filtrado(ListadoActual))
+            {
+                var isEditing = _editingId == p.Id;
 
-                        @if (!editing)
-                        {
-                            <td>@becario.UsuarioId</td>
-                            <td>@becario.Nombre</td>
-                            <td>
-                                @if (!string.IsNullOrWhiteSpace(becario.ImagenUrl))
+                <div class="ui-person-card">
+                    <div class="ui-person-top">
+                        <img class="ui-avatar"
+                        src="@AvatarOrPlaceholder(p.ImagenUrl)"
+                        alt="@p.Nombre"
+                        onerror="this.onerror=null;this.src='https://via.placeholder.com/96x96.png?text=UPSA';" />
+
+                        <div class="ui-person-meta">
+                            <div class="ui-person-name">@p.Nombre</div>
+
+                            <div class="ui-person-sub">
+                                <span class="ui-pill">ID: @p.Id</span>
+                                <span class="ui-pill">Usuario: @p.UsuarioId</span>
+                                @if (!string.IsNullOrWhiteSpace(p.Tag1))
                                 {
-                                    <img src="@becario.ImagenUrl" alt="@becario.Nombre" class="thumb thumb-logo" />
+                                    <span class="ui-pill">@p.Tag1</span>
                                 }
-                                else
+                                @if (!string.IsNullOrWhiteSpace(p.Tag2))
                                 {
-                                    <span class="muted text-xs">—</span>
+                                    <span class="ui-pill">@p.Tag2</span>
                                 }
-                            </td>
-                            <td>@(becario.Activo ? "Sí" : "No")</td>
-                            <td>@becario.CreatedAt.ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture)</td>
-                            <td>
-                                <button class="btn" type="button" @onclick="() => StartEditBecario(becario.Id)">Editar</button>
-                                <button class="btn danger" type="button" @onclick="() => DeleteBecarioAsync(becario.Id)" disabled="@_isSaving">Eliminar</button>
-                            </td>
-                        }
-                        else
-                        {
-                            var ed = _editBecarios[becario.Id];
-                            <td>
-                                <input class="border p-1 val-hint" type="number" @bind="ed.UsuarioId" />
-                            </td>
-                            <td>
-                                <input class="border p-1 val-hint" @bind="ed.Nombre" />
-                            </td>
-                            <td>
-                                <input class="border p-1 val-hint" @bind="ed.ImagenUrl" />
-                            </td>
-                            <td>
-                                <label class="check-row" style="margin:0;">
-                                    <input type="checkbox" @bind="ed.Activo" />
+                                <span class="ui-pill @(p.Activo ? "ok" : "off")">@(p.Activo ? "Activo" : "Inactivo")</span>
+                            </div>
+
+                            <div class="ui-person-lines">
+                                @if (!string.IsNullOrWhiteSpace(p.Correo))
+                                {
+                                    <div class="ui-line"><span class="ui-k">Correo</span><span class="ui-v">@p.Correo</span></div>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(p.Telefono))
+                                {
+                                    <div class="ui-line"><span class="ui-k">Tel</span><span class="ui-v">@p.Telefono</span></div>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(p.Ci))
+                                {
+                                    <div class="ui-line"><span class="ui-k">CI</span><span class="ui-v">@p.Ci</span></div>
+                                }
+                            </div>
+
+                            <div class="ui-person-dates">
+                                Creado: @p.CreatedAt.ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture)
+                                @if (p.UpdatedAt.HasValue)
+                                {
+                                <span class="ui-dot">•</span>
+                                Actualizado: @p.UpdatedAt.Value.ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture);
+                                }
+                            </div>
+                        </div>
+                    </div>
+
+                    @if (!isEditing)
+                    {
+                        <div class="ui-card-actions">
+                            <button class="h-btn" type="button" @onclick="() => StartEdit(p)">Editar</button>
+                            <button class="h-btn danger" type="button" disabled="@_isSaving" @onclick="() => DeleteAsync(p.Id)">Eliminar</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="ui-editgrid">
+                            <div class="ui-field">
+                                <label>Usuario ID</label>
+                                <input class="ui-input" type="number" @bind="_edit.UsuarioId" />
+                            </div>
+                            <div class="ui-field">
+                                <label>Nombre</label>
+                                <input class="ui-input" @bind="_edit.Nombre" />
+                            </div>
+                            <div class="ui-field">
+                                <label>Correo</label>
+                                <input class="ui-input" @bind="_edit.Correo" />
+                            </div>
+                            <div class="ui-field">
+                                <label>Teléfono</label>
+                                <input class="ui-input" @bind="_edit.Telefono" />
+                            </div>
+                            <div class="ui-field">
+                                <label>CI / Documento</label>
+                                <input class="ui-input" @bind="_edit.Ci" />
+                            </div>
+
+                            @if (_tipo == TipoPersona.Docente)
+                            {
+                                <div class="ui-field">
+                                    <label>Especialidad</label>
+                                    <input class="ui-input" @bind="_edit.Especialidad" />
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="ui-field">
+                                    <label>Carrera</label>
+                                    <input class="ui-input" @bind="_edit.Carrera" />
+                                </div>
+                                <div class="ui-field">
+                                    <label>Semestre</label>
+                                    <input class="ui-input" type="number" @bind="_edit.Semestre" />
+                                </div>
+                            }
+
+                            <div class="ui-field">
+                                <label>Imagen URL</label>
+                                <input class="ui-input" @bind="_edit.ImagenUrl" />
+                            </div>
+                            <div class="ui-field">
+                                <label>Activo</label>
+                                <label class="ui-check">
+                                    <input type="checkbox" @bind="_edit.Activo" />
                                     <span>Activo</span>
                                 </label>
-                            </td>
-                            <td>@becario.CreatedAt.ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture)</td>
-                            <td>
-                                <button class="btn primary" type="button" @onclick="() => SaveBecarioAsync(becario.Id)" disabled="@_isSaving">Guardar</button>
-                                <button class="btn" type="button" @onclick="() => CancelEditBecario(becario.Id)" disabled="@_isSaving">Cancelar</button>
-                            </td>
-                        }
-                    </tr>
-                }
-            </tbody>
-        </table>
+                            </div>
+
+                            <div class="ui-card-actions">
+                                <button class="h-btn primary" type="button" disabled="@_isSaving" @onclick="() => SaveAsync(p.Id)">Guardar</button>
+                                <button class="h-btn" type="button" disabled="@_isSaving" @onclick="CancelEdit">Cancelar</button>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
     </div>
-</section>
+</div>
 
 @code {
-    private sealed record PersonalRow(int Id, int UsuarioId, string Nombre, string? ImagenUrl, bool Activo, DateTime CreatedAt, DateTime? UpdatedAt);
-    private sealed class PersonalEdit
+    enum TipoPersona { Docente, Becario }
+    enum Modo { Ver, Crear }
+
+    TipoPersona _tipo = TipoPersona.Docente;
+    Modo _modo = Modo.Ver;
+
+    string _laboratorioNombre = "Laboratorio de Química General";
+    string? _loadError;
+    string? _msg;
+    bool _isSaving;
+
+    string _q = "";
+
+    // VM unificada
+    record PersonaVm(
+        int Id,
+        int UsuarioId,
+        string Nombre,
+        string? ImagenUrl,
+        bool Activo,
+        DateTime CreatedAt,
+        DateTime? UpdatedAt,
+        string? Correo,
+        string? Telefono,
+        string? Ci,
+        string? Tag1,
+        string? Tag2
+    );
+
+    List<PersonaVm> _docentes = new();
+    List<PersonaVm> _becarios = new();
+    List<PersonaVm> ListadoActual => _tipo == TipoPersona.Docente ? _docentes : _becarios;
+
+    // Crear
+    int? _newUsuarioId;
+    string _newNombre = "";
+    string? _newCorreo;
+    string? _newTelefono;
+    string? _newCi;
+    string? _newImagenUrl;
+    bool _newActivo = true;
+
+    // Extra según tipo
+    string? _newEspecialidad;
+    string? _newCarrera;
+    int? _newSemestre;
+
+    // Editar
+    int? _editingId;
+    class EditVm
     {
         public int UsuarioId { get; set; }
-        public string Nombre { get; set; } = string.Empty;
+        public string Nombre { get; set; } = "";
+        public string? Correo { get; set; }
+        public string? Telefono { get; set; }
+        public string? Ci { get; set; }
+        public string? Especialidad { get; set; }   // docente
+        public string? Carrera { get; set; }        // becario
+        public int? Semestre { get; set; }          // becario
         public string? ImagenUrl { get; set; }
         public bool Activo { get; set; }
     }
+    EditVm _edit = new();
 
-    private List<PersonalRow> _docentes = new();
-    private List<PersonalRow> _becarios = new();
-    private string? _loadError;
-    private string? _msgDocentes;
-    private string? _msgBecarios;
-    private bool _isSaving;
+    protected override async Task OnInitializedAsync() => await LoadAsync();
 
-    private int? _newDocenteUsuarioId;
-    private string _newDocenteNombre = string.Empty;
-    private string? _newDocenteImagenUrl;
-    private bool _newDocenteActivo = true;
-    private int? _newBecarioUsuarioId;
-    private string _newBecarioNombre = string.Empty;
-    private string? _newBecarioImagenUrl;
-    private bool _newBecarioActivo = true;
-
-    private readonly HashSet<int> _editingDocentes = new();
-    private readonly Dictionary<int, PersonalEdit> _editDocentes = new();
-    private readonly HashSet<int> _editingBecarios = new();
-    private readonly Dictionary<int, PersonalEdit> _editBecarios = new();
-
-    protected override async Task OnInitializedAsync()
+    void SetTipo(TipoPersona t)
     {
-        await LoadAllAsync();
+        _tipo = t;
+        _modo = Modo.Ver;
+        _editingId = null;
+        _msg = null;
     }
 
-    private async Task LoadAllAsync()
+    IEnumerable<PersonaVm> Filtrado(IEnumerable<PersonaVm> src)
+    {
+        if (string.IsNullOrWhiteSpace(_q)) return src.OrderBy(x => x.Id);
+
+        var q = _q.Trim().ToLowerInvariant();
+        return src.Where(x =>
+                x.Nombre.ToLowerInvariant().Contains(q)
+                || x.UsuarioId.ToString().Contains(q)
+                || (x.Correo?.ToLowerInvariant().Contains(q) ?? false)
+                || (x.Telefono?.ToLowerInvariant().Contains(q) ?? false)
+            )
+            .OrderBy(x => x.Id);
+    }
+
+    string AvatarOrPlaceholder(string? url) =>
+        string.IsNullOrWhiteSpace(url)
+            ? "https://via.placeholder.com/96x96.png?text=UPSA"
+            : url!;
+
+    void ResetForm()
+    {
+        _newUsuarioId = null;
+        _newNombre = "";
+        _newCorreo = null;
+        _newTelefono = null;
+        _newCi = null;
+        _newImagenUrl = null;
+        _newActivo = true;
+
+        _newEspecialidad = null;
+        _newCarrera = null;
+        _newSemestre = null;
+
+        _msg = null;
+    }
+
+    void StartEdit(PersonaVm p)
+    {
+        _editingId = p.Id;
+        _edit = new EditVm
+            {
+                UsuarioId = p.UsuarioId,
+                Nombre = p.Nombre,
+                Correo = p.Correo,
+                Telefono = p.Telefono,
+                Ci = p.Ci,
+                ImagenUrl = p.ImagenUrl,
+                Activo = p.Activo,
+                Especialidad = (_tipo == TipoPersona.Docente) ? p.Tag1 : null,
+                Carrera = (_tipo == TipoPersona.Becario) ? p.Tag1 : null,
+                Semestre = (_tipo == TipoPersona.Becario) ? ParseSemestreFromTag(p.Tag2) : null
+            };
+        _msg = null;
+    }
+
+    int? ParseSemestreFromTag(string? tag)
+    {
+        // "Sem: 3" -> 3 (si viene así)
+        if (string.IsNullOrWhiteSpace(tag)) return null;
+        var digits = new string(tag.Where(char.IsDigit).ToArray());
+        return int.TryParse(digits, out var n) ? n : null;
+    }
+
+    void CancelEdit() { _editingId = null; _msg = null; }
+
+    async Task LoadAsync()
     {
         _loadError = null;
         try
         {
-            _docentes = await LoadPersonalAsync("docentes", "docente_id");
-            _becarios = await LoadPersonalAsync("becarios", "becario_id");
+            _docentes = await LoadDocentesAsync();
+            _becarios = await LoadBecariosAsync();
         }
-        catch (Exception ex)
-        {
-            _loadError = ex.Message;
-        }
+        catch (Exception ex) { _loadError = ex.Message; }
     }
 
-    private async Task<List<PersonalRow>> LoadPersonalAsync(string tableName, string idColumn)
+    async Task<List<PersonaVm>> LoadDocentesAsync()
     {
-        var results = new List<PersonalRow>();
+        var list = new List<PersonaVm>();
         await using var conn = await DataSource.OpenConnectionAsync();
-        var cmdText = $"SELECT {idColumn}, usuario_id, nombre, imagen_url, activo, created_at, updated_at FROM {tableName} ORDER BY {idColumn};";
-        await using var cmd = new NpgsqlCommand(cmdText, conn);
-        await using var reader = await cmd.ExecuteReaderAsync();
+        var sql = @"
+            SELECT docente_id, usuario_id, nombre, imagen_url, activo, created_at, updated_at,
+                   correo, telefono, ci, especialidad
+            FROM docentes
+            ORDER BY docente_id;
+        ";
+        await using var cmd = new Npgsql.NpgsqlCommand(sql, conn);
+        await using var r = await cmd.ExecuteReaderAsync();
 
-        while (await reader.ReadAsync())
+        while (await r.ReadAsync())
         {
-            results.Add(new PersonalRow(
-                reader.GetInt32(0),
-                reader.GetInt32(1),
-                reader.GetString(2),
-                reader.IsDBNull(3) ? null : reader.GetString(3),
-                reader.GetBoolean(4),
-                reader.GetDateTime(5),
-                reader.IsDBNull(6) ? null : reader.GetDateTime(6)));
-        }
+            var id = r.GetInt32(0);
+            var usuarioId = r.GetInt32(1);
+            var nombre = r.IsDBNull(2) ? "(sin nombre)" : r.GetString(2);
+            var img = r.IsDBNull(3) ? null : r.GetString(3);
+            var activo = r.GetBoolean(4);
+            var created = r.GetDateTime(5);
+            var updated = r.IsDBNull(6) ? (DateTime?)null : r.GetDateTime(6);
 
-        return results;
+            var correo = r.IsDBNull(7) ? null : r.GetString(7);
+            var telefono = r.IsDBNull(8) ? null : r.GetString(8);
+            var ci = r.IsDBNull(9) ? null : r.GetString(9);
+            var especialidad = r.IsDBNull(10) ? null : r.GetString(10);
+
+            list.Add(new PersonaVm(id, usuarioId, nombre, img, activo, created, updated, correo, telefono, ci,
+                Tag1: especialidad, Tag2: null));
+        }
+        return list;
     }
 
-    private async Task AddDocenteAsync()
+    async Task<List<PersonaVm>> LoadBecariosAsync()
     {
-        _msgDocentes = null;
-        if (!_newDocenteUsuarioId.HasValue || string.IsNullOrWhiteSpace(_newDocenteNombre))
+        var list = new List<PersonaVm>();
+        await using var conn = await DataSource.OpenConnectionAsync();
+        var sql = @"
+            SELECT becario_id, usuario_id, nombre, imagen_url, activo, created_at, updated_at,
+                   correo, telefono, ci, carrera, semestre
+            FROM becarios
+            ORDER BY becario_id;
+        ";
+        await using var cmd = new Npgsql.NpgsqlCommand(sql, conn);
+        await using var r = await cmd.ExecuteReaderAsync();
+
+        while (await r.ReadAsync())
         {
-            _msgDocentes = "Ingresa usuario y nombre válidos.";
-            return;
+            var id = r.GetInt32(0);
+            var usuarioId = r.GetInt32(1);
+            var nombre = r.IsDBNull(2) ? "(sin nombre)" : r.GetString(2);
+            var img = r.IsDBNull(3) ? null : r.GetString(3);
+            var activo = r.GetBoolean(4);
+            var created = r.GetDateTime(5);
+            var updated = r.IsDBNull(6) ? (DateTime?)null : r.GetDateTime(6);
+
+            var correo = r.IsDBNull(7) ? null : r.GetString(7);
+            var telefono = r.IsDBNull(8) ? null : r.GetString(8);
+            var ci = r.IsDBNull(9) ? null : r.GetString(9);
+
+            var carrera = r.IsDBNull(10) ? null : r.GetString(10);
+            var semestre = r.IsDBNull(11) ? (int?)null : r.GetInt32(11);
+
+            list.Add(new PersonaVm(id, usuarioId, nombre, img, activo, created, updated, correo, telefono, ci,
+                Tag1: carrera, Tag2: semestre.HasValue ? $"Sem: {semestre.Value}" : null));
         }
+        return list;
+    }
+
+    async Task CreateAsync()
+    {
+        _msg = null;
+
+        if (!_newUsuarioId.HasValue || string.IsNullOrWhiteSpace(_newNombre))
+        { _msg = "Usuario ID y Nombre son obligatorios."; return; }
 
         _isSaving = true;
         try
         {
             await using var conn = await DataSource.OpenConnectionAsync();
-            await using var cmd = new NpgsqlCommand("INSERT INTO docentes (usuario_id, nombre, imagen_url, activo, created_at) VALUES (@usuario_id, @nombre, @imagen_url, @activo, NOW())", conn);
-            cmd.Parameters.AddWithValue("usuario_id", _newDocenteUsuarioId.Value);
-            cmd.Parameters.AddWithValue("nombre", _newDocenteNombre.Trim());
-            cmd.Parameters.AddWithValue("imagen_url", (object?)_newDocenteImagenUrl ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("activo", _newDocenteActivo);
-            await cmd.ExecuteNonQueryAsync();
 
-            _newDocenteUsuarioId = null;
-            _newDocenteNombre = string.Empty;
-            _newDocenteImagenUrl = null;
-            _newDocenteActivo = true;
-            _docentes = await LoadPersonalAsync("docentes", "docente_id");
+            if (_tipo == TipoPersona.Docente)
+            {
+                var sql = @"
+                    INSERT INTO docentes(usuario_id, nombre, correo, telefono, ci, especialidad, imagen_url, activo, created_at)
+                    VALUES (@u,@n,@c,@t,@ci,@esp,@img,@a,NOW());
+                ";
+                await using var cmd = new Npgsql.NpgsqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("u", _newUsuarioId.Value);
+                cmd.Parameters.AddWithValue("n", _newNombre.Trim());
+                cmd.Parameters.AddWithValue("c", (object?)_newCorreo?.Trim() ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("t", (object?)_newTelefono?.Trim() ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("ci", (object?)_newCi?.Trim() ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("esp", (object?)_newEspecialidad?.Trim() ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("img", (object?)_newImagenUrl?.Trim() ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("a", _newActivo);
+                await cmd.ExecuteNonQueryAsync();
+            }
+            else
+            {
+                var sql = @"
+                    INSERT INTO becarios(usuario_id, nombre, correo, telefono, ci, carrera, semestre, imagen_url, activo, created_at)
+                    VALUES (@u,@n,@c,@t,@ci,@car,@sem,@img,@a,NOW());
+                ";
+                await using var cmd = new Npgsql.NpgsqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("u", _newUsuarioId.Value);
+                cmd.Parameters.AddWithValue("n", _newNombre.Trim());
+                cmd.Parameters.AddWithValue("c", (object?)_newCorreo?.Trim() ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("t", (object?)_newTelefono?.Trim() ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("ci", (object?)_newCi?.Trim() ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("car", (object?)_newCarrera?.Trim() ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("sem", (object?)_newSemestre ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("img", (object?)_newImagenUrl?.Trim() ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("a", _newActivo);
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            await LoadAsync();
+            ResetForm();
+            _modo = Modo.Ver;
+            _msg = "Guardado.";
         }
-        catch (Exception ex)
-        {
-            _msgDocentes = $"Error al guardar: {ex.Message}";
-        }
-        finally
-        {
-            _isSaving = false;
-        }
+        finally { _isSaving = false; }
     }
 
-    private async Task SaveDocenteAsync(int docenteId)
-    {
-        if (!_editDocentes.TryGetValue(docenteId, out var edit))
-        {
-            return;
-        }
-
-        _isSaving = true;
-        try
-        {
-            await using var conn = await DataSource.OpenConnectionAsync();
-            await using var cmd = new NpgsqlCommand("UPDATE docentes SET usuario_id = @usuario_id, nombre = @nombre, imagen_url = @imagen_url, activo = @activo, updated_at = NOW() WHERE docente_id = @docente_id", conn);
-            cmd.Parameters.AddWithValue("usuario_id", edit.UsuarioId);
-            cmd.Parameters.AddWithValue("nombre", edit.Nombre.Trim());
-            cmd.Parameters.AddWithValue("imagen_url", (object?)edit.ImagenUrl ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("activo", edit.Activo);
-            cmd.Parameters.AddWithValue("docente_id", docenteId);
-            await cmd.ExecuteNonQueryAsync();
-
-            _editingDocentes.Remove(docenteId);
-            _editDocentes.Remove(docenteId);
-            _docentes = await LoadPersonalAsync("docentes", "docente_id");
-        }
-        finally
-        {
-            _isSaving = false;
-        }
-    }
-
-    private async Task DeleteDocenteAsync(int docenteId)
+    async Task SaveAsync(int id)
     {
         _isSaving = true;
         try
         {
             await using var conn = await DataSource.OpenConnectionAsync();
-            await using var cmd = new NpgsqlCommand("DELETE FROM docentes WHERE docente_id = @docente_id", conn);
-            cmd.Parameters.AddWithValue("docente_id", docenteId);
-            await cmd.ExecuteNonQueryAsync();
-            _docentes = await LoadPersonalAsync("docentes", "docente_id");
+
+            if (_tipo == TipoPersona.Docente)
+            {
+                var sql = @"
+                    UPDATE docentes
+                    SET usuario_id=@u, nombre=@n, correo=@c, telefono=@t, ci=@ci,
+                        especialidad=@esp, imagen_url=@img, activo=@a, updated_at=NOW()
+                    WHERE docente_id=@id;
+                ";
+                await using var cmd = new Npgsql.NpgsqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("u", _edit.UsuarioId);
+                cmd.Parameters.AddWithValue("n", _edit.Nombre.Trim());
+                cmd.Parameters.AddWithValue("c", (object?)_edit.Correo?.Trim() ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("t", (object?)_edit.Telefono?.Trim() ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("ci", (object?)_edit.Ci?.Trim() ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("esp", (object?)_edit.Especialidad?.Trim() ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("img", (object?)_edit.ImagenUrl?.Trim() ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("a", _edit.Activo);
+                cmd.Parameters.AddWithValue("id", id);
+                await cmd.ExecuteNonQueryAsync();
+            }
+            else
+            {
+                var sql = @"
+                    UPDATE becarios
+                    SET usuario_id=@u, nombre=@n, correo=@c, telefono=@t, ci=@ci,
+                        carrera=@car, semestre=@sem, imagen_url=@img, activo=@a, updated_at=NOW()
+                    WHERE becario_id=@id;
+                ";
+                await using var cmd = new Npgsql.NpgsqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("u", _edit.UsuarioId);
+                cmd.Parameters.AddWithValue("n", _edit.Nombre.Trim());
+                cmd.Parameters.AddWithValue("c", (object?)_edit.Correo?.Trim() ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("t", (object?)_edit.Telefono?.Trim() ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("ci", (object?)_edit.Ci?.Trim() ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("car", (object?)_edit.Carrera?.Trim() ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("sem", (object?)_edit.Semestre ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("img", (object?)_edit.ImagenUrl?.Trim() ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("a", _edit.Activo);
+                cmd.Parameters.AddWithValue("id", id);
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            await LoadAsync();
+            CancelEdit();
+            _msg = "Actualizado.";
         }
-        finally
-        {
-            _isSaving = false;
-        }
+        finally { _isSaving = false; }
     }
 
-    private void StartEditDocente(int docenteId)
-    {
-        if (_editingDocentes.Contains(docenteId))
-        {
-            return;
-        }
-
-        var item = _docentes.FirstOrDefault(d => d.Id == docenteId);
-        if (item is null)
-        {
-            return;
-        }
-
-        _editDocentes[docenteId] = new PersonalEdit
-        {
-            UsuarioId = item.UsuarioId,
-            Nombre = item.Nombre,
-            ImagenUrl = item.ImagenUrl,
-            Activo = item.Activo
-        };
-        _editingDocentes.Add(docenteId);
-    }
-
-    private void CancelEditDocente(int docenteId)
-    {
-        _editingDocentes.Remove(docenteId);
-        _editDocentes.Remove(docenteId);
-    }
-
-    private async Task AddBecarioAsync()
-    {
-        _msgBecarios = null;
-        if (!_newBecarioUsuarioId.HasValue || string.IsNullOrWhiteSpace(_newBecarioNombre))
-        {
-            _msgBecarios = "Ingresa usuario y nombre válidos.";
-            return;
-        }
-
-        _isSaving = true;
-        try
-        {
-            await using var conn = await DataSource.OpenConnectionAsync();
-            await using var cmd = new NpgsqlCommand("INSERT INTO becarios (usuario_id, nombre, imagen_url, activo, created_at) VALUES (@usuario_id, @nombre, @imagen_url, @activo, NOW())", conn);
-            cmd.Parameters.AddWithValue("usuario_id", _newBecarioUsuarioId.Value);
-            cmd.Parameters.AddWithValue("nombre", _newBecarioNombre.Trim());
-            cmd.Parameters.AddWithValue("imagen_url", (object?)_newBecarioImagenUrl ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("activo", _newBecarioActivo);
-            await cmd.ExecuteNonQueryAsync();
-
-            _newBecarioUsuarioId = null;
-            _newBecarioNombre = string.Empty;
-            _newBecarioImagenUrl = null;
-            _newBecarioActivo = true;
-            _becarios = await LoadPersonalAsync("becarios", "becario_id");
-        }
-        catch (Exception ex)
-        {
-            _msgBecarios = $"Error al guardar: {ex.Message}";
-        }
-        finally
-        {
-            _isSaving = false;
-        }
-    }
-
-    private async Task SaveBecarioAsync(int becarioId)
-    {
-        if (!_editBecarios.TryGetValue(becarioId, out var edit))
-        {
-            return;
-        }
-
-        _isSaving = true;
-        try
-        {
-            await using var conn = await DataSource.OpenConnectionAsync();
-            await using var cmd = new NpgsqlCommand("UPDATE becarios SET usuario_id = @usuario_id, nombre = @nombre, imagen_url = @imagen_url, activo = @activo, updated_at = NOW() WHERE becario_id = @becario_id", conn);
-            cmd.Parameters.AddWithValue("usuario_id", edit.UsuarioId);
-            cmd.Parameters.AddWithValue("nombre", edit.Nombre.Trim());
-            cmd.Parameters.AddWithValue("imagen_url", (object?)edit.ImagenUrl ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("activo", edit.Activo);
-            cmd.Parameters.AddWithValue("becario_id", becarioId);
-            await cmd.ExecuteNonQueryAsync();
-
-            _editingBecarios.Remove(becarioId);
-            _editBecarios.Remove(becarioId);
-            _becarios = await LoadPersonalAsync("becarios", "becario_id");
-        }
-        finally
-        {
-            _isSaving = false;
-        }
-    }
-
-    private async Task DeleteBecarioAsync(int becarioId)
+    async Task DeleteAsync(int id)
     {
         _isSaving = true;
         try
         {
             await using var conn = await DataSource.OpenConnectionAsync();
-            await using var cmd = new NpgsqlCommand("DELETE FROM becarios WHERE becario_id = @becario_id", conn);
-            cmd.Parameters.AddWithValue("becario_id", becarioId);
+            var (table, idCol) = _tipo == TipoPersona.Docente ? ("docentes", "docente_id") : ("becarios", "becario_id");
+            await using var cmd = new Npgsql.NpgsqlCommand($"DELETE FROM {table} WHERE {idCol}=@id", conn);
+            cmd.Parameters.AddWithValue("id", id);
             await cmd.ExecuteNonQueryAsync();
-            _becarios = await LoadPersonalAsync("becarios", "becario_id");
+            await LoadAsync();
         }
-        finally
-        {
-            _isSaving = false;
-        }
-    }
-
-    private void StartEditBecario(int becarioId)
-    {
-        if (_editingBecarios.Contains(becarioId))
-        {
-            return;
-        }
-
-        var item = _becarios.FirstOrDefault(b => b.Id == becarioId);
-        if (item is null)
-        {
-            return;
-        }
-
-        _editBecarios[becarioId] = new PersonalEdit
-        {
-            UsuarioId = item.UsuarioId,
-            Nombre = item.Nombre,
-            ImagenUrl = item.ImagenUrl,
-            Activo = item.Activo
-        };
-        _editingBecarios.Add(becarioId);
-    }
-
-    private void CancelEditBecario(int becarioId)
-    {
-        _editingBecarios.Remove(becarioId);
-        _editBecarios.Remove(becarioId);
+        finally { _isSaving = false; }
     }
 }
