@@ -315,6 +315,7 @@ ORDER BY from_schema, from_table, tc.constraint_name, kcu.ordinal_position;", co
         var scored = new List<(DbTable t, int score)>();
 
         var preferred = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var looksLikeNameQuery = LooksLikeNameQuery(userQuestion);
         foreach (var tok in tokens)
         {
             foreach (var kv in KeywordToTables)
@@ -325,6 +326,21 @@ ORDER BY from_schema, from_table, tc.constraint_name, kcu.ordinal_position;", co
                         preferred.Add(tbl);
                 }
             }
+        }
+
+        if (looksLikeNameQuery)
+        {
+            var nameTables = new[]
+            {
+                "materiales", "material_subcategorias", "subcategorias", "categorias",
+                "equipos", "modelos_equipo", "modelo_equipo_subcategorias",
+                "sustancias", "contenedores", "sustancia_subcategorias",
+                "documentos", "instalaciones", "marcas",
+                "areas", "laboratorios", "mesones"
+            };
+
+            foreach (var tbl in nameTables)
+                preferred.Add(tbl);
         }
 
         // Score por match con nombre tabla/columnas
@@ -432,5 +448,22 @@ ORDER BY from_schema, from_table, tc.constraint_name, kcu.ordinal_position;", co
             .Select(x => x.ToLowerInvariant())
             .Distinct()
             .ToList();
+    }
+
+    private static bool LooksLikeNameQuery(string userQuestion)
+    {
+        if (string.IsNullOrWhiteSpace(userQuestion))
+            return false;
+
+        if (userQuestion.Contains('"') || userQuestion.Contains('“') || userQuestion.Contains('”'))
+            return true;
+
+        var lower = userQuestion.ToLowerInvariant();
+        return lower.Contains("nombre") ||
+               lower.Contains("llamado") ||
+               lower.Contains("llamada") ||
+               lower.Contains("se llama") ||
+               lower.Contains("denominado") ||
+               lower.Contains("denominada");
     }
 }

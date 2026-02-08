@@ -120,6 +120,13 @@ RECORDATORIOS DEL ESQUEMA (ACTUALIZADO):
 - Personas: docentes, docente_clase, horarios_docentes, becarios, becario_laboratorio, horario_clases_becario,
   horario_bloqueado_becario y horas_trabajadas_becario.
 
+NOMBRES/ENTIDADES (IMPORTANTE):
+- Si la pregunta contiene un nombre propio o texto entre comillas, asume búsqueda por nombre.
+- Haz un primer step para encontrar coincidencias por columnas de nombre/título/descripcion disponibles
+  (materiales, equipos, modelos_equipo, sustancias, documentos, instalaciones, contenedores).
+- Luego usa JOINs por FKs para traer relaciones (categorias/subcategorias, marcas, ubicaciones, modelos, contenedores->sustancias).
+- Usa SOLO columnas que existan en el esquema relevante enviado.
+
 COMPATIBILIDAD / USO:
 - Si preguntan por compatibilidad (ej. ""compatible con bomba de vacío""), NO inventes columnas.
 - Usa búsqueda por texto en nombre/descripcion/observaciones del elemento (materiales o equipos) con ILIKE y limita resultados.
@@ -200,7 +207,8 @@ Instrucciones:
 
         msgs.Add(new ChatMessage { Role = "user", Content = q });
 
-        var plan = await _llm.CreateJsonAsync<SqlActionPlan>(_opt.ModelPlanner, msgs, maxTokens: _opt.WriterMaxTokens, ct: ct);
+        var model = string.IsNullOrWhiteSpace(_opt.ModelFast) ? _opt.ModelPlanner : _opt.ModelFast;
+        var plan = await _llm.CreateJsonAsync<SqlActionPlan>(model, msgs, maxTokens: _opt.PlannerMaxTokens, ct: ct);
 
         // Normalización básica
         plan.Intent = (plan.Intent ?? "db_query").Trim().ToLowerInvariant();

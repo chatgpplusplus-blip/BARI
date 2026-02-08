@@ -339,13 +339,15 @@
     gap: 8px;
     padding: 0 14px;
     border-radius: 12px;
-    border: 1px solid rgba(0,0,0,.12);
-    background: rgba(0,0,0,.06);
+    border: 1px solid rgba(25, 135, 84, .6);
+    background: rgba(25, 135, 84, .12);
+    color: #0f5132;
     cursor: pointer;
+    font-weight: 600;
 }
 
     .bb-send:disabled {
-        opacity: .55;
+        opacity: .5;
         cursor: not-allowed;
     }
 
