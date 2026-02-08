@@ -335,6 +335,7 @@
 }
 @media (max-width: 420px) {
     .h-calctrl {
+        display: grid;
         grid-template-columns: 44px 1fr 44px;
         grid-template-areas:
             "prev month next"
@@ -345,16 +346,9 @@
             grid-area: prev;
         }
 
-       .h-month {
-    min-width: 120px;       /* Le damos un ancho mínimo para que no baile */
-    text-align: center;
-    padding: 8px 12px;
-    border-radius: 999px;
-    border: 1px solid rgba(255,255,255,0.12);
-    background: rgba(255,255,255,0.05);
-    font-weight: 900;
-    color: rgba(255,255,255,0.85);
-}
+        .h-month {
+            min-width: 0;
+        }
 
         .h-calctrl button:nth-child(3) {
             grid-area: today;
@@ -364,4 +358,52 @@
         .h-calctrl button:nth-child(4) {
             grid-area: next;
         }
+}
+
+@media (max-width: 720px) {
+    .h-wrap {
+        padding: 16px;
+    }
+
+    .h-hero {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .h-pill {
+        width: 100%;
+        text-align: center;
+    }
+
+    .h-chip {
+        flex-wrap: wrap;
+        align-items: flex-start;
+    }
+
+    .h-select {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .h-persona {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .h-hours {
+        width: 100%;
+    }
+
+    .h-calctrl {
+        flex-wrap: wrap;
+    }
+
+    .h-cal {
+        gap: 6px;
+    }
+
+    .h-day {
+        min-height: 44px;
+        padding: 6px;
+    }
 }

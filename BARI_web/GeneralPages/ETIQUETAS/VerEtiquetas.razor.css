@@ -494,3 +494,54 @@
 .label-card.layout-mid .lbl-notes {
     column-count: 2;
 }
+
+@media (max-width: 720px) {
+    .label-controls {
+        grid-template-columns: 1fr;
+    }
+
+    .inline-radio {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .label-frame {
+        width: 100%;
+    }
+
+    .label-card {
+        --right-w: 200px;
+    }
+
+    .lbl-body {
+        grid-template-columns: 1fr;
+    }
+
+    .lbl-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .lbl-notes {
+        column-count: 1;
+    }
+
+    .lbl-right {
+        width: 100%;
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: flex-start;
+    }
+
+    .pictos {
+        --ghs-size: 56px;
+        --ghs-gap: 8px;
+        justify-content: flex-start;
+    }
+
+    .side-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        --qr: 86px;
+        width: 100%;
+    }
+}
