@@ -50,6 +50,8 @@
 
                     <div class="sd-block @item.CssClass @(item == _selected ? "selected" : "")"
                          style="@($"top:{top}px; height:{height}px;")"
+                         @onpointerdown:stopPropagation="true"
+                         @onclick:stopPropagation="true"
                          @onpointerdown="async (e) => await BlockPointerDown(e, item)"
                          @onclick="() => Select(item)">
                         <div class="sd-block-title">
@@ -150,6 +152,30 @@
             else
             {
                 <div class="sd-empty">Selecciona o crea un bloque arrastrando.</div>
+                <div class="sd-form">
+                    <div class="sd-field">
+                        <label>Inicio</label>
+                        <input type="time" class="sd-input" step="60"
+                               value="@MinutesToTime(_draftStartMinute)"
+                               @onchange="(e) => OnDraftTimeChange(e, true)" />
+                    </div>
+
+                    <div class="sd-field">
+                        <label>Fin</label>
+                        <input type="time" class="sd-input" step="60"
+                               value="@MinutesToTime(_draftEndMinute)"
+                               @onchange="(e) => OnDraftTimeChange(e, false)" />
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(_draftError))
+                    {
+                        <div class="sd-muted">@_draftError</div>
+                    }
+
+                    <div class="sd-side-actions">
+                        <button class="sd-btn primary" type="button" @onclick="CreateFromDraft" disabled="@Disabled">Crear</button>
+                    </div>
+                </div>
             }
         </div>
     </div>
@@ -198,6 +224,10 @@
     // Drawer + selection
     private ScheduleItemVm? _selected;
     private bool _drawerOpen;
+    private int _draftStartMinute;
+    private int _draftEndMinute;
+    private string? _draftError;
+    private bool _draftInitialized;
 
     // Drag/resize state
     private bool _dragging;
@@ -234,6 +264,17 @@
     private string MinutesToTime(int m) => $"{m / 60:00}:{m % 60:00}";
 
     private string? _interopError;
+
+    protected override void OnParametersSet()
+    {
+        if (!_draftInitialized || _draftStartMinute < StartMinute || _draftEndMinute > EndMinute)
+        {
+            _draftStartMinute = StartMinute;
+            _draftEndMinute = Math.Min(StartMinute + 60, EndMinute);
+            _draftInitialized = true;
+            _draftError = null;
+        }
+    }
 
     private async Task<bool> EnsureRectAsync()
     {
@@ -589,6 +630,64 @@
 
             StateHasChanged();
         }
+    }
+
+    private void OnDraftTimeChange(ChangeEventArgs e, bool start)
+    {
+        if (TimeSpan.TryParse(e.Value?.ToString(), out var ts))
+        {
+            var m = Snap((int)ts.TotalMinutes, 15);
+            m = Math.Clamp(m, StartMinute, EndMinute);
+
+            if (start)
+            {
+                _draftStartMinute = Math.Min(m, _draftEndMinute - 15);
+            }
+            else
+            {
+                _draftEndMinute = Math.Max(m, _draftStartMinute + 15);
+            }
+
+            _draftError = null;
+            StateHasChanged();
+        }
+    }
+
+    private void CreateFromDraft()
+    {
+        if (Disabled) return;
+
+        var start = Math.Clamp(_draftStartMinute, StartMinute, EndMinute);
+        var end = Math.Clamp(_draftEndMinute, StartMinute, EndMinute);
+
+        if (end - start < 15)
+        {
+            _draftError = "El bloque debe durar al menos 15 minutos.";
+            return;
+        }
+
+        if (!IsFree(start, end))
+        {
+            _draftError = "El horario se cruza con otro bloque.";
+            return;
+        }
+
+        var item = new ScheduleItemVm
+            {
+                Id = 0,
+                Date = Date.Date,
+                StartMinute = start,
+                EndMinute = end,
+                Editable = true
+            };
+
+        item.Type = WorkTypes.Length > 0 ? WorkTypes[0] : "trabajo";
+        ApplyStyle(item);
+
+        Items.Add(item);
+        Select(item);
+        _drawerOpen = true;
+        _draftError = null;
     }
 
     private void ApplyStyle(ScheduleItemVm item)
