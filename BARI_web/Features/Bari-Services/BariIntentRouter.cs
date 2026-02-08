@@ -95,7 +95,8 @@ Devuelve SOLO:
             new() { Role="user", Content = q }
         };
 
-        var decision = await _llm.CreateJsonAsync<RouterDecision>(_opt.ModelPlanner, msgs, maxTokens: 180, ct: ct);
+        var model = string.IsNullOrWhiteSpace(_opt.ModelFast) ? _opt.ModelPlanner : _opt.ModelFast;
+        var decision = await _llm.CreateJsonAsync<RouterDecision>(model, msgs, maxTokens: 180, ct: ct);
         decision.Intent = NormalizeIntent(decision.Intent);
 
         if (decision.Intent == "needs_clarification" && string.IsNullOrWhiteSpace(decision.ClarifyingQuestion))

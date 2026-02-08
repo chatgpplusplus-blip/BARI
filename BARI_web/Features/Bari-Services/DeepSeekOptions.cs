@@ -6,6 +6,7 @@ public sealed class DeepSeekOptions
     public string ApiKey { get; set; } = "";
     public string ModelPlanner { get; set; } = "deepseek-chat";
     public string ModelWriter { get; set; } = "deepseek-chat";
+    public string ModelFast { get; set; } = "deepseek-chat";
     public int TimeoutSeconds { get; set; } = 60;
     public int PlannerMaxTokens { get; set; } = 700;
     public int WriterMaxTokens { get; set; } = 550;
