@@ -1,0 +1,975 @@
+@page "/horarios"
+@using Npgsql
+@using System.Globalization
+@inject NpgsqlDataSource DataSource
+@inject LaboratorioState LaboratorioState
+
+<PageTitle>Horarios</PageTitle>
+
+<section class="page-card">
+    <h2>Horarios</h2>
+    <p class="helper">
+        Registro de entradas y salidas por docente o becario. Elige el personal, marca tus horas y controla el acumulado mensual.
+    </p>
+    <LaboratorioSelector />
+</section>
+
+@if (!string.IsNullOrWhiteSpace(_loadError))
+{
+    <section class="page-card" style="margin-top:1rem;">
+        <p class="error-note">Error: @_loadError</p>
+    </section>
+}
+
+<section class="page-card" style="margin-top:1rem;">
+    <div class="section-head">
+        <h3>Selector de personal</h3>
+        <span class="badge">@(_selectedPersonaNombre ?? "Sin selección")</span>
+    </div>
+
+    <div class="selector-grid">
+        <div class="selector-card">
+            <label class="selector-title">Tipo</label>
+            <div class="radio-row">
+                <label>
+                    <input type="radio" name="tipoPersonal" value="docente" checked="@(_tipoSeleccionado == TipoPersona.Docente)" @onchange="OnTipoPersonaChanged" />
+                    Docente
+                </label>
+                <label>
+                    <input type="radio" name="tipoPersonal" value="becario" checked="@(_tipoSeleccionado == TipoPersona.Becario)" @onchange="OnTipoPersonaChanged" />
+                    Becario
+                </label>
+            </div>
+        </div>
+
+        <div class="selector-card">
+            <label class="selector-title">Selecciona</label>
+            @if (_tipoSeleccionado == TipoPersona.Docente)
+            {
+                <select class="border p-1 form-control" @onchange="OnDocenteChanged">
+                    <option value="">Docente...</option>
+                    @foreach (var d in _docentes)
+                    {
+                        <option value="@d.Id" selected="@(_docenteIdSeleccionado == d.Id)">Docente #@d.Id (Usuario @d.UsuarioId)</option>
+                    }
+                </select>
+            }
+            else
+            {
+                <select class="border p-1 form-control" @onchange="OnBecarioChanged">
+                    <option value="">Becario...</option>
+                    @foreach (var b in _becarios)
+                    {
+                        <option value="@b.Id" selected="@(_becarioIdSeleccionado == b.Id)">Becario #@b.Id (Usuario @b.UsuarioId)</option>
+                    }
+                </select>
+            }
+        </div>
+
+        <div class="selector-card">
+            <label class="selector-title">Acumulado mensual</label>
+            <div class="accumulated">
+                <span class="accumulated-hours">@_horasAcumuladasMensual.ToString("0.00", CultureInfo.InvariantCulture)</span>
+                <span class="accumulated-label">horas</span>
+            </div>
+            <div class="text-xs muted">@_rangoMesTexto</div>
+        </div>
+    </div>
+</section>
+
+<section class="page-card" style="margin-top:1rem;">
+    <div class="calendar-header">
+        <div>
+            <h3>Calendario de horarios</h3>
+            <div class="text-xs muted">Laboratorio actual: @_laboratorioNombre</div>
+        </div>
+        <div class="calendar-controls">
+            <button class="btn" type="button" @onclick="GoPrev">←</button>
+            <button class="btn" type="button" @onclick="GoToday">Hoy</button>
+            <button class="btn" type="button" @onclick="GoNext">→</button>
+
+            <select class="border p-1 form-control" @bind="_viewModeSeleccionado" @onchange="OnViewModeChanged">
+                <option value="Mes">Vista mes</option>
+                <option value="Semana">Vista semana</option>
+                <option value="Ano">Vista año</option>
+            </select>
+
+            <select class="border p-1 form-control" @bind="_anioSeleccionado" @onchange="OnYearChanged">
+                @foreach (var year in _yearsDisponibles)
+                {
+                    <option value="@year">@year</option>
+                }
+            </select>
+        </div>
+    </div>
+
+    @if (_viewModeSeleccionado == ViewMode.Mes)
+    {
+        <div class="calendar-grid">
+            @foreach (var dayName in _dayHeaders)
+            {
+                <div class="calendar-header-cell">@dayName</div>
+            }
+            @foreach (var day in BuildMonthDays(_anchorDate))
+            {
+                var hasEntry = DayHasEntries(day.Date);
+                var isCurrentMonth = day.Month == _anchorDate.Month;
+                <button class="calendar-day @(hasEntry ? "has-entry" : "") @(day.Date == _selectedDate?.Date ? "selected" : "") @(isCurrentMonth ? "" : "muted")"
+                        type="button"
+                        @onclick="() => OnDaySelected(day.Date)">
+                    <span class="day-number">@day.Day</span>
+                </button>
+            }
+        </div>
+    }
+    else if (_viewModeSeleccionado == ViewMode.Semana)
+    {
+        <div class="calendar-grid week-view">
+            @foreach (var day in BuildWeekDays(_anchorDate))
+            {
+                var hasEntry = DayHasEntries(day.Date);
+                <button class="calendar-day week-day @(hasEntry ? "has-entry" : "") @(day.Date == _selectedDate?.Date ? "selected" : "")"
+                        type="button"
+                        @onclick="() => OnDaySelected(day.Date)">
+                    <span class="day-number">@day.Day</span>
+                    <span class="day-name">@day.ToString("ddd", new CultureInfo("es-ES"))</span>
+                </button>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="year-grid">
+            @foreach (var month in Enumerable.Range(1, 12))
+            {
+                var monthDate = new DateTime(_anchorDate.Year, month, 1);
+                <div class="mini-month">
+                    <div class="mini-month-title">@monthDate.ToString("MMMM", new CultureInfo("es-ES"))</div>
+                    <div class="mini-grid">
+                        @foreach (var day in BuildMonthDays(monthDate))
+                        {
+                            var hasEntry = DayHasEntries(day.Date);
+                            var isCurrentMonth = day.Month == month;
+                            <button class="mini-day @(hasEntry ? "has-entry" : "") @(isCurrentMonth ? "" : "muted")"
+                                    type="button"
+                                    @onclick="() => OnDaySelected(day.Date)">
+                                @day.Day
+                            </button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</section>
+
+@if (_selectedDate.HasValue)
+{
+    <section class="page-card" style="margin-top:1rem;">
+        <div class="section-head">
+            <h3>Registro del @(_selectedDate.Value.ToString("dd 'de' MMMM yyyy", new CultureInfo("es-ES")))</h3>
+            <span class="badge">@(_tipoSeleccionado == TipoPersona.Docente ? "Docente" : "Becario")</span>
+        </div>
+
+        <div class="form-grid" style="margin-top:.75rem;">
+            <div class="field">
+                <label>Hora entrada</label>
+                <input class="border p-1 form-control" type="time" @bind="_horaEntrada" />
+            </div>
+            <div class="field">
+                <label>Hora salida</label>
+                <input class="border p-1 form-control" type="time" @bind="_horaSalida" />
+            </div>
+            <div class="field full-span">
+                <div class="exit-note">
+                    Estás registrando una salida del laboratorio: <strong>@_laboratorioNombre</strong>.
+                </div>
+            </div>
+            <div class="form-actions full-span">
+                <button class="btn primary" type="button" @onclick="SaveHorarioAsync" disabled="@(!_puedeGuardarHorario)">Guardar</button>
+                @if (!string.IsNullOrWhiteSpace(_msgGuardar))
+                {
+                    <span class="text-sm muted">@_msgGuardar</span>
+                }
+            </div>
+        </div>
+
+        @if (_tipoSeleccionado == TipoPersona.Becario)
+        {
+            <div class="class-blocks">
+                <h4>Bloqueos por clases</h4>
+                <p class="text-xs muted">Define intervalos donde el becario tiene clases para evitar choques.</p>
+
+                <div class="form-grid" style="margin-top:.5rem;">
+                    <div class="field">
+                        <label>Desde</label>
+                        <input class="border p-1 form-control" type="time" @bind="_claseInicio" />
+                    </div>
+                    <div class="field">
+                        <label>Hasta</label>
+                        <input class="border p-1 form-control" type="time" @bind="_claseFin" />
+                    </div>
+                    <div class="form-actions full-span">
+                        <button class="btn" type="button" @onclick="AddClaseAsync" disabled="@(!_puedeGuardarClase)">Agregar bloqueo</button>
+                        @if (!string.IsNullOrWhiteSpace(_msgClase))
+                        {
+                            <span class="text-sm muted">@_msgClase</span>
+                        }
+                    </div>
+                </div>
+
+                <div class="table-wrap" style="margin-top:.75rem;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Inicio</th>
+                                <th>Fin</th>
+                                <th style="width:120px;">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var bloque in _bloquesClaseDelDia)
+                            {
+                                <tr>
+                                    <td>@bloque.Inicio.ToString(@"hh\:mm")</td>
+                                    <td>@bloque.Fin.ToString(@"hh\:mm")</td>
+                                    <td>
+                                        <button class="btn danger" type="button" @onclick="() => DeleteClaseAsync(bloque.Id)">Quitar</button>
+                                    </td>
+                                </tr>
+                            }
+                            @if (_bloquesClaseDelDia.Count == 0)
+                            {
+                                <tr>
+                                    <td colspan="3" class="muted">Sin bloqueos para este día.</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+
+        <div class="table-wrap" style="margin-top:1rem;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Entrada</th>
+                        <th>Salida</th>
+                        <th>Duración (hrs)</th>
+                        <th style="width:120px;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var entry in _entradasDelDia)
+                    {
+                        <tr>
+                            <td>@entry.HoraInicio.ToString(@"hh\:mm")</td>
+                            <td>@entry.HoraFin.ToString(@"hh\:mm")</td>
+                            <td>@entry.Horas.ToString("0.00", CultureInfo.InvariantCulture)</td>
+                            <td>
+                                <button class="btn danger" type="button" @onclick="() => DeleteHorarioAsync(entry.Id)">Eliminar</button>
+                            </td>
+                        </tr>
+                    }
+                    @if (_entradasDelDia.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="4" class="muted">No hay registros aún.</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+}
+
+<style>
+    .selector-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 1rem;
+    }
+
+    .selector-card {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.75rem;
+        padding: 0.75rem;
+    }
+
+    .selector-title {
+        font-weight: 700;
+        font-size: 0.85rem;
+        display: block;
+        margin-bottom: 0.4rem;
+        color: #1f2937;
+    }
+
+    .radio-row {
+        display: flex;
+        gap: 1rem;
+        font-weight: 600;
+        color: #1f2937;
+    }
+
+    .accumulated {
+        display: flex;
+        align-items: baseline;
+        gap: 0.35rem;
+    }
+
+    .accumulated-hours {
+        font-size: 1.6rem;
+        font-weight: 800;
+        color: #0b2a68;
+    }
+
+    .accumulated-label {
+        font-size: 0.85rem;
+        color: #6b7280;
+    }
+
+    .calendar-header {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: center;
+    }
+
+    .calendar-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: center;
+    }
+
+    .calendar-grid {
+        margin-top: 1rem;
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 0.35rem;
+    }
+
+    .calendar-header-cell {
+        text-align: center;
+        font-weight: 700;
+        font-size: 0.75rem;
+        color: #6b7280;
+    }
+
+    .calendar-day {
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.6rem;
+        min-height: 64px;
+        padding: 0.4rem;
+        display: flex;
+        align-items: flex-start;
+        justify-content: flex-start;
+        position: relative;
+        cursor: pointer;
+        transition: border 0.2s ease, background 0.2s ease;
+    }
+
+    .calendar-day:hover {
+        border-color: #0b2a68;
+        background: #f0f6ff;
+    }
+
+    .calendar-day.selected {
+        border-color: #0b2a68;
+        background: #e6efff;
+        box-shadow: inset 0 0 0 1px #0b2a68;
+    }
+
+    .calendar-day.muted {
+        color: #9ca3af;
+        background: #f8fafc;
+    }
+
+    .calendar-day.has-entry {
+        border-color: #22c55e;
+        background: #ecfdf3;
+    }
+
+    .calendar-day.has-entry::after {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #22c55e;
+        position: absolute;
+        bottom: 6px;
+        right: 6px;
+    }
+
+    .day-number {
+        font-weight: 700;
+    }
+
+    .week-view {
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+    }
+
+    .week-day {
+        min-height: 80px;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .week-day .day-name {
+        margin-top: 0.25rem;
+        font-size: 0.75rem;
+        color: #6b7280;
+    }
+
+    .year-grid {
+        margin-top: 1rem;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 1rem;
+    }
+
+    .mini-month {
+        border: 1px solid #e5e7eb;
+        border-radius: 0.75rem;
+        padding: 0.75rem;
+        background: #fff;
+    }
+
+    .mini-month-title {
+        font-weight: 700;
+        text-transform: capitalize;
+        margin-bottom: 0.4rem;
+    }
+
+    .mini-grid {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 0.15rem;
+    }
+
+    .mini-day {
+        font-size: 0.65rem;
+        padding: 0.2rem;
+        border-radius: 0.3rem;
+        border: none;
+        background: #f8fafc;
+        cursor: pointer;
+        color: #1f2937;
+    }
+
+    .mini-day.has-entry {
+        background: #d1fae5;
+        color: #065f46;
+        font-weight: 700;
+    }
+
+    .mini-day.muted {
+        color: #9ca3af;
+        background: #f1f5f9;
+    }
+
+    .exit-note {
+        background: #fff7ed;
+        border: 1px solid #fed7aa;
+        padding: 0.5rem 0.75rem;
+        border-radius: 0.5rem;
+        color: #7c2d12;
+        font-size: 0.85rem;
+    }
+
+    .class-blocks {
+        margin-top: 1.5rem;
+        padding-top: 1rem;
+        border-top: 1px dashed #e5e7eb;
+    }
+</style>
+
+@code {
+    private sealed record PersonalItem(int Id, int UsuarioId);
+    private sealed record HorarioEntry(long Id, DateTime Fecha, TimeSpan HoraInicio, TimeSpan HoraFin, double Horas);
+    private sealed record ClaseBlock(long Id, DateTime Fecha, TimeSpan Inicio, TimeSpan Fin);
+
+    private enum TipoPersona { Docente, Becario }
+    private enum ViewMode { Mes, Semana, Ano }
+
+    private readonly string[] _dayHeaders = new[] { "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom" };
+
+    private List<PersonalItem> _docentes = new();
+    private List<PersonalItem> _becarios = new();
+    private List<HorarioEntry> _horarios = new();
+    private List<ClaseBlock> _bloquesClase = new();
+
+    private TipoPersona _tipoSeleccionado = TipoPersona.Docente;
+    private int? _docenteIdSeleccionado;
+    private int? _becarioIdSeleccionado;
+    private DateTime _anchorDate = DateTime.Today;
+    private DateTime? _selectedDate = DateTime.Today;
+    private ViewMode _viewModeSeleccionado = ViewMode.Mes;
+
+    private string _horaEntrada = "08:00";
+    private string _horaSalida = "10:00";
+    private string _claseInicio = "07:00";
+    private string _claseFin = "08:00";
+    private string? _loadError;
+    private string? _msgGuardar;
+    private string? _msgClase;
+    private string _laboratorioNombre = "Laboratorio";
+    private double _horasAcumuladasMensual;
+    private string _rangoMesTexto = string.Empty;
+
+    private int _anioSeleccionado = DateTime.Today.Year;
+    private List<int> _yearsDisponibles = new();
+
+    private List<HorarioEntry> _entradasDelDia =>
+        _selectedDate.HasValue
+            ? _horarios.Where(h => h.Fecha.Date == _selectedDate.Value.Date)
+                .OrderBy(h => h.HoraInicio)
+                .ToList()
+            : new();
+
+    private List<ClaseBlock> _bloquesClaseDelDia =>
+        _selectedDate.HasValue
+            ? _bloquesClase.Where(b => b.Fecha.Date == _selectedDate.Value.Date)
+                .OrderBy(b => b.Inicio)
+                .ToList()
+            : new();
+
+    private bool _puedeGuardarHorario =>
+        _selectedDate.HasValue &&
+        (_tipoSeleccionado == TipoPersona.Docente ? _docenteIdSeleccionado.HasValue : _becarioIdSeleccionado.HasValue);
+
+    private bool _puedeGuardarClase =>
+        _selectedDate.HasValue && _becarioIdSeleccionado.HasValue;
+
+    private string? _selectedPersonaNombre => _tipoSeleccionado == TipoPersona.Docente
+        ? (_docenteIdSeleccionado.HasValue ? $"Docente #{_docenteIdSeleccionado}" : null)
+        : (_becarioIdSeleccionado.HasValue ? $"Becario #{_becarioIdSeleccionado}" : null);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _yearsDisponibles = Enumerable.Range(DateTime.Today.Year - 3, 7).ToList();
+        _anioSeleccionado = _anchorDate.Year;
+
+        await LoadPersonalAsync();
+        await LoadLaboratorioNombreAsync();
+        await LoadHorariosAsync();
+    }
+
+    private async Task LoadPersonalAsync()
+    {
+        try
+        {
+            _docentes = await LoadPersonasAsync("docentes", "docente_id");
+            _becarios = await LoadPersonasAsync("becarios", "becario_id");
+        }
+        catch (Exception ex)
+        {
+            _loadError = ex.Message;
+        }
+    }
+
+    private async Task<List<PersonalItem>> LoadPersonasAsync(string tableName, string idColumn)
+    {
+        var items = new List<PersonalItem>();
+        await using var conn = await DataSource.OpenConnectionAsync();
+        var cmdText = $"SELECT {idColumn}, usuario_id FROM {tableName} ORDER BY {idColumn}";
+        await using var cmd = new NpgsqlCommand(cmdText, conn);
+        await using var reader = await cmd.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            items.Add(new PersonalItem(reader.GetInt32(0), reader.GetInt32(1)));
+        }
+
+        return items;
+    }
+
+    private async Task LoadLaboratorioNombreAsync()
+    {
+        await using var conn = await DataSource.OpenConnectionAsync();
+        await using var cmd = new NpgsqlCommand("SELECT nombre FROM laboratorios WHERE laboratorio_id = @labId", conn);
+        cmd.Parameters.AddWithValue("labId", LaboratorioState.LaboratorioId);
+        var result = await cmd.ExecuteScalarAsync();
+        _laboratorioNombre = result?.ToString() ?? $"Laboratorio #{LaboratorioState.LaboratorioId}";
+    }
+
+    private async Task LoadHorariosAsync()
+    {
+        _msgGuardar = null;
+        _msgClase = null;
+        _horarios.Clear();
+        _bloquesClase.Clear();
+
+        if (!HasPersonaSeleccionada())
+        {
+            return;
+        }
+
+        var (rangeStart, rangeEnd) = GetRangeForView();
+        var (monthStart, monthEnd) = GetMonthRange(_anchorDate);
+        _rangoMesTexto = $"{monthStart:dd/MM} - {monthEnd:dd/MM}";
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+
+        if (_tipoSeleccionado == TipoPersona.Docente && _docenteIdSeleccionado.HasValue)
+        {
+            await using var cmd = new NpgsqlCommand(@"
+                SELECT horario_docente_id, fecha, hora_inicio, hora_fin
+                FROM horarios_docentes
+                WHERE docente_id = @persona AND fecha BETWEEN @inicio AND @fin
+                ORDER BY fecha, hora_inicio;", conn);
+            cmd.Parameters.AddWithValue("persona", _docenteIdSeleccionado.Value);
+            cmd.Parameters.AddWithValue("inicio", rangeStart);
+            cmd.Parameters.AddWithValue("fin", rangeEnd);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var fecha = reader.GetDateTime(1);
+                var inicio = reader.GetTimeSpan(2);
+                var fin = reader.GetTimeSpan(3);
+                _horarios.Add(new HorarioEntry(reader.GetInt64(0), fecha, inicio, fin, (fin - inicio).TotalHours));
+            }
+        }
+        else if (_becarioIdSeleccionado.HasValue)
+        {
+            await using var cmd = new NpgsqlCommand(@"
+                SELECT horario_becario_id, fecha, hora_inicio, hora_fin
+                FROM horarios_becarios
+                WHERE becario_id = @persona AND fecha BETWEEN @inicio AND @fin
+                ORDER BY fecha, hora_inicio;", conn);
+            cmd.Parameters.AddWithValue("persona", _becarioIdSeleccionado.Value);
+            cmd.Parameters.AddWithValue("inicio", rangeStart);
+            cmd.Parameters.AddWithValue("fin", rangeEnd);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var fecha = reader.GetDateTime(1);
+                var inicio = reader.GetTimeSpan(2);
+                var fin = reader.GetTimeSpan(3);
+                _horarios.Add(new HorarioEntry(reader.GetInt64(0), fecha, inicio, fin, (fin - inicio).TotalHours));
+            }
+
+            await LoadBloquesClaseAsync(conn, rangeStart, rangeEnd);
+        }
+
+        await LoadHorasAcumuladasAsync(monthStart, monthEnd);
+    }
+
+    private async Task LoadBloquesClaseAsync(NpgsqlConnection conn, DateTime start, DateTime end)
+    {
+        if (!_becarioIdSeleccionado.HasValue)
+        {
+            return;
+        }
+
+        await using var cmd = new NpgsqlCommand(@"
+            SELECT horario_clase_id, fecha, hora_inicio, hora_fin
+            FROM horarios_clases_becario
+            WHERE becario_id = @persona AND fecha BETWEEN @inicio AND @fin
+            ORDER BY fecha, hora_inicio;", conn);
+        cmd.Parameters.AddWithValue("persona", _becarioIdSeleccionado.Value);
+        cmd.Parameters.AddWithValue("inicio", start);
+        cmd.Parameters.AddWithValue("fin", end);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var fecha = reader.GetDateTime(1);
+            var inicio = reader.GetTimeSpan(2);
+            var fin = reader.GetTimeSpan(3);
+            _bloquesClase.Add(new ClaseBlock(reader.GetInt64(0), fecha, inicio, fin));
+        }
+    }
+
+    private async Task LoadHorasAcumuladasAsync(DateTime start, DateTime end)
+    {
+        if (!HasPersonaSeleccionada())
+        {
+            _horasAcumuladasMensual = 0;
+            return;
+        }
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+        var tableName = _tipoSeleccionado == TipoPersona.Docente ? "horarios_docentes" : "horarios_becarios";
+        var columnName = _tipoSeleccionado == TipoPersona.Docente ? "docente_id" : "becario_id";
+        var personaId = _tipoSeleccionado == TipoPersona.Docente ? _docenteIdSeleccionado!.Value : _becarioIdSeleccionado!.Value;
+
+        await using var cmd = new NpgsqlCommand($@"
+            SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (hora_fin - hora_inicio)) / 3600), 0)
+            FROM {tableName}
+            WHERE {columnName} = @persona AND fecha BETWEEN @inicio AND @fin;", conn);
+        cmd.Parameters.AddWithValue("persona", personaId);
+        cmd.Parameters.AddWithValue("inicio", start);
+        cmd.Parameters.AddWithValue("fin", end);
+
+        var result = await cmd.ExecuteScalarAsync();
+        _horasAcumuladasMensual = Convert.ToDouble(result, CultureInfo.InvariantCulture);
+    }
+
+    private void OnTipoPersonaChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        _tipoSeleccionado = value == "becario" ? TipoPersona.Becario : TipoPersona.Docente;
+        _msgGuardar = null;
+        _msgClase = null;
+        _selectedDate = DateTime.Today;
+        _ = LoadHorariosAsync();
+    }
+
+    private async Task OnDocenteChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var id))
+        {
+            _docenteIdSeleccionado = id;
+        }
+        else
+        {
+            _docenteIdSeleccionado = null;
+        }
+
+        await LoadHorariosAsync();
+    }
+
+    private async Task OnBecarioChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var id))
+        {
+            _becarioIdSeleccionado = id;
+        }
+        else
+        {
+            _becarioIdSeleccionado = null;
+        }
+
+        await LoadHorariosAsync();
+    }
+
+    private async Task OnViewModeChanged(ChangeEventArgs e)
+    {
+        if (Enum.TryParse<ViewMode>(e.Value?.ToString(), out var mode))
+        {
+            _viewModeSeleccionado = mode;
+        }
+
+        await LoadHorariosAsync();
+    }
+
+    private async Task OnYearChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var year))
+        {
+            _anioSeleccionado = year;
+            _anchorDate = new DateTime(_anioSeleccionado, _anchorDate.Month, 1);
+        }
+
+        await LoadHorariosAsync();
+    }
+
+    private void OnDaySelected(DateTime date)
+    {
+        _selectedDate = date;
+    }
+
+    private void GoPrev()
+    {
+        _anchorDate = _viewModeSeleccionado switch
+        {
+            ViewMode.Semana => _anchorDate.AddDays(-7),
+            ViewMode.Ano => _anchorDate.AddYears(-1),
+            _ => _anchorDate.AddMonths(-1)
+        };
+        _anioSeleccionado = _anchorDate.Year;
+        _ = LoadHorariosAsync();
+    }
+
+    private void GoNext()
+    {
+        _anchorDate = _viewModeSeleccionado switch
+        {
+            ViewMode.Semana => _anchorDate.AddDays(7),
+            ViewMode.Ano => _anchorDate.AddYears(1),
+            _ => _anchorDate.AddMonths(1)
+        };
+        _anioSeleccionado = _anchorDate.Year;
+        _ = LoadHorariosAsync();
+    }
+
+    private void GoToday()
+    {
+        _anchorDate = DateTime.Today;
+        _selectedDate = DateTime.Today;
+        _anioSeleccionado = _anchorDate.Year;
+        _ = LoadHorariosAsync();
+    }
+
+    private IEnumerable<DateTime> BuildMonthDays(DateTime reference)
+    {
+        var first = new DateTime(reference.Year, reference.Month, 1);
+        var start = StartOfWeek(first);
+        for (var i = 0; i < 42; i++)
+        {
+            yield return start.AddDays(i);
+        }
+    }
+
+    private IEnumerable<DateTime> BuildWeekDays(DateTime reference)
+    {
+        var start = StartOfWeek(reference);
+        return Enumerable.Range(0, 7).Select(i => start.AddDays(i));
+    }
+
+    private DateTime StartOfWeek(DateTime date)
+    {
+        var diff = (7 + (date.DayOfWeek - DayOfWeek.Monday)) % 7;
+        return date.AddDays(-diff).Date;
+    }
+
+    private bool DayHasEntries(DateTime date) => _horarios.Any(h => h.Fecha.Date == date.Date);
+
+    private (DateTime Start, DateTime End) GetRangeForView()
+    {
+        return _viewModeSeleccionado switch
+        {
+            ViewMode.Semana => (StartOfWeek(_anchorDate), StartOfWeek(_anchorDate).AddDays(6)),
+            ViewMode.Ano => (new DateTime(_anchorDate.Year, 1, 1), new DateTime(_anchorDate.Year, 12, 31)),
+            _ => GetMonthRange(_anchorDate)
+        };
+    }
+
+    private (DateTime Start, DateTime End) GetMonthRange(DateTime reference)
+    {
+        var start = new DateTime(reference.Year, reference.Month, 1);
+        var end = start.AddMonths(1).AddDays(-1);
+        return (start, end);
+    }
+
+    private bool HasPersonaSeleccionada() => _tipoSeleccionado == TipoPersona.Docente
+        ? _docenteIdSeleccionado.HasValue
+        : _becarioIdSeleccionado.HasValue;
+
+    private async Task SaveHorarioAsync()
+    {
+        _msgGuardar = null;
+
+        if (!_selectedDate.HasValue || !HasPersonaSeleccionada())
+        {
+            _msgGuardar = "Selecciona un personal válido.";
+            return;
+        }
+
+        if (!TimeSpan.TryParse(_horaEntrada, out var entrada) || !TimeSpan.TryParse(_horaSalida, out var salida))
+        {
+            _msgGuardar = "Horas inválidas.";
+            return;
+        }
+
+        if (salida <= entrada)
+        {
+            _msgGuardar = "La hora de salida debe ser mayor a la de entrada.";
+            return;
+        }
+
+        if (_tipoSeleccionado == TipoPersona.Becario && _bloquesClaseDelDia.Any(b => IntervalsOverlap(entrada, salida, b.Inicio, b.Fin)))
+        {
+            _msgGuardar = "Las horas se cruzan con un horario de clases.";
+            return;
+        }
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+        if (_tipoSeleccionado == TipoPersona.Docente)
+        {
+            await using var cmd = new NpgsqlCommand(@"
+                INSERT INTO horarios_docentes (docente_id, laboratorio_id, fecha, hora_inicio, hora_fin)
+                VALUES (@persona, @lab, @fecha, @inicio, @fin);", conn);
+            cmd.Parameters.AddWithValue("persona", _docenteIdSeleccionado!.Value);
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            cmd.Parameters.AddWithValue("fecha", _selectedDate.Value.Date);
+            cmd.Parameters.AddWithValue("inicio", entrada);
+            cmd.Parameters.AddWithValue("fin", salida);
+            await cmd.ExecuteNonQueryAsync();
+        }
+        else
+        {
+            await using var cmd = new NpgsqlCommand(@"
+                INSERT INTO horarios_becarios (becario_id, laboratorio_id, fecha, hora_inicio, hora_fin)
+                VALUES (@persona, @lab, @fecha, @inicio, @fin);", conn);
+            cmd.Parameters.AddWithValue("persona", _becarioIdSeleccionado!.Value);
+            cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+            cmd.Parameters.AddWithValue("fecha", _selectedDate.Value.Date);
+            cmd.Parameters.AddWithValue("inicio", entrada);
+            cmd.Parameters.AddWithValue("fin", salida);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        _msgGuardar = "Horario guardado.";
+        await LoadHorariosAsync();
+    }
+
+    private async Task DeleteHorarioAsync(long horarioId)
+    {
+        var tableName = _tipoSeleccionado == TipoPersona.Docente ? "horarios_docentes" : "horarios_becarios";
+        var idColumn = _tipoSeleccionado == TipoPersona.Docente ? "horario_docente_id" : "horario_becario_id";
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+        await using var cmd = new NpgsqlCommand($"DELETE FROM {tableName} WHERE {idColumn} = @id", conn);
+        cmd.Parameters.AddWithValue("id", horarioId);
+        await cmd.ExecuteNonQueryAsync();
+
+        await LoadHorariosAsync();
+    }
+
+    private async Task AddClaseAsync()
+    {
+        _msgClase = null;
+        if (!_selectedDate.HasValue || !_becarioIdSeleccionado.HasValue)
+        {
+            _msgClase = "Selecciona un becario.";
+            return;
+        }
+
+        if (!TimeSpan.TryParse(_claseInicio, out var inicio) || !TimeSpan.TryParse(_claseFin, out var fin))
+        {
+            _msgClase = "Horas inválidas.";
+            return;
+        }
+
+        if (fin <= inicio)
+        {
+            _msgClase = "La hora fin debe ser mayor a la de inicio.";
+            return;
+        }
+
+        await using var conn = await DataSource.OpenConnectionAsync();
+        await using var cmd = new NpgsqlCommand(@"
+            INSERT INTO horarios_clases_becario (becario_id, fecha, hora_inicio, hora_fin)
+            VALUES (@persona, @fecha, @inicio, @fin);", conn);
+        cmd.Parameters.AddWithValue("persona", _becarioIdSeleccionado.Value);
+        cmd.Parameters.AddWithValue("fecha", _selectedDate.Value.Date);
+        cmd.Parameters.AddWithValue("inicio", inicio);
+        cmd.Parameters.AddWithValue("fin", fin);
+        await cmd.ExecuteNonQueryAsync();
+
+        _msgClase = "Bloqueo agregado.";
+        await LoadHorariosAsync();
+    }
+
+    private async Task DeleteClaseAsync(long bloqueId)
+    {
+        await using var conn = await DataSource.OpenConnectionAsync();
+        await using var cmd = new NpgsqlCommand("DELETE FROM horarios_clases_becario WHERE horario_clase_id = @id", conn);
+        cmd.Parameters.AddWithValue("id", bloqueId);
+        await cmd.ExecuteNonQueryAsync();
+
+        await LoadHorariosAsync();
+    }
+
+    private bool IntervalsOverlap(TimeSpan aStart, TimeSpan aEnd, TimeSpan bStart, TimeSpan bEnd)
+        => aStart < bEnd && bStart < aEnd;
+}
