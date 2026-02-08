@@ -200,6 +200,58 @@ CREATE TABLE IF NOT EXISTS modelos_equipo (
   altura_cm numeric -- Agregado
 );
 
+-- =========================================================
+-- PERSONAL Y HORARIOS
+-- =========================================================
+CREATE TABLE IF NOT EXISTS docentes (
+  docente_id integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  usuario_id integer NOT NULL,
+  nombre text NOT NULL,
+  imagen_url text,
+  activo boolean NOT NULL DEFAULT true,
+  created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at timestamp
+);
+
+CREATE TABLE IF NOT EXISTS becarios (
+  becario_id integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  usuario_id integer NOT NULL,
+  nombre text NOT NULL,
+  imagen_url text,
+  activo boolean NOT NULL DEFAULT true,
+  created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at timestamp
+);
+
+CREATE TABLE IF NOT EXISTS horarios_docentes (
+  horario_docente_id bigserial PRIMARY KEY,
+  docente_id integer NOT NULL REFERENCES docentes(docente_id),
+  laboratorio_id integer NOT NULL REFERENCES laboratorios(laboratorio_id),
+  fecha date NOT NULL,
+  hora_inicio time NOT NULL,
+  hora_fin time NOT NULL,
+  created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS horarios_becarios (
+  horario_becario_id bigserial PRIMARY KEY,
+  becario_id integer NOT NULL REFERENCES becarios(becario_id),
+  laboratorio_id integer NOT NULL REFERENCES laboratorios(laboratorio_id),
+  fecha date NOT NULL,
+  hora_inicio time NOT NULL,
+  hora_fin time NOT NULL,
+  created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS horarios_clases_becario (
+  horario_clase_id bigserial PRIMARY KEY,
+  becario_id integer NOT NULL REFERENCES becarios(becario_id),
+  fecha date NOT NULL,
+  hora_inicio time NOT NULL,
+  hora_fin time NOT NULL,
+  created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS equipos (
   equipo_id varchar PRIMARY KEY,
   nombre text NOT NULL,
