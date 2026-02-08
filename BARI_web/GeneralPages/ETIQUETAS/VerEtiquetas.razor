@@ -137,6 +137,7 @@
                                 <div class="lbl-body">
                                     <div class="lbl-left">
                                         <div class="lbl-title">@DisplayOrDash(_editNombrePrincipal)</div>
+                                        <div class="lbl-signal">@DisplayOrDash(_editPalabraAdvertencia)</div>
                                         <div class="lbl-sub">@DisplayOrDash(_editNombreQuimico)</div>
 
                                         <div class="lbl-grid">
@@ -145,7 +146,10 @@
                                             <div class="pair"><span class="k">Categoría</span><span class="v">@DisplayOrDash(_editCategoria)</span></div>
 
                                             <div class="pair"><span class="k">Subcats</span><span class="v">@DisplayOrDash(_editSubcategorias)</span></div>
+                                            <div class="pair"><span class="k">Advertencia</span><span class="v">@DisplayOrDash(_editPalabraAdvertencia)</span></div>
+                                            <div class="pair"><span class="k">Concentración</span><span class="v">@DisplayOrDash(_editConcentracion)</span></div>
                                             <div class="pair"><span class="k">Contenedor</span><span class="v">@DisplayOrDash(_editContenedorId)</span></div>
+                                            <div class="pair"><span class="k">Pureza</span><span class="v">@DisplayOrDash(_editPureza)</span></div>
                                             <div class="pair"><span class="k">Proveedor</span><span class="v">@DisplayOrDash(_editContProveedor)</span></div>
 
                                             <div class="pair"><span class="k">Condición</span><span class="v">@DisplayOrDash(_editContCondicion)</span></div>
@@ -161,6 +165,8 @@
                                             <div class="pair"><span class="k">Apertura</span><span class="v">@FormatDate(_editFechaApertura)</span></div>
 
                                             <div class="pair"><span class="k">Vence</span><span class="v">@FormatDate(_editFechaVencimiento)</span></div>
+                                            <div class="pair"><span class="k">Prov. dirección</span><span class="v">@DisplayOrDash(_editContProveedorDireccion)</span></div>
+                                            <div class="pair"><span class="k">Tel. emergencia</span><span class="v">@DisplayOrDash(_editContProveedorTelefono)</span></div>
                                         </div>
 
                                         <div class="lbl-micro">
@@ -171,6 +177,41 @@
                                             <div class="micro-row">
                                                 <span class="mk">P</span>
                                                 <span class="mv">@DisplayOrDash(_pCodesText)</span>
+                                            </div>
+                                        </div>
+
+                                        <div class="lbl-hp-details">
+                                            <div class="hp-block">
+                                                <div class="hp-title">Frases H</div>
+                                                @if (_hDescriptions.Count == 0)
+                                                {
+                                                    <div class="hp-empty">—</div>
+                                                }
+                                                else
+                                                {
+                                                    <ul>
+                                                        @foreach (var item in _hDescriptions)
+                                                        {
+                                                            <li>@item</li>
+                                                        }
+                                                    </ul>
+                                                }
+                                            </div>
+                                            <div class="hp-block">
+                                                <div class="hp-title">Frases P</div>
+                                                @if (_pDescriptions.Count == 0)
+                                                {
+                                                    <div class="hp-empty">—</div>
+                                                }
+                                                else
+                                                {
+                                                    <ul>
+                                                        @foreach (var item in _pDescriptions)
+                                                        {
+                                                            <li>@item</li>
+                                                        }
+                                                    </ul>
+                                                }
                                             </div>
                                         </div>
 
@@ -287,6 +328,21 @@
                                                @bind="_editCategoria" @bind:event="oninput" @bind:after="MarkFit" />
                                     </div>
                                     <div class="label-edit-field">
+                                        <label class="text-xs text-gray-500">Palabra de advertencia</label>
+                                        <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editPalabraAdvertencia) ? "is-filled" : "")"
+                                               @bind="_editPalabraAdvertencia" @bind:event="oninput" @bind:after="MarkFit" />
+                                    </div>
+                                    <div class="label-edit-field">
+                                        <label class="text-xs text-gray-500">Concentración</label>
+                                        <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editConcentracion) ? "is-filled" : "")"
+                                               @bind="_editConcentracion" @bind:event="oninput" @bind:after="MarkFit" />
+                                    </div>
+                                    <div class="label-edit-field">
+                                        <label class="text-xs text-gray-500">Pureza</label>
+                                        <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editPureza) ? "is-filled" : "")"
+                                               @bind="_editPureza" @bind:event="oninput" @bind:after="MarkFit" />
+                                    </div>
+                                    <div class="label-edit-field">
                                         <label class="text-xs text-gray-500">Subcategorías</label>
                                         <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editSubcategorias) ? "is-filled" : "")"
                                                @bind="_editSubcategorias" @bind:event="oninput" @bind:after="MarkFit" />
@@ -343,6 +399,16 @@
                                         <label class="text-xs text-gray-500">Proveedor</label>
                                         <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editContProveedor) ? "is-filled" : "")"
                                                @bind="_editContProveedor" @bind:event="oninput" @bind:after="MarkFit" />
+                                    </div>
+                                    <div class="label-edit-field">
+                                        <label class="text-xs text-gray-500">Proveedor dirección</label>
+                                        <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editContProveedorDireccion) ? "is-filled" : "")"
+                                               @bind="_editContProveedorDireccion" @bind:event="oninput" @bind:after="MarkFit" />
+                                    </div>
+                                    <div class="label-edit-field">
+                                        <label class="text-xs text-gray-500">Tel. emergencia</label>
+                                        <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editContProveedorTelefono) ? "is-filled" : "")"
+                                               @bind="_editContProveedorTelefono" @bind:event="oninput" @bind:after="MarkFit" />
                                     </div>
                                     <div class="label-edit-field">
                                         <label class="text-xs text-gray-500">Condición</label>
@@ -414,6 +480,9 @@
     private string? _editSubcategorias;
     private string? _editDescripcion;
     private string? _editObservaciones;
+    private string? _editPalabraAdvertencia;
+    private string? _editConcentracion;
+    private string? _editPureza;
 
     private string? _editContenedorId;
     private string? _editQrText;
@@ -421,6 +490,8 @@
     private decimal? _editContCantidadActual;
     private string? _editContUnidad;
     private string? _editContProveedor;
+    private string? _editContProveedorDireccion;
+    private string? _editContProveedorTelefono;
     private string? _editContCondicion;
     private DateTime? _editFechaCompra;
     private DateTime? _editFechaRecepcion;
@@ -440,6 +511,8 @@
 
     private string? _hCodesText;
     private string? _pCodesText;
+    private readonly List<string> _hDescriptions = new();
+    private readonly List<string> _pDescriptions = new();
 
     private string? _marcaNombre;
     private string? _marcaLogoUrl;
@@ -452,6 +525,8 @@
     private decimal? _contCantidadActual;
     private string? _contUnidad;
     private string? _contProveedor;
+    private string? _contProveedorDireccion;
+    private string? _contProveedorTelefono;
     private string? _contCondicion;
 
     // ✅ Pictos: ahora soportamos “muchos” con grid 1/2/3 columnas y tamaños dinámicos
@@ -692,6 +767,8 @@ ORDER BY nombre, c.cont_id;
 
         _hCodesText = null;
         _pCodesText = null;
+        _hDescriptions.Clear();
+        _pDescriptions.Clear();
 
         _marcaNombre = null;
         _marcaLogoUrl = null;
@@ -705,6 +782,8 @@ ORDER BY nombre, c.cont_id;
         _contCantidadActual = null;
         _contUnidad = null;
         _contProveedor = null;
+        _contProveedorDireccion = null;
+        _contProveedorTelefono = null;
         _contCondicion = null;
 
         _editContenedorId = null;
@@ -713,11 +792,16 @@ ORDER BY nombre, c.cont_id;
         _editContCantidadActual = null;
         _editContUnidad = null;
         _editContProveedor = null;
+        _editContProveedorDireccion = null;
+        _editContProveedorTelefono = null;
         _editContCondicion = null;
         _editFechaCompra = null;
         _editFechaRecepcion = null;
         _editFechaApertura = null;
         _editFechaVencimiento = null;
+        _editPalabraAdvertencia = null;
+        _editConcentracion = null;
+        _editPureza = null;
 
         _romboSalud = null;
         _romboInflamabilidad = null;
@@ -746,6 +830,9 @@ SELECT s.sustancia_id,
        NULLIF(s.nombre_quimico, '') AS nombre_quimico,
        NULLIF(s.cas, '') AS cas,
        NULLIF(s.forma_fisica, '') AS forma_fisica,
+       NULLIF(s.palabra_advertencia, '') AS palabra_advertencia,
+       NULLIF(s.concentracion, '') AS concentracion,
+       NULLIF(s.pureza, '') AS pureza,
        NULLIF(s.descripcion, '') AS descripcion,
        NULLIF(s.observaciones, '') AS observaciones,
        cat.nombre AS categoria,
@@ -760,6 +847,8 @@ SELECT s.sustancia_id,
        c.cantidad_reactivo_actual,
        u.simbolo AS unidad,
        NULLIF(c.proveedor, '') AS proveedor,
+       NULLIF(c.proveedor_direccion, '') AS proveedor_direccion,
+       NULLIF(c.proveedor_telefono_emergencia, '') AS proveedor_telefono_emergencia,
        cond.nombre AS condicion,
        ma.nombre AS marca_nombre,
        ma.imagen_url AS marca_logo
@@ -775,11 +864,11 @@ WHERE c.cont_id = @cont
   AND c.laboratorio_id = @lab
   AND s.categoria_id = @cat
 GROUP BY s.sustancia_id, c.cont_id, s.nombre_comercial, s.nombre_quimico, s.cas,
-         s.forma_fisica, s.descripcion, s.observaciones,
+         s.forma_fisica, s.palabra_advertencia, s.concentracion, s.pureza, s.descripcion, s.observaciones,
          cat.nombre, s.sustancia_controlada, c.qr, c.fecha_compra,
          c.fecha_recepcion, c.fecha_apertura, c.fecha_vencimiento,
          c.cantidad_reactivo_nominal, c.cantidad_reactivo_actual, u.simbolo,
-         c.proveedor, cond.nombre, ma.nombre, ma.imagen_url
+         c.proveedor, c.proveedor_direccion, c.proveedor_telefono_emergencia, cond.nombre, ma.nombre, ma.imagen_url
 LIMIT 1;
 ";
             await using var cmd = new NpgsqlCommand(sql, conn);
@@ -801,24 +890,29 @@ LIMIT 1;
                     reader.IsDBNull(8) ? null : reader.GetString(8),
                     reader.IsDBNull(9) ? null : reader.GetString(9),
                     reader.IsDBNull(10) ? null : reader.GetString(10),
-                    !reader.IsDBNull(11) && reader.GetBoolean(11)
+                    reader.IsDBNull(11) ? null : reader.GetString(11),
+                    reader.IsDBNull(12) ? null : reader.GetString(12),
+                    reader.IsDBNull(13) ? null : reader.GetString(13),
+                    !reader.IsDBNull(14) && reader.GetBoolean(14)
                 );
 
-                _qrTexto = reader.IsDBNull(12) ? null : reader.GetString(12);
-                _fechaCompra = reader.IsDBNull(13) ? null : reader.GetDateTime(13);
-                _fechaRecepcion = reader.IsDBNull(14) ? null : reader.GetDateTime(14);
-                _fechaApertura = reader.IsDBNull(15) ? null : reader.GetDateTime(15);
-                _fechaVencimiento = reader.IsDBNull(16) ? null : reader.GetDateTime(16);
+                _qrTexto = reader.IsDBNull(15) ? null : reader.GetString(15);
+                _fechaCompra = reader.IsDBNull(16) ? null : reader.GetDateTime(16);
+                _fechaRecepcion = reader.IsDBNull(17) ? null : reader.GetDateTime(17);
+                _fechaApertura = reader.IsDBNull(18) ? null : reader.GetDateTime(18);
+                _fechaVencimiento = reader.IsDBNull(19) ? null : reader.GetDateTime(19);
 
-                _contCantidadNominal = reader.IsDBNull(17) ? null : reader.GetDecimal(17);
-                _contCantidadActual = reader.IsDBNull(18) ? null : reader.GetDecimal(18);
+                _contCantidadNominal = reader.IsDBNull(20) ? null : reader.GetDecimal(20);
+                _contCantidadActual = reader.IsDBNull(21) ? null : reader.GetDecimal(21);
 
-                _contUnidad = reader.IsDBNull(19) ? null : reader.GetString(19);
-                _contProveedor = reader.IsDBNull(20) ? null : reader.GetString(20);
-                _contCondicion = reader.IsDBNull(21) ? null : reader.GetString(21);
+                _contUnidad = reader.IsDBNull(22) ? null : reader.GetString(22);
+                _contProveedor = reader.IsDBNull(23) ? null : reader.GetString(23);
+                _contProveedorDireccion = reader.IsDBNull(24) ? null : reader.GetString(24);
+                _contProveedorTelefono = reader.IsDBNull(25) ? null : reader.GetString(25);
+                _contCondicion = reader.IsDBNull(26) ? null : reader.GetString(26);
 
-                _marcaNombre = reader.IsDBNull(22) ? null : reader.GetString(22);
-                _marcaLogoUrl = reader.IsDBNull(23) ? null : reader.GetString(23);
+                _marcaNombre = reader.IsDBNull(27) ? null : reader.GetString(27);
+                _marcaLogoUrl = reader.IsDBNull(28) ? null : reader.GetString(28);
             }
             else
             {
@@ -908,6 +1002,38 @@ GROUP BY s.sustancia_id;
                 _hCodesText = readerHp.IsDBNull(0) ? null : readerHp.GetString(0);
                 _pCodesText = readerHp.IsDBNull(1) ? null : readerHp.GetString(1);
             }
+            await readerHp.CloseAsync();
+
+            const string sqlHpDescriptions = @"
+SELECT 'H' AS tipo, h.h_id, h.descripcion
+FROM sustancias_h sh
+INNER JOIN h_codes h ON h.h_id = sh.h_id
+WHERE sh.sustancia_id = @id
+UNION ALL
+SELECT 'P' AS tipo, p.p_id, p.descripcion
+FROM sustancias_p sp
+INNER JOIN p_codes p ON p.p_id = sp.p_id
+WHERE sp.sustancia_id = @id
+ORDER BY tipo, 2;
+";
+            await using var cmdHpDetails = new NpgsqlCommand(sqlHpDescriptions, conn);
+            cmdHpDetails.Parameters.AddWithValue("id", _etiqueta.Id);
+            await using var readerHpDetails = await cmdHpDetails.ExecuteReaderAsync();
+            while (await readerHpDetails.ReadAsync())
+            {
+                var tipo = readerHpDetails.GetString(0);
+                var code = readerHpDetails.IsDBNull(1) ? "" : readerHpDetails.GetString(1);
+                var desc = readerHpDetails.IsDBNull(2) ? "" : readerHpDetails.GetString(2);
+                var line = string.IsNullOrWhiteSpace(desc) ? code : $"{code}: {desc}";
+                if (tipo == "H")
+                {
+                    _hDescriptions.Add(line);
+                }
+                else
+                {
+                    _pDescriptions.Add(line);
+                }
+            }
 
             HydrateEditableFields();
 
@@ -946,6 +1072,9 @@ GROUP BY s.sustancia_id;
         _editSubcategorias = _etiqueta.Subcategorias;
         _editDescripcion = _etiqueta.Descripcion;
         _editObservaciones = _etiqueta.Observaciones;
+        _editPalabraAdvertencia = _etiqueta.PalabraAdvertencia;
+        _editConcentracion = _etiqueta.Concentracion;
+        _editPureza = _etiqueta.Pureza;
 
         _editContenedorId = _selectedContenedorId;
         _editQrText = _qrTexto;
@@ -954,6 +1083,8 @@ GROUP BY s.sustancia_id;
         _editContCantidadActual = _contCantidadActual;
         _editContUnidad = _contUnidad;
         _editContProveedor = _contProveedor;
+        _editContProveedorDireccion = _contProveedorDireccion;
+        _editContProveedorTelefono = _contProveedorTelefono;
         _editContCondicion = _contCondicion;
 
         _editFechaCompra = _fechaCompra;
@@ -1005,6 +1136,9 @@ GROUP BY s.sustancia_id;
         string? NombreQuimico,
         string? Cas,
         string? FormaFisica,
+        string? PalabraAdvertencia,
+        string? Concentracion,
+        string? Pureza,
         string? Descripcion,
         string? Observaciones,
         string? Categoria,

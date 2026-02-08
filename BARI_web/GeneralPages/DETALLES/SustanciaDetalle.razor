@@ -119,6 +119,21 @@
                         </div>
 
                         <div class="dl-row">
+                            <div class="dt">Palabra de advertencia</div>
+                            <div class="dd">@NullDash(edit.PalabraAdvertencia)</div>
+                        </div>
+
+                        <div class="dl-row">
+                            <div class="dt">Concentración</div>
+                            <div class="dd">@NullDash(edit.Concentracion)</div>
+                        </div>
+
+                        <div class="dl-row">
+                            <div class="dt">Pureza</div>
+                            <div class="dd">@NullDash(edit.Pureza)</div>
+                        </div>
+
+                        <div class="dl-row">
                             <div class="dt">Descripción</div>
                             <div class="dd">@NullDash(edit.Descripcion)</div>
                         </div>
@@ -418,6 +433,21 @@
                 <div class="field">
                     <label>Forma física</label>
                     <input class="border p-1" placeholder="Sólido / Líquido / Gas..." @bind="edit.FormaFisica" />
+                </div>
+
+                <div class="field">
+                    <label>Palabra de advertencia</label>
+                    <input class="border p-1" placeholder="PELIGRO / ADVERTENCIA" @bind="edit.PalabraAdvertencia" />
+                </div>
+
+                <div class="field">
+                    <label>Concentración</label>
+                    <input class="border p-1" placeholder="Ej: 98%, 1M" @bind="edit.Concentracion" />
+                </div>
+
+                <div class="field">
+                    <label>Pureza</label>
+                    <input class="border p-1" placeholder="Ej: 99%" @bind="edit.Pureza" />
                 </div>
 
                 <div class="field">
@@ -1100,6 +1130,9 @@
                s.nombre_quimico,
                s.cas,
                s.forma_fisica,
+               s.palabra_advertencia,
+               s.concentracion,
+               s.pureza,
                COALESCE(s.sustancia_controlada, false) AS sustancia_controlada,
                s.observaciones,
                s.descripcion,
@@ -1140,12 +1173,15 @@
                     NombreQuimico = reader.IsDBNull(3) ? "" : reader.GetString(3),
                     Cas = reader.IsDBNull(4) ? "" : reader.GetString(4),
                     FormaFisica = reader.IsDBNull(5) ? "" : reader.GetString(5),
-                    SustanciaControlada = !reader.IsDBNull(6) && reader.GetBoolean(6),
-                    Observaciones = reader.IsDBNull(7) ? "" : reader.GetString(7),
-                    Descripcion = reader.IsDBNull(8) ? "" : reader.GetString(8),
-                    ImagenUrl = reader.IsDBNull(9) ? "" : reader.GetString(9),
-                    CategoriaNombre = reader.IsDBNull(10) ? "" : reader.GetString(10),
-                    CategoriaId = reader.IsDBNull(11) ? "" : reader.GetString(11),
+                    PalabraAdvertencia = reader.IsDBNull(6) ? "" : reader.GetString(6),
+                    Concentracion = reader.IsDBNull(7) ? "" : reader.GetString(7),
+                    Pureza = reader.IsDBNull(8) ? "" : reader.GetString(8),
+                    SustanciaControlada = !reader.IsDBNull(9) && reader.GetBoolean(9),
+                    Observaciones = reader.IsDBNull(10) ? "" : reader.GetString(10),
+                    Descripcion = reader.IsDBNull(11) ? "" : reader.GetString(11),
+                    ImagenUrl = reader.IsDBNull(12) ? "" : reader.GetString(12),
+                    CategoriaNombre = reader.IsDBNull(13) ? "" : reader.GetString(13),
+                    CategoriaId = reader.IsDBNull(14) ? "" : reader.GetString(14),
                 };
         } // ✅ reader DISPUESTO AQUÍ → ya puedes ejecutar más comandos
 
@@ -1497,6 +1533,9 @@
                     nombre_quimico = @nombre_quimico,
                     cas = @cas,
                     forma_fisica = @forma_fisica,
+                    palabra_advertencia = @palabra_advertencia,
+                    concentracion = @concentracion,
+                    pureza = @pureza,
                     sustancia_controlada = @sustancia_controlada,
                     categoria_id = @cat,
                     observaciones = @observaciones,
@@ -1512,6 +1551,9 @@
                 cmd.Parameters.AddWithValue("nombre_quimico", DbOrNull(edit.NombreQuimico));
                 cmd.Parameters.AddWithValue("cas", DbOrNull(edit.Cas));
                 cmd.Parameters.AddWithValue("forma_fisica", DbOrNull(edit.FormaFisica));
+                cmd.Parameters.AddWithValue("palabra_advertencia", DbOrNull(edit.PalabraAdvertencia));
+                cmd.Parameters.AddWithValue("concentracion", DbOrNull(edit.Concentracion));
+                cmd.Parameters.AddWithValue("pureza", DbOrNull(edit.Pureza));
                 cmd.Parameters.AddWithValue("sustancia_controlada", edit.SustanciaControlada);
                 cmd.Parameters.AddWithValue("observaciones", DbOrNull(edit.Observaciones));
                 cmd.Parameters.AddWithValue("descripcion", DbOrNull(edit.Descripcion));
@@ -1759,6 +1801,9 @@
         public string NombreQuimico { get; set; } = "";
         public string Cas { get; set; } = "";
         public string FormaFisica { get; set; } = "";
+        public string PalabraAdvertencia { get; set; } = "";
+        public string Concentracion { get; set; } = "";
+        public string Pureza { get; set; } = "";
 
         public bool SustanciaControlada { get; set; }
 
