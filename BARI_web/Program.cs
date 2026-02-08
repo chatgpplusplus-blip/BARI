@@ -10,15 +10,15 @@ using BARI_web.Features.Services;
 using Microsoft.AspNetCore.SignalR;
 using BARI_web.Features.Descarga;
 
-
 var builder = WebApplication.CreateBuilder(args);
+
 // Render: escucha en el puerto asignado por la plataforma
 var port = Environment.GetEnvironmentVariable("PORT") ?? "10000";
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+
 // ------------------------------
 // SERVICIOS BASE
 // ------------------------------
-
 builder.Services.AddHttpClient();
 
 builder.Services.AddScoped<HttpClient>(sp =>
@@ -33,20 +33,43 @@ builder.Services.AddRazorPages(options =>
     options.RootDirectory = "/GeneralPages";
 });
 
+// ✅ Forwarded headers (importante en Render / reverse proxy)
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+
+    // Importante en hosting tipo Render (proxy/reverse-proxy):
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
+// ✅ Blazor Server: tolerancia a “background” en móviles
 builder.Services.AddServerSideBlazor()
     .AddHubOptions(options =>
     {
-        // Más tolerancia a móvil (al abrir galería/cámara puede pausar la pestaña)
-        options.ClientTimeoutInterval = TimeSpan.FromMinutes(2);
+        // Mantén la conexión "viva" y da más margen antes de declararla muerta
         options.KeepAliveInterval = TimeSpan.FromSeconds(15);
 
-        // Por si tu app manda payloads grandes por SignalR (ej. base64, etc.)
+        // En móvil, al ir a WhatsApp, la pestaña puede congelarse:
+        // si este timeout es corto, el server corta rápido y pierdes el circuito.
+        options.ClientTimeoutInterval = TimeSpan.FromMinutes(5);
+
+        // Handshake un poco más tolerante (red móvil)
+        options.HandshakeTimeout = TimeSpan.FromSeconds(30);
+
+        // Payloads grandes por SignalR (si aplicara)
         options.MaximumReceiveMessageSize = 20 * 1024 * 1024; // 20 MB
     })
     .AddCircuitOptions(options =>
     {
-        // Retiene el circuito más tiempo si el móvil "duerme" la pestaña un momento
-        options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromMinutes(10);
+        // 🔥 CLAVE: retener el circuito desconectado para que al volver NO haga reload
+        options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromMinutes(30);
+
+        // Cuántos circuitos desconectados se guardan (sube si tienes pocos usuarios simultáneos)
+        options.DisconnectedCircuitMaxRetained = 200;
+
+        // Opcional: evita que se caiga por renders pendientes si la red es mala
+        options.MaxBufferedUnacknowledgedRenderBatches = 20;
     });
 
 // Postgres (Supabase)
@@ -101,19 +124,9 @@ builder.Services.AddSingleton<PostgresReadOnlyExecutor>();
 builder.Services.AddSingleton<DeepSeekAnswerWriter>();
 builder.Services.AddSingleton<BariBotOrchestrator>();
 
-builder.Services.Configure<ForwardedHeadersOptions>(options =>
-{
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-
-    // Importante en hosting tipo Render (proxy/reverse-proxy):
-    options.KnownNetworks.Clear();
-    options.KnownProxies.Clear();
-});
-
 // ------------------------------
 // APP
 // ------------------------------
-
 var app = builder.Build();
 
 if (!app.Environment.IsDevelopment())
@@ -121,14 +134,20 @@ if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler("/Error");
     app.UseHsts();
 }
+
+// 🔥 Importante: antes de HttpsRedirection para que detecte bien el esquema detrás del proxy
 app.UseForwardedHeaders();
+
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 
 app.UseRouting();
 
+// Map Blazor
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
+
+// Tus endpoints
 app.MapInventoryDownloads();
 app.MapHorasDownloads();
 

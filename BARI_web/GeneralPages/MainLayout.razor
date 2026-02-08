@@ -9,12 +9,7 @@
 
 <div class="bari-layout @(menuOpen ? "menu-open" : "")">
     <header class="bari-topbar">
-        <button class="bari-hamburger"
-                type="button"
-                @onclick="ToggleMenu"
-                aria-label="Abrir/Cerrar menú">
-            ☰
-        </button>
+        <button class="bari-hamburger" type="button" @onclick="ToggleMenu" aria-label="Abrir/Cerrar menú">☰</button>
 
         <div class="bari-brand">
             <img class="bari-logo"
@@ -26,15 +21,10 @@
             </div>
         </div>
 
-                    <nav class="bari-nav" aria-label="Navegación">
-                    </nav>
-
-        <div class="bari-topbar">
-            <span class="bari-badge"> BARI</span>
-            <NavLink class="bari-badge" href="/descarga">
-                <span class="bari-badge">DESCARGAR INVENTARIOS</span>
+        <div class="bari-topbar-meta">
+            <NavLink class="bari-navbtn" href="/descarga">
+                <span class="bari-navtext">DESCARGAR INVENTARIOS</span>
             </NavLink>
-
         </div>
     </header>
 
