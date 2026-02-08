@@ -50,7 +50,7 @@
                     <option value="">Docente...</option>
                     @foreach (var d in _docentes)
                     {
-                        <option value="@d.Id" selected="@(_docenteIdSeleccionado == d.Id)">Docente #@d.Id (Usuario @d.UsuarioId)</option>
+                        <option value="@d.Id" selected="@(_docenteIdSeleccionado == d.Id)">@d.Nombre</option>
                     }
                 </select>
             }
@@ -60,7 +60,7 @@
                     <option value="">Becario...</option>
                     @foreach (var b in _becarios)
                     {
-                        <option value="@b.Id" selected="@(_becarioIdSeleccionado == b.Id)">Becario #@b.Id (Usuario @b.UsuarioId)</option>
+                        <option value="@b.Id" selected="@(_becarioIdSeleccionado == b.Id)">@b.Nombre</option>
                     }
                 </select>
             }
@@ -88,13 +88,13 @@
             <button class="btn" type="button" @onclick="GoToday">Hoy</button>
             <button class="btn" type="button" @onclick="GoNext">→</button>
 
-            <select class="border p-1 form-control" @bind="_viewModeSeleccionado" @onchange="OnViewModeChanged">
+            <select class="border p-1 form-control" @bind-value="_viewModeSeleccionado" @bind-value:after="OnViewModeChanged">
                 <option value="Mes">Vista mes</option>
                 <option value="Semana">Vista semana</option>
                 <option value="Ano">Vista año</option>
             </select>
 
-            <select class="border p-1 form-control" @bind="_anioSeleccionado" @onchange="OnYearChanged">
+            <select class="border p-1 form-control" @bind-value="_anioSeleccionado" @bind-value:after="OnYearChanged">
                 @foreach (var year in _yearsDisponibles)
                 {
                     <option value="@year">@year</option>
@@ -174,11 +174,11 @@
         <div class="form-grid" style="margin-top:.75rem;">
             <div class="field">
                 <label>Hora entrada</label>
-                <input class="border p-1 form-control" type="time" @bind="_horaEntrada" />
+                <input class="border p-1 form-control" type="time" @bind-value="_horaEntrada" />
             </div>
             <div class="field">
                 <label>Hora salida</label>
-                <input class="border p-1 form-control" type="time" @bind="_horaSalida" />
+                <input class="border p-1 form-control" type="time" @bind-value="_horaSalida" />
             </div>
             <div class="field full-span">
                 <div class="exit-note">
@@ -203,11 +203,11 @@
                 <div class="form-grid" style="margin-top:.5rem;">
                     <div class="field">
                         <label>Desde</label>
-                        <input class="border p-1 form-control" type="time" @bind="_claseInicio" />
+                        <input class="border p-1 form-control" type="time" @bind-value="_claseInicio" />
                     </div>
                     <div class="field">
                         <label>Hasta</label>
-                        <input class="border p-1 form-control" type="time" @bind="_claseFin" />
+                        <input class="border p-1 form-control" type="time" @bind-value="_claseFin" />
                     </div>
                     <div class="form-actions full-span">
                         <button class="btn" type="button" @onclick="AddClaseAsync" disabled="@(!_puedeGuardarClase)">Agregar bloqueo</button>
@@ -490,7 +490,7 @@
 </style>
 
 @code {
-    private sealed record PersonalItem(int Id, int UsuarioId);
+    private sealed record PersonalItem(int Id, int UsuarioId, string Nombre);
     private sealed record HorarioEntry(long Id, DateTime Fecha, TimeSpan HoraInicio, TimeSpan HoraFin, double Horas);
     private sealed record ClaseBlock(long Id, DateTime Fecha, TimeSpan Inicio, TimeSpan Fin);
 
@@ -511,10 +511,10 @@
     private DateTime? _selectedDate = DateTime.Today;
     private ViewMode _viewModeSeleccionado = ViewMode.Mes;
 
-    private string _horaEntrada = "08:00";
-    private string _horaSalida = "10:00";
-    private string _claseInicio = "07:00";
-    private string _claseFin = "08:00";
+    private TimeOnly? _horaEntrada = new(8, 0);
+    private TimeOnly? _horaSalida = new(10, 0);
+    private TimeOnly? _claseInicio = new(7, 0);
+    private TimeOnly? _claseFin = new(8, 0);
     private string? _loadError;
     private string? _msgGuardar;
     private string? _msgClase;
@@ -547,8 +547,8 @@
         _selectedDate.HasValue && _becarioIdSeleccionado.HasValue;
 
     private string? _selectedPersonaNombre => _tipoSeleccionado == TipoPersona.Docente
-        ? (_docenteIdSeleccionado.HasValue ? $"Docente #{_docenteIdSeleccionado}" : null)
-        : (_becarioIdSeleccionado.HasValue ? $"Becario #{_becarioIdSeleccionado}" : null);
+        ? _docentes.FirstOrDefault(d => d.Id == _docenteIdSeleccionado)?.Nombre
+        : _becarios.FirstOrDefault(b => b.Id == _becarioIdSeleccionado)?.Nombre;
 
     protected override async Task OnInitializedAsync()
     {
@@ -577,13 +577,13 @@
     {
         var items = new List<PersonalItem>();
         await using var conn = await DataSource.OpenConnectionAsync();
-        var cmdText = $"SELECT {idColumn}, usuario_id FROM {tableName} ORDER BY {idColumn}";
+        var cmdText = $"SELECT {idColumn}, usuario_id, nombre FROM {tableName} ORDER BY {idColumn}";
         await using var cmd = new NpgsqlCommand(cmdText, conn);
         await using var reader = await cmd.ExecuteReaderAsync();
 
         while (await reader.ReadAsync())
         {
-            items.Add(new PersonalItem(reader.GetInt32(0), reader.GetInt32(1)));
+            items.Add(new PersonalItem(reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2)));
         }
 
         return items;
@@ -751,24 +751,14 @@
         await LoadHorariosAsync();
     }
 
-    private async Task OnViewModeChanged(ChangeEventArgs e)
+    private async Task OnViewModeChanged()
     {
-        if (Enum.TryParse<ViewMode>(e.Value?.ToString(), out var mode))
-        {
-            _viewModeSeleccionado = mode;
-        }
-
         await LoadHorariosAsync();
     }
 
-    private async Task OnYearChanged(ChangeEventArgs e)
+    private async Task OnYearChanged()
     {
-        if (int.TryParse(e.Value?.ToString(), out var year))
-        {
-            _anioSeleccionado = year;
-            _anchorDate = new DateTime(_anioSeleccionado, _anchorDate.Month, 1);
-        }
-
+        _anchorDate = new DateTime(_anioSeleccionado, _anchorDate.Month, 1);
         await LoadHorariosAsync();
     }
 
@@ -864,11 +854,14 @@
             return;
         }
 
-        if (!TimeSpan.TryParse(_horaEntrada, out var entrada) || !TimeSpan.TryParse(_horaSalida, out var salida))
+        if (!_horaEntrada.HasValue || !_horaSalida.HasValue)
         {
             _msgGuardar = "Horas inválidas.";
             return;
         }
+
+        var entrada = _horaEntrada.Value.ToTimeSpan();
+        var salida = _horaSalida.Value.ToTimeSpan();
 
         if (salida <= entrada)
         {
@@ -934,11 +927,14 @@
             return;
         }
 
-        if (!TimeSpan.TryParse(_claseInicio, out var inicio) || !TimeSpan.TryParse(_claseFin, out var fin))
+        if (!_claseInicio.HasValue || !_claseFin.HasValue)
         {
             _msgClase = "Horas inválidas.";
             return;
         }
+
+        var inicio = _claseInicio.Value.ToTimeSpan();
+        var fin = _claseFin.Value.ToTimeSpan();
 
         if (fin <= inicio)
         {

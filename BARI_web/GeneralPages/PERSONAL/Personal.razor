@@ -38,6 +38,18 @@
                        @bind="_newDocenteUsuarioId" />
             </div>
             <div class="field">
+                <label>Nombre</label>
+                <input class="border p-1 val-hint"
+                       placeholder="Nombre completo"
+                       @bind="_newDocenteNombre" />
+            </div>
+            <div class="field">
+                <label>Imagen URL</label>
+                <input class="border p-1 val-hint"
+                       placeholder="https://..."
+                       @bind="_newDocenteImagenUrl" />
+            </div>
+            <div class="field">
                 <label>Activo</label>
                 <label class="check-row">
                     <input type="checkbox" @bind="_newDocenteActivo" />
@@ -61,6 +73,8 @@
                 <tr>
                     <th style="width:110px;">ID</th>
                     <th style="width:140px;">Usuario</th>
+                    <th>Nombre</th>
+                    <th style="width:140px;">Imagen</th>
                     <th style="width:100px;">Activo</th>
                     <th style="width:190px;">Creado</th>
                     <th style="width:220px;">Acciones</th>
@@ -77,6 +91,17 @@
                         @if (!editing)
                         {
                             <td>@docente.UsuarioId</td>
+                            <td>@docente.Nombre</td>
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(docente.ImagenUrl))
+                                {
+                                    <img src="@docente.ImagenUrl" alt="@docente.Nombre" class="thumb thumb-logo" />
+                                }
+                                else
+                                {
+                                    <span class="muted text-xs">—</span>
+                                }
+                            </td>
                             <td>@(docente.Activo ? "Sí" : "No")</td>
                             <td>@docente.CreatedAt.ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture)</td>
                             <td>
@@ -89,6 +114,12 @@
                             var ed = _editDocentes[docente.Id];
                             <td>
                                 <input class="border p-1 val-hint" type="number" @bind="ed.UsuarioId" />
+                            </td>
+                            <td>
+                                <input class="border p-1 val-hint" @bind="ed.Nombre" />
+                            </td>
+                            <td>
+                                <input class="border p-1 val-hint" @bind="ed.ImagenUrl" />
                             </td>
                             <td>
                                 <label class="check-row" style="margin:0;">
@@ -127,6 +158,18 @@
                        @bind="_newBecarioUsuarioId" />
             </div>
             <div class="field">
+                <label>Nombre</label>
+                <input class="border p-1 val-hint"
+                       placeholder="Nombre completo"
+                       @bind="_newBecarioNombre" />
+            </div>
+            <div class="field">
+                <label>Imagen URL</label>
+                <input class="border p-1 val-hint"
+                       placeholder="https://..."
+                       @bind="_newBecarioImagenUrl" />
+            </div>
+            <div class="field">
                 <label>Activo</label>
                 <label class="check-row">
                     <input type="checkbox" @bind="_newBecarioActivo" />
@@ -150,6 +193,8 @@
                 <tr>
                     <th style="width:110px;">ID</th>
                     <th style="width:140px;">Usuario</th>
+                    <th>Nombre</th>
+                    <th style="width:140px;">Imagen</th>
                     <th style="width:100px;">Activo</th>
                     <th style="width:190px;">Creado</th>
                     <th style="width:220px;">Acciones</th>
@@ -166,6 +211,17 @@
                         @if (!editing)
                         {
                             <td>@becario.UsuarioId</td>
+                            <td>@becario.Nombre</td>
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(becario.ImagenUrl))
+                                {
+                                    <img src="@becario.ImagenUrl" alt="@becario.Nombre" class="thumb thumb-logo" />
+                                }
+                                else
+                                {
+                                    <span class="muted text-xs">—</span>
+                                }
+                            </td>
                             <td>@(becario.Activo ? "Sí" : "No")</td>
                             <td>@becario.CreatedAt.ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture)</td>
                             <td>
@@ -178,6 +234,12 @@
                             var ed = _editBecarios[becario.Id];
                             <td>
                                 <input class="border p-1 val-hint" type="number" @bind="ed.UsuarioId" />
+                            </td>
+                            <td>
+                                <input class="border p-1 val-hint" @bind="ed.Nombre" />
+                            </td>
+                            <td>
+                                <input class="border p-1 val-hint" @bind="ed.ImagenUrl" />
                             </td>
                             <td>
                                 <label class="check-row" style="margin:0;">
@@ -199,10 +261,12 @@
 </section>
 
 @code {
-    private sealed record PersonalRow(int Id, int UsuarioId, bool Activo, DateTime CreatedAt, DateTime? UpdatedAt);
+    private sealed record PersonalRow(int Id, int UsuarioId, string Nombre, string? ImagenUrl, bool Activo, DateTime CreatedAt, DateTime? UpdatedAt);
     private sealed class PersonalEdit
     {
         public int UsuarioId { get; set; }
+        public string Nombre { get; set; } = string.Empty;
+        public string? ImagenUrl { get; set; }
         public bool Activo { get; set; }
     }
 
@@ -214,8 +278,12 @@
     private bool _isSaving;
 
     private int? _newDocenteUsuarioId;
+    private string _newDocenteNombre = string.Empty;
+    private string? _newDocenteImagenUrl;
     private bool _newDocenteActivo = true;
     private int? _newBecarioUsuarioId;
+    private string _newBecarioNombre = string.Empty;
+    private string? _newBecarioImagenUrl;
     private bool _newBecarioActivo = true;
 
     private readonly HashSet<int> _editingDocentes = new();
@@ -246,7 +314,7 @@
     {
         var results = new List<PersonalRow>();
         await using var conn = await DataSource.OpenConnectionAsync();
-        var cmdText = $"SELECT {idColumn}, usuario_id, activo, created_at, updated_at FROM {tableName} ORDER BY {idColumn};";
+        var cmdText = $"SELECT {idColumn}, usuario_id, nombre, imagen_url, activo, created_at, updated_at FROM {tableName} ORDER BY {idColumn};";
         await using var cmd = new NpgsqlCommand(cmdText, conn);
         await using var reader = await cmd.ExecuteReaderAsync();
 
@@ -255,9 +323,11 @@
             results.Add(new PersonalRow(
                 reader.GetInt32(0),
                 reader.GetInt32(1),
-                reader.GetBoolean(2),
-                reader.GetDateTime(3),
-                reader.IsDBNull(4) ? null : reader.GetDateTime(4)));
+                reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                reader.GetBoolean(4),
+                reader.GetDateTime(5),
+                reader.IsDBNull(6) ? null : reader.GetDateTime(6)));
         }
 
         return results;
@@ -266,9 +336,9 @@
     private async Task AddDocenteAsync()
     {
         _msgDocentes = null;
-        if (!_newDocenteUsuarioId.HasValue)
+        if (!_newDocenteUsuarioId.HasValue || string.IsNullOrWhiteSpace(_newDocenteNombre))
         {
-            _msgDocentes = "Ingresa un usuario válido.";
+            _msgDocentes = "Ingresa usuario y nombre válidos.";
             return;
         }
 
@@ -276,12 +346,16 @@
         try
         {
             await using var conn = await DataSource.OpenConnectionAsync();
-            await using var cmd = new NpgsqlCommand("INSERT INTO docentes (usuario_id, activo, created_at) VALUES (@usuario_id, @activo, NOW())", conn);
+            await using var cmd = new NpgsqlCommand("INSERT INTO docentes (usuario_id, nombre, imagen_url, activo, created_at) VALUES (@usuario_id, @nombre, @imagen_url, @activo, NOW())", conn);
             cmd.Parameters.AddWithValue("usuario_id", _newDocenteUsuarioId.Value);
+            cmd.Parameters.AddWithValue("nombre", _newDocenteNombre.Trim());
+            cmd.Parameters.AddWithValue("imagen_url", (object?)_newDocenteImagenUrl ?? DBNull.Value);
             cmd.Parameters.AddWithValue("activo", _newDocenteActivo);
             await cmd.ExecuteNonQueryAsync();
 
             _newDocenteUsuarioId = null;
+            _newDocenteNombre = string.Empty;
+            _newDocenteImagenUrl = null;
             _newDocenteActivo = true;
             _docentes = await LoadPersonalAsync("docentes", "docente_id");
         }
@@ -306,8 +380,10 @@
         try
         {
             await using var conn = await DataSource.OpenConnectionAsync();
-            await using var cmd = new NpgsqlCommand("UPDATE docentes SET usuario_id = @usuario_id, activo = @activo, updated_at = NOW() WHERE docente_id = @docente_id", conn);
+            await using var cmd = new NpgsqlCommand("UPDATE docentes SET usuario_id = @usuario_id, nombre = @nombre, imagen_url = @imagen_url, activo = @activo, updated_at = NOW() WHERE docente_id = @docente_id", conn);
             cmd.Parameters.AddWithValue("usuario_id", edit.UsuarioId);
+            cmd.Parameters.AddWithValue("nombre", edit.Nombre.Trim());
+            cmd.Parameters.AddWithValue("imagen_url", (object?)edit.ImagenUrl ?? DBNull.Value);
             cmd.Parameters.AddWithValue("activo", edit.Activo);
             cmd.Parameters.AddWithValue("docente_id", docenteId);
             await cmd.ExecuteNonQueryAsync();
@@ -355,6 +431,8 @@
         _editDocentes[docenteId] = new PersonalEdit
         {
             UsuarioId = item.UsuarioId,
+            Nombre = item.Nombre,
+            ImagenUrl = item.ImagenUrl,
             Activo = item.Activo
         };
         _editingDocentes.Add(docenteId);
@@ -369,9 +447,9 @@
     private async Task AddBecarioAsync()
     {
         _msgBecarios = null;
-        if (!_newBecarioUsuarioId.HasValue)
+        if (!_newBecarioUsuarioId.HasValue || string.IsNullOrWhiteSpace(_newBecarioNombre))
         {
-            _msgBecarios = "Ingresa un usuario válido.";
+            _msgBecarios = "Ingresa usuario y nombre válidos.";
             return;
         }
 
@@ -379,12 +457,16 @@
         try
         {
             await using var conn = await DataSource.OpenConnectionAsync();
-            await using var cmd = new NpgsqlCommand("INSERT INTO becarios (usuario_id, activo, created_at) VALUES (@usuario_id, @activo, NOW())", conn);
+            await using var cmd = new NpgsqlCommand("INSERT INTO becarios (usuario_id, nombre, imagen_url, activo, created_at) VALUES (@usuario_id, @nombre, @imagen_url, @activo, NOW())", conn);
             cmd.Parameters.AddWithValue("usuario_id", _newBecarioUsuarioId.Value);
+            cmd.Parameters.AddWithValue("nombre", _newBecarioNombre.Trim());
+            cmd.Parameters.AddWithValue("imagen_url", (object?)_newBecarioImagenUrl ?? DBNull.Value);
             cmd.Parameters.AddWithValue("activo", _newBecarioActivo);
             await cmd.ExecuteNonQueryAsync();
 
             _newBecarioUsuarioId = null;
+            _newBecarioNombre = string.Empty;
+            _newBecarioImagenUrl = null;
             _newBecarioActivo = true;
             _becarios = await LoadPersonalAsync("becarios", "becario_id");
         }
@@ -409,8 +491,10 @@
         try
         {
             await using var conn = await DataSource.OpenConnectionAsync();
-            await using var cmd = new NpgsqlCommand("UPDATE becarios SET usuario_id = @usuario_id, activo = @activo, updated_at = NOW() WHERE becario_id = @becario_id", conn);
+            await using var cmd = new NpgsqlCommand("UPDATE becarios SET usuario_id = @usuario_id, nombre = @nombre, imagen_url = @imagen_url, activo = @activo, updated_at = NOW() WHERE becario_id = @becario_id", conn);
             cmd.Parameters.AddWithValue("usuario_id", edit.UsuarioId);
+            cmd.Parameters.AddWithValue("nombre", edit.Nombre.Trim());
+            cmd.Parameters.AddWithValue("imagen_url", (object?)edit.ImagenUrl ?? DBNull.Value);
             cmd.Parameters.AddWithValue("activo", edit.Activo);
             cmd.Parameters.AddWithValue("becario_id", becarioId);
             await cmd.ExecuteNonQueryAsync();
@@ -458,6 +542,8 @@
         _editBecarios[becarioId] = new PersonalEdit
         {
             UsuarioId = item.UsuarioId,
+            Nombre = item.Nombre,
+            ImagenUrl = item.ImagenUrl,
             Activo = item.Activo
         };
         _editingBecarios.Add(becarioId);

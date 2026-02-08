@@ -206,6 +206,8 @@ CREATE TABLE IF NOT EXISTS modelos_equipo (
 CREATE TABLE IF NOT EXISTS docentes (
   docente_id integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   usuario_id integer NOT NULL,
+  nombre text NOT NULL,
+  imagen_url text,
   activo boolean NOT NULL DEFAULT true,
   created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at timestamp
@@ -214,6 +216,8 @@ CREATE TABLE IF NOT EXISTS docentes (
 CREATE TABLE IF NOT EXISTS becarios (
   becario_id integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   usuario_id integer NOT NULL,
+  nombre text NOT NULL,
+  imagen_url text,
   activo boolean NOT NULL DEFAULT true,
   created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at timestamp
