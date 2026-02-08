@@ -131,6 +131,15 @@
     line-height: 1.05;
 }
 
+.lbl-signal {
+    font-size: 14px;
+    font-weight: 950;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: #b91c1c;
+    line-height: 1;
+}
+
 .lbl-sub {
     font-size: 13px;
     font-weight: 750;
@@ -187,6 +196,41 @@
 .mk {
     font-weight: 950;
     letter-spacing: .10em;
+}
+
+.lbl-hp-details {
+    border-top: 1px solid #e5e7eb;
+    padding-top: 6px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    font-size: 8.5px;
+    line-height: 1.2;
+}
+
+.hp-block {
+    min-width: 0;
+}
+
+.hp-title {
+    font-weight: 950;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: #334155;
+    margin-bottom: 3px;
+}
+
+.hp-block ul {
+    margin: 0;
+    padding-left: 14px;
+}
+
+.hp-block li {
+    margin-bottom: 2px;
+}
+
+.hp-empty {
+    color: #64748b;
 }
 
 /* Notas */
@@ -450,4 +494,3 @@
 .label-card.layout-mid .lbl-notes {
     column-count: 2;
 }
-

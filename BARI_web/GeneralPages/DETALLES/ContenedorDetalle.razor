@@ -107,6 +107,16 @@
                         </div>
 
                         <div class="dl-row">
+                            <div class="dt">Dirección proveedor</div>
+                            <div class="dd">@NullDash(edit.ProveedorDireccion)</div>
+                        </div>
+
+                        <div class="dl-row">
+                            <div class="dt">Tel. emergencia proveedor</div>
+                            <div class="dd">@NullDash(edit.ProveedorTelefono)</div>
+                        </div>
+
+                        <div class="dl-row">
                             <div class="dt">Cantidad nominal</div>
                             <div class="dd">@NullDash(edit.CantidadNominalTexto)</div>
                         </div>
@@ -222,6 +232,16 @@
                 <div class="field">
                     <label>Proveedor</label>
                     <input class="border p-1" placeholder="Proveedor" @bind="edit.Proveedor" />
+                </div>
+
+                <div class="field">
+                    <label>Dirección proveedor</label>
+                    <input class="border p-1" placeholder="Dirección proveedor" @bind="edit.ProveedorDireccion" />
+                </div>
+
+                <div class="field">
+                    <label>Tel. emergencia proveedor</label>
+                    <input class="border p-1" placeholder="Teléfono de emergencia" @bind="edit.ProveedorTelefono" />
                 </div>
 
                 <div class="field">
@@ -637,6 +657,8 @@
                    COALESCE(ma.nombre, '') AS marca,
                    c.densidad_g_ml,
                    c.proveedor,
+                   c.proveedor_direccion,
+                   c.proveedor_telefono_emergencia,
 
                    c.cantidad_reactivo_nominal,
                    c.cantidad_reactivo_actual,
@@ -692,34 +714,36 @@
                 Marca = r.IsDBNull(3) ? "" : r.GetString(3),
                 Densidad = r.IsDBNull(4) ? "" : $"{r.GetDecimal(4).ToString(CultureInfo.InvariantCulture)} g/mL",
                 Proveedor = r.IsDBNull(5) ? "" : r.GetString(5),
+                ProveedorDireccion = r.IsDBNull(6) ? "" : r.GetString(6),
+                ProveedorTelefono = r.IsDBNull(7) ? "" : r.GetString(7),
 
-                CantidadNominal = r.IsDBNull(6) ? null : r.GetDecimal(6).ToString(CultureInfo.InvariantCulture),
-                CantidadActual = r.IsDBNull(7) ? null : r.GetDecimal(7).ToString(CultureInfo.InvariantCulture),
-                UnidadSimbolo = r.IsDBNull(8) ? "" : r.GetString(8),
+                CantidadNominal = r.IsDBNull(8) ? null : r.GetDecimal(8).ToString(CultureInfo.InvariantCulture),
+                CantidadActual = r.IsDBNull(9) ? null : r.GetDecimal(9).ToString(CultureInfo.InvariantCulture),
+                UnidadSimbolo = r.IsDBNull(10) ? "" : r.GetString(10),
 
-                CondicionId = r.IsDBNull(9) ? null : r.GetString(9),
+                CondicionId = r.IsDBNull(11) ? null : r.GetString(11),
 
-                FechaCompra = r.IsDBNull(10) ? (DateTime?)null : r.GetDateTime(10),
-                FechaRecepcion = r.IsDBNull(11) ? (DateTime?)null : r.GetDateTime(11),
-                FechaApertura = r.IsDBNull(12) ? (DateTime?)null : r.GetDateTime(12),
-                FechaVencimiento = r.IsDBNull(13) ? (DateTime?)null : r.GetDateTime(13),
+                FechaCompra = r.IsDBNull(12) ? (DateTime?)null : r.GetDateTime(12),
+                FechaRecepcion = r.IsDBNull(13) ? (DateTime?)null : r.GetDateTime(13),
+                FechaApertura = r.IsDBNull(14) ? (DateTime?)null : r.GetDateTime(14),
+                FechaVencimiento = r.IsDBNull(15) ? (DateTime?)null : r.GetDateTime(15),
 
-                AreaId = r.IsDBNull(14) ? null : r.GetString(14),
-                MesonId = r.IsDBNull(15) ? null : r.GetString(15),
-                Nivel = r.IsDBNull(16) ? null : r.GetInt32(16).ToString(CultureInfo.InvariantCulture),
-                Posicion = r.IsDBNull(17) ? null : r.GetString(17),
+                AreaId = r.IsDBNull(16) ? null : r.GetString(16),
+                MesonId = r.IsDBNull(17) ? null : r.GetString(17),
+                Nivel = r.IsDBNull(18) ? null : r.GetInt32(18).ToString(CultureInfo.InvariantCulture),
+                Posicion = r.IsDBNull(19) ? null : r.GetString(19),
 
                 Envase = BuildEnvase(
-                        r.IsDBNull(18) ? null : r.GetString(18),
-                        r.IsDBNull(19) ? (decimal?)null : r.GetDecimal(19),
-                        r.IsDBNull(20) ? (decimal?)null : r.GetDecimal(20)
+                        r.IsDBNull(20) ? null : r.GetString(20),
+                        r.IsDBNull(21) ? (decimal?)null : r.GetDecimal(21),
+                        r.IsDBNull(22) ? (decimal?)null : r.GetDecimal(22)
                     ),
 
-                AlturaCm = r.IsDBNull(21) ? null : r.GetDecimal(21).ToString(CultureInfo.InvariantCulture),
+                AlturaCm = r.IsDBNull(23) ? null : r.GetDecimal(23).ToString(CultureInfo.InvariantCulture),
 
-                Qr = r.IsDBNull(22) ? "" : r.GetString(22),
-                Observaciones = r.IsDBNull(23) ? "" : r.GetString(23),
-                ImagenUrl = r.IsDBNull(24) ? "" : r.GetString(24),
+                Qr = r.IsDBNull(24) ? "" : r.GetString(24),
+                Observaciones = r.IsDBNull(25) ? "" : r.GetString(25),
+                ImagenUrl = r.IsDBNull(26) ? "" : r.GetString(26),
             };
 
         // textos
@@ -888,6 +912,8 @@
             const string sql = @"
                 UPDATE contenedores
                 SET proveedor = @proveedor,
+                    proveedor_direccion = @proveedor_direccion,
+                    proveedor_telefono_emergencia = @proveedor_telefono,
                     cantidad_reactivo_nominal = @cantidad_nominal,
                     cantidad_reactivo_actual = @cantidad_actual,
                     condicion_id = @condicion,
@@ -907,6 +933,8 @@
             await using var cmd = new NpgsqlCommand(sql, conn, tx);
 
             cmd.Parameters.AddWithValue("proveedor", DbOrNull(edit.Proveedor));
+            cmd.Parameters.AddWithValue("proveedor_direccion", DbOrNull(edit.ProveedorDireccion));
+            cmd.Parameters.AddWithValue("proveedor_telefono", DbOrNull(edit.ProveedorTelefono));
             cmd.Parameters.AddWithValue("cantidad_nominal", nominal is null ? (object)DBNull.Value : nominal.Value);
             cmd.Parameters.AddWithValue("cantidad_actual", actual is null ? (object)DBNull.Value : actual.Value);
 
@@ -1077,6 +1105,8 @@
         public string UnidadSimbolo { get; set; } = "";
 
         public string Proveedor { get; set; } = "";
+        public string ProveedorDireccion { get; set; } = "";
+        public string ProveedorTelefono { get; set; } = "";
 
         public string? CantidadNominal { get; set; }
         public string? CantidadActual { get; set; }
