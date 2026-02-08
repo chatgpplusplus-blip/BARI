@@ -2,25 +2,35 @@
 @page "/ver-etiquetas/contenedor/{ContenedorId}"
 
 @using Npgsql
-@using System
 @using System.Globalization
-@using System.IO
 @using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.JSInterop
+
 @inject NpgsqlDataSource DataSource
 @inject LaboratorioState LaboratorioState
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <PageTitle>Etiquetado de Reactivos</PageTitle>
 
 <section class="page-card">
     <h2>Etiquetado de Reactivos</h2>
     <p>
-        Visualizador inspirado en etiquetas de Merck. Selecciona un contenedor para ver y ajustar el diseño
-        antes de imprimir. Puedes modificar campos, dimensiones e importar una imagen.
+        Visualizador inspirado en etiquetas tipo Merck. Selecciona un contenedor para ver y ajustar el diseño
+        antes de imprimir. Puedes modificar campos y dimensiones.
     </p>
 </section>
 
 <section class="page-card" style="margin-top:1.5rem;">
+
+    @if (_etiqueta is not null)
+{
+    <button class="btn btn-primary" type="button" @onclick="DescargarPdfAsync">
+        Descargar esta imagen como PDF (se descargará con las dimensiones correctas)
+    </button>
+}
+
+
     <div class="label-controls">
         <div class="label-control">
             <label class="text-xs text-gray-500">Contenedor</label>
@@ -37,353 +47,343 @@
         <div class="label-control">
             <label class="text-xs text-gray-500">Ancho (mm)</label>
             <input class="border p-1 form-control @(_labelWidthMm > 0 ? "is-filled" : "")"
-                   type="number"
-                   min="20"
-                   @bind-value="_labelWidthMm"
-                   @bind-value:event="oninput" />
+                   type="number" min="20"
+                   value="@_labelWidthMm"
+                   @oninput="OnWidthInput" />
         </div>
 
         <div class="label-control">
             <label class="text-xs text-gray-500">Alto (mm)</label>
             <input class="border p-1 form-control @(_labelHeightMm > 0 ? "is-filled" : "")"
-                   type="number"
-                   min="20"
-                   @bind-value="_labelHeightMm"
-                   @bind-value:event="oninput" />
+                   type="number" min="20"
+                   value="@_labelHeightMm"
+                   disabled="@_lockAspectRatio"
+                   @oninput="OnHeightInput" />
+            <label class="text-xs" style="margin-top:.35rem; display:flex; gap:.5rem; align-items:center;">
+                <input type="checkbox" checked="@_lockAspectRatio" @onchange="OnLockRatioChanged" />
+                <span class="text-gray-500">Bloquear proporción 2:1</span>
+            </label>
         </div>
 
         <div class="label-control">
-            <label class="text-xs text-gray-500">Imagen de etiqueta</label>
+            <label class="text-xs text-gray-500">Modo</label>
             <div class="inline-radio">
-                <label class="toggle @(_labelImagenModo == "url" ? "is-filled" : "")">
-                    <input type="radio" name="imagen-etiqueta" value="url" checked="@(_labelImagenModo == "url")"
-                           @onchange="@(() => _labelImagenModo = "url")" />
-                    <span>URL</span>
+                <label class="toggle @(!_previewFull ? "is-filled" : "")">
+                    <input type="radio" name="preview-mode" value="print" checked="@(!_previewFull)"
+                           @onchange="@(() => SetPreviewMode(false))" />
+                    <span>Imprimible (auto-fit, sin scroll)</span>
                 </label>
-                <label class="toggle @(_labelImagenModo == "archivo" ? "is-filled" : "")">
-                    <input type="radio" name="imagen-etiqueta" value="archivo" checked="@(_labelImagenModo == "archivo")"
-                           @onchange="@(() => _labelImagenModo = "archivo")" />
-                    <span>Archivo</span>
+                <label class="toggle @(_previewFull ? "is-filled" : "")">
+                    <input type="radio" name="preview-mode" value="full" checked="@(_previewFull)"
+                           @onchange="@(() => SetPreviewMode(true))" />
+                    <span>Completa (sin auto-fit)</span>
                 </label>
             </div>
-
-            @if (_labelImagenModo == "url")
-            {
-                <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_labelImagenUrl) ? "is-filled" : "")"
-                       placeholder="URL de imagen"
-                       @bind="_labelImagenUrl" />
-            }
-            else
-            {
-                <label class="upload-drop">
-                    <InputFile OnChange="OnEtiquetaImagenSeleccionada" accept="image/png,image/jpeg,image/jpg,image/webp" />
-                    <span>Arrastra una imagen o haz clic para buscar</span>
-                </label>
-                @if (!string.IsNullOrWhiteSpace(_labelImagenArchivoNombre))
-                {
-                    <div class="text-xs text-gray-500">Archivo: @_labelImagenArchivoNombre</div>
-                }
-            }
         </div>
     </div>
 </section>
 
-@if (string.IsNullOrWhiteSpace(_selectedContenedorId))
-{
-    <section class="page-card" style="margin-top:1.5rem;">
-        <div class="empty">
-            <div class="helper">Del desplegable seleccione un contenedor para ver o editar.</div>
-        </div>
-    </section>
-}
-else if (_loadError is not null)
-{
-    <section class="page-card" style="margin-top:1.5rem;">
-        <p class="error-note">No se pudo cargar el contenedor: @_loadError</p>
-    </section>
-}
-else if (_etiqueta is not null)
-{
-    <section class="page-card" style="margin-top:1.5rem;">
-        <div class="label-layout">
-            <div class="label-edit">
-                <h4>Campos editables</h4>
-                <div class="label-edit-section">
-                    <div class="label-edit-title">Reactivo</div>
-                    <div class="label-edit-grid">
-                        <div class="label-edit-field">
-                            <label class="text-xs text-gray-500">Nombre principal</label>
-                            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editNombrePrincipal) ? "is-filled" : "")"
-                                   @bind="_editNombrePrincipal" />
-                        </div>
-                        <div class="label-edit-field">
-                            <label class="text-xs text-gray-500">Nombre químico</label>
-                            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editNombreQuimico) ? "is-filled" : "")"
-                                   @bind="_editNombreQuimico" />
-                        </div>
-                        <div class="label-edit-field">
-                            <label class="text-xs text-gray-500">CAS</label>
-                            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editCas) ? "is-filled" : "")"
-                                   @bind="_editCas" />
-                        </div>
-                        <div class="label-edit-field">
-                            <label class="text-xs text-gray-500">Forma física</label>
-                            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editFormaFisica) ? "is-filled" : "")"
-                                   @bind="_editFormaFisica" />
-                        </div>
-                        <div class="label-edit-field">
-                            <label class="text-xs text-gray-500">Categoría</label>
-                            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editCategoria) ? "is-filled" : "")"
-                                   @bind="_editCategoria" />
-                        </div>
-                        <div class="label-edit-field">
-                            <label class="text-xs text-gray-500">Subcategorías</label>
-                            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editSubcategorias) ? "is-filled" : "")"
-                                   @bind="_editSubcategorias" />
-                        </div>
-                        <div class="label-edit-field label-edit-wide">
-                            <label class="text-xs text-gray-500">Descripción</label>
-                            <textarea class="border p-1 form-control"
-                                      rows="3"
-                                      @bind="_editDescripcion"></textarea>
-                        </div>
-                        <div class="label-edit-field label-edit-wide">
-                            <label class="text-xs text-gray-500">Observaciones</label>
-                            <textarea class="border p-1 form-control"
-                                      rows="3"
-                                      @bind="_editObservaciones"></textarea>
-                        </div>
-                    </div>
-                </div>
+<section class="page-card" style="margin-top:1.5rem;">
+    <div class="label-stack">
 
-                <div class="label-edit-section">
-                    <div class="label-edit-title">Contenedor</div>
-                    <div class="label-edit-grid">
-                        <div class="label-edit-field">
-                            <label class="text-xs text-gray-500">ID contenedor</label>
-                            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editContenedorId) ? "is-filled" : "")"
-                                   @bind="_editContenedorId" />
-                        </div>
-                        <div class="label-edit-field">
-                            <label class="text-xs text-gray-500">QR</label>
-                            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editQrText) ? "is-filled" : "")"
-                                   @bind="EditQrText"
-                                   @bind:event="oninput" />
-                        </div>
-                        <div class="label-edit-field">
-                            <label class="text-xs text-gray-500">Cantidad nominal</label>
-                            <InputNumber class="@ContCantidadNominalClass"
-                                         @bind-Value="_editContCantidadNominal" />
-                        </div>
-                        <div class="label-edit-field">
-                            <label class="text-xs text-gray-500">Cantidad actual</label>
-                            <InputNumber class="@ContCantidadActualClass"
-                                         @bind-Value="_editContCantidadActual" />
-                        </div>
-                        <div class="label-edit-field">
-                            <label class="text-xs text-gray-500">Unidad</label>
-                            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editContUnidad) ? "is-filled" : "")"
-                                   @bind="_editContUnidad" />
-                        </div>
-                        <div class="label-edit-field">
-                            <label class="text-xs text-gray-500">Proveedor</label>
-                            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editContProveedor) ? "is-filled" : "")"
-                                   @bind="_editContProveedor" />
-                        </div>
-                        <div class="label-edit-field">
-                            <label class="text-xs text-gray-500">Condición</label>
-                            <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editContCondicion) ? "is-filled" : "")"
-                                   @bind="_editContCondicion" />
-                        </div>
-                        <div class="label-edit-field">
-                            <label class="text-xs text-gray-500">Fecha adquisición</label>
-                            <InputDate class="@FechaCompraClass"
-                                       @bind-Value="_editFechaCompra" />
-                        </div>
-                        <div class="label-edit-field">
-                            <label class="text-xs text-gray-500">Fecha recepción</label>
-                            <InputDate class="@FechaRecepcionClass"
-                                       @bind-Value="_editFechaRecepcion" />
-                        </div>
-                        <div class="label-edit-field">
-                            <label class="text-xs text-gray-500">Fecha apertura</label>
-                            <InputDate class="@FechaAperturaClass"
-                                       @bind-Value="_editFechaApertura" />
-                        </div>
-                        <div class="label-edit-field">
-                            <label class="text-xs text-gray-500">Fecha vencimiento</label>
-                            <InputDate class="@FechaVencimientoClass"
-                                       @bind-Value="_editFechaVencimiento" />
-                        </div>
-                    </div>
-                </div>
-                <p class="text-xs text-gray-500" style="margin-top:.75rem;">
-                    Los cambios solo afectan el visualizador (no se guardan en la base de datos).
-                </p>
-            </div>
+        <div class="label-preview">
+            <h4>Vista previa de etiqueta</h4>
 
-            <div class="label-preview">
-                <h4>Vista previa de etiqueta</h4>
-                <div class="label-card @LabelSizeClass" style="@LabelCardStyle">
-                    <div class="label-brand">
-                        <div class="label-brand-left">
-                            <img src="@UpsaLogoUrl" alt="Logo UPSA" />
-                            <div>
-                                <div class="label-org">UPSA · Inventario</div>
-                                <div class="label-brand-name">@(_marcaNombre ?? "Marca: —")</div>
-                            </div>
-                        </div>
-                        @if (!string.IsNullOrWhiteSpace(_marcaLogoUrl))
-                        {
-                            <div class="label-brand-logo">
-                                <img src="@_marcaLogoUrl" alt="Logo de marca" />
-                            </div>
-                        }
-                    </div>
+            <div class="label-frame-wrap">
+                <div class="label-frame @( _previewFull ? "is-full" : "is-fit")"
+                     style="@LabelFrameStyle"
+                     @ref="_fitFrameRef">
 
-                    <div class="label-main">
-                        <div class="label-title">@_editNombrePrincipal</div>
-                        <div class="label-sub">@_editNombreQuimico</div>
-                    </div>
 
-                    <div class="label-details">
-                        <div class="label-pair">
-                            <span class="label-key">CAS</span>
-                            <span>@(_editCas ?? "—")</span>
-                        </div>
-                        <div class="label-pair">
-                            <span class="label-key">Forma</span>
-                            <span>@(_editFormaFisica ?? "—")</span>
-                        </div>
-                        <div class="label-pair">
-                            <span class="label-key">Cantidad total</span>
-                            <span>@GetStockDisplay()</span>
-                        </div>
-                        <div class="label-pair">
-                            <span class="label-key">Cantidad nominal</span>
-                            <span>@FormatCantidad(_editContCantidadNominal, _editContUnidad)</span>
-                        </div>
-                        <div class="label-pair">
-                            <span class="label-key">Cantidad actual</span>
-                            <span>@FormatCantidad(_editContCantidadActual, _editContUnidad)</span>
-                        </div>
-                        <div class="label-pair">
-                            <span class="label-key">QR</span>
-                            <span>@GetQrShortLabel()</span>
-                        </div>
-                        <div class="label-pair">
-                            <span class="label-key">Contenedor</span>
-                            <span>@(_editContenedorId ?? "—")</span>
-                        </div>
-                        <div class="label-pair">
-                            <span class="label-key">Categoría</span>
-                            <span>@(_editCategoria ?? "—")</span>
-                        </div>
-                        <div class="label-pair">
-                            <span class="label-key">Subcategorías</span>
-                            <span>@(_editSubcategorias ?? "—")</span>
-                        </div>
-                        <div class="label-pair">
-                            <span class="label-key">Adquisición</span>
-                            <span>@FormatDate(_editFechaCompra)</span>
-                        </div>
-                        <div class="label-pair">
-                            <span class="label-key">Recepción</span>
-                            <span>@FormatDate(_editFechaRecepcion)</span>
-                        </div>
-                        <div class="label-pair">
-                            <span class="label-key">Apertura</span>
-                            <span>@FormatDate(_editFechaApertura)</span>
-                        </div>
-                        <div class="label-pair">
-                            <span class="label-key">Vencimiento</span>
-                            <span>@FormatDate(_editFechaVencimiento)</span>
-                        </div>
-                        <div class="label-pair">
-                            <span class="label-key">Proveedor</span>
-                            <span>@(_editContProveedor ?? "—")</span>
-                        </div>
-                        <div class="label-pair">
-                            <span class="label-key">Condición</span>
-                            <span>@(_editContCondicion ?? "—")</span>
-                        </div>
-                    </div>
-
-                    <div class="label-safety">
-                        <div class="label-pair">
-                            <span class="label-key">H codes</span>
-                            <span>@(string.IsNullOrWhiteSpace(_hCodesText) ? "—" : _hCodesText)</span>
-                        </div>
-                        <div class="label-pair">
-                            <span class="label-key">P codes</span>
-                            <span>@(string.IsNullOrWhiteSpace(_pCodesText) ? "—" : _pCodesText)</span>
-                        </div>
-                    </div>
-
-                    <div class="label-side">
-                        <div class="label-media">
-                            @if (_ghsIconUrls.Count > 0)
+                    @if (_etiqueta is null)
+                    {
+                        <div class="label-empty-preview">
+                            @if (_loadError is not null)
                             {
-                                foreach (var icon in _ghsIconUrls.Take(GhsMaxIcons))
-                                {
-                                    <img src="@icon" alt="GHS" />
-                                }
+                                <div class="error-note">No se pudo cargar el contenedor: @_loadError</div>
                             }
                             else
                             {
-                                <span class="text-xs text-gray-500">Sin pictogramas</span>
+                                <div class="helper" style="text-align:center;">
+                                    Abre <b>Opciones y editor</b> y selecciona un contenedor para ver la etiqueta.
+                                </div>
                             }
                         </div>
+                    }
+                    else
+                    {
+                        <div class="label-inner @( _previewFull ? "mode-full" : "mode-fit" )"
+                             style="@LabelInnerStyle"
+                             @ref="_fitInnerRef">
 
-                        <div class="label-rombo">
-                            <div class="rombo-diamond">
-                                <div class="rombo-cell rombo-salud" title="Salud">@(_romboSalud ?? "—")</div>
-                                <div class="rombo-cell rombo-inflam" title="Inflamabilidad">@(_romboInflamabilidad ?? "—")</div>
-                                <div class="rombo-cell rombo-react" title="Reactividad">@(_romboReactividad ?? "—")</div>
-                                <div class="rombo-cell rombo-especial" title="Especial">@(_romboEspecial ?? "—")</div>
+                            <div class="label-card @CardLayoutClass" @ref="_exportRef">
+                                <div class="lbl-topbar"></div>
+
+                                <div class="lbl-header">
+                                    <div class="lbl-brand-left">
+                                        <img class="lbl-org-logo" src="@UpsaLogoUrl" alt="Logo UPSA" @onload="OnAnyImageLoaded" />
+                                        <div class="lbl-brand-text">
+                                            <div class="lbl-org">UPSA · Inventario</div>
+                                            <div class="lbl-brand">@DisplayOrDash(_marcaNombre)</div>
+                                        </div>
+                                    </div>
+
+                                    @if (!string.IsNullOrWhiteSpace(_marcaLogoUrl))
+                                    {
+                                        <img class="lbl-brand-logo" src="@_marcaLogoUrl" alt="Logo de marca" @onload="OnAnyImageLoaded" />
+                                    }
+                                </div>
+
+                                <div class="lbl-body">
+                                    <div class="lbl-left">
+                                        <div class="lbl-title">@DisplayOrDash(_editNombrePrincipal)</div>
+                                        <div class="lbl-sub">@DisplayOrDash(_editNombreQuimico)</div>
+
+                                        <div class="lbl-grid">
+                                            <div class="pair"><span class="k">CAS</span><span class="v">@DisplayOrDash(_editCas)</span></div>
+                                            <div class="pair"><span class="k">Forma</span><span class="v">@DisplayOrDash(_editFormaFisica)</span></div>
+                                            <div class="pair"><span class="k">Categoría</span><span class="v">@DisplayOrDash(_editCategoria)</span></div>
+
+                                            <div class="pair"><span class="k">Subcats</span><span class="v">@DisplayOrDash(_editSubcategorias)</span></div>
+                                            <div class="pair"><span class="k">Contenedor</span><span class="v">@DisplayOrDash(_editContenedorId)</span></div>
+                                            <div class="pair"><span class="k">Proveedor</span><span class="v">@DisplayOrDash(_editContProveedor)</span></div>
+
+                                            <div class="pair"><span class="k">Condición</span><span class="v">@DisplayOrDash(_editContCondicion)</span></div>
+                                            <div class="pair"><span class="k">Unidad</span><span class="v">@DisplayOrDash(_editContUnidad)</span></div>
+                                            <div class="pair"><span class="k">Cant. total</span><span class="v">@GetStockDisplay()</span></div>
+
+                                            <div class="pair"><span class="k">Cant. nominal</span><span class="v">@FormatCantidad(_editContCantidadNominal, _editContUnidad)</span></div>
+                                            <div class="pair"><span class="k">Cant. actual</span><span class="v">@FormatCantidad(_editContCantidadActual, _editContUnidad)</span></div>
+                                            <div class="pair"><span class="k">QR</span><span class="v">@GetQrShortLabelValue()</span></div>
+
+                                            <div class="pair"><span class="k">Compra</span><span class="v">@FormatDate(_editFechaCompra)</span></div>
+                                            <div class="pair"><span class="k">Recepción</span><span class="v">@FormatDate(_editFechaRecepcion)</span></div>
+                                            <div class="pair"><span class="k">Apertura</span><span class="v">@FormatDate(_editFechaApertura)</span></div>
+
+                                            <div class="pair"><span class="k">Vence</span><span class="v">@FormatDate(_editFechaVencimiento)</span></div>
+                                        </div>
+
+                                        <div class="lbl-micro">
+                                            <div class="micro-row">
+                                                <span class="mk">H</span>
+                                                <span class="mv">@DisplayOrDash(_hCodesText)</span>
+                                            </div>
+                                            <div class="micro-row">
+                                                <span class="mk">P</span>
+                                                <span class="mv">@DisplayOrDash(_pCodesText)</span>
+                                            </div>
+                                        </div>
+
+                                        <div class="lbl-notes">
+                                            <div class="note">
+                                                <div class="nt">Descripción</div>
+                                                <div class="nv">@DisplayOrDash(_editDescripcion)</div>
+                                            </div>
+                                            <div class="note">
+                                                <div class="nt">Observaciones</div>
+                                                <div class="nv">@DisplayOrDash(_editObservaciones)</div>
+                                            </div>
+                                        </div>
+
+                                        <div class="lbl-footer">
+                                            <span>Solo para uso en laboratorio.</span>
+                                            @if (_etiqueta.Controlada)
+                                            {
+                                                <span class="danger-chip">Sustancia controlada</span>
+                                            }
+                                        </div>
+                                    </div>
+
+                                    <div class="lbl-right">
+                                        <div class="pictos" style="@PictosStyle">
+                                            @if (_ghsIconUrls.Count > 0)
+                                            {
+                                                foreach (var icon in _ghsIconUrls.Take(GhsMaxIcons))
+                                                {
+                                                    <img src="@icon" alt="GHS" @onload="OnAnyImageLoaded" />
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <div class="no-pictos">Sin pictogramas</div>
+                                            }
+                                        </div>
+
+                                        <div class="side-row">
+                                            <div class="nfpa">
+                                                @NFPA()
+                                                <div class="nfpa-caption">NFPA</div>
+                                            </div>
+
+                                            <div class="qrbox">
+                                                @if (!string.IsNullOrWhiteSpace(_qrImageUrl))
+                                                {
+                                                    <img src="@_qrImageUrl" alt="QR etiqueta" @onload="OnAnyImageLoaded" />
+                                                }
+                                                else
+                                                {
+                                                    <div class="no-qr">Sin QR</div>
+                                                }
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="text-xs text-gray-500">Rombo NFPA</div>
-                        </div>
 
-                        <div class="label-qr">
-                            @if (!string.IsNullOrWhiteSpace(_qrImageUrl))
-                            {
-                                <img src="@_qrImageUrl" alt="QR etiqueta" />
-                            }
-                            else
-                            {
-                                <span class="text-xs text-gray-500">Sin QR</span>
-                            }
                         </div>
-                        <div class="label-photo">
-                            @if (!string.IsNullOrWhiteSpace(_labelImagenFinal))
-                            {
-                                <img src="@_labelImagenFinal" alt="Imagen etiqueta" />
-                            }
-                        </div>
-                    </div>
-
-                    <div class="label-notes">
-                        <div class="label-note-section">
-                            <div class="label-note-title">Descripción</div>
-                            <div>@_editDescripcion</div>
-                        </div>
-                        <div class="label-note-section">
-                            <div class="label-note-title">Observaciones</div>
-                            <div>@_editObservaciones</div>
-                        </div>
-                    </div>
+                    }
                 </div>
             </div>
         </div>
-    </section>
-}
+
+        <div class="label-accordion">
+            <button type="button"
+                    class="label-accordion-toggle @(_editorOpen ? "is-open" : "")"
+                    @onclick="ToggleEditor">
+                <span>@(_editorOpen ? "Ocultar opciones y editor" : "Mostrar opciones y editor")</span>
+                <span class="chev">@(_editorOpen ? "▲" : "▼")</span>
+            </button>
+
+            @if (_editorOpen)
+            {
+                <div class="label-accordion-body">
+                    @if (_etiqueta is null)
+                    {
+                        <div class="empty" style="margin-top:1rem;">
+                            <div class="helper">Selecciona un contenedor para habilitar el editor.</div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="label-edit" style="margin-top:1rem;">
+                            <h4>Campos editables</h4>
+
+                            <div class="label-edit-section">
+                                <div class="label-edit-title">Reactivo</div>
+                                <div class="label-edit-grid">
+                                    <div class="label-edit-field">
+                                        <label class="text-xs text-gray-500">Nombre principal</label>
+                                        <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editNombrePrincipal) ? "is-filled" : "")"
+                                               @bind="_editNombrePrincipal" @bind:event="oninput" @bind:after="MarkFit" />
+                                    </div>
+                                    <div class="label-edit-field">
+                                        <label class="text-xs text-gray-500">Nombre químico</label>
+                                        <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editNombreQuimico) ? "is-filled" : "")"
+                                               @bind="_editNombreQuimico" @bind:event="oninput" @bind:after="MarkFit" />
+                                    </div>
+                                    <div class="label-edit-field">
+                                        <label class="text-xs text-gray-500">CAS</label>
+                                        <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editCas) ? "is-filled" : "")"
+                                               @bind="_editCas" @bind:event="oninput" @bind:after="MarkFit" />
+                                    </div>
+                                    <div class="label-edit-field">
+                                        <label class="text-xs text-gray-500">Forma física</label>
+                                        <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editFormaFisica) ? "is-filled" : "")"
+                                               @bind="_editFormaFisica" @bind:event="oninput" @bind:after="MarkFit" />
+                                    </div>
+                                    <div class="label-edit-field">
+                                        <label class="text-xs text-gray-500">Categoría</label>
+                                        <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editCategoria) ? "is-filled" : "")"
+                                               @bind="_editCategoria" @bind:event="oninput" @bind:after="MarkFit" />
+                                    </div>
+                                    <div class="label-edit-field">
+                                        <label class="text-xs text-gray-500">Subcategorías</label>
+                                        <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editSubcategorias) ? "is-filled" : "")"
+                                               @bind="_editSubcategorias" @bind:event="oninput" @bind:after="MarkFit" />
+                                    </div>
+                                    <div class="label-edit-field label-edit-wide">
+                                        <label class="text-xs text-gray-500">Descripción</label>
+                                        <textarea class="border p-1 form-control" rows="3"
+                                                  @bind="_editDescripcion"
+                                                  @bind:event="oninput"
+                                                  @bind:after="MarkFit"></textarea>
+                                    </div>
+                                    <div class="label-edit-field label-edit-wide">
+                                        <label class="text-xs text-gray-500">Observaciones</label>
+                                        <textarea class="border p-1 form-control" rows="3"
+                                                  @bind="_editObservaciones"
+                                                  @bind:event="oninput"
+                                                  @bind:after="MarkFit"></textarea>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="label-edit-section">
+                                <div class="label-edit-title">Contenedor</div>
+                                <div class="label-edit-grid">
+                                    <div class="label-edit-field">
+                                        <label class="text-xs text-gray-500">ID contenedor</label>
+                                        <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editContenedorId) ? "is-filled" : "")"
+                                               @bind="_editContenedorId" @bind:event="oninput" @bind:after="MarkFit" />
+                                    </div>
+                                    <div class="label-edit-field">
+                                        <label class="text-xs text-gray-500">QR</label>
+                                        <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editQrText) ? "is-filled" : "")"
+                                               @bind="EditQrText"
+                                               @bind:event="oninput" />
+                                    </div>
+                                    <div class="label-edit-field">
+                                        <label class="text-xs text-gray-500">Cantidad nominal</label>
+                                        <InputNumber TValue="decimal?" class="@ContCantidadNominalClass"
+                                                     @bind-Value="_editContCantidadNominal"
+                                                     @bind-Value:after="MarkFit" />
+                                    </div>
+                                    <div class="label-edit-field">
+                                        <label class="text-xs text-gray-500">Cantidad actual</label>
+                                        <InputNumber TValue="decimal?" class="@ContCantidadActualClass"
+                                                     @bind-Value="_editContCantidadActual"
+                                                     @bind-Value:after="MarkFit" />
+                                    </div>
+                                    <div class="label-edit-field">
+                                        <label class="text-xs text-gray-500">Unidad</label>
+                                        <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editContUnidad) ? "is-filled" : "")"
+                                               @bind="_editContUnidad" @bind:event="oninput" @bind:after="MarkFit" />
+                                    </div>
+                                    <div class="label-edit-field">
+                                        <label class="text-xs text-gray-500">Proveedor</label>
+                                        <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editContProveedor) ? "is-filled" : "")"
+                                               @bind="_editContProveedor" @bind:event="oninput" @bind:after="MarkFit" />
+                                    </div>
+                                    <div class="label-edit-field">
+                                        <label class="text-xs text-gray-500">Condición</label>
+                                        <input class="border p-1 form-control @(!string.IsNullOrWhiteSpace(_editContCondicion) ? "is-filled" : "")"
+                                               @bind="_editContCondicion" @bind:event="oninput" @bind:after="MarkFit" />
+                                    </div>
+                                    <div class="label-edit-field">
+                                        <label class="text-xs text-gray-500">Fecha adquisición</label>
+                                        <InputDate class="@FechaCompraClass" @bind-Value="_editFechaCompra" @bind-Value:after="MarkFit" />
+                                    </div>
+                                    <div class="label-edit-field">
+                                        <label class="text-xs text-gray-500">Fecha recepción</label>
+                                        <InputDate class="@FechaRecepcionClass" @bind-Value="_editFechaRecepcion" @bind-Value:after="MarkFit" />
+                                    </div>
+                                    <div class="label-edit-field">
+                                        <label class="text-xs text-gray-500">Fecha apertura</label>
+                                        <InputDate class="@FechaAperturaClass" @bind-Value="_editFechaApertura" @bind-Value:after="MarkFit" />
+                                    </div>
+                                    <div class="label-edit-field">
+                                        <label class="text-xs text-gray-500">Fecha vencimiento</label>
+                                        <InputDate class="@FechaVencimientoClass" @bind-Value="_editFechaVencimiento" @bind-Value:after="MarkFit" />
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</section>
 
 @code {
     [Parameter] public string? ContenedorId { get; set; }
 
     private const string CategoriaReactivoId = "reactivo-quimico";
     private const string UpsaLogoUrl = "https://vc4a.com/wp-content/uploads/2022/06/198068246_2916680591924255_5728041621538232491_n.jpg";
+
+    private const double Aspect = 2.0;     // proporción objetivo al bloquear
+    private const double DesignW = 900.0;  // canvas base px
 
     private readonly List<ContenedorLookup> _contenedoresLookup = new();
     private readonly List<string> _ghsIconUrls = new();
@@ -392,12 +392,19 @@ else if (_etiqueta is not null)
     private string? _loadError;
     private EtiquetaReactivo? _etiqueta;
 
-    private int _labelWidthMm = 90;
+    private int _labelWidthMm = 100;
     private int _labelHeightMm = 50;
-    private string _labelImagenModo = "url";
-    private string? _labelImagenUrl;
-    private string? _labelImagenDataUrl;
-    private string? _labelImagenArchivoNombre;
+    private bool _lockAspectRatio = true;
+
+    private bool _editorOpen = false;
+    private void ToggleEditor() => _editorOpen = !_editorOpen;
+
+    private bool _previewFull = false;
+
+    private bool _fitPending = false;
+    private bool _fitObserversActive = false;
+    private ElementReference _fitFrameRef;
+    private ElementReference _fitInnerRef;
 
     private string? _editNombrePrincipal;
     private string? _editNombreQuimico;
@@ -407,6 +414,7 @@ else if (_etiqueta is not null)
     private string? _editSubcategorias;
     private string? _editDescripcion;
     private string? _editObservaciones;
+
     private string? _editContenedorId;
     private string? _editQrText;
     private decimal? _editContCantidadNominal;
@@ -418,18 +426,24 @@ else if (_etiqueta is not null)
     private DateTime? _editFechaRecepcion;
     private DateTime? _editFechaApertura;
     private DateTime? _editFechaVencimiento;
+
     private string? _romboSalud;
     private string? _romboInflamabilidad;
     private string? _romboReactividad;
     private string? _romboEspecial;
+
     private decimal? _stockTotal;
     private string? _stockUnidad;
+
     private string? _qrTexto;
     private string? _qrImageUrl;
+
     private string? _hCodesText;
     private string? _pCodesText;
+
     private string? _marcaNombre;
     private string? _marcaLogoUrl;
+
     private DateTime? _fechaCompra;
     private DateTime? _fechaRecepcion;
     private DateTime? _fechaApertura;
@@ -440,33 +454,83 @@ else if (_etiqueta is not null)
     private string? _contProveedor;
     private string? _contCondicion;
 
-    private string? _labelImagenFinal =>
-        _labelImagenModo == "url" ? _labelImagenUrl : _labelImagenDataUrl;
-    private string ContCantidadNominalClass
-        => $"border p-1 form-control {(_editContCantidadNominal.HasValue ? "is-filled" : "")}";
-    private string ContCantidadActualClass
-        => $"border p-1 form-control {(_editContCantidadActual.HasValue ? "is-filled" : "")}";
-    private string FechaCompraClass
-        => $"border p-1 form-control {(_editFechaCompra.HasValue ? "is-filled" : "")}";
-    private string FechaRecepcionClass
-        => $"border p-1 form-control {(_editFechaRecepcion.HasValue ? "is-filled" : "")}";
-    private string FechaAperturaClass
-        => $"border p-1 form-control {(_editFechaApertura.HasValue ? "is-filled" : "")}";
-    private string FechaVencimientoClass
-        => $"border p-1 form-control {(_editFechaVencimiento.HasValue ? "is-filled" : "")}";
-    private string LabelSizeClass
-        => GetLabelSizeClass();
-    private int GhsMaxIcons
-        => LabelSizeClass switch
+    // ✅ Pictos: ahora soportamos “muchos” con grid 1/2/3 columnas y tamaños dinámicos
+    private int GhsMaxIcons => 9;
+
+    private int GhsCountShown => Math.Min(_ghsIconUrls.Count, GhsMaxIcons);
+
+    private int GhsCols => GhsCountShown switch
+    {
+        <= 1 => 1,
+        <= 4 => 2,
+        _ => 3
+    };
+
+    private int GhsIconSizePx => GhsCountShown switch
+    {
+        0 => 86,
+        1 => 120,
+        2 => 104,
+        3 => 92,
+        4 => 84,
+        5 => 72,
+        6 => 68,
+        7 => 62,
+        8 => 60,
+        _ => 56
+    };
+
+    private ElementReference _exportRef;
+
+private async Task DescargarPdfAsync()
+{
+    if (_etiqueta is null) return;
+
+    var fileName = $"Etiqueta-{_selectedContenedorId}.pdf";
+    await JS.InvokeVoidAsync("labelExport.downloadPdf", _exportRef, _labelWidthMm, _labelHeightMm, fileName);
+}
+
+
+    private int GhsGapPx => GhsCountShown switch
+    {
+        <= 2 => 12,
+        <= 4 => 10,
+        _ => 8
+    };
+
+    private string PictosStyle => $"--ghs-size:{GhsIconSizePx}px; --ghs-cols:{GhsCols}; --ghs-gap:{GhsGapPx}px;";
+
+    private string ContCantidadNominalClass => $"border p-1 form-control {(_editContCantidadNominal.HasValue ? "is-filled" : "")}";
+    private string ContCantidadActualClass => $"border p-1 form-control {(_editContCantidadActual.HasValue ? "is-filled" : "")}";
+    private string FechaCompraClass => $"border p-1 form-control {(_editFechaCompra.HasValue ? "is-filled" : "")}";
+    private string FechaRecepcionClass => $"border p-1 form-control {(_editFechaRecepcion.HasValue ? "is-filled" : "")}";
+    private string FechaAperturaClass => $"border p-1 form-control {(_editFechaApertura.HasValue ? "is-filled" : "")}";
+    private string FechaVencimientoClass => $"border p-1 form-control {(_editFechaVencimiento.HasValue ? "is-filled" : "")}";
+
+    private string LabelFrameStyle => $"width:{_labelWidthMm}mm; height:{_labelHeightMm}mm;";
+
+    // ✅ Canvas px dinámico para permitir reflow/reordenamiento según ratio real
+    private string LabelInnerStyle
+    {
+        get
         {
-            "size-sm" => 3,
-            "size-md" => 4,
-            "size-lg" => 6,
-            _ => 8
-        };
-    private string LabelCardStyle =>
-        $"width:{_labelWidthMm}mm; height:{_labelHeightMm}mm; " +
-        $"--label-w:{_labelWidthMm}mm; --label-h:{_labelHeightMm}mm; --label-scale:{GetLabelScale().ToString("0.###", CultureInfo.InvariantCulture)};";
+            var ratio = (_labelHeightMm <= 0) ? Aspect : (_labelWidthMm / (double)_labelHeightMm);
+            if (ratio <= 0.1) ratio = Aspect;
+
+            // ✅ (opcional) cambiar el “canvas base” para que en cuadrado el scale suba (se vea más grande)
+            var designW = ratio <= 1.20 ? 720.0 : (ratio <= 1.60 ? 820.0 : 900.0);
+            var designH = designW / ratio;
+
+            // ✅ anchos/tamaños que cambian según forma
+            var rightW = ratio <= 1.20 ? 260 : (ratio <= 1.60 ? 285 : 300);
+            var qr = ratio <= 1.20 ? 140 : 120;
+            var pad = ratio <= 1.20 ? 18 : 14;
+
+            return
+                $"--design-w:{designW:0}px; --design-h:{designH:0}px;" +
+                $"--right-w:{rightW}px; --qr:{qr}px; --pad:{pad}px;";
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -481,6 +545,98 @@ else if (_etiqueta is not null)
             await LoadEtiquetaAsync();
         }
     }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_etiqueta is null) return;
+
+        // Modo completo: desactivar observadores (evita trabajo innecesario)
+        if (_previewFull)
+        {
+            if (_fitObserversActive)
+            {
+                try { await JS.InvokeVoidAsync("labelFit.unobserve", _fitFrameRef); } catch { }
+                _fitObserversActive = false;
+            }
+            return;
+        }
+
+        // Modo fit: activar observadores una vez
+        if (!_fitObserversActive)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("labelFit.observe", _fitFrameRef, _fitInnerRef);
+                _fitObserversActive = true;
+                _fitPending = false;
+            }
+            catch
+            {
+                // si el JS aún no está listo, reintenta en el siguiente render
+                _fitPending = true;
+            }
+            return;
+        }
+
+        // Refit explícito (cuando editas campos desde Blazor)
+        if (_fitPending)
+        {
+            _fitPending = false;
+            try
+            {
+                await JS.InvokeVoidAsync("labelFit.refit", _fitFrameRef, _fitInnerRef);
+            }
+            catch
+            {
+                _fitPending = true;
+            }
+        }
+    }
+
+    private void MarkFit()
+    {
+        if (_previewFull) return;
+        _fitPending = true;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void SetPreviewMode(bool full)
+    {
+        _previewFull = full;
+        // al volver a fit, queremos recalcular sí o sí
+        if (!_previewFull) _fitPending = true;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnLockRatioChanged(ChangeEventArgs e)
+    {
+        _lockAspectRatio = (e.Value is bool b && b);
+        if (_lockAspectRatio)
+            _labelHeightMm = Math.Max(20, (int)Math.Round(_labelWidthMm / Aspect));
+        MarkFit();
+    }
+
+    private void OnWidthInput(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var w)) return;
+        w = Math.Clamp(w, 20, 1000);
+        _labelWidthMm = w;
+
+        if (_lockAspectRatio)
+            _labelHeightMm = Math.Max(20, (int)Math.Round(_labelWidthMm / Aspect));
+
+        MarkFit();
+    }
+
+    private void OnHeightInput(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var h)) return;
+        h = Math.Clamp(h, 20, 600);
+        _labelHeightMm = h;
+        MarkFit();
+    }
+
+    private void OnAnyImageLoaded() => MarkFit();
 
     private async Task LoadContenedoresLookupAsync()
     {
@@ -505,10 +661,7 @@ ORDER BY nombre, c.cont_id;
         {
             var contId = reader.GetString(0);
             var nombre = reader.GetString(1);
-            _contenedoresLookup.Add(new ContenedorLookup(
-                contId,
-                $"{nombre} - {contId}"
-            ));
+            _contenedoresLookup.Add(new ContenedorLookup(contId, $"{nombre} - {contId}"));
         }
     }
 
@@ -517,37 +670,7 @@ ORDER BY nombre, c.cont_id;
         _selectedContenedorId = args.Value?.ToString();
         if (string.IsNullOrWhiteSpace(_selectedContenedorId))
         {
-            _etiqueta = null;
-            _ghsIconUrls.Clear();
-            _loadError = null;
-            _stockTotal = null;
-            _stockUnidad = null;
-            _qrTexto = null;
-            _qrImageUrl = null;
-            _hCodesText = null;
-            _pCodesText = null;
-            _marcaNombre = null;
-            _marcaLogoUrl = null;
-            _fechaCompra = null;
-            _fechaRecepcion = null;
-            _fechaApertura = null;
-            _fechaVencimiento = null;
-            _contCantidadNominal = null;
-            _contCantidadActual = null;
-            _contUnidad = null;
-            _contProveedor = null;
-            _contCondicion = null;
-            _editContenedorId = null;
-            _editQrText = null;
-            _editContCantidadNominal = null;
-            _editContCantidadActual = null;
-            _editContUnidad = null;
-            _editContProveedor = null;
-            _editContCondicion = null;
-            _editFechaCompra = null;
-            _editFechaRecepcion = null;
-            _editFechaApertura = null;
-            _editFechaVencimiento = null;
+            ResetAll();
             return;
         }
 
@@ -555,32 +678,35 @@ ORDER BY nombre, c.cont_id;
         await LoadEtiquetaAsync();
     }
 
-    private async Task LoadEtiquetaAsync()
+    private void ResetAll()
     {
-        _loadError = null;
         _etiqueta = null;
         _ghsIconUrls.Clear();
-        _romboSalud = null;
-        _romboInflamabilidad = null;
-        _romboReactividad = null;
-        _romboEspecial = null;
+        _loadError = null;
+
         _stockTotal = null;
         _stockUnidad = null;
+
         _qrTexto = null;
         _qrImageUrl = null;
+
         _hCodesText = null;
         _pCodesText = null;
+
         _marcaNombre = null;
         _marcaLogoUrl = null;
+
         _fechaCompra = null;
         _fechaRecepcion = null;
         _fechaApertura = null;
         _fechaVencimiento = null;
+
         _contCantidadNominal = null;
         _contCantidadActual = null;
         _contUnidad = null;
         _contProveedor = null;
         _contCondicion = null;
+
         _editContenedorId = null;
         _editQrText = null;
         _editContCantidadNominal = null;
@@ -593,37 +719,49 @@ ORDER BY nombre, c.cont_id;
         _editFechaApertura = null;
         _editFechaVencimiento = null;
 
-        if (string.IsNullOrWhiteSpace(_selectedContenedorId))
-            return;
+        _romboSalud = null;
+        _romboInflamabilidad = null;
+        _romboReactividad = null;
+        _romboEspecial = null;
+
+        _fitPending = false;
+        _fitObserversActive = false;
+    }
+
+    private async Task LoadEtiquetaAsync()
+    {
+        ResetAll();
+        if (string.IsNullOrWhiteSpace(_selectedContenedorId)) return;
 
         try
         {
             await using var conn = await DataSource.OpenConnectionAsync();
+
+            // ✅ Quitado imagen_url (ya no se usa)
             const string sql = @"
 SELECT s.sustancia_id,
        c.cont_id,
        COALESCE(NULLIF(s.nombre_comercial, ''), NULLIF(s.nombre_quimico, ''), s.sustancia_id) AS nombre,
-       s.nombre_comercial,
-       s.nombre_quimico,
-       s.cas,
-       s.forma_fisica,
-       s.descripcion,
-       s.observaciones,
-       s.imagen_url,
-       COALESCE(cat.nombre, '') AS categoria,
-       COALESCE(string_agg(DISTINCT (cat.nombre || ' · ' || sc.nombre), ', ' ORDER BY (cat.nombre || ' · ' || sc.nombre)), '') AS subcategorias,
+       NULLIF(s.nombre_comercial, '') AS nombre_comercial,
+       NULLIF(s.nombre_quimico, '') AS nombre_quimico,
+       NULLIF(s.cas, '') AS cas,
+       NULLIF(s.forma_fisica, '') AS forma_fisica,
+       NULLIF(s.descripcion, '') AS descripcion,
+       NULLIF(s.observaciones, '') AS observaciones,
+       cat.nombre AS categoria,
+       string_agg(DISTINCT (cat.nombre || ' · ' || sc.nombre), ', ' ORDER BY (cat.nombre || ' · ' || sc.nombre)) AS subcategorias,
        COALESCE(s.sustancia_controlada, false) AS controlada,
-       c.qr,
+       NULLIF(c.qr, '') AS qr,
        c.fecha_compra,
        c.fecha_recepcion,
        c.fecha_apertura,
        c.fecha_vencimiento,
        c.cantidad_reactivo_nominal,
        c.cantidad_reactivo_actual,
-       COALESCE(u.simbolo, '') AS unidad,
-       COALESCE(c.proveedor, '') AS proveedor,
-       COALESCE(cond.nombre, '') AS condicion,
-       COALESCE(ma.nombre, '') AS marca_nombre,
+       u.simbolo AS unidad,
+       NULLIF(c.proveedor, '') AS proveedor,
+       cond.nombre AS condicion,
+       ma.nombre AS marca_nombre,
        ma.imagen_url AS marca_logo
 FROM sustancias s
 INNER JOIN contenedores c ON c.sustancia_id = s.sustancia_id
@@ -637,7 +775,7 @@ WHERE c.cont_id = @cont
   AND c.laboratorio_id = @lab
   AND s.categoria_id = @cat
 GROUP BY s.sustancia_id, c.cont_id, s.nombre_comercial, s.nombre_quimico, s.cas,
-         s.forma_fisica, s.descripcion, s.observaciones, s.imagen_url,
+         s.forma_fisica, s.descripcion, s.observaciones,
          cat.nombre, s.sustancia_controlada, c.qr, c.fecha_compra,
          c.fecha_recepcion, c.fecha_apertura, c.fecha_vencimiento,
          c.cantidad_reactivo_nominal, c.cantidad_reactivo_actual, u.simbolo,
@@ -663,22 +801,24 @@ LIMIT 1;
                     reader.IsDBNull(8) ? null : reader.GetString(8),
                     reader.IsDBNull(9) ? null : reader.GetString(9),
                     reader.IsDBNull(10) ? null : reader.GetString(10),
-                    reader.IsDBNull(11) ? null : reader.GetString(11),
-                    !reader.IsDBNull(12) && reader.GetBoolean(12)
+                    !reader.IsDBNull(11) && reader.GetBoolean(11)
                 );
 
-                _qrTexto = reader.IsDBNull(13) ? null : reader.GetString(13);
-                _fechaCompra = reader.IsDBNull(14) ? null : reader.GetDateTime(14);
-                _fechaRecepcion = reader.IsDBNull(15) ? null : reader.GetDateTime(15);
-                _fechaApertura = reader.IsDBNull(16) ? null : reader.GetDateTime(16);
-                _fechaVencimiento = reader.IsDBNull(17) ? null : reader.GetDateTime(17);
-                _contCantidadNominal = reader.IsDBNull(18) ? null : reader.GetDecimal(18);
-                _contCantidadActual = reader.IsDBNull(19) ? null : reader.GetDecimal(19);
-                _contUnidad = reader.IsDBNull(20) ? null : reader.GetString(20);
-                _contProveedor = reader.IsDBNull(21) ? null : reader.GetString(21);
-                _contCondicion = reader.IsDBNull(22) ? null : reader.GetString(22);
-                _marcaNombre = reader.IsDBNull(23) ? null : reader.GetString(23);
-                _marcaLogoUrl = reader.IsDBNull(24) ? null : reader.GetString(24);
+                _qrTexto = reader.IsDBNull(12) ? null : reader.GetString(12);
+                _fechaCompra = reader.IsDBNull(13) ? null : reader.GetDateTime(13);
+                _fechaRecepcion = reader.IsDBNull(14) ? null : reader.GetDateTime(14);
+                _fechaApertura = reader.IsDBNull(15) ? null : reader.GetDateTime(15);
+                _fechaVencimiento = reader.IsDBNull(16) ? null : reader.GetDateTime(16);
+
+                _contCantidadNominal = reader.IsDBNull(17) ? null : reader.GetDecimal(17);
+                _contCantidadActual = reader.IsDBNull(18) ? null : reader.GetDecimal(18);
+
+                _contUnidad = reader.IsDBNull(19) ? null : reader.GetString(19);
+                _contProveedor = reader.IsDBNull(20) ? null : reader.GetString(20);
+                _contCondicion = reader.IsDBNull(21) ? null : reader.GetString(21);
+
+                _marcaNombre = reader.IsDBNull(22) ? null : reader.GetString(22);
+                _marcaLogoUrl = reader.IsDBNull(23) ? null : reader.GetString(23);
             }
             else
             {
@@ -699,13 +839,7 @@ ORDER BY sp.ghs_id;
             cmdGhs.Parameters.AddWithValue("id", _etiqueta.Id);
             await using var readerGhs = await cmdGhs.ExecuteReaderAsync();
             while (await readerGhs.ReadAsync())
-            {
-                if (!readerGhs.IsDBNull(0))
-                {
-                    _ghsIconUrls.Add(readerGhs.GetString(0));
-                }
-            }
-
+                if (!readerGhs.IsDBNull(0)) _ghsIconUrls.Add(readerGhs.GetString(0));
             await readerGhs.CloseAsync();
 
             const string sqlRombo = @"
@@ -723,26 +857,17 @@ WHERE sr.sustancia_id = @id;
                 var valor = readerRombo.IsDBNull(1) ? null : readerRombo.GetString(1);
                 switch (seccion)
                 {
-                    case "SALUD":
-                        _romboSalud = valor;
-                        break;
-                    case "INFLAMABILIDAD":
-                        _romboInflamabilidad = valor;
-                        break;
-                    case "REACTIVIDAD":
-                        _romboReactividad = valor;
-                        break;
-                    case "ESPECIAL":
-                        _romboEspecial = valor;
-                        break;
+                    case "SALUD": _romboSalud = valor; break;
+                    case "INFLAMABILIDAD": _romboInflamabilidad = valor; break;
+                    case "REACTIVIDAD": _romboReactividad = valor; break;
+                    case "ESPECIAL": _romboEspecial = valor; break;
                 }
             }
-
             await readerRombo.CloseAsync();
 
             const string sqlStock = @"
 SELECT SUM(COALESCE(c.cantidad_reactivo_actual, c.cantidad_reactivo_nominal)) AS total,
-       CASE WHEN COUNT(DISTINCT c.unidad_id) = 1 THEN MAX(u.simbolo) ELSE '' END AS unidad
+       CASE WHEN COUNT(DISTINCT c.unidad_id) = 1 THEN MAX(u.simbolo) ELSE NULL END AS unidad
 FROM contenedores c
 LEFT JOIN unidades u ON u.unidad_id = c.unidad_id
 WHERE c.sustancia_id = @id
@@ -757,23 +882,23 @@ WHERE c.sustancia_id = @id
                 _stockTotal = readerStock.IsDBNull(0) ? null : readerStock.GetDecimal(0);
                 _stockUnidad = readerStock.IsDBNull(1) ? null : readerStock.GetString(1);
             }
-
             await readerStock.CloseAsync();
 
             _qrImageUrl = string.IsNullOrWhiteSpace(_qrTexto)
                 ? null
-                : $"https://api.qrserver.com/v1/create-qr-code/?size=120x120&data={Uri.EscapeDataString(_qrTexto)}";
+                : $"https://api.qrserver.com/v1/create-qr-code/?size=260x260&data={Uri.EscapeDataString(_qrTexto)}";
 
             const string sqlHpCodes = @"
 SELECT
-    COALESCE(string_agg(DISTINCT h.h_id, ', ' ORDER BY h.h_id), '') AS h_codes,
-    COALESCE(string_agg(DISTINCT p.p_id, ', ' ORDER BY p.p_id), '') AS p_codes
+    string_agg(DISTINCT h.h_id, ', ' ORDER BY h.h_id) AS h_codes,
+    string_agg(DISTINCT p.p_id, ', ' ORDER BY p.p_id) AS p_codes
 FROM sustancias s
 LEFT JOIN sustancias_h sh ON sh.sustancia_id = s.sustancia_id
 LEFT JOIN h_codes h ON h.h_id = sh.h_id
 LEFT JOIN sustancias_p sp ON sp.sustancia_id = s.sustancia_id
 LEFT JOIN p_codes p ON p.p_id = sp.p_id
-WHERE s.sustancia_id = @id;
+WHERE s.sustancia_id = @id
+GROUP BY s.sustancia_id;
 ";
             await using var cmdHp = new NpgsqlCommand(sqlHpCodes, conn);
             cmdHp.Parameters.AddWithValue("id", _etiqueta.Id);
@@ -785,6 +910,9 @@ WHERE s.sustancia_id = @id;
             }
 
             HydrateEditableFields();
+
+            // pedir fit
+            MarkFit();
         }
         catch (Exception ex)
         {
@@ -792,29 +920,42 @@ WHERE s.sustancia_id = @id;
         }
     }
 
+    private string CardLayoutClass
+    {
+        get
+        {
+            var ratio = (_labelHeightMm <= 0) ? Aspect : _labelWidthMm / (double)_labelHeightMm;
+
+            if (ratio <= 1.20) return "layout-square";  // 1:1 o más alto
+            if (ratio <= 1.60) return "layout-mid";     // intermedio
+            return "layout-wide";                       // 2:1 típico
+        }
+    }
+
+
     private void HydrateEditableFields()
     {
-        if (_etiqueta is null)
-            return;
+        if (_etiqueta is null) return;
 
         _editNombrePrincipal = _etiqueta.Nombre;
         _editNombreQuimico = string.IsNullOrWhiteSpace(_etiqueta.NombreQuimico) ? _etiqueta.NombreComercial : _etiqueta.NombreQuimico;
+
         _editCas = _etiqueta.Cas;
         _editFormaFisica = _etiqueta.FormaFisica;
         _editCategoria = _etiqueta.Categoria;
         _editSubcategorias = _etiqueta.Subcategorias;
         _editDescripcion = _etiqueta.Descripcion;
         _editObservaciones = _etiqueta.Observaciones;
-        _labelImagenUrl = _etiqueta.ImagenUrl;
-        _labelImagenDataUrl = null;
-        _labelImagenArchivoNombre = null;
+
         _editContenedorId = _selectedContenedorId;
         _editQrText = _qrTexto;
+
         _editContCantidadNominal = _contCantidadNominal;
         _editContCantidadActual = _contCantidadActual;
         _editContUnidad = _contUnidad;
         _editContProveedor = _contProveedor;
         _editContCondicion = _contCondicion;
+
         _editFechaCompra = _fechaCompra;
         _editFechaRecepcion = _fechaRecepcion;
         _editFechaApertura = _fechaApertura;
@@ -823,46 +964,22 @@ WHERE s.sustancia_id = @id;
 
     private string GetStockDisplay()
     {
-        if (!_stockTotal.HasValue)
-        {
-            return "—";
-        }
-
+        if (!_stockTotal.HasValue) return "—";
         var cantidad = _stockTotal.Value.ToString("0.##", CultureInfo.CurrentCulture);
         return string.IsNullOrWhiteSpace(_stockUnidad) ? cantidad : $"{cantidad} {_stockUnidad}".Trim();
     }
 
-    private string GetQrShortLabel()
+    private string GetQrShortLabelValue()
     {
-        if (string.IsNullOrWhiteSpace(_editQrText))
-        {
-            return "QR: —";
-        }
-
-        var texto = _editQrText.Length > 18 ? $"{_editQrText[..18]}…" : _editQrText;
-        return $"QR: {texto}";
+        if (string.IsNullOrWhiteSpace(_editQrText)) return "—";
+        return _editQrText.Length > 28 ? $"{_editQrText[..28]}…" : _editQrText;
     }
 
     private static string FormatCantidad(decimal? cantidad, string? unidad)
     {
-        if (!cantidad.HasValue)
-        {
-            return "—";
-        }
-
+        if (!cantidad.HasValue) return "—";
         var valor = cantidad.Value.ToString("0.##", CultureInfo.CurrentCulture);
         return string.IsNullOrWhiteSpace(unidad) ? valor : $"{valor} {unidad}".Trim();
-    }
-
-    private async Task OnEtiquetaImagenSeleccionada(InputFileChangeEventArgs e)
-    {
-        var file = e.File;
-        _labelImagenArchivoNombre = file.Name;
-        await using var stream = file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
-        using var ms = new MemoryStream();
-        await stream.CopyToAsync(ms);
-        var base64 = Convert.ToBase64String(ms.ToArray());
-        _labelImagenDataUrl = $"data:{file.ContentType};base64,{base64}";
     }
 
     private string? EditQrText
@@ -874,7 +991,8 @@ WHERE s.sustancia_id = @id;
             _qrTexto = value;
             _qrImageUrl = string.IsNullOrWhiteSpace(value)
                 ? null
-                : $"https://api.qrserver.com/v1/create-qr-code/?size=120x120&data={Uri.EscapeDataString(value)}";
+                : $"https://api.qrserver.com/v1/create-qr-code/?size=260x260&data={Uri.EscapeDataString(value)}";
+            MarkFit();
         }
     }
 
@@ -889,99 +1007,61 @@ WHERE s.sustancia_id = @id;
         string? FormaFisica,
         string? Descripcion,
         string? Observaciones,
-        string? ImagenUrl,
         string? Categoria,
         string? Subcategorias,
         bool Controlada
     );
 
-    private static string FormatDate(DateTime? dt)
-        => dt.HasValue ? dt.Value.ToString("dd/MM/yyyy") : "—";
+    private static string FormatDate(DateTime? dt) => dt.HasValue ? dt.Value.ToString("dd/MM/yyyy") : "—";
+    private static string DisplayOrDash(string? value) => string.IsNullOrWhiteSpace(value) ? "—" : value.Trim();
 
-    private double GetLabelScale()
+    private RenderFragment NFPA() => __builder =>
     {
-        if (_labelWidthMm <= 0 || _labelHeightMm <= 0)
-        {
-            return 1;
-        }
+        var salud = DisplayOrDash(_romboSalud);
+        var inflam = DisplayOrDash(_romboInflamabilidad);
+        var react = DisplayOrDash(_romboReactividad);
+        var esp = DisplayOrDash(_romboEspecial);
 
-        var baseW = 90d;
-        var baseH = 50d;
-        var scale = Math.Min(_labelWidthMm / baseW, _labelHeightMm / baseH);
-        return Math.Clamp(scale, 0.65, 2.1);
-    }
+        // Ajuste de fuente para "especial" (CO, COR, OX, W, etc.)
+        var espLen = string.IsNullOrWhiteSpace(esp) ? 1 : esp.Length;
+        var espFont = espLen <= 2 ? 18 : (espLen <= 4 ? 14 : 12);
 
-    private string GetLabelSizeClass()
-    {
-        var minDim = Math.Min(_labelWidthMm, _labelHeightMm);
-        if (minDim < 45)
-        {
-            return "size-sm";
-        }
+        string tStyle(int size) =>
+            $"font: 900 {size}px system-ui, -apple-system, Segoe UI, Roboto, Arial;" +
+            $"fill:#000; stroke:#fff; stroke-width:4px; paint-order:stroke fill;" +
+            $"dominant-baseline:middle;";
 
-        if (minDim < 65)
-        {
-            return "size-md";
-        }
+        __builder.AddMarkupContent(0, $@"
+<svg viewBox='0 0 100 100' role='img' aria-label='NFPA' style='width:100%;height:100%;display:block;'>
+  <defs>
+    <!-- midpoints: TL(26,26) TR(74,26) BR(74,74) BL(26,74) -->
+    <clipPath id='nf-top'><polygon points='50,2 74,26 50,50 26,26'/></clipPath>
+    <clipPath id='nf-left'><polygon points='2,50 26,26 50,50 26,74'/></clipPath>
+    <clipPath id='nf-right'><polygon points='98,50 74,26 50,50 74,74'/></clipPath>
+    <clipPath id='nf-bottom'><polygon points='50,98 26,74 50,50 74,74'/></clipPath>
+  </defs>
 
-        if (minDim < 90)
-        {
-            return "size-lg";
-        }
+  <!-- ZONAS (rombos) -->
+  <polygon points='50,2 74,26 50,50 26,26' fill='#b91c1c'/>   <!-- arriba: rojo -->
+  <polygon points='2,50 26,26 50,50 26,74' fill='#1e3a8a'/>   <!-- izquierda: azul -->
+  <polygon points='98,50 74,26 50,50 74,74' fill='#a16207'/>  <!-- derecha: amarillo/ámbar -->
+  <polygon points='50,98 26,74 50,50 74,74' fill='#f8fafc'/>  <!-- abajo: blanco -->
 
-        return "size-xl";
-    }
+  <!-- Contorno -->
+  <polygon points='50,2 98,50 50,98 2,50' fill='none' stroke='#0b1220' stroke-width='3'/>
+
+  <!-- Divisiones internas (hacia los midpoints) -->
+  <line x1='26' y1='26' x2='50' y2='50' stroke='#0b1220' stroke-width='2'/>
+  <line x1='74' y1='26' x2='50' y2='50' stroke='#0b1220' stroke-width='2'/>
+  <line x1='74' y1='74' x2='50' y2='50' stroke='#0b1220' stroke-width='2'/>
+  <line x1='26' y1='74' x2='50' y2='50' stroke='#0b1220' stroke-width='2'/>
+
+  <!-- TEXTOS (centrados y recortados dentro de su zona) -->
+  <text x='50' y='27' text-anchor='middle' style='{tStyle(26)}' clip-path='url(#nf-top)'>{inflam}</text>
+  <text x='27' y='50' text-anchor='middle' style='{tStyle(26)}' clip-path='url(#nf-left)'>{salud}</text>
+  <text x='73' y='50' text-anchor='middle' style='{tStyle(26)}' clip-path='url(#nf-right)'>{react}</text>
+  <text x='50' y='73' text-anchor='middle' style='{tStyle(espFont)}' clip-path='url(#nf-bottom)'>{esp}</text>
+</svg>
+");
+    };
 }
-
-<style>
-    .label-rombo {
-        display: grid;
-        gap: .25rem;
-        justify-items: start;
-    }
-
-    .rombo-diamond {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        width: var(--rombo-size, 78px);
-        height: var(--rombo-size, 78px);
-        transform: rotate(45deg);
-        border: 2px solid #0f172a;
-        border-radius: .2rem;
-        overflow: hidden;
-    }
-
-    .rombo-cell {
-        color: #fff;
-        font-size: calc(.62rem * var(--label-scale, 1));
-        font-weight: 700;
-        text-align: center;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transform: rotate(-45deg);
-        letter-spacing: .02em;
-        border: 1px solid rgba(255, 255, 255, .35);
-    }
-
-    .rombo-salud { background: #1e3a8a; }
-    .rombo-inflam { background: #b91c1c; }
-    .rombo-react { background: #a16207; }
-    .rombo-especial { background: #6b7280; }
-
-    .label-qr {
-        display: grid;
-        place-items: center;
-        border: 1px solid #e5e7eb;
-        border-radius: .4rem;
-        padding: calc(.3rem * var(--label-scale, 1));
-        background: #f8fafc;
-        width: var(--qr-size, 78px);
-    }
-
-    .label-qr img {
-        width: calc(var(--qr-size, 78px) - 8px);
-        height: calc(var(--qr-size, 78px) - 8px);
-        object-fit: contain;
-    }
-</style>
