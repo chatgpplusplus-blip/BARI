@@ -97,21 +97,28 @@ REGLA:
 - Si solo dice ""laboratorio 1"" sin contexto, usa needs_clarification y pregunta:
   ""¿Te refieres al laboratorio físico (lugar) o a la práctica de una asignatura?""
 
-RECORDATORIOS DEL ESQUEMA:
+RECORDATORIOS DEL ESQUEMA (ACTUALIZADO):
 - Materiales físicos están en la tabla materiales (tipo: 'VIDRIO','PLASTICO','MONTAJE','CONSUMIBLE').
 - Equipos están en equipos y sus modelos en modelos_equipo.
 - Sustancias abstractas en sustancias; contenedores físicos en contenedores (relación por sustancia_id).
+- Seguridad química:
+  - H-codes: h_codes, P-codes: p_codes, pictogramas: ghs_pictogramas.
+  - Relaciones: sustancias_h, sustancias_p, sustancias_pictogramas.
+  - Rombo NFPA: rombo y sustancia_rombo (una sección por sustancia).
+- Sustancias ahora incluyen palabra_advertencia, concentracion y pureza.
+- Contenedores ahora incluyen proveedor_direccion y proveedor_telefono_emergencia.
 - Documentos están en documentos y usan:
   - categoria_id, subcategoria_id (FK compuesta con categoria)
   - alcance (GENERAL/MARCA/LABORATORIO/CLASE/ASIGNATURA/EXPERIENCIA/EQUIPO/MATERIAL/SUSTANCIA/CONTENEDOR)
   - laboratorio_contexto_id (opcional)
 - Instalaciones fijas están en instalaciones (subcategoria_id, laboratorio_id, area_id, fechas de revisión).
 - Ubicación típica: area_id, meson_id, nivel, posicion, canvas_id.
+- Mesones/cajas: cajas_materiales vincula materiales a cajas (no asumas cantidad en esa tabla).
 - Stock de materiales:
-  - materiales.cantidad representa stock suelto.
-  - cajas_materiales.cantidad representa stock por caja (sumar por material).
-  - Para ""mayor stock"", ""cantidad neta"" o ""stock total"", calcula cantidad_neta = COALESCE(materiales.cantidad, SUM(cajas_materiales.cantidad)).
-  - Usa LEFT JOIN cajas_materiales y GROUP BY material_id cuando sumes cantidades.
+  - materiales.cantidad representa stock suelto (fuente principal).
+  - Si necesitas saber en qué caja está un material, usa JOIN con cajas_materiales y cajas.
+- Personas: docentes, docente_clase, horarios_docentes, becarios, becario_laboratorio, horario_clases_becario,
+  horario_bloqueado_becario y horas_trabajadas_becario.
 
 COMPATIBILIDAD / USO:
 - Si preguntan por compatibilidad (ej. ""compatible con bomba de vacío""), NO inventes columnas.

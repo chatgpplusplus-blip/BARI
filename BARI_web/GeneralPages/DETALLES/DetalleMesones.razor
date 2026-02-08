@@ -5,6 +5,7 @@
 @using System.Globalization
 @using System.IO
 @using System.Linq
+@using System.Text
 @using Microsoft.AspNetCore.Components.Forms
 @inject NpgsqlDataSource DataSource
 @inject LaboratorioState LaboratorioState
@@ -1149,22 +1150,31 @@
         value = 0m;
         if (string.IsNullOrWhiteSpace(s)) return false;
 
-        var t = s.Trim();
+        var t = s.Trim().Replace(" ", "");
+        if (t.Length == 0) return false;
 
-        if (decimal.TryParse(t, NumberStyles.Any, CultureInfo.CurrentCulture, out var d1))
+        var lastDot = t.LastIndexOf('.');
+        var lastComma = t.LastIndexOf(',');
+        var decimalIndex = Math.Max(lastDot, lastComma);
+
+        var sb = new StringBuilder(t.Length);
+        for (var i = 0; i < t.Length; i++)
         {
-            value = d1;
-            return true;
+            var ch = t[i];
+            if (char.IsDigit(ch) || (ch == '-' && sb.Length == 0))
+            {
+                sb.Append(ch);
+                continue;
+            }
+
+            if (i == decimalIndex && (ch == '.' || ch == ','))
+            {
+                sb.Append('.');
+            }
         }
 
-        var normalized = t.Replace(" ", "").Replace(",", ".");
-        if (decimal.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out var d2))
-        {
-            value = d2;
-            return true;
-        }
-
-        return false;
+        var normalized = sb.ToString();
+        return decimal.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out value);
     }
 
     private static string ResolveUrl(string? url)
