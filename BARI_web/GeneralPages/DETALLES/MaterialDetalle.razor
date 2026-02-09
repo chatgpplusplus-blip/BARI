@@ -1239,7 +1239,7 @@
                 _cajaCantidades[reader.GetString(0)] = 1;
         }
 
-        const string mesonSql = @"
+        const string mesonCajasSql = @"
             SELECT DISTINCT c.meson_id
             FROM cajas_materiales cm
             INNER JOIN cajas c ON c.caja_id = cm.caja_id
@@ -1248,39 +1248,18 @@
             WHERE cm.material_id = @material_id
               AND a.laboratorio_id = @lab";
 
-        await using var mesonCmd = new NpgsqlCommand(mesonSql, conn);
-        mesonCmd.Parameters.AddWithValue("material_id", materialId);
-        mesonCmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+        await using var mesonCajasCmd = new NpgsqlCommand(mesonCajasSql, conn);
+        mesonCajasCmd.Parameters.AddWithValue("material_id", materialId);
+        mesonCajasCmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
 
-        await using (var mesonReader = await mesonCmd.ExecuteReaderAsync())
+        await using (var mesonCajasReader = await mesonCajasCmd.ExecuteReaderAsync())
         {
-            while (await mesonReader.ReadAsync())
+            while (await mesonCajasReader.ReadAsync())
             {
-                var mesonId = mesonReader.GetString(0);
+                var mesonId = mesonCajasReader.GetString(0);
                 if (edit.MesonNiveles.All(x => !string.Equals(x.MesonId, mesonId, StringComparison.OrdinalIgnoreCase)))
                     edit.MesonNiveles.Add(new MesonNivelLink(mesonId, 1));
             }
-        }
-
-        const string mesonSql = @"
-            SELECT DISTINCT c.meson_id
-            FROM cajas_materiales cm
-            INNER JOIN cajas c ON c.caja_id = cm.caja_id
-            INNER JOIN mesones m ON m.meson_id = c.meson_id
-            INNER JOIN areas a ON a.area_id = m.area_id
-            WHERE cm.material_id = @material_id
-              AND a.laboratorio_id = @lab";
-
-        await using var mesonCmd = new NpgsqlCommand(mesonSql, conn);
-        mesonCmd.Parameters.AddWithValue("material_id", materialId);
-        mesonCmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
-
-        await using var mesonReader = await mesonCmd.ExecuteReaderAsync();
-        while (await mesonReader.ReadAsync())
-        {
-            var mesonId = mesonReader.GetString(0);
-            if (edit.MesonNiveles.All(x => !string.Equals(x.MesonId, mesonId, StringComparison.OrdinalIgnoreCase)))
-                edit.MesonNiveles.Add(new MesonNivelLink(mesonId, 1));
         }
 
         edit.UsaCajas = _cajaCantidades.Count > 0 || edit.UsaCajas;
