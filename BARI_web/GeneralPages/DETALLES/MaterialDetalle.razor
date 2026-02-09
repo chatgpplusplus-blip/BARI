@@ -1221,7 +1221,7 @@
 
         await using var conn = await DataSource.OpenConnectionAsync();
         const string sql = @"
-            SELECT cm.caja_id, cm.cantidad
+            SELECT cm.caja_id
             FROM cajas_materiales cm
             INNER JOIN cajas c ON c.caja_id = cm.caja_id
             INNER JOIN mesones m ON m.meson_id = c.meson_id
@@ -1233,9 +1233,34 @@
         cmd.Parameters.AddWithValue("material_id", materialId);
         cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
 
-        await using var reader = await cmd.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
-            _cajaCantidades[reader.GetString(0)] = reader.GetDecimal(1);
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+                _cajaCantidades[reader.GetString(0)] = 1;
+        }
+
+        const string mesonSql = @"
+            SELECT DISTINCT c.meson_id
+            FROM cajas_materiales cm
+            INNER JOIN cajas c ON c.caja_id = cm.caja_id
+            INNER JOIN mesones m ON m.meson_id = c.meson_id
+            INNER JOIN areas a ON a.area_id = m.area_id
+            WHERE cm.material_id = @material_id
+              AND a.laboratorio_id = @lab";
+
+        await using var mesonCmd = new NpgsqlCommand(mesonSql, conn);
+        mesonCmd.Parameters.AddWithValue("material_id", materialId);
+        mesonCmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
+
+        await using (var mesonReader = await mesonCmd.ExecuteReaderAsync())
+        {
+            while (await mesonReader.ReadAsync())
+            {
+                var mesonId = mesonReader.GetString(0);
+                if (edit.MesonNiveles.All(x => !string.Equals(x.MesonId, mesonId, StringComparison.OrdinalIgnoreCase)))
+                    edit.MesonNiveles.Add(new MesonNivelLink(mesonId, 1));
+            }
+        }
 
         const string mesonSql = @"
             SELECT DISTINCT c.meson_id
@@ -1778,17 +1803,16 @@
             if (edit.UsaCajas)
             {
                 const string insCaja = @"
-                    INSERT INTO cajas_materiales (caja_id, material_id, cantidad)
-                    VALUES (@caja, @material, @cantidad)
+                    INSERT INTO cajas_materiales (caja_id, material_id)
+                    VALUES (@caja, @material)
                     ON CONFLICT (caja_id, material_id)
-                    DO UPDATE SET cantidad = EXCLUDED.cantidad;";
+                    DO NOTHING;";
 
                 foreach (var kv in cajasConStock)
                 {
                     await ExecAsync(conn, tx, insCaja,
                         ("caja", kv.Key),
-                        ("material", edit.MaterialId),
-                        ("cantidad", kv.Value));
+                        ("material", edit.MaterialId));
                 }
             }
 
