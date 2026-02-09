@@ -424,22 +424,45 @@
                             @foreach (var m in _mesonOptions.OrderBy(x => x.Label))
                             {
                                 var selected = edit.MesonNiveles.Any(x => string.Equals(x.MesonId, m.Id, StringComparison.OrdinalIgnoreCase));
+
+                                // ✅ niveles del mesón (pueden ser varios en modo cajas)
+                                var niveles = edit.MesonNiveles
+                                .Where(x => string.Equals(x.MesonId, m.Id, StringComparison.OrdinalIgnoreCase))
+                                .Select(x => x.Nivel)
+                                .Distinct()
+                                .OrderBy(n => n)
+                                .ToList();
+
+                                var nivelesCsv = string.Join(", ", niveles);
+
                                 <div class="meson-link-row">
                                     <label class="meson-link-check">
                                         <input type="checkbox"
                                                checked="@selected"
-                                               @onchange="(e) => OnMesonToggle(m.Id, e)" />
+                                               @onchange="(e) => OnMesonToggle(m.Id, e)"
+                                               disabled="@edit.UsaCajas" />
                                         <span>@m.Label</span>
                                     </label>
-                                    <input class="border p-1 meson-link-level"
-                                           type="number"
-                                           step="1"
-                                           min="1"
-                                           value="@GetMesonNivel(m.Id)"
-                                           @oninput="(e) => OnMesonNivelChanged(m.Id, e)"
-                                           disabled="@(!selected || edit.UsaCajas)" />
+
+                                    @if (edit.UsaCajas)
+                                    {
+                                        <div class="text-xs muted" style="min-width:88px; text-align:right;">
+                                            @(niveles.Count == 0 ? "—" : $"niveles {nivelesCsv}")
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <input class="border p-1 meson-link-level"
+                                               type="number"
+                                               step="1"
+                                               min="1"
+                                               value="@GetMesonNivel(m.Id)"
+                                               @oninput="(e) => OnMesonNivelChanged(m.Id, e)"
+                                               disabled="@(!selected)" />
+                                    }
                                 </div>
                             }
+
                         </div>
                     }
                 </div>
@@ -669,7 +692,12 @@
     private readonly List<SelectOption> _mesonOptions = new();
     private readonly List<SelectOption> _cajaOptions = new();
 
+    // Cantidades por caja (solo si UsaCajas)
     private readonly Dictionary<string, decimal> _cajaCantidades = new(StringComparer.OrdinalIgnoreCase);
+
+    // ✅ META de cada caja (para derivar mesón/nivel desde cajas)
+    private sealed record CajaMeta(string CajaId, string MesonId, int Nivel, string MesonNombre);
+    private readonly Dictionary<string, CajaMeta> _cajaMetaById = new(StringComparer.OrdinalIgnoreCase);
 
     // Categorías materiales + subcategorías filtradas por categoría
     private readonly List<SelectOption> _categoriaOptions = new();
@@ -741,6 +769,7 @@
         _mesonOptions.Clear();
         _cajaOptions.Clear();
         _cajaCantidades.Clear();
+        _cajaMetaById.Clear(); // ✅
 
         _categoriaOptions.Clear();
         _subcategoriaAllOptions.Clear();
@@ -764,8 +793,11 @@
                     await LoadMesonesAsync(edit.AreaId);
 
                 await LoadMaterialMesonesAsync(edit.MaterialId);
-                await LoadCajasAsync();
-                await LoadMaterialCajasAsync(edit.MaterialId);
+
+                // Cajas y material-cajas
+                await LoadCajasAsync();                 // ✅ llena _cajaMetaById
+                await LoadMaterialCajasAsync(edit.MaterialId); // ✅ sincroniza mesones desde cajas
+
                 await LoadExperienciasLigadasAsync(edit.MaterialId);
                 await LoadExperienciasOptionsAsync();
             }
@@ -875,18 +907,29 @@
         ?? edit.AreaId
         ?? "";
 
+    // ✅ Agrupa niveles por mesón: "Mesón X (niveles 2, 3, 4)"
     private string UbicacionesMaterialLabel
     {
         get
         {
             var area = SelectedAreaLabel;
+
             var ubicaciones = edit.MesonNiveles
-                .Select(x =>
+                .GroupBy(x => x.MesonId, StringComparer.OrdinalIgnoreCase)
+                .Select(g =>
                 {
-                    var meson = _mesonOptions.FirstOrDefault(m => string.Equals(m.Id, x.MesonId, StringComparison.OrdinalIgnoreCase))?.Label ?? x.MesonId;
-                    return $"{meson} (nivel {x.Nivel})";
+                    var mesonLabel =
+                        _mesonOptions.FirstOrDefault(m => string.Equals(m.Id, g.Key, StringComparison.OrdinalIgnoreCase))?.Label
+                        ?? g.Key;
+
+                    var niveles = g.Select(x => x.Nivel).Distinct().OrderBy(n => n).ToList();
+                    var nivStr = string.Join(", ", niveles);
+
+                    return niveles.Count <= 1
+                        ? $"{mesonLabel} (nivel {nivStr})"
+                        : $"{mesonLabel} (niveles {nivStr})";
                 })
-                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
             if (!string.IsNullOrWhiteSpace(edit.Posicion))
@@ -908,8 +951,12 @@
 
             var porCaja = _cajaCantidades
                 .Where(kv => kv.Value > 0)
-                .OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
-                .Select(kv => $"{kv.Key}: {kv.Value.ToString(CultureInfo.InvariantCulture)}")
+                .OrderBy(kv => FindLabel(_cajaOptions, kv.Key), StringComparer.OrdinalIgnoreCase)
+                .Select(kv =>
+                {
+                    var cajaLabel = FindLabel(_cajaOptions, kv.Key); // ✅ ahora incluye mesón + nivel + caja
+                    return $"{cajaLabel}: {kv.Value.ToString(CultureInfo.InvariantCulture)}";
+                })
                 .ToList();
 
             return porCaja.Count == 0 ? "" : string.Join(" · ", porCaja);
@@ -939,6 +986,10 @@
         if (string.IsNullOrWhiteSpace(raw))
         {
             _cajaCantidades.Remove(cajaId);
+
+            if (edit.UsaCajas)
+                SyncMesonesFromCajas(); // ✅
+
             return;
         }
 
@@ -950,6 +1001,9 @@
             return;
 
         _cajaCantidades[cajaId] = cantidad;
+
+        if (edit.UsaCajas)
+            SyncMesonesFromCajas(); // ✅
     }
 
     private void OnUsaCajasChanged(ChangeEventArgs args)
@@ -963,10 +1017,23 @@
         if (edit.UsaCajas)
         {
             edit.Cantidad = null;
+
+            // ✅ Al activar cajas, derivamos mesones desde cajas actuales (si ya hay valores)
+            SyncMesonesFromCajas();
         }
         else
         {
             _cajaCantidades.Clear();
+
+            // ✅ Si venías de modo cajas con múltiples niveles, compacta a 1 nivel por mesón (mínimo)
+            // para que el editor de nivel (suelto) sea consistente.
+            var compact = edit.MesonNiveles
+                .GroupBy(x => x.MesonId, StringComparer.OrdinalIgnoreCase)
+                .Select(g => new MesonNivelLink(g.Key, g.Min(x => x.Nivel)))
+                .ToList();
+
+            edit.MesonNiveles.Clear();
+            foreach (var l in compact) edit.MesonNiveles.Add(l);
         }
 
         msg = null;
@@ -1042,6 +1109,34 @@
 
         if (isChecked) edit.SubcategoriaIds.Add(subcatId);
         else edit.SubcategoriaIds.Remove(subcatId);
+    }
+
+    // ✅ Deriva edit.MesonNiveles a partir de las cajas que tienen stock (>0)
+    private void SyncMesonesFromCajas()
+    {
+        if (!edit.UsaCajas)
+            return;
+
+        var keys = _cajaCantidades
+            .Where(kv => kv.Value > 0)
+            .Select(kv => kv.Key)
+            .ToList();
+
+        var newLinks = new List<MesonNivelLink>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var cajaId in keys)
+        {
+            if (_cajaMetaById.TryGetValue(cajaId, out var meta))
+            {
+                var k = $"{meta.MesonId}||{meta.Nivel}";
+                if (seen.Add(k))
+                    newLinks.Add(new MesonNivelLink(meta.MesonId, meta.Nivel));
+            }
+        }
+
+        edit.MesonNiveles.Clear();
+        foreach (var l in newLinks) edit.MesonNiveles.Add(l);
     }
 
     // ========= Lookups =========
@@ -1133,6 +1228,7 @@
         _mesonOptions.Clear();
         _cajaOptions.Clear();
         _cajaCantidades.Clear();
+        _cajaMetaById.Clear(); // ✅
 
         await using var conn = await DataSource.OpenConnectionAsync();
 
@@ -1166,7 +1262,7 @@
             INNER JOIN areas a ON a.area_id = ms.area_id
             WHERE mmn.material_id = @mat
               AND a.laboratorio_id = @lab
-            ORDER BY mmn.nivel, mmn.meson_id";
+            ORDER BY mmn.meson_id, mmn.nivel";
 
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("mat", materialId);
@@ -1182,16 +1278,19 @@
     private async Task LoadCajasAsync()
     {
         _cajaOptions.Clear();
+        _cajaMetaById.Clear(); // ✅
 
         if (string.IsNullOrWhiteSpace(edit.AreaId))
             return;
 
         await using var conn = await DataSource.OpenConnectionAsync();
+
+        // ✅ Trae caja_id + meson_id + meson_nombre + nivel para poder derivar mesones/niveles
         const string sql = @"
             SELECT c.caja_id,
-                   COALESCE(m.nombre_meson, c.meson_id) AS meson_nombre,
-                   c.nivel,
-                   c.dimensiones
+                   c.meson_id,
+                   COALESCE(NULLIF(m.nombre_meson,''), c.meson_id) AS meson_nombre,
+                   c.nivel
             FROM cajas c
             INNER JOIN mesones m ON m.meson_id = c.meson_id
             INNER JOIN areas a ON a.area_id = m.area_id
@@ -1207,9 +1306,17 @@
         while (await reader.ReadAsync())
         {
             var cajaId = reader.GetString(0);
-            _cajaOptions.Add(new SelectOption(cajaId, cajaId));
+            var mesonId = reader.GetString(1);
+            var mesonNombre = reader.GetString(2);
+            var nivel = reader.GetInt32(3);
+
+            _cajaMetaById[cajaId] = new CajaMeta(cajaId, mesonId, nivel, mesonNombre);
+
+            // ✅ Label informativo (sirve para vista "Distribución en cajas")
+            _cajaOptions.Add(new SelectOption(cajaId, $"{mesonNombre} · nivel {nivel} · caja {cajaId}"));
         }
 
+        // limpia cantidades de cajas que ya no existen en esta área
         var ids = _cajaOptions.Select(x => x.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var key in _cajaCantidades.Keys.Where(k => !ids.Contains(k)).ToList())
             _cajaCantidades.Remove(key);
@@ -1220,14 +1327,16 @@
         _cajaCantidades.Clear();
 
         await using var conn = await DataSource.OpenConnectionAsync();
+
+        // ✅ Debe traer cantidad
         const string sql = @"
-        SELECT cm.caja_id, cm.cantidad
-        FROM cajas_materiales cm
-        INNER JOIN cajas c ON c.caja_id = cm.caja_id
-        INNER JOIN mesones m ON m.meson_id = c.meson_id
-        INNER JOIN areas a ON a.area_id = m.area_id
-        WHERE cm.material_id = @material_id
-          AND a.laboratorio_id = @lab";
+            SELECT cm.caja_id, cm.cantidad
+            FROM cajas_materiales cm
+            INNER JOIN cajas c ON c.caja_id = cm.caja_id
+            INNER JOIN mesones m ON m.meson_id = c.meson_id
+            INNER JOIN areas a ON a.area_id = m.area_id
+            WHERE cm.material_id = @material_id
+              AND a.laboratorio_id = @lab";
 
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("material_id", materialId);
@@ -1238,14 +1347,19 @@
         {
             var cajaId = reader.GetString(0);
 
-            // Si en DB es integer:
-            var cantidad = reader.GetInt32(1);
+            // cantidad puede ser int/numeric, lo convertimos robusto a decimal
+            var raw = reader.GetValue(1);
+            var cantidad = raw is DBNull ? 0m : Convert.ToDecimal(raw, CultureInfo.InvariantCulture);
 
-            // Tu diccionario es decimal, así que lo convertimos:
             _cajaCantidades[cajaId] = cantidad;
         }
 
-        edit.UsaCajas = _cajaCantidades.Count > 0 || edit.UsaCajas;
+        // ✅ Si hay cajas asociadas, consideramos UsaCajas = true
+        edit.UsaCajas = _cajaCantidades.Any(kv => kv.Value > 0) || edit.UsaCajas;
+
+        // ✅ Derivar MesonNiveles desde cajas con stock
+        if (edit.UsaCajas)
+            SyncMesonesFromCajas();
     }
 
     // ========= Carga material =========
@@ -1425,6 +1539,8 @@
         _mesonOptions.Clear();
         _cajaOptions.Clear();
         _cajaCantidades.Clear();
+        _cajaMetaById.Clear(); // ✅
+
         if (!string.IsNullOrWhiteSpace(edit.AreaId))
         {
             await LoadMesonesAsync(edit.AreaId);
@@ -1438,16 +1554,21 @@
     private void OnMesonToggle(string mesonId, ChangeEventArgs args)
     {
         var isChecked = args.Value is bool b ? b : string.Equals(args.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
-        var current = edit.MesonNiveles.FirstOrDefault(x => string.Equals(x.MesonId, mesonId, StringComparison.OrdinalIgnoreCase));
 
         if (isChecked)
         {
-            if (current is null)
+            // agrega un nivel por defecto si no existe ningún nivel para ese mesón
+            if (edit.MesonNiveles.All(x => !string.Equals(x.MesonId, mesonId, StringComparison.OrdinalIgnoreCase)))
                 edit.MesonNiveles.Add(new MesonNivelLink(mesonId, 1));
         }
-        else if (current is not null)
+        else
         {
-            edit.MesonNiveles.Remove(current);
+            // ✅ elimina TODOS los niveles del mesón (por si hay múltiples)
+            for (int i = edit.MesonNiveles.Count - 1; i >= 0; i--)
+            {
+                if (string.Equals(edit.MesonNiveles[i].MesonId, mesonId, StringComparison.OrdinalIgnoreCase))
+                    edit.MesonNiveles.RemoveAt(i);
+            }
         }
 
         _ = LoadCajasAsync();
@@ -1459,6 +1580,7 @@
 
     private void OnMesonNivelChanged(string mesonId, ChangeEventArgs args)
     {
+        // Solo aplica al modo suelto (en cajas el input está deshabilitado)
         var link = edit.MesonNiveles.FirstOrDefault(x => string.Equals(x.MesonId, mesonId, StringComparison.OrdinalIgnoreCase));
         if (link is null)
             return;
@@ -1673,6 +1795,9 @@
                 return;
             }
 
+            // ✅ asegura coherencia de mesones/niveles con cajas
+            SyncMesonesFromCajas();
+
             cantidad = null;
         }
 
@@ -1742,15 +1867,35 @@
                 ("altura_cm", alturaCm is null ? (object)DBNull.Value : alturaCm.Value)
             );
 
+            // ✅ Reescritura completa: materiales_mesones_niveles
             await ExecAsync(conn, tx, "DELETE FROM materiales_mesones_niveles WHERE material_id=@id", ("id", edit.MaterialId));
 
-            if (!edit.UsaCajas && edit.MesonNiveles.Count > 0)
-            {
-                const string insMesonNivel = @"
-                    INSERT INTO materiales_mesones_niveles (material_id, meson_id, nivel)
-                    VALUES (@mat, @meson, @nivel)
-                    ON CONFLICT DO NOTHING;";
+            const string insMesonNivel = @"
+                INSERT INTO materiales_mesones_niveles (material_id, meson_id, nivel)
+                VALUES (@mat, @meson, @nivel)
+                ON CONFLICT DO NOTHING;";
 
+            if (edit.UsaCajas)
+            {
+                // ✅ Derivar desde cajas con stock: inserta (meson_id, nivel) reales (pueden ser múltiples niveles)
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var kv in cajasConStock)
+                {
+                    if (_cajaMetaById.TryGetValue(kv.Key, out var meta))
+                    {
+                        var k = $"{meta.MesonId}||{meta.Nivel}";
+                        if (!seen.Add(k)) continue;
+
+                        await ExecAsync(conn, tx, insMesonNivel,
+                            ("mat", edit.MaterialId),
+                            ("meson", meta.MesonId),
+                            ("nivel", meta.Nivel));
+                    }
+                }
+            }
+            else
+            {
+                // Modo suelto: lo que el usuario eligió
                 foreach (var link in edit.MesonNiveles)
                 {
                     await ExecAsync(conn, tx, insMesonNivel,
@@ -1760,21 +1905,22 @@
                 }
             }
 
+            // ✅ Reescritura completa: cajas_materiales (con cantidad)
             await ExecAsync(conn, tx, "DELETE FROM cajas_materiales WHERE material_id=@id", ("id", edit.MaterialId));
 
             if (edit.UsaCajas)
             {
                 const string insCaja = @"
-                    INSERT INTO cajas_materiales (caja_id, material_id)
-                    VALUES (@caja, @material)
-                    ON CONFLICT (caja_id, material_id)
-                    DO NOTHING;";
+                    INSERT INTO cajas_materiales (caja_id, material_id, cantidad)
+                    VALUES (@caja, @material, @cantidad)
+                    ON CONFLICT DO NOTHING;";
 
                 foreach (var kv in cajasConStock)
                 {
                     await ExecAsync(conn, tx, insCaja,
                         ("caja", kv.Key),
-                        ("material", edit.MaterialId));
+                        ("material", edit.MaterialId),
+                        ("cantidad", kv.Value));
                 }
             }
 
@@ -1947,7 +2093,6 @@
         public string? Cantidad { get; set; }
         public bool UsaCajas { get; set; }
 
-        // ✅ NUEVO (DB: materiales.altura_cm)
         public string? AlturaCm { get; set; }
 
         public string? AreaId { get; set; }
@@ -1959,7 +2104,6 @@
         public string? ImagenUrl { get; set; }
         public string? Observaciones { get; set; }
 
-        // ✅ experiencias M:N
         public HashSet<string> ExperienciaIds { get; } = new(StringComparer.OrdinalIgnoreCase);
     }
 }
