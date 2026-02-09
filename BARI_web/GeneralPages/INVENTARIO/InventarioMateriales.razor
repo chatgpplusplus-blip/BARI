@@ -1561,7 +1561,8 @@ private static string FilledInt(string? value, bool allowZero = false)
         _mesonSummaries.Clear();
         _mesonVisuals.Clear();
 
-        if (string.IsNullOrWhiteSpace(_nuevoMaterialAreaId))
+        var areaId = _nuevoMaterialAreaId;
+        if (string.IsNullOrWhiteSpace(areaId))
             return;
 
         await using var conn = await DataSource.OpenConnectionAsync();
@@ -1589,7 +1590,7 @@ private static string FilledInt(string? value, bool allowZero = false)
             ORDER BY nombre_meson";
 
         await using var cmd = new NpgsqlCommand(mesonSql, conn);
-        cmd.Parameters.AddWithValue("area", _nuevoMaterialAreaId);
+        cmd.Parameters.AddWithValue("area", areaId);
         cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
 
         await using var reader = await cmd.ExecuteReaderAsync();
@@ -1658,7 +1659,8 @@ private static string FilledInt(string? value, bool allowZero = false)
     {
         _mesonVisuals.Clear();
 
-        if (string.IsNullOrWhiteSpace(_nuevoMaterialAreaId))
+        var areaId = _nuevoMaterialAreaId;
+        if (string.IsNullOrWhiteSpace(areaId))
             return;
 
         var area = SelectedAreaForMap;
@@ -1693,7 +1695,7 @@ private static string FilledInt(string? value, bool allowZero = false)
 
             await using var cmd = new NpgsqlCommand(blockSql, conn);
             cmd.Parameters.AddWithValue("canvas", area.CanvasId!);
-            cmd.Parameters.AddWithValue("area", _nuevoMaterialAreaId!);
+            cmd.Parameters.AddWithValue("area", areaId);
 
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
