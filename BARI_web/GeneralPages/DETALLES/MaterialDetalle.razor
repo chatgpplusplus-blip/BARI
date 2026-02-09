@@ -1221,45 +1221,28 @@
 
         await using var conn = await DataSource.OpenConnectionAsync();
         const string sql = @"
-            SELECT cm.caja_id
-            FROM cajas_materiales cm
-            INNER JOIN cajas c ON c.caja_id = cm.caja_id
-            INNER JOIN mesones m ON m.meson_id = c.meson_id
-            INNER JOIN areas a ON a.area_id = m.area_id
-            WHERE cm.material_id = @material_id
-              AND a.laboratorio_id = @lab";
+        SELECT cm.caja_id, cm.cantidad
+        FROM cajas_materiales cm
+        INNER JOIN cajas c ON c.caja_id = cm.caja_id
+        INNER JOIN mesones m ON m.meson_id = c.meson_id
+        INNER JOIN areas a ON a.area_id = m.area_id
+        WHERE cm.material_id = @material_id
+          AND a.laboratorio_id = @lab";
 
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("material_id", materialId);
         cmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
 
-        await using (var reader = await cmd.ExecuteReaderAsync())
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
         {
-            while (await reader.ReadAsync())
-                _cajaCantidades[reader.GetString(0)] = reader.IsDBNull(1) ? 0 : reader.GetDecimal(1);
-        }
+            var cajaId = reader.GetString(0);
 
-        const string mesonCajasSql = @"
-            SELECT DISTINCT c.meson_id
-            FROM cajas_materiales cm
-            INNER JOIN cajas c ON c.caja_id = cm.caja_id
-            INNER JOIN mesones m ON m.meson_id = c.meson_id
-            INNER JOIN areas a ON a.area_id = m.area_id
-            WHERE cm.material_id = @material_id
-              AND a.laboratorio_id = @lab";
+            // Si en DB es integer:
+            var cantidad = reader.GetInt32(1);
 
-        await using var mesonCajasCmd = new NpgsqlCommand(mesonCajasSql, conn);
-        mesonCajasCmd.Parameters.AddWithValue("material_id", materialId);
-        mesonCajasCmd.Parameters.AddWithValue("lab", LaboratorioState.LaboratorioId);
-
-        await using (var mesonCajasReader = await mesonCajasCmd.ExecuteReaderAsync())
-        {
-            while (await mesonCajasReader.ReadAsync())
-            {
-                var mesonId = mesonCajasReader.GetString(0);
-                if (edit.MesonNiveles.All(x => !string.Equals(x.MesonId, mesonId, StringComparison.OrdinalIgnoreCase)))
-                    edit.MesonNiveles.Add(new MesonNivelLink(mesonId, 1));
-            }
+            // Tu diccionario es decimal, así que lo convertimos:
+            _cajaCantidades[cajaId] = cantidad;
         }
 
         edit.UsaCajas = _cajaCantidades.Count > 0 || edit.UsaCajas;
