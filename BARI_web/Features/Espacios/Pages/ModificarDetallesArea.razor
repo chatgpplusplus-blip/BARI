@@ -108,31 +108,31 @@
                                 {
                                     var targetW = Math.Max(0.15m, it.ancho_m - 0.25m);
                                     @if (!string.IsNullOrWhiteSpace(it.label))
-{
-    var txt = LayoutLabel(it.label.ToUpperInvariant(), it.ancho_m, it.largo_m);
+                                    {
+                                        var txt = LayoutLabel(it.label.ToUpperInvariant(), it.ancho_m, it.largo_m);
 
-    if (txt.Lines.Count > 0)
-    {
-        var cx = it.ancho_m / 2m;
-        var cy = it.largo_m / 2m;
+                                        if (txt.Lines.Count > 0)
+                                        {
+                                            var cx = it.ancho_m / 2m;
+                                            var cy = it.largo_m / 2m;
 
-        var dy = txt.FontSize * txt.LineHeight;
-        var totalH = txt.Lines.Count * dy;
+                                            var dy = txt.FontSize * txt.LineHeight;
+                                            var totalH = txt.Lines.Count * dy;
 
-        // Baseline “aprox” centrada verticalmente
-        var firstBaseline = cy - (totalH / 2m) + (txt.FontSize * 0.85m);
+                                            // Baseline “aprox” centrada verticalmente
+                                            var firstBaseline = cy - (totalH / 2m) + (txt.FontSize * 0.85m);
 
-        <svg:text class="area-label"
-              text-anchor="middle"
-              font-size="@S(txt.FontSize)" fill="#111">
-            <tspan x="@S(cx)" y="@S(firstBaseline)">@txt.Lines[0]</tspan>
-            @for (var i = 1; i < txt.Lines.Count; i++)
-            {
-                <tspan x="@S(cx)" dy="@S(dy)">@txt.Lines[i]</tspan>
-            }
-        </svg:text>
-    }
-}
+                                            <svg:text class="area-label"
+                                                      text-anchor="middle"
+                                                      font-size="@S(txt.FontSize)" fill="#111">
+                                                <tspan x="@S(cx)" y="@S(firstBaseline)">@txt.Lines[0]</tspan>
+                                                @for (var i = 1; i < txt.Lines.Count; i++)
+                                                {
+                                                    <tspan x="@S(cx)" dy="@S(dy)">@txt.Lines[i]</tspan>
+                                                }
+                                            </svg:text>
+                                        }
+                                    }
 
                                 }
 
@@ -1146,13 +1146,14 @@
     }
 
     .panel-box > summary {
-    cursor: pointer;
-    user-select: none;
-    list-style: none;
-}
-.panel-box > summary::-webkit-details-marker {
-    display: none;
-}
+        cursor: pointer;
+        user-select: none;
+        list-style: none;
+    }
+
+        .panel-box > summary::-webkit-details-marker {
+            display: none;
+        }
 
 
     .zoom-btn {
