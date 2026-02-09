@@ -1236,7 +1236,7 @@
         await using (var reader = await cmd.ExecuteReaderAsync())
         {
             while (await reader.ReadAsync())
-                _cajaCantidades[reader.GetString(0)] = 1;
+                _cajaCantidades[reader.GetString(0)] = reader.IsDBNull(1) ? 0 : reader.GetDecimal(1);
         }
 
         const string mesonCajasSql = @"
