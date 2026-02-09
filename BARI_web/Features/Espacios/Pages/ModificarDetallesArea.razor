@@ -1,495 +1,1126 @@
 ﻿@page "/modificar-detalles/{AreaSlug}"
+@namespace BARI_web.Features.Espacios.Pages
 
-@using System.Globalization
-@using Microsoft.AspNetCore.Components.Web
-@using Microsoft.JSInterop
-@inject IJSRuntime JS
+<div class="areas-wrap">
+    <div class="toolbar">
+        <h2 class="text-2xl" style="margin:0">Editar instalaciones y mesones — @(_area?.Label ?? AreaSlug)</h2>
 
-<div class="sd-card">
-    <div class="sd-head">
-        <div class="sd-title">
-            <div class="sd-date">@Date.ToString("dddd, dd 'de' MMMM", new CultureInfo("es-ES"))</div>
-            <div class="sd-sub">@Subtitle</div>
-        </div>
+        <button type="button" class="btn" @onclick="@(()=>Nav.NavigateTo($"/detalles/{AreaSlug}"))">
+            Volver a detalles
+        </button>
 
-        <div class="sd-actions">
-            <button class="sd-btn" type="button" @onclick="() => QuickAdd(8, 10)">+ 08–10</button>
-            <button class="sd-btn" type="button" @onclick="() => QuickAdd(10, 12)">+ 10–12</button>
-            <button class="sd-btn primary" type="button" @onclick="() => QuickAdd(14, 16)">+ 14–16</button>
-        </div>
+        <button type="button" class="btn" style="margin-left:.5rem" @onclick="Guardar" disabled="@_saving">
+            @(_saving ? "Guardando..." : "Guardar todo")
+        </button>
+
+        <span class="text-sm text-gray-500 ml-2">@_saveMsg</span>
     </div>
 
-    <div class="sd-body">
-        <div class="sd-grid">
-            <div class="sd-hours">
-                @for (var h = StartHour; h <= EndHour; h++)
-                {
-                    <div class="sd-hour">@($"{h:00}:00")</div>
-                }
-            </div>
-
-            <div class="sd-surface"
-                 @ref="_surfaceRef"
-                 @onpointerdown="SurfacePointerDown"
-                 @onpointermove="SurfacePointerMove"
-                 @onpointerup="SurfacePointerUp"
-                 @onpointercancel="SurfacePointerUp">
-
-                @for (var h = StartHour; h <= EndHour; h++)
-                {
-                    <div class="sd-line" style="@($"top:{MinuteToPx((h - StartHour) * 60)}px")"></div>
-                }
-
-                @foreach (var item in Items.OrderBy(i => i.StartMinute))
-                {
-                    var top = MinuteToPx(item.StartMinute - StartMinute);
-                    var height = MinuteToPx(item.EndMinute - item.StartMinute);
-
-                    <div class="sd-block @item.CssClass @(item == _selected ? "selected" : "")"
-                         style="@($"top:{top}px; height:{height}px;")"
-                         @onpointerdown:stopPropagation="true"
-                         @onclick:stopPropagation="true"
-                         @onpointerdown="(e) => BlockPointerDown(e, item)"
-                         @onclick="() => Select(item)">
-
-                        <div class="sd-block-title">
-                            <span>@item.Label</span>
-                            <span class="sd-block-time">@MinutesToTime(item.StartMinute)–@MinutesToTime(item.EndMinute)</span>
-                        </div>
-
-                        <div class="sd-handle top"
-                             @onpointerdown:stopPropagation="true"
-                             @onpointerdown="(e) => ResizePointerDown(e, item, true)"></div>
-
-                        <div class="sd-handle bot"
-                             @onpointerdown:stopPropagation="true"
-                             @onpointerdown="(e) => ResizePointerDown(e, item, false)"></div>
-                    </div>
-                }
-
-                @if (_isSelecting)
-                {
-                    var top = Math.Min(_selStartPx, _selEndPx);
-                    var height = Math.Abs(_selEndPx - _selStartPx);
-
-                    <div class="sd-ghost" style="@($"top:{top}px; height:{height}px;")">
-                        <span>Nuevo</span>
-                    </div>
-                }
-            </div>
-        </div>
-
-        <div class="sd-side @(_drawerOpen ? "open" : "")">
-            <div class="sd-side-head">
-                <div class="sd-side-title">Editar bloque</div>
-                <button class="sd-x" type="button" @onclick="CloseDrawer">✕</button>
-            </div>
-
-            @if (_selected is not null)
-            {
-                <div class="sd-form">
-                    <div class="sd-field">
-                        <label>Inicio</label>
-                        <input type="time" class="sd-input" step="60"
-                               value="@MinutesToTime(_selected.StartMinute)"
-                               @onchange="(e) => OnTimeChange(e, true)" />
+    @if (_canvas is null || _area is null)
+    {
+        <p>Cargando…</p>
+    }
+    else
+    {
+        <div class="editor-layout">
+            <!-- Canvas -->
+            <div class="canvas-host">
+                <div class="canvas-box" style="--ar:@AspectRatioString();width:100%; max-width:1150px; position:relative; margin:0 auto;">
+                    <!-- Zoom -->
+                    <div style="position:absolute; right:10px; top:10px; display:flex; gap:.4rem;" @onclick:stopPropagation="true">
+                        <button class="zoom-btn" title="Zoom in" @onclick="ZoomIn">+</button>
+                        <button class="zoom-btn" title="Zoom out" @onclick="ZoomOut">−</button>
+                        <button class="zoom-btn" title="Centrar" @onclick="CenterView">·</button>
                     </div>
 
-                    <div class="sd-field">
-                        <label>Fin</label>
-                        <input type="time" class="sd-input" step="60"
-                               value="@MinutesToTime(_selected.EndMinute)"
-                               @onchange="(e) => OnTimeChange(e, false)" />
-                    </div>
+                    <svg @ref="_svgRef" width="100%" height="100%"
+                         viewBox="@ViewBox()" preserveAspectRatio="xMidYMid meet"
+                         @onpointermove="OnPointerMove"
+                         @onpointerup="OnPointerUp" @onpointerleave="OnPointerUp"
+                         @onwheel="OnWheel" @onwheel:preventDefault="true"
+                         @onpointerdown="OnPointerDownBackground">
 
-                    @if (WorkTypes?.Length > 0 && _selected.Editable)
-                    {
-                        <div class="sd-field full">
-                            <label>Tipo</label>
-                            <select class="sd-input" @onchange="OnTypeChange">
-                                @foreach (var t in WorkTypes)
-                                {
-                                    <option value="@t" selected="@(_selected.Type == t)">@t</option>
-                                }
-                            </select>
-                        </div>
-                    }
+                        <!-- fondo área -->
+                        <rect x="@S(VX)" y="@S(VY)" width="@S(VW)" height="@S(VH)"
+                              fill="white" stroke="#ddd" stroke-width="@S(0.03m)"
+                              style="cursor:grab"
+                              @onpointerdown:preventDefault="true"
+                              @onpointerdown="(e)=>BeginPan(e)" />
 
-                    @if (ShowStatus && _selected.Editable)
-                    {
-                        <div class="sd-field full">
-                            <label>Estado</label>
-                            <select class="sd-input" @onchange="OnStatusChange">
-                                @foreach (var st in Statuses)
-                                {
-                                    <option value="@st" selected="@(_selected.Status == st)">@st</option>
-                                }
-                            </select>
-                        </div>
-                    }
-
-                    <div class="sd-field full">
-                        <label>Observaciones</label>
-                        <textarea class="sd-input" rows="3" @bind="_selected.Notes"></textarea>
-                    </div>
-
-                    <div class="sd-side-actions">
-                        @if (_selected.Editable)
+                        <!-- grilla -->
+                        @for (var gx = GridStartX; gx <= GridEndX; gx += 1m)
                         {
-                            <button class="sd-btn danger" type="button" @onclick="DeleteSelected">Eliminar</button>
-                            <button class="sd-btn primary" type="button" @onclick="SaveSelected">Guardar</button>
+                            <line x1="@S(gx)" y1="@S(VY)" x2="@S(gx)" y2="@S(VY + VH)" stroke="#f1f1f1" stroke-width="@S(0.02m)" />
                         }
-                        else
+                        @for (var gy = GridStartY; gy <= GridEndY; gy += 1m)
                         {
-                            <div class="sd-muted">Este bloque no es editable.</div>
+                            <line x1="@S(VX)" y1="@S(gy)" x2="@S(VX + VW)" y2="@S(gy)" stroke="#f1f1f1" stroke-width="@S(0.02m)" />
                         }
-                    </div>
-                </div>
+
+                        <!-- clip del área -->
+                        <defs>
+                            <clipPath id="clip_target" clipPathUnits="userSpaceOnUse">
+                                @foreach (var p in _area.Polys)
+                                {
+                                    if (p.puntos.Count >= 3)
+                                    {
+                                        <polygon points="@PointsString(p.puntos)" />
+                                    }
+                                    else
+                                    {
+                                        <rect x="@S(p.x_m)" y="@S(p.y_m)" width="@S(p.ancho_m)" height="@S(p.largo_m)" />
+                                    }
+                                }
+                            </clipPath>
+                        </defs>
+
+                        <!-- relleno + contorno del área (NO editable) -->
+                        <g class="softshadow" clip-path="url(#clip_target)">
+                            <rect x="@S(_area.MinX)" y="@S(_area.MinY)"
+                                  width="@S(_area.MaxX - _area.MinX)" height="@S(_area.MaxY - _area.MinY)"
+                                  fill="@_area.Fill" />
+                        </g>
+                        @foreach (var seg in _area.Outline)
+                        {
+                            <line x1="@S(seg.x1)" y1="@S(seg.y1)" x2="@S(seg.x2)" y2="@S(seg.y2)"
+                                  stroke="#000" stroke-width="@S(OutlineStroke)"
+                                  vector-effect="non-scaling-stroke" />
+                        }
+
+                        <!-- ELEMENTOS INTERIORES (MESONES / INSTALACIONES) -->
+                        @foreach (var it in _inners.OrderBy(i => i.z_order))
+                        {
+                            var isSel = _selIn == it.poly_in_id;
+                            var stroke = isSel ? "#0a7" : "#777";
+
+                            <g transform="translate(@S(it.abs_x),@S(it.abs_y))"
+                               @onmouseover="() => _hoverIn = it.poly_in_id"
+                               @onmouseout="() => _hoverIn = null">
+                                <rect x="0" y="0" width="@S(it.ancho_m)" height="@S(it.largo_m)"
+                                      fill="@it.fill" opacity="@S(it.opacidad)"
+                                      stroke="@stroke" stroke-width="@S(isSel?0.05m:0.03m)"
+                                      style="cursor:@(isSel? "move" : "pointer")"
+                                      @onpointerdown:preventDefault="true"
+                                      @onpointerdown:stopPropagation="true"
+                                      @onpointerdown="(e)=>OnPointerDownMoveInner(e, it.poly_in_id)" />
+
+                                @if (!string.IsNullOrWhiteSpace(it.label))
+                                {
+                                    var targetW = Math.Max(0.15m, it.ancho_m - 0.25m);
+                                    @if (!string.IsNullOrWhiteSpace(it.label))
+{
+    var txt = LayoutLabel(it.label.ToUpperInvariant(), it.ancho_m, it.largo_m);
+
+    if (txt.Lines.Count > 0)
+    {
+        var cx = it.ancho_m / 2m;
+        var cy = it.largo_m / 2m;
+
+        var dy = txt.FontSize * txt.LineHeight;
+        var totalH = txt.Lines.Count * dy;
+
+        // Baseline “aprox” centrada verticalmente
+        var firstBaseline = cy - (totalH / 2m) + (txt.FontSize * 0.85m);
+
+        <svg:text class="area-label"
+              text-anchor="middle"
+              font-size="@S(txt.FontSize)" fill="#111">
+            <tspan x="@S(cx)" y="@S(firstBaseline)">@txt.Lines[0]</tspan>
+            @for (var i = 1; i < txt.Lines.Count; i++)
+            {
+                <tspan x="@S(cx)" dy="@S(dy)">@txt.Lines[i]</tspan>
             }
-            else
-            {
-                <div class="sd-empty">Selecciona o crea un bloque arrastrando.</div>
-            }
-        </div>
-    </div>
-</div>
-
-@code {
-    [Parameter] public DateTime Date { get; set; }
-    [Parameter] public string Subtitle { get; set; } = "";
-    [Parameter] public List<ScheduleItemVm> Items { get; set; } = new();
-
-    [Parameter] public string[] WorkTypes { get; set; } = Array.Empty<string>();
-    [Parameter] public bool ShowStatus { get; set; }
-
-    [Parameter] public Func<ScheduleItemVm, Task<ScheduleItemVm>> OnSave { get; set; } = default!;
-    [Parameter] public Func<ScheduleItemVm, Task> OnDelete { get; set; } = default!;
-
-    public string[] Statuses { get; } = new[] { "pendiente", "validado", "rechazado" };
-
-    public int StartHour { get; set; } = 6;
-    public int EndHour { get; set; } = 22;
-
-    private int StartMinute => StartHour * 60;
-    private int EndMinute => EndHour * 60;
-
-    private ElementReference _surfaceRef;
-
-    private double _rectTop;
-    private double _rectHeight;
-
-    private bool _isSelecting;
-    private double _selStartPx;
-    private double _selEndPx;
-
-    private ScheduleItemVm? _selected;
-    private bool _drawerOpen;
-
-    private bool _dragging;
-    private bool _resizing;
-    private bool _resizeTop;
-
-    private int _dragStartMinute;
-    private int _origStart;
-    private int _origEnd;
-
-    public sealed class ScheduleItemVm
-    {
-        public long Id { get; set; }          // 0 => nuevo
-        public DateTime Date { get; set; }
-        public int StartMinute { get; set; }  // minutos del día
-        public int EndMinute { get; set; }
-        public string Type { get; set; } = "laboratorio";
-        public string Status { get; set; } = "pendiente";
-        public string Notes { get; set; } = "";
-        public bool Editable { get; set; } = true;
-
-        public string Label { get; set; } = "Trabajo";
-        public string CssClass { get; set; } = "work-lab";
-    }
-
-    private double MinuteToPx(int minutes) => minutes * 1.2;
-    private int PxToMinute(double px) => (int)Math.Round(px / 1.2);
-    private string MinutesToTime(int m) => $"{m / 60:00}:{m % 60:00}";
-
-    private async Task EnsureRectAsync()
-    {
-        var rect = await JS.InvokeAsync<Rect>("scheduleInterop.getRect", _surfaceRef);
-        if (rect is null) return;
-        _rectTop = rect.top;
-        _rectHeight = rect.height <= 0 ? 1 : rect.height;
-    }
-
-    private int ClientYToMinute(double clientY)
-    {
-        var y = clientY - _rectTop;
-        y = Math.Clamp(y, 0, _rectHeight);
-
-        var totalMinutes = EndMinute - StartMinute;
-        var minute = StartMinute + (int)Math.Round((y / _rectHeight) * totalMinutes);
-        minute = Snap(minute, 15);
-        return Math.Clamp(minute, StartMinute, EndMinute);
-    }
-
-    private int Snap(int minute, int step) => (int)Math.Round(minute / (double)step) * step;
-
-    private async Task SurfacePointerDown(PointerEventArgs e)
-    {
-        await EnsureRectAsync();
-
-        // si estás arrastrando algo, no inicies selección
-        if (_dragging || _resizing) return;
-
-        _isSelecting = true;
-        _selStartPx = MinuteToPx(ClientYToMinute(e.ClientY) - StartMinute);
-        _selEndPx = _selStartPx;
-        _selected = null;
-        _drawerOpen = false;
-    }
-
-    // ✅ SOLO UNA versión
-    private async Task SurfacePointerMove(PointerEventArgs e)
-    {
-        if (_selected is not null && (_dragging || _resizing))
-        {
-            SurfaceDragMove(e);
-            await Task.CompletedTask;
-            return;
-        }
-
-        if (!_isSelecting) return;
-
-        var m = ClientYToMinute(e.ClientY);
-        _selEndPx = MinuteToPx(m - StartMinute);
-        StateHasChanged();
-        await Task.CompletedTask;
-    }
-
-    // ✅ SOLO UNA versión
-    private async Task SurfacePointerUp(PointerEventArgs e)
-    {
-        if (_dragging || _resizing)
-        {
-            _dragging = false;
-            _resizing = false;
-            await Task.CompletedTask;
-            return;
-        }
-
-        if (!_isSelecting) return;
-        _isSelecting = false;
-
-        var a = PxToMinute(_selStartPx) + StartMinute;
-        var b = PxToMinute(_selEndPx) + StartMinute;
-
-        var start = Math.Min(a, b);
-        var end = Math.Max(a, b);
-
-        if (end - start < 15) { StateHasChanged(); return; }
-
-        var item = new ScheduleItemVm
-            {
-                Id = 0,
-                Date = Date.Date,
-                StartMinute = start,
-                EndMinute = end,
-                Editable = true
-            };
-
-        item.Type = WorkTypes.Length > 0 ? WorkTypes[0] : "trabajo";
-        ApplyStyle(item);
-
-        Items.Add(item);
-        Select(item);
-        _drawerOpen = true;
-        StateHasChanged();
-    }
-
-    private void Select(ScheduleItemVm item)
-    {
-        _selected = item;
-        _drawerOpen = true;
-    }
-
-    private async Task BlockPointerDown(PointerEventArgs e, ScheduleItemVm item)
-    {
-        if (!item.Editable) { Select(item); return; }
-
-        await EnsureRectAsync();
-
-        _dragging = true;
-        _resizing = false;
-        _selected = item;
-        _drawerOpen = true;
-
-        _dragStartMinute = ClientYToMinute(e.ClientY);
-        _origStart = item.StartMinute;
-        _origEnd = item.EndMinute;
-    }
-
-    private async Task ResizePointerDown(PointerEventArgs e, ScheduleItemVm item, bool top)
-    {
-        if (!item.Editable) { Select(item); return; }
-
-        await EnsureRectAsync();
-
-        _resizing = true;
-        _dragging = false;
-        _resizeTop = top;
-        _selected = item;
-        _drawerOpen = true;
-
-        _dragStartMinute = ClientYToMinute(e.ClientY);
-        _origStart = item.StartMinute;
-        _origEnd = item.EndMinute;
-    }
-
-    private void SurfaceDragMove(PointerEventArgs e)
-    {
-        if (_selected is null) return;
-
-        var m = ClientYToMinute(e.ClientY);
-        var delta = m - _dragStartMinute;
-
-        if (_dragging)
-        {
-            var dur = _origEnd - _origStart;
-            var ns = Math.Clamp(_origStart + delta, StartMinute, EndMinute - dur);
-            _selected.StartMinute = ns;
-            _selected.EndMinute = ns + dur;
-        }
-        else if (_resizing)
-        {
-            if (_resizeTop)
-            {
-                var ns = Math.Clamp(_origStart + delta, StartMinute, _selected.EndMinute - 15);
-                _selected.StartMinute = ns;
-            }
-            else
-            {
-                var ne = Math.Clamp(_origEnd + delta, _selected.StartMinute + 15, EndMinute);
-                _selected.EndMinute = ne;
-            }
-        }
-
-        StateHasChanged();
-    }
-
-    private void CloseDrawer()
-    {
-        _drawerOpen = false;
-        _selected = null;
-    }
-
-    private async Task SaveSelected()
-    {
-        if (_selected is null) return;
-        if (_selected.EndMinute <= _selected.StartMinute + 14) return;
-
-        ApplyStyle(_selected);
-        var saved = await OnSave(_selected);
-        _selected.Id = saved.Id;
-        StateHasChanged();
-    }
-
-    private async Task DeleteSelected()
-    {
-        if (_selected is null) return;
-        var item = _selected;
-
-        Items.Remove(item);
-        _selected = null;
-        _drawerOpen = false;
-
-        if (item.Id != 0)
-            await OnDelete(item);
-
-        StateHasChanged();
-    }
-
-    private void QuickAdd(int startH, int endH)
-    {
-        var start = Math.Clamp(startH * 60, StartMinute, EndMinute);
-        var end = Math.Clamp(endH * 60, StartMinute, EndMinute);
-        if (end <= start) return;
-
-        var item = new ScheduleItemVm
-            {
-                Id = 0,
-                Date = Date.Date,
-                StartMinute = start,
-                EndMinute = end,
-                Editable = true
-            };
-
-        item.Type = WorkTypes.Length > 0 ? WorkTypes[0] : "trabajo";
-        ApplyStyle(item);
-
-        Items.Add(item);
-        Select(item);
-        _drawerOpen = true;
-    }
-
-    private void OnTypeChange(ChangeEventArgs e)
-    {
-        if (_selected is null) return;
-        _selected.Type = e.Value?.ToString() ?? _selected.Type;
-        ApplyStyle(_selected);
-    }
-
-    private void OnStatusChange(ChangeEventArgs e)
-    {
-        if (_selected is null) return;
-        _selected.Status = e.Value?.ToString() ?? _selected.Status;
-        ApplyStyle(_selected);
-    }
-
-    private void OnTimeChange(ChangeEventArgs e, bool start)
-    {
-        if (_selected is null) return;
-
-        if (TimeSpan.TryParse(e.Value?.ToString(), out var ts))
-        {
-            var m = Snap((int)ts.TotalMinutes, 15);
-            m = Math.Clamp(m, StartMinute, EndMinute);
-
-            if (start) _selected.StartMinute = Math.Min(m, _selected.EndMinute - 15);
-            else _selected.EndMinute = Math.Max(m, _selected.StartMinute + 15);
-
-            StateHasChanged();
-        }
-    }
-
-    private void ApplyStyle(ScheduleItemVm item)
-    {
-        if (WorkTypes.Length > 0)
-        {
-            item.Label = item.Type;
-            item.CssClass = item.Type switch
-            {
-                "laboratorio" => "work-lab",
-                "clase" => "work-class",
-                _ => "work-other"
-            };
-            return;
-        }
-
-        item.Label = "trabajo";
-        item.CssClass = item.Status switch
-        {
-            "validado" => "st-ok",
-            "rechazado" => "st-bad",
-            _ => "st-pend"
-        };
-    }
-
-    private sealed class Rect
-    {
-        public double top { get; set; }
-        public double height { get; set; }
+        </svg:text>
     }
 }
 
+                                }
+
+                                @if (isSel)
+                                {
+                                    @CornerHandle(it, 0m, 0m, Handle.NW)
+                                    @CornerHandle(it, it.ancho_m, 0m, Handle.NE)
+                                    @CornerHandle(it, 0m, it.largo_m, Handle.SW)
+                                    @CornerHandle(it, it.ancho_m, it.largo_m, Handle.SE)
+                                }
+                            </g>
+                        }
+
+                        <!-- BLOQUES INTERNOS (ASOCIADOS A MESÓN O INSTALACIÓN EXISTENTE) -->
+                        @{
+                            // IDs válidos del área actual (evita dibujar bloques de “áreas vecinas”)
+                            var _mesonesAreaIds = MesonesDelAreaActual()
+                            .Select(m => m.meson_id)
+                            .ToHashSet(System.StringComparer.OrdinalIgnoreCase);
+
+                            // Asumo que _instalaciones contiene las instalaciones cargadas para el área actual
+                            // (si no fuera así, igual te protege al menos de IDs no presentes)
+                            var _instalacionesAreaIds = _instalaciones.Keys
+                            .ToHashSet(System.StringComparer.OrdinalIgnoreCase);
+                        }
+
+                        <!-- BLOQUES INTERNOS (SOLO SI EL OBJETO PERTENECE AL ÁREA ACTUAL) -->
+                        @foreach (var b in _blocks
+                       .Where(b =>
+                       (!string.IsNullOrWhiteSpace(b.meson_id) && _mesonesAreaIds.Contains(b.meson_id!)) ||
+                       (!string.IsNullOrWhiteSpace(b.instalacion_id) && _instalacionesAreaIds.Contains(b.instalacion_id!))
+                       )
+                       .OrderBy(b => b.z_order))
+                        {
+                            var isSelBlock = _selBlock == b.bloque_id;
+                            var stroke = isSelBlock ? "#0a7" : "#1f2937";
+
+                            <g @onmouseover="() => _hoverBlock = b.bloque_id"
+                               @onmouseout="() => _hoverBlock = null">
+                                <rect x="@S(b.abs_x)" y="@S(b.abs_y)"
+                                      width="@S(b.ancho)" height="@S(b.largo)"
+                                      fill="@(string.IsNullOrWhiteSpace(b.color_hex) ? "#2563eb" : b.color_hex)"
+                                      opacity="@S(0.25m)"
+                                      stroke="@stroke" stroke-width="@S(isSelBlock ? 0.05m : 0.03m)"
+                                      style="cursor:@(isSelBlock ? "move" : "pointer")"
+                                      @onpointerdown:preventDefault="true"
+                                      @onpointerdown:stopPropagation="true"
+                                      @onpointerdown="(e)=>OnPointerDownMoveBlock(e, b.bloque_id)" />
+
+
+                                @if (!string.IsNullOrWhiteSpace(b.etiqueta))
+                                {
+                                    var txt = LayoutLabel(b.etiqueta, b.ancho, b.largo);
+
+
+                                    if (txt.Lines.Count > 0)
+                                    {
+                                        var cx = b.abs_x + (b.ancho / 2m);
+                                        var cy = b.abs_y + (b.largo / 2m);
+
+
+                                        var dy = txt.FontSize * txt.LineHeight;
+                                        var totalH = txt.Lines.Count * dy;
+
+
+                                        var firstBaseline = cy - (totalH / 2m) + (txt.FontSize * 0.85m);
+
+
+                                        <svg:text class="area-label"
+                                                  text-anchor="middle"
+                                                  font-size="@S(txt.FontSize)" fill="#111">
+                                            <tspan x="@S(cx)" y="@S(firstBaseline)">@txt.Lines[0]</tspan>
+                                            @for (var i = 1; i < txt.Lines.Count; i++)
+                                            {
+                                                <tspan x="@S(cx)" dy="@S(dy)">@txt.Lines[i]</tspan>
+                                            }
+                                        </svg:text>
+                                    }
+                                }
+
+
+                                @if (isSelBlock)
+                                {
+                                    @BlockCornerHandle(b, b.abs_x, b.abs_y, Handle.NW)
+                                    @BlockCornerHandle(b, b.abs_x + b.ancho, b.abs_y, Handle.NE)
+                                    @BlockCornerHandle(b, b.abs_x, b.abs_y + b.largo, Handle.SW)
+                                    @BlockCornerHandle(b, b.abs_x + b.ancho, b.abs_y + b.largo, Handle.SE)
+                                }
+                            </g>
+                        }
+
+
+                        <!-- Puertas / Ventanas solo display -->
+                        @foreach (var d in _doors)
+                        {
+                            <line x1="@S(d.x_m)" y1="@S(d.y_m)" x2="@S(DoorEndX(d))" y2="@S(DoorEndY(d))"
+                                  stroke="#13A076" stroke-width="@S(0.10m)" stroke-linecap="round" />
+                        }
+                        @foreach (var w in _windows)
+                        {
+                            <line x1="@S(w.x_m)" y1="@S(w.y_m)" x2="@S(WinEndX(w))" y2="@S(WinEndY(w))"
+                                  stroke="#66CCFF" stroke-width="@S(0.06m)" stroke-linecap="round" />
+                        }
+                    </svg>
+                </div>
+
+                <!-- ACCIONES DEBAJO DEL LIENZO -->
+                <div class="under-canvas-actions">
+                    <div class="btn-row">
+                        <button class="px-3 py-2 border rounded" @onclick="MostrarNuevoBloque">+ Crear bloque (asociar)</button>
+                        <button class="px-3 py-2 border rounded text-red-600 border-red-300" @onclick="EliminarInner" disabled="@(_selIn is null)">Eliminar seleccionado</button>
+                        <button class="px-3 py-2 border rounded text-red-600 border-red-300" @onclick="EliminarBloqueSeleccionado" disabled="@(_selBlock is null)">Eliminar bloque</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel lateral -->
+            <aside class="prop-panel" @onclick:stopPropagation="true">
+                @if (_selIn is not null && _mapIn.TryGetValue(_selIn, out var sel))
+                {
+                    <h4 class="font-semibold mb-2">Elemento interior</h4>
+
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Etiqueta</label>
+                            <input class="border p-1 w-full" value="@(sel.label ?? "")"
+                                   @oninput="(e)=>{ sel.label = e.Value?.ToString() ?? string.Empty; StateHasChanged(); }" />
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">X (rel)</label>
+                            <input class="border p-1 w-full" value="@S(sel.eje_x_rel_m)"
+                                   @oninput="(e)=>{ sel.eje_x_rel_m = ParseFlexible(e.Value); NormalizeInner(sel); }" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Y (rel)</label>
+                            <input class="border p-1 w-full" value="@S(sel.eje_y_rel_m)"
+                                   @oninput="(e)=>{ sel.eje_y_rel_m = ParseFlexible(e.Value); NormalizeInner(sel); }" />
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Ancho (m)</label>
+                            <input class="border p-1 w-full" value="@S(sel.ancho_m)"
+                                   @oninput="(e)=>{ sel.ancho_m = ParseFlexible(e.Value); NormalizeInner(sel); }" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">largo (m)</label>
+                            <input class="border p-1 w-full" value="@S(sel.largo_m)"
+                                   @oninput="(e)=>{ sel.largo_m = ParseFlexible(e.Value); NormalizeInner(sel); }" />
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Opacidad (0–1)</label>
+                            <input class="border p-1 w-full" value="@S(sel.opacidad)"
+                                   @oninput="(e)=>{ sel.opacidad = ParseFlexible(e.Value); StateHasChanged(); }" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Z-order</label>
+                            <input class="border p-1 w-full" value="@sel.z_order"
+                                   @oninput="(e)=>{ sel.z_order = int.TryParse(e.Value?.ToString(), out var n)? n : 0; StateHasChanged(); }" />
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Color</label>
+                            <input class="border p-1 w-full"
+                                   @bind-value="sel.fill"
+                                   @bind-value:event="oninput" />
+                        </div>
+                    </div>
+
+                    <hr class="my-3" />
+
+                    <!-- VINCULACIÓN: MESÓN O INSTALACIÓN (solo asignar existente, no crear aquí) -->
+                    <h4 class="font-semibold mb-2">Vínculo</h4>
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        <div class="col-span-2 text-xs text-gray-600">
+                            El elemento interior debe ser <b>MESÓN</b> o <b>INSTALACIÓN</b>. Se asigna a registros ya creados abajo.
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Asignar MESÓN existente</label>
+                            <select class="border p-1 w-full"
+                                    value="@(sel.meson_id ?? "")"
+                                    @onchange="(e)=> AssignInnerMeson(sel, e.Value?.ToString())">
+                                <option value="">— Sin mesón —</option>
+
+                                @* ✅ CAMBIO: ahora SOLO mesones del área actual *@
+                                @foreach (var mesOpt in MesonesDelAreaActual())
+                                {
+                                    <option value="@mesOpt.meson_id">@mesOpt.nombre_meson</option>
+                                }
+                            </select>
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Asignar INSTALACIÓN existente</label>
+                            <select class="border p-1 w-full"
+                                    value="@(sel.instalacion_id ?? "")"
+                                    @onchange="(e)=> AssignInnerInstalacion(sel, e.Value?.ToString())">
+                                <option value="">— Sin instalación —</option>
+                                @foreach (var kv in _instalaciones.OrderBy(k => k.Value.nombre))
+                                {
+                                    <option value="@kv.Key">@kv.Value.nombre</option>
+                                }
+                            </select>
+                        </div>
+
+                        <div class="col-span-2 text-xs text-gray-500">
+                            Nota: si asignas mesón, se limpia instalación (y viceversa).
+                        </div>
+                    </div>
+
+                    @* ✅ FIX CS0136: renombré "out var m" a "out var mesSel" *@
+                    @if (!string.IsNullOrWhiteSpace(sel.meson_id) && _mesones.TryGetValue(sel.meson_id, out var mesSel))
+                    {
+                        <hr class="my-3" />
+                        <h4 class="font-semibold mb-2">Mesón (SQL)</h4>
+                        <div class="grid grid-cols-2 gap-2 text-sm">
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Nombre</label>
+                                <input class="border p-1 w-full" value="@mesSel.nombre_meson"
+                                       @oninput="(e)=>{ mesSel.nombre_meson = e.Value?.ToString() ?? string.Empty; _mesonesLookup[mesSel.meson_id] = mesSel.nombre_meson; StateHasChanged(); }" />
+                            </div>
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Niveles totales</label>
+                                <input class="border p-1 w-full" value="@(mesSel.niveles_totales?.ToString() ?? "")"
+                                       @oninput="(e)=>{ mesSel.niveles_totales = int.TryParse(e.Value?.ToString(), out var n)? n : (int?)null; StateHasChanged(); }" />
+                            </div>
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Imagen (URL o archivo_local)</label>
+                                <input class="border p-1 w-full" value="@(mesSel.imagen_url ?? "")"
+                                       @oninput="(e)=>{ mesSel.imagen_url = e.Value?.ToString(); StateHasChanged(); }" />
+
+                                @if (!string.IsNullOrWhiteSpace(mesSel.imagen_url))
+                                {
+                                    <div class="mt-2 flex items-center gap-2">
+                                        <img src="@ResolveUrl(mesSel.imagen_url!)"
+                                             style="width:120px;height:80px;object-fit:contain;border:1px solid #e5e7eb;border-radius:8px;background:#fff"
+                                             onerror="this.style.display='none';" />
+                                        <div class="text-xs text-gray-500"><code>@mesSel.imagen_url</code></div>
+                                    </div>
+                                }
+                            </div>
+
+                        </div>
+                    }
+
+                    <!-- Si ya tiene instalación vinculada -->
+                    @if (!string.IsNullOrWhiteSpace(sel.instalacion_id) && _instalaciones.TryGetValue(sel.instalacion_id, out var ins))
+                    {
+                        <hr class="my-3" />
+                        <h4 class="font-semibold mb-2">Instalación (SQL)</h4>
+
+                        <div class="grid grid-cols-2 gap-2 text-sm">
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Nombre</label>
+                                <input class="border p-1 w-full" value="@ins.nombre"
+                                       @oninput="(e)=>{ ins.nombre = e.Value?.ToString() ?? string.Empty; StateHasChanged(); }" />
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Subcategoría</label>
+                                <select class="border p-1 w-full" value="@(ins.subcategoria_id ?? "")"
+                                        @onchange="(e)=>{ ins.subcategoria_id = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? null : e.Value?.ToString(); StateHasChanged(); }">
+                                    <option value="">— Sin subcategoría —</option>
+                                    @foreach (var kv in _subcatsInstLookup.OrderBy(k => k.Value))
+                                    {
+                                        <option value="@kv.Key">@kv.Value</option>
+                                    }
+                                </select>
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Estado</label>
+                                <select class="border p-1 w-full" value="@(ins.estado_id ?? "")"
+                                        @onchange="(e)=>{ ins.estado_id = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? null : e.Value?.ToString(); StateHasChanged(); }">
+                                    <option value="">— Sin estado —</option>
+                                    @foreach (var kv in _estadosLookup.OrderBy(k => k.Value))
+                                    {
+                                        <option value="@kv.Key">@kv.Value</option>
+                                    }
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Fecha instalación</label>
+                                <input type="date" class="border p-1 w-full"
+                                       value="@(DateToInput(ins.fecha_instalacion))"
+                                       @onchange="(e)=>{ ins.fecha_instalacion = ParseDate(e.Value?.ToString()); StateHasChanged(); }" />
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Última revisión</label>
+                                <input type="date" class="border p-1 w-full"
+                                       value="@(DateToInput(ins.fecha_ultima_revision))"
+                                       @onchange="(e)=>{ ins.fecha_ultima_revision = ParseDate(e.Value?.ToString()); StateHasChanged(); }" />
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Próxima revisión</label>
+                                <input type="date" class="border p-1 w-full"
+                                       value="@(DateToInput(ins.fecha_proxima_revision))"
+                                       @onchange="(e)=>{ ins.fecha_proxima_revision = ParseDate(e.Value?.ToString()); StateHasChanged(); }" />
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Levantamiento (cm) (opcional)</label>
+                                <input class="border p-1 w-full"
+                                       type="number"
+                                       step="any"
+                                       min="0"
+                                       value="@(ins.levantamiento_cm?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")"
+                                       @oninput="(e)=>{ ins.levantamiento_cm = ParseNullableDecimal(e.Value?.ToString()); StateHasChanged(); }" />
+                                <div class="text-xs text-gray-500">Si la instalación se encuentra elevada sobre el piso, completa este campo; si no, déjalo vacío.</div>
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Proveedor servicio</label>
+                                <input class="border p-1 w-full" value="@(ins.proveedor_servicio ?? "")"
+                                       @oninput="(e)=>{ ins.proveedor_servicio = e.Value?.ToString(); StateHasChanged(); }" />
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Observaciones</label>
+                                <textarea class="border p-1 w-full" rows="2"
+                                          @oninput="(e)=>{ ins.observaciones = e.Value?.ToString(); StateHasChanged(); }">@ins.observaciones</textarea>
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Descripción</label>
+                                <textarea class="border p-1 w-full" rows="3"
+                                          @oninput="(e)=>{ ins.descripcion = e.Value?.ToString(); StateHasChanged(); }">@ins.descripcion</textarea>
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Imagen (URL o archivo_local)</label>
+                                <input class="border p-1 w-full" value="@(ins.imagen_url ?? "")"
+                                       @oninput="(e)=>{ ins.imagen_url = e.Value?.ToString(); StateHasChanged(); }" />
+
+                                @if (!string.IsNullOrWhiteSpace(ins.imagen_url))
+                                {
+                                    <div class="mt-2 flex items-center gap-2">
+                                        <img src="@ResolveUrl(ins.imagen_url!)"
+                                             style="width:120px;height:80px;object-fit:contain;border:1px solid #e5e7eb;border-radius:8px;background:#fff"
+                                             onerror="this.style.display='none';" />
+                                        <div class="text-xs text-gray-500"><code>@ins.imagen_url</code></div>
+                                    </div>
+                                }
+                            </div>
+
+
+                        </div>
+                    }
+                }
+                else if (_selBlock is not null && _blocksById.TryGetValue(_selBlock, out var blockSel))
+                {
+                    <h4 class="font-semibold mb-2">Bloque (asociar a existente)</h4>
+
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Etiqueta</label>
+                            <input class="border p-1 w-full" value="@(blockSel.etiqueta ?? "")"
+                                   @oninput="(e)=>{ blockSel.etiqueta = e.Value?.ToString(); StateHasChanged(); }" />
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Ancho (m)</label>
+                            <input class="border p-1 w-full" value="@S(blockSel.ancho)"
+                                   @oninput="(e)=>{ blockSel.ancho = Clamp(0.1m, 10m, ParseFlexible(e.Value)); UpdateBlockAbs(blockSel); StateHasChanged(); }" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Largo (m)</label>
+                            <input class="border p-1 w-full" value="@S(blockSel.largo)"
+                                   @oninput="(e)=>{ blockSel.largo = Clamp(0.1m, 10m, ParseFlexible(e.Value)); UpdateBlockAbs(blockSel); StateHasChanged(); }" />
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Altura</label>
+                            <input class="border p-1 w-full" value="@(blockSel.altura?.ToString() ?? "")"
+                                   @oninput="(e)=>{ blockSel.altura = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? (decimal?)null : ParseFlexible(e.Value); StateHasChanged(); }" />
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Offset X (m)</label>
+                            <input class="border p-1 w-full" value="@S(blockSel.offset_x)"
+                                   @oninput="(e)=>{ blockSel.offset_x = ParseFlexible(e.Value); UpdateBlockAbs(blockSel); StateHasChanged(); }" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Offset Y (m)</label>
+                            <input class="border p-1 w-full" value="@S(blockSel.offset_y)"
+                                   @oninput="(e)=>{ blockSel.offset_y = ParseFlexible(e.Value); UpdateBlockAbs(blockSel); StateHasChanged(); }" />
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Asociar a INSTALACIÓN existente</label>
+                            <select class="border p-1 w-full" value="@(blockSel.instalacion_id ?? "")"
+                                    @onchange="(e)=> UpdateBlockInstalacion(blockSel, e.Value?.ToString())">
+                                <option value="">— Ninguna —</option>
+                                @foreach (var kv in _instalaciones.OrderBy(k => k.Value.nombre))
+                                {
+                                    <option value="@kv.Key">@kv.Value.nombre</option>
+                                }
+
+                            </select>
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Asociar a MESÓN existente</label>
+                            <select class="border p-1 w-full" value="@(blockSel.meson_id ?? "")"
+                                    @onchange="(e)=> UpdateBlockMeson(blockSel, e.Value?.ToString())">
+                                <option value="">— Ninguno —</option>
+                                @foreach (var m in MesonesDelAreaActual().OrderBy(x => x.nombre_meson))
+                                {
+                                    <option value="@m.meson_id">@m.nombre_meson</option>
+                                }
+
+                            </select>
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Color</label>
+                            <input class="border p-1 w-full"
+                                   @bind-value="blockSel.color_hex"
+                                   @bind-value:event="oninput" />
+                        </div>
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(_blockMsg))
+                    {
+                        <div class="text-xs text-gray-500 mt-2">@_blockMsg</div>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(blockSel.meson_id) && _mesones.TryGetValue(blockSel.meson_id, out var mesonBlock))
+                    {
+                        <hr class="my-3" />
+                        <h4 class="font-semibold mb-2">Mesón (SQL)</h4>
+                        <div class="grid grid-cols-2 gap-2 text-sm">
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Nombre</label>
+                                <input class="border p-1 w-full" value="@mesonBlock.nombre_meson"
+                                       @oninput="(e)=>{ mesonBlock.nombre_meson = e.Value?.ToString() ?? string.Empty; _mesonesLookup[mesonBlock.meson_id] = mesonBlock.nombre_meson; StateHasChanged(); }" />
+                            </div>
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Niveles totales</label>
+                                <input class="border p-1 w-full" value="@(mesonBlock.niveles_totales?.ToString() ?? "")"
+                                       @oninput="(e)=>{ mesonBlock.niveles_totales = int.TryParse(e.Value?.ToString(), out var n)? n : (int?)null; StateHasChanged(); }" />
+                            </div>
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Imagen (URL o archivo_local)</label>
+                                <input class="border p-1 w-full" value="@(mesonBlock.imagen_url ?? "")"
+                                       @oninput="(e)=>{ mesonBlock.imagen_url = e.Value?.ToString(); StateHasChanged(); }" />
+
+                                @if (!string.IsNullOrWhiteSpace(mesonBlock.imagen_url))
+                                {
+                                    <div class="mt-2 flex items-center gap-2">
+                                        <img src="@ResolveUrl(mesonBlock.imagen_url!)"
+                                             style="width:120px;height:80px;object-fit:contain;border:1px solid #e5e7eb;border-radius:8px;background:#fff"
+                                             onerror="this.style.display='none';" />
+                                        <div class="text-xs text-gray-500"><code>@mesonBlock.imagen_url</code></div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(blockSel.instalacion_id) && _instalaciones.TryGetValue(blockSel.instalacion_id, out var insBlock))
+                    {
+                        <hr class="my-3" />
+                        <h4 class="font-semibold mb-2">Instalación (SQL)</h4>
+
+                        <div class="grid grid-cols-2 gap-2 text-sm">
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Nombre</label>
+                                <input class="border p-1 w-full" value="@insBlock.nombre"
+                                       @oninput="(e)=>{ insBlock.nombre = e.Value?.ToString() ?? string.Empty; StateHasChanged(); }" />
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Subcategoría</label>
+                                <select class="border p-1 w-full" value="@(insBlock.subcategoria_id ?? "")"
+                                        @onchange="(e)=>{ insBlock.subcategoria_id = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? null : e.Value?.ToString(); StateHasChanged(); }">
+                                    <option value="">— Sin subcategoría —</option>
+                                    @foreach (var kv in _subcatsInstLookup.OrderBy(k => k.Value))
+                                    {
+                                        <option value="@kv.Key">@kv.Value</option>
+                                    }
+                                </select>
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Estado</label>
+                                <select class="border p-1 w-full" value="@(insBlock.estado_id ?? "")"
+                                        @onchange="(e)=>{ insBlock.estado_id = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? null : e.Value?.ToString(); StateHasChanged(); }">
+                                    <option value="">— Sin estado —</option>
+                                    @foreach (var kv in _estadosLookup.OrderBy(k => k.Value))
+                                    {
+                                        <option value="@kv.Key">@kv.Value</option>
+                                    }
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Fecha instalación</label>
+                                <input type="date" class="border p-1 w-full"
+                                       value="@(DateToInput(insBlock.fecha_instalacion))"
+                                       @onchange="(e)=>{ insBlock.fecha_instalacion = ParseDate(e.Value?.ToString()); StateHasChanged(); }" />
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Última revisión</label>
+                                <input type="date" class="border p-1 w-full"
+                                       value="@(DateToInput(insBlock.fecha_ultima_revision))"
+                                       @onchange="(e)=>{ insBlock.fecha_ultima_revision = ParseDate(e.Value?.ToString()); StateHasChanged(); }" />
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Próxima revisión</label>
+                                <input type="date" class="border p-1 w-full"
+                                       value="@(DateToInput(insBlock.fecha_proxima_revision))"
+                                       @onchange="(e)=>{ insBlock.fecha_proxima_revision = ParseDate(e.Value?.ToString()); StateHasChanged(); }" />
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Levantamiento (cm) (opcional)</label>
+                                <input class="border p-1 w-full"
+                                       type="number"
+                                       step="any"
+                                       min="0"
+                                       value="@(insBlock.levantamiento_cm?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")"
+                                       @oninput="(e)=>{ insBlock.levantamiento_cm = ParseNullableDecimal(e.Value?.ToString()); StateHasChanged(); }" />
+                                <div class="text-xs text-gray-500">Si la instalación se encuentra elevada sobre el piso, completa este campo; si no, déjalo vacío.</div>
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Proveedor servicio</label>
+                                <input class="border p-1 w-full" value="@(insBlock.proveedor_servicio ?? "")"
+                                       @oninput="(e)=>{ insBlock.proveedor_servicio = e.Value?.ToString(); StateHasChanged(); }" />
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Observaciones</label>
+                                <textarea class="border p-1 w-full" rows="2"
+                                          @oninput="(e)=>{ insBlock.observaciones = e.Value?.ToString(); StateHasChanged(); }">@insBlock.observaciones</textarea>
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Descripción</label>
+                                <textarea class="border p-1 w-full" rows="3"
+                                          @oninput="(e)=>{ insBlock.descripcion = e.Value?.ToString(); StateHasChanged(); }">@insBlock.descripcion</textarea>
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-xs text-gray-600 mb-1">Imagen (URL o archivo_local)</label>
+                                <input class="border p-1 w-full" value="@(insBlock.imagen_url ?? "")"
+                                       @oninput="(e)=>{ insBlock.imagen_url = e.Value?.ToString(); StateHasChanged(); }" />
+
+                                @if (!string.IsNullOrWhiteSpace(insBlock.imagen_url))
+                                {
+                                    <div class="mt-2 flex items-center gap-2">
+                                        <img src="@ResolveUrl(insBlock.imagen_url!)"
+                                             style="width:120px;height:80px;object-fit:contain;border:1px solid #e5e7eb;border-radius:8px;background:#fff"
+                                             onerror="this.style.display='none';" />
+                                        <div class="text-xs text-gray-500"><code>@insBlock.imagen_url</code></div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+                else if (_showBlockCreator)
+                {
+                    <h4 class="font-semibold mb-2">Nuevo bloque (solo asignar existente)</h4>
+
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">¿A qué quieres asociarlo?</label>
+                            <div class="flex items-center gap-3">
+                                <label class="flex items-center gap-2 text-xs text-gray-700">
+                                    <input type="checkbox" checked="@_newBlockAssignInstalacion"
+                                           @onchange="(e)=> ToggleNewBlockAssignInstalacion(Bool(e.Value))" />
+                                    Instalación existente
+                                </label>
+                                <label class="flex items-center gap-2 text-xs text-gray-700">
+                                    <input type="checkbox" checked="@_newBlockAssignMeson"
+                                           @onchange="(e)=> ToggleNewBlockAssignMeson(Bool(e.Value))" />
+                                    Mesón existente
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Instalación</label>
+                            <select class="border p-1 w-full"
+                                    value="@(_newBlockInstalacionId ?? "")"
+                                    disabled="@(!_newBlockAssignInstalacion)"
+                                    @onchange="(e)=> OnSelectBlockInstalacion(e.Value?.ToString())">
+                                <option value="">— Selecciona una instalación —</option>
+                                @foreach (var kv in _instalaciones.OrderBy(k => k.Value.nombre))
+                                {
+                                    <option value="@kv.Key">@kv.Value.nombre</option>
+                                }
+
+                            </select>
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Mesón</label>
+                            <select class="border p-1 w-full"
+                                    value="@(_newBlockMesonId ?? "")"
+                                    disabled="@(!_newBlockAssignMeson)"
+                                    @onchange="(e)=> OnSelectBlockMeson(e.Value?.ToString())">
+                                <option value="">— Selecciona un mesón —</option>
+                                @foreach (var m in MesonesDelAreaActual().OrderBy(x => x.nombre_meson))
+                                {
+                                    <option value="@m.meson_id">@m.nombre_meson</option>
+                                }
+
+                            </select>
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Etiqueta</label>
+                            <input class="border p-1 w-full" @bind="_newBlockEtiqueta" @bind:event="oninput" />
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Ancho (m)</label>
+                            <input class="border p-1 w-full" value="@S(_newBlockAncho)"
+                                   @oninput="(e)=> _newBlockAncho = ParseFlexible(e.Value)" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Largo (m)</label>
+                            <input class="border p-1 w-full" value="@S(_newBlockLargo)"
+                                   @oninput="(e)=> _newBlockLargo = ParseFlexible(e.Value)" />
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Altura</label>
+                            <input class="border p-1 w-full" value="@(_newBlockAltura?.ToString() ?? "")"
+                                   @oninput="(e)=> _newBlockAltura = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? (decimal?)null : ParseFlexible(e.Value)" />
+                        </div>
+
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Offset X (m)</label>
+                            <input class="border p-1 w-full" value="@S(_newBlockOffsetX)"
+                                   @oninput="(e)=> _newBlockOffsetX = ParseFlexible(e.Value)" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Offset Y (m)</label>
+                            <input class="border p-1 w-full" value="@S(_newBlockOffsetY)"
+                                   @oninput="(e)=> _newBlockOffsetY = ParseFlexible(e.Value)" />
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Color</label>
+                            <input class="border p-1 w-full" @bind="_newBlockColor" @bind:event="oninput" />
+                        </div>
+
+                        <div class="col-span-2 flex gap-2">
+                            <button class="px-3 py-2 border rounded bg-black text-white" @onclick="AgregarBloque">Agregar bloque</button>
+                            <button class="px-3 py-2 border rounded" @onclick="()=>_showBlockCreator=false">Cancelar</button>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(_blockMsg))
+                        {
+                            <div class="col-span-2 text-xs text-gray-500">@_blockMsg</div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="text-sm text-gray-600">Selecciona un elemento interior o un bloque para editarlo.</div>
+                }
+            </aside>
+        </div>
+
+        <!-- ABAJO: CREAR MESÓN / CREAR INSTALACIÓN (COMPLETO SEGÚN SQL) -->
+        <section style="margin-top:1rem; border:1px solid #e5e7eb; border-radius:.5rem; padding:1rem; background:#fff">
+            <h3 class="font-semibold mb-3">Crear y registrar (SQL)</h3>
+
+            <div class="grid grid-cols-2 gap-6">
+                <!-- MESONES -->
+                <details class="panel-box">
+                    <summary class="panel-header">
+                        <div class="panel-title">Crear mesón</div>
+                    </summary>
+
+                    <div class="grid grid-cols-2 gap-2 text-sm mt-2">
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Nombre (nombre_meson)</label>
+                            <input class="border p-1 w-full" @bind="_nuevoMesonNombre" @bind:event="oninput" />
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Niveles totales (niveles_totales)</label>
+                            <input class="border p-1 w-full" value="@(_nuevoMesonNiveles?.ToString() ?? "")"
+                                   @oninput="(e)=> _nuevoMesonNiveles = int.TryParse(e.Value?.ToString(), out var n) ? n : (int?)null" />
+                        </div>
+
+                        <!-- ✅ NUEVO -->
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Imagen</label>
+                            <div class="flex items-center gap-3">
+                                <label class="flex items-center gap-2 text-xs text-gray-700">
+                                    <input type="radio" name="imgModoMesonDetalles"
+                                           value="url"
+                                           checked="@(_nuevoMesonImagenModo == "url")"
+                                           @onchange="OnNuevoMesonImagenModoChanged" />
+                                    Colocar un URL
+                                </label>
+                                <label class="flex items-center gap-2 text-xs text-gray-700">
+                                    <input type="radio" name="imgModoMesonDetalles"
+                                           value="archivo"
+                                           checked="@(_nuevoMesonImagenModo == "archivo")"
+                                           @onchange="OnNuevoMesonImagenModoChanged" />
+                                    Subir imagen
+                                </label>
+                            </div>
+
+                            @if (_nuevoMesonImagenModo == "url")
+                            {
+                                <input class="border p-1 w-full mt-2" @bind="_nuevoMesonImagenUrl" @bind:event="oninput" />
+                            }
+                            else
+                            {
+                                <label class="upload-drop mt-2">
+                                    <InputFile OnChange="OnNuevoMesonImagenArchivoSeleccionado" accept="image/png,image/jpeg,image/jpg,image/webp" />
+                                    <span>Arrastra una imagen o haz clic para buscar</span>
+                                </label>
+                                @if (!string.IsNullOrWhiteSpace(_nuevoMesonImagenNombre))
+                                {
+                                    <div class="text-xs text-gray-500 mt-1">Archivo: @_nuevoMesonImagenNombre</div>
+                                }
+                            }
+
+                            @if (!string.IsNullOrWhiteSpace(_nuevoMesonImagenUrl))
+                            {
+                                <div class="mt-2 flex items-center gap-2">
+                                    <img src="@ResolveUrl(_nuevoMesonImagenUrl)"
+                                         style="width:120px;height:80px;object-fit:contain;border:1px solid #e5e7eb;border-radius:8px;background:#fff"
+                                         onerror="this.style.display='none';" />
+                                    <div class="text-xs text-gray-500"><code>@_nuevoMesonImagenUrl</code></div>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="col-span-2 flex gap-2">
+                            <button class="px-3 py-2 border rounded bg-black text-white" @onclick="CrearMesonRegistro">
+                                Registrar mesón
+                            </button>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(_nuevoMesonMsg))
+                        {
+                            <div class="col-span-2 text-xs text-gray-500">@_nuevoMesonMsg</div>
+                        }
+                    </div>
+                </details>
+
+                <details class="panel-box">
+                    <summary class="panel-header">
+                        <div class="panel-title">Ver todos los mesones (@MesonesDelAreaActual().Count())</div>
+                    </summary>
+
+                    <div class="text-xs text-gray-500 mb-2 mt-2">Mesones creados (clic para seleccionar en canvas)</div>
+
+                    <div class="grid grid-cols-3 gap-2 text-sm mb-3">
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Nivel nueva caja</label>
+                            <input class="border p-1 w-full" value="@_nuevoCajaNivel"
+                                   @oninput="(e)=> _nuevoCajaNivel = e.Value?.ToString()" />
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Dimensiones (opcional)</label>
+                            <input class="border p-1 w-full" @bind="_nuevoCajaDimensiones" @bind:event="oninput" />
+                        </div>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(_nuevoCajaMsg))
+                    {
+                        <div class="text-xs text-gray-500 mb-2">@_nuevoCajaMsg</div>
+                    }
+
+                    <div class="mesones-list">
+                        @foreach (var mesRow in MesonesDelAreaActual().OrderBy(x => x.nombre_meson))
+                        {
+                            <div class="meson-card">
+                                <div class="meson-card-main">
+                                    @if (!string.IsNullOrWhiteSpace(mesRow.imagen_url))
+                                    {
+                                        <img src="@ResolveUrl(mesRow.imagen_url!)"
+                                             class="meson-card-thumb"
+                                             onerror="this.style.display='none';" />
+                                    }
+
+                                    <div>
+                                        <div class="meson-card-title">@mesRow.nombre_meson</div>
+                                        <div class="meson-card-meta">niveles: @(mesRow.niveles_totales?.ToString() ?? "—")</div>
+                                    </div>
+                                </div>
+
+                                <div class="meson-card-actions">
+                                    <button class="meson-btn meson-btn-secondary" @onclick="(()=>SeleccionarPorMeson(mesRow.meson_id))">
+                                        Seleccionar
+                                    </button>
+                                    <button class="meson-btn meson-btn-primary" @onclick="(()=>CrearCajaParaMesonAsync(mesRow.meson_id))">
+                                        + Caja
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </details>
+
+                <!-- INSTALACIONES -->
+                <details class="panel-box">
+                    <summary class="panel-header">
+                        <div class="panel-title">Crear instalación</div>
+                    </summary>
+
+                    <div class="grid grid-cols-2 gap-2 text-sm mt-2">
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Nombre</label>
+                            <input class="border p-1 w-full" @bind="_nuevoIns_Nombre" @bind:event="oninput" />
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Subcategoría (subcategoria_id)</label>
+                            <select class="border p-1 w-full" @bind="_nuevoIns_SubcategoriaId">
+                                <option value="">— Sin subcategoría —</option>
+                                @foreach (var kv in _subcatsInstLookup.OrderBy(k => k.Value))
+                                {
+                                    <option value="@kv.Key">@kv.Value</option>
+                                }
+                            </select>
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Estado (estado_id)</label>
+                            <select class="border p-1 w-full" @bind="_nuevoIns_EstadoId">
+                                <option value="">— Sin estado —</option>
+                                @foreach (var kv in _estadosLookup.OrderBy(k => k.Value))
+                                {
+                                    <option value="@kv.Key">@kv.Value</option>
+                                }
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Fecha instalación</label>
+                            <input type="date" class="border p-1 w-full" @bind-value="FechaInstalacionWrapper" />
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Última revisión</label>
+                            <input type="date" class="border p-1 w-full" @bind-value="FechaUltRevWrapper" />
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Próxima revisión</label>
+                            <input type="date" class="border p-1 w-full" @bind-value="FechaProxRevWrapper" />
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Levantamiento (cm) (opcional)</label>
+                            <input class="border p-1 w-full"
+                                   type="number"
+                                   step="any"
+                                   min="0"
+                                   @bind="_nuevoIns_LevantamientoCm"
+                                   @bind:event="oninput" />
+                            <div class="text-xs text-gray-500">Si la instalación se encuentra elevada sobre el piso, completa este campo; si no, déjalo vacío.</div>
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Proveedor servicio</label>
+                            <input class="border p-1 w-full" @bind="_nuevoIns_ProveedorServicio" @bind:event="oninput" />
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Observaciones</label>
+                            <textarea class="border p-1 w-full" rows="2" @bind="_nuevoIns_Observaciones" @bind:event="oninput"></textarea>
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Descripción</label>
+                            <textarea class="border p-1 w-full" rows="3" @bind="_nuevoIns_Descripcion" @bind:event="oninput"></textarea>
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="block text-xs text-gray-600 mb-1">Imagen</label>
+                            <div class="flex items-center gap-3">
+                                <label class="flex items-center gap-2 text-xs text-gray-700">
+                                    <input type="radio" name="imgModoInstDetalles"
+                                           value="url"
+                                           checked="@(_nuevoIns_ImagenModo == "url")"
+                                           @onchange="OnNuevoInsImagenModoChanged" />
+                                    Colocar un URL
+                                </label>
+                                <label class="flex items-center gap-2 text-xs text-gray-700">
+                                    <input type="radio" name="imgModoInstDetalles"
+                                           value="archivo"
+                                           checked="@(_nuevoIns_ImagenModo == "archivo")"
+                                           @onchange="OnNuevoInsImagenModoChanged" />
+                                    Subir imagen
+                                </label>
+                            </div>
+
+                            @if (_nuevoIns_ImagenModo == "url")
+                            {
+                                <input class="border p-1 w-full mt-2" @bind="_nuevoIns_ImagenUrl" @bind:event="oninput" />
+                            }
+                            else
+                            {
+                                <label class="upload-drop mt-2">
+                                    <InputFile OnChange="OnNuevoInsImagenArchivoSeleccionado" accept="image/png,image/jpeg,image/jpg,image/webp" />
+                                    <span>Arrastra una imagen o haz clic para buscar</span>
+                                </label>
+                                @if (!string.IsNullOrWhiteSpace(_nuevoIns_ImagenNombre))
+                                {
+                                    <div class="text-xs text-gray-500 mt-1">Archivo: @_nuevoIns_ImagenNombre</div>
+                                }
+                            }
+
+                            @if (!string.IsNullOrWhiteSpace(_nuevoIns_ImagenUrl))
+                            {
+                                <div class="mt-2 flex items-center gap-2">
+                                    <img src="@ResolveUrl(_nuevoIns_ImagenUrl)"
+                                         style="width:120px;height:80px;object-fit:contain;border:1px solid #e5e7eb;border-radius:8px;background:#fff"
+                                         onerror="this.style.display='none';" />
+                                    <div class="text-xs text-gray-500"><code>@_nuevoIns_ImagenUrl</code></div>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="col-span-2 flex gap-2">
+                            <button class="px-3 py-2 border rounded bg-black text-white" @onclick="CrearInstalacionRegistro">
+                                Registrar instalación
+                            </button>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(_nuevoIns_Msg))
+                        {
+                            <div class="col-span-2 text-xs text-gray-500">@_nuevoIns_Msg</div>
+                        }
+                    </div>
+                </details>
+            </div>
+
+            <details class="panel-box">
+                <summary class="panel-header">
+                    <div class="panel-title">Ver todas las instalaciones (@_instalaciones.Count)</div>
+                </summary>
+
+                <div class="text-xs text-gray-500 mb-2 mt-2">Instalaciones creadas (clic para seleccionar en canvas)</div>
+
+                <div class="space-y-2">
+                    @foreach (var insItem in _instalaciones.Values.OrderBy(x => x.nombre))
+                    {
+                        <div class="flex items-center justify-between border rounded p-2">
+                            <div class="text-sm flex items-center gap-3">
+                                @if (!string.IsNullOrWhiteSpace(insItem.imagen_url))
+                                {
+                                    <img src="@ResolveUrl(insItem.imagen_url!)"
+                                         style="width:52px;height:38px;object-fit:contain;border:1px solid #e5e7eb;border-radius:6px;background:#fff"
+                                         onerror="this.style.display='none';" />
+                                }
+
+                                <div>
+                                    <div class="font-medium">@insItem.nombre</div>
+                                    <div class="text-xs text-gray-500">
+                                        estado:
+                                        @((insItem.estado_id is null)
+                                            ? "—"
+                                            : (_estadosLookup.TryGetValue(insItem.estado_id, out var s) ? s : insItem.estado_id))
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button class="px-2 py-1 border rounded text-sm" @onclick="(()=>SeleccionarPorInstalacion(insItem.instalacion_id))">
+                                Seleccionar
+                            </button>
+                        </div>
+                    }
+                </div>
+            </details>
+
+        </section>
+    }
+</div>
 
 <style>
     .editor-layout {
